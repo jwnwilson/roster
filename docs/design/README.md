@@ -1,19 +1,19 @@
-# Handoff: naaf UI — Agent Project Management
+# Handoff: roster UI — Agent Project Management
 
 ## Overview
 
-This handoff covers the complete UI design for **naaf** (Not Another Agent Framework) — a Linear-style project management interface for managing AI agents that work on git repository projects. Users manage work items (epics → features → tasks), configure agents, connect MCP servers, and hold every agent conversation in **Threads**.
+This handoff covers the complete UI design for **roster** — a Linear-style project management interface for managing AI agents that work on git repository projects. Users manage work items (epics → features → tasks), configure agents, connect MCP servers, and hold every agent conversation in **Threads**.
 
 **Two concepts drive the current design:**
 
-1. **Agents are first-class and folder-backed.** An agent *is* a local folder — `AGENT.md` (instructions), `skills/` (one folder per skill), and `config.yaml` (model, token limit, temperature). naaf reads them from disk and never stores agent config itself. Agents have no subagents. Statuses are only **Working**, **Active**, **Disabled**.
+1. **Agents are first-class and folder-backed.** An agent *is* a local folder — `AGENT.md` (instructions), `skills/` (one folder per skill), and `config.yaml` (model, token limit, temperature). roster reads them from disk and never stores agent config itself. Agents have no subagents. Statuses are only **Working**, **Active**, **Disabled**.
 2. **Threads replace the inbox.** Every agent conversation — action requests and ordinary discussion — lives in Threads, filtered by All / Action Needed and by project. The work-item detail page has no Agent tab; its Thread tab shows the same conversation scoped to that item.
 
 ---
 
 ## About the Design Files
 
-The files in this bundle (`NAAF Hi-Fi.dc.html`, `NAAF Wireframes.dc.html`) are **HTML design references** — prototypes built to show the intended look, layout, and behaviour. They are **not production code to copy directly**. Your task is to recreate these designs in your existing React codebase using its established patterns and libraries (component system, routing, state management, etc.).
+The files in this bundle (`Roster Hi-Fi.dc.html`, `Roster Wireframes.dc.html`) are **HTML design references** — prototypes built to show the intended look, layout, and behaviour. They are **not production code to copy directly**. Your task is to recreate these designs in your existing React codebase using its established patterns and libraries (component system, routing, state management, etc.).
 
 Open the HTML files in a browser and pan/zoom to see all screens side by side.
 
@@ -21,7 +21,7 @@ Open the HTML files in a browser and pan/zoom to see all screens side by side.
 
 ## Fidelity
 
-**High-fidelity.** The hi-fi file (`NAAF Hi-Fi.dc.html`) shows pixel-accurate colours, typography, spacing, borders, icons, and component states. Recreate it faithfully. The wireframes file is an earlier iteration — use it only to understand structural decisions, not visual polish.
+**High-fidelity.** The hi-fi file (`Roster Hi-Fi.dc.html`) shows pixel-accurate colours, typography, spacing, borders, icons, and component states. Recreate it faithfully. The wireframes file is an earlier iteration — use it only to understand structural decisions, not visual polish.
 
 ---
 
@@ -438,7 +438,7 @@ Same shell as D, Activity tab active.
 **Layout:** Sidebar (Agents active) + full-width table.
 
 - **Topbar:** "Agents" + "6 folders · 3 working" + filters All / Working / Active / Disabled + **Rescan folders** + primary **+ Add agent folder**
-- **Folder contract strip** (`background: #0b0d10`): `AGENT FOLDER` label, mono chips `AGENT.md` `skills/` `config.yaml`, the sentence "Instructions, skills and model are read from disk — naaf never stores agent config itself.", "Last scan 2m ago" right-aligned
+- **Folder contract strip** (`background: #0b0d10`): `AGENT FOLDER` label, mono chips `AGENT.md` `skills/` `config.yaml`, the sentence "Instructions, skills and model are read from disk — roster never stores agent config itself.", "Last scan 2m ago" right-aligned
 - **Columns:** `grid-template-columns: 292px 118px 1fr 168px 76px 74px 88px`, gap 16px, padding `13px 24px`
   `AGENT · PATH` · `STATUS` · `CURRENT WORK ITEM` · `MODEL · config.yaml` · `SKILLS` · `MCPS` · `SPEND`
 - **Agent cell:** 26px initial tile tinted per agent + name 12.5px 600 + local path 10px mono `#3a3d45`
@@ -455,7 +455,7 @@ Same shell as D, Activity tab active.
 **Layout:** Sidebar (Agents active) + breadcrumb topbar + identity strip + two-column body.
 
 - **Topbar:** `Agents › atlas` + status chip + **Reveal folder** · **Disable** (red outline) · primary **Save to disk**
-- **Identity strip** (`background: #0b0d10`): 38px tile, label `AGENT NAME · RENAMES THE FOLDER`, a focused text field (`border: 1px solid rgba(124,108,240,0.35)` + caret) whose value renames the folder on disk, live path preview `~/naaf/agents/<name>/`, and stat blocks SKILLS · MCPS · SPEND TODAY · LAST SCAN
+- **Identity strip** (`background: #0b0d10`): 38px tile, label `AGENT NAME · RENAMES THE FOLDER`, a focused text field (`border: 1px solid rgba(124,108,240,0.35)` + caret) whose value renames the folder on disk, live path preview `~/.roster/agents/<name>/`, and stat blocks SKILLS · MCPS · SPEND TODAY · LAST SCAN
 - **Left column — AGENT.md editor:** file path caption, **Unsaved edits** chip (amber), Edit/Preview segmented control, editor surface `background: #0a0b0d`, 12px/1.55 mono, markdown headings in `#bab7f6`; footer "Changes write straight to the file on disk"
 - **Right rail (372px):**
   - `CONFIG.YAML` card — **MODEL** select plus three quick-pick chips (sonnet-4.5 / opus-4.1 / haiku-4.5), MAX TOKENS / RUN, TEMPERATURE
@@ -607,7 +607,7 @@ Right — Two stacked panels:
 - Clicking a kanban card → `/projects/:id/items/:itemId` (Detail screen)
 - Clicking an agent name in the agents ribbon → Detail screen with Agent tab pre-selected
 - Inbox item click → right pane updates to show that conversation
-- "View NAAF-XX ↗" in a thread → navigates to that work item's detail
+- "View ROS-XX ↗" in a thread → navigates to that work item's detail
 - Sidebar Agents → `/agents` (C); an agent row → `/agents/:name` (C2)
 - Sidebar MCP Servers → `/mcp` (K); a server row → `/mcp/:name` (K2)
 - Sidebar PROJECTS **+** → Create Project modal (B2)
@@ -634,13 +634,13 @@ Right — Two stacked panels:
 
 ---
 
-## Data Model (from naaf)
+## Data Model
 
 Key entities needed by the UI:
 
 ```typescript
 type WorkItem = {
-  id: string;           // "NAAF-42"
+  id: string;           // "ROS-42"
   type: 'epic' | 'feature' | 'task';
   title: string;
   status: 'backlog' | 'todo' | 'in_progress' | 'in_review' | 'done';
@@ -770,8 +770,8 @@ SVG source for all icons is available in the HTML reference file — each icon i
 
 | File | Purpose |
 |------|---------|
-| `NAAF Hi-Fi.dc.html` | **Primary reference** — all screens hi-fi, pannable canvas |
-| `NAAF Wireframes.dc.html` | Structural reference — earlier iteration, useful for layout intent |
+| `Roster Hi-Fi.dc.html` | **Primary reference** — all screens hi-fi, pannable canvas |
+| `Roster Wireframes.dc.html` | Structural reference — earlier iteration, useful for layout intent |
 | `README.md` | This document |
 
 Open the HTML files in any modern browser. Use trackpad/scroll to pan, pinch or scroll+cmd to zoom.
