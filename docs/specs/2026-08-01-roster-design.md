@@ -12,6 +12,11 @@ management UI. The operator sets up multiple agents on their own machine and coo
 them through a **lead agent**, driving work from a board of projects → epics → features →
 tasks.
 
+A **project is any body of work the operator wants agents to carry out** — a code repository,
+a research effort, a set of documents, a recurring ops chore. Roster is not a git tool that
+happens to have a UI; git is one capability a project may have, detected rather than assumed
+(§4).
+
 The defining constraint is that **roster is not a distributed service**. It runs as local
 processes on one machine, for one person. There is no tenancy, no authentication, no
 network deployment, no message broker, and no container orchestration. The UI is a plain
@@ -124,11 +129,12 @@ Runtime data lives under a configurable root, defaulting to `~/.roster/`:
       AGENT.md       # instructions
       skills/        # one folder per skill
       config.yaml    # model, token limit, temperature
-  projects/          # one folder per project — see §5
+  projects/          # one folder per project — see §4 and §5
     <project_id>/
       MEMORY.md      # compacted digest
       journal/       # append-only entries, one per finished run
       snapshots/     # previous digests, written before each compaction
+      workspace/     # managed workspace — only when the project has no external folder
 ```
 
 Keeping data out of the repo means the repo stays clean, `git clean` is safe, and an
@@ -138,14 +144,14 @@ Electron build has an obvious per-user location to target.
 
 Agent runs execute as **subprocesses spawned from the API process**. A `RunManager` owns one
 asyncio task per run; the task spawns the agent subprocess with `cwd` set to the project's
-repository, streams its stdout into `RunEvent` rows, and pushes those events to the UI over
-SSE.
+**workspace** (§4), streams its stdout into `RunEvent` rows, and pushes those events to the UI
+over SSE.
 
 ```
 uvicorn (FastAPI)
   └─ RunManager (asyncio)
-       ├─ subprocess: agent "atlas"   cwd=~/repos/api-service
-       ├─ subprocess: agent "beacon"  cwd=~/repos/api-service
+       ├─ subprocess: agent "atlas"   cwd=~/repos/api-service              (git workspace)
+       ├─ subprocess: agent "beacon"  cwd=~/.roster/projects/<id>/workspace (managed)
        └─ events → SQLite → SSE → UI
 ```
 
@@ -185,7 +191,7 @@ local single-user operation.
 
 | Entity | Storage | Notes |
 |---|---|---|
-| `Project` | DB | name, repo path/URL, item count |
+| `Project` | DB | name, workspace path, detected capabilities, item count — see below |
 | `WorkItem` | DB | type `epic`/`feature`/`task`; status `backlog`/`todo`/`in_progress`/`in_review`/`done`; priority; parent epic/feature; spec markdown; token usage |
 | `Thread` | DB | conversation scope: global, project, or work-item |
 | `Message` | DB | role `user`/`agent`/`lead_agent`, content, attachments |
@@ -196,6 +202,44 @@ local single-user operation.
 | `Attachment` | DB + disk | uploads and agent-produced files |
 | `Agent` | **disk only** | read from `~/.roster/agents/<name>/`; never written to the DB |
 | `ProjectMemory` | **disk only** | digest, journal, and snapshots under `~/.roster/projects/<project_id>/` — see §5 |
+
+### Projects and workspaces
+
+A project is a **named body of work with a workspace** — one directory that agents run in. It is
+not required to be, or contain, a git repository.
+
+A workspace arrives one of two ways:
+
+- **External** — the operator points the project at an existing folder (`~/repos/api-service`,
+  `~/Documents/q3-research`). Roster reads and writes in place; it never copies or moves it.
+- **Managed** — the operator creates a project without pointing anywhere, and roster creates
+  `~/.roster/projects/<project_id>/workspace/` for it.
+
+**Capabilities are detected, not declared.** On project creation and at each run start, roster
+inspects the workspace and records what it finds. The only capability in scope now is `git`
+(a `.git` directory is present). There is no `kind` field and no taxonomy to maintain: an
+empty folder is a valid project, and `git init`-ing that folder later upgrades the project on
+the next run with no migration and no edit to its record.
+
+**The run lifecycle branches on capability, not on project type:**
+
+| Workspace | Terminal step | Deliverable |
+|---|---|---|
+| git repository | `pr` | a branch, commits, and an opened pull request |
+| any other folder | `deliver` | files written in the workspace, registered as `Attachment`s, plus a summary posted to the work item's thread |
+
+Everything before the terminal step — plan, work, verify, approval gates, the memory write — is
+identical on both paths. An agent on a research project writes documents and a summary; an
+agent on a repository writes code and opens a PR. Neither path is the privileged one.
+
+What this forces on the rest of the design:
+
+- Nothing in `domain/` may assume a repository exists. Git is a capability check at the edge,
+  never an ambient assumption.
+- A work item is not "a change to code". Its `spec` markdown states the task, whatever its
+  nature, and its status vocabulary (`backlog` … `in_review` … `done`) is already generic.
+- `Attachment` is the general deliverable channel, not just an upload inbox — it is how
+  non-repo work leaves a run in reviewable form.
 
 **Agents are folder-backed.** `AGENT.md`, `skills/`, and `config.yaml` on disk are the source
 of truth; roster reads them and never stores agent configuration itself. Renaming an agent in
@@ -330,6 +374,16 @@ Create Work Item modals.
 Sidebar navigation is Dashboard · Threads · Agents · MCP Servers, with the PROJECTS group
 below carrying a `+` button.
 
+**Deviation from the handoff.** The design assumes every project is a git repository: the
+sidebar uses a git-repo glyph and the Create Project modal asks for a repo URL. Roster's model
+is workspace-first (§4), so three things change and nothing else does:
+
+- Create Project asks for a **workspace folder**, defaulting to "create a managed workspace for
+  me". No repo URL field.
+- Git is shown as a **detected badge** on the project, never asked for.
+- The sidebar glyph is a neutral project mark, with a small git indicator only on projects
+  where a repository was detected.
+
 Mock-first is the default (`VITE_USE_MOCKS=true`), so the UI runs and is developed with no
 backend. A live-API flag proxies `/api` to the local server.
 
@@ -417,6 +471,8 @@ future work does not reintroduce it by reflex:
 | Horizontal scaling, multi-node coordination | Not a distributed service |
 | Vector store / embedding retrieval over memory | Memory is a small compacted digest read in full, not a corpus to search |
 | Per-agent private memory | Memory is project-scoped and shared; agents differ by instructions and skills, not recall |
+| Non-git version control (svn, hg) | `git` is the one detected capability; every other workspace is simply a folder |
+| A project-type taxonomy | Capabilities are detected from the workspace, not declared at creation |
 
 ---
 
@@ -434,6 +490,9 @@ future work does not reintroduce it by reflex:
 9. **Project memory as journal + compacted digest on disk** — appends are concurrency-safe by
    construction, compaction is a separate retryable step, and snapshots make lossy compression
    reversible. Memory is project-scoped and shared by all agents; only roster writes it.
+10. **Projects are workspaces, not repositories** — every project is a folder agents work in;
+    git is a detected capability that swaps the run's terminal step from `deliver` to `pr`.
+    No project-type taxonomy, and no domain code that assumes a repo.
 
 ---
 
