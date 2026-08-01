@@ -4,10 +4,11 @@
 
 This handoff covers the complete UI design for **roster** — a Linear-style project management interface for managing AI agents that work on git repository projects. Users manage work items (epics → features → tasks), configure agents, connect MCP servers, and hold every agent conversation in **Threads**.
 
-**Two concepts drive the current design:**
+**Three concepts drive the current design:**
 
 1. **Agents are first-class and folder-backed.** An agent *is* a local folder — `AGENT.md` (instructions), `skills/` (one folder per skill), and `config.yaml` (model, token limit, temperature). roster reads them from disk and never stores agent config itself. Agents have no subagents. Statuses are only **Working**, **Active**, **Disabled**.
-2. **Threads replace the inbox.** Every agent conversation — action requests and ordinary discussion — lives in Threads, filtered by All / Action Needed and by project. The work-item detail page has no Agent tab; its Thread tab shows the same conversation scoped to that item.
+2. **Projects are not necessarily git repos.** A project's code location is optional — Git repository, Local folder, or No code (research, ops, writing). Every project instead has a **required artifact store** (an artifact repo, a local folder, or the project itself) where agents write specs, notes, reports and generated files.
+3. **Threads replace the inbox.** Every agent conversation — action requests and ordinary discussion — lives in Threads, filtered by All / Action Needed and by project. The work-item detail page has no Agent tab; its Thread tab shows the same conversation scoped to that item.
 
 ---
 
@@ -793,6 +794,30 @@ Frames sit at x = 80 / 1600 / 3120 / 4640 and each row is 990px apart; section l
 
 ---
 
+## Projects & Artifact Store
+
+**Create Project modal (B2)** has two storage blocks:
+
+1. `PROJECT TYPE` — segmented control **Git repository · Local folder · No code**, then the matching field (remote URL with a Valid chip, or a local path). Helper: "Optional. A project needs no code at all — pick No code for research, ops or writing work."
+2. `ARTIFACT STORE` **(required, accent border)** — segmented control **Artifact repo · Local folder · Same as project**, then the target (e.g. `https://github.com/<org>/<project>-artifacts` or `~/.roster/artifacts/<project>`). Helper: "Where agents write specs, notes, reports and generated files. Specs and attachments are versioned here even when the project has no code."
+
+**Elsewhere in the UI**
+- Sidebar project rows use the git-repo icon for git projects and a plain folder icon for non-git ones (`infra` is the worked example)
+- The A/B topbar shows an artifact-store chip beside the project name: folder icon + `artifacts · <store name>`
+- D4 attachments and D5 activity entries are stored in and versioned by the artifact store, not the code repo
+
+**Data model impact**
+
+```
+Project {
+  id, name
+  source:   { kind: 'git' | 'local' | 'none', url?, path? }   // optional
+  artifacts:{ kind: 'git' | 'local' | 'source', url?, path? } // required
+}
+```
+
+---
+
 ## Changelog — What Changed in This Revision
 
 **Navigation**
@@ -817,6 +842,11 @@ Frames sit at x = 80 / 1600 / 3120 / 4640 and each row is 990px apart; section l
 
 **MCP**
 - New **K** listing and **K2** detail (connection, per-tool toggles, per-agent access, recent calls)
+
+**Projects**
+- Project type is now Git repository / Local folder / No code; git is no longer assumed
+- New required artifact store per project for agent-produced files
+- Non-git projects get a folder icon in the sidebar; artifact store shown as a topbar chip
 
 **Settings**
 - Frame F removed; settings reduced to General, Billing, Integrations, Security (Secrets)
