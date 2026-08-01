@@ -2,7 +2,6 @@
 
 **Date:** 2026-08-01
 **Status:** Approved
-**Supersedes:** nothing (new project; structural template is `../naaf`)
 
 ---
 
@@ -19,20 +18,16 @@ network deployment, no message broker, and no container orchestration. The UI is
 SPA talking to `localhost`, which keeps an Electron desktop wrapper available later without
 rework.
 
-Roster reuses `naaf`'s repository *structure*, tooling, and frontend code. It deliberately
-does **not** reuse naaf's backend architecture — see §9.
-
-- UI design source of truth: [`docs/design/README.md`](../design/README.md) plus the
-  `NAAF Hi-Fi.dc.html` and `NAAF Wireframes.dc.html` canvases in the same folder. The bundle
-  is stored verbatim as delivered and is still naaf-branded; roster docs point at it rather
-  than editing it.
+- UI design source of truth: [`docs/design/README.md`](../design/README.md) plus the hi-fi
+  and wireframe canvases in the same folder. The hi-fi canvas is the visual authority;
+  the wireframes show structural intent only.
 
 ### Success criteria for the setup work described here
 
-`make dev` boots the API against SQLite (migrated and seeded) and the UI; the ported UI
-renders against MSW mocks with no backend; the backend serves health plus projects and
-work-items; the agent-folder reader and a fake runtime are in place; CI is green; and
-`CLAUDE.md`, `docs/architecture.md`, and ADR-0001 are written.
+`make dev` boots the API against SQLite (migrated and seeded) and the UI; the UI renders
+against MSW mocks with no backend; the backend serves health plus projects and work-items;
+the agent-folder reader and a fake runtime are in place; CI is green; and `CLAUDE.md`,
+`docs/architecture.md`, and ADR-0001 are written.
 
 ---
 
@@ -40,13 +35,13 @@ work-items; the agent-folder reader and a fake runtime are in place; CI is green
 
 ```
 roster/
-  CLAUDE.md                 # stack, conventions, worktree→PR workflow (ported, de-naaf'd)
+  CLAUDE.md                 # stack, conventions, worktree→PR workflow
   Makefile                  # install dev run test coverage lint db-upgrade e2e
   pyproject.toml            # uv workspace, single member: projects/server
   .env.example  .gitignore
   .github/workflows/{ci,e2e}.yml
   docs/
-    design/                 # UI handoff bundle (verbatim)
+    design/                 # UI handoff bundle
     architecture.md         # layering rules new code must follow
     adr/0001-local-single-process.md
     specs/2026-08-01-roster-design.md
@@ -63,7 +58,7 @@ roster/
         api/                # app factory, routers, deps, SSE, settings
         cli/                # seed
       tests/
-    ui/                     # ported from naaf, then reworked to the new design
+    ui/                     # React + Vite + Tailwind SPA
 ```
 
 `libs/` is not created. The uv workspace has a single member; keeping the workspace form
@@ -73,8 +68,8 @@ means a library can be extracted later without restructuring the repo.
 
 ## 3. Backend architecture
 
-**Light hexagonal, one package.** Three layers, with domain logic never touching I/O — but
-none of naaf's port/adapter ceremony.
+**Light hexagonal, one package.** Three layers, with domain logic never touching I/O, and no
+port/adapter ceremony beyond what that separation needs.
 
 ### Stack
 
@@ -106,10 +101,11 @@ dependency, SSE endpoints, settings.
 
 ### Why async-only
 
-naaf ran sync and async engines side by side; its SSE endpoints blocked the event loop,
-which forced an entire new workspace library (`libs/db`) to fix. Roster uses one engine and
-one session style from the first commit, which removes that failure mode rather than
-managing it.
+SSE endpoints hold a connection open for the lifetime of a run. A synchronous database
+session on that path blocks the event loop and stalls every other request, and a codebase
+that offers both sync and async sessions will eventually take the wrong one on a streaming
+route. Roster uses one engine and one session style from the first commit, so that mistake
+is not available.
 
 ### Data root
 
@@ -154,9 +150,8 @@ trade for removing a whole process tier.
 ### API contract
 
 Every response uses the envelope `{success, data, error}`, with `meta` added for paginated
-collections. This is naaf's shape, retained because it is a response format rather than an
-architectural commitment, and because it makes the frontend port free. naaf's `CrudRouter`
-abstraction is **not** carried over — routers are written by hand.
+collections. A uniform envelope keeps client-side error handling in one place; routers are
+written by hand rather than generated from a generic CRUD abstraction.
 
 Status changes are validated by `domain/transitions.validate_transition`; an invalid
 transition returns HTTP 409. Entity IDs are UUID hex strings; work items also carry a
@@ -172,7 +167,7 @@ decision, not a configuration change.
 
 ## 4. Domain model
 
-Derived from the design handoff (`docs/design/README.md` §Data Model), simplified for
+Derived from the data model in the UI handoff (`docs/design/README.md`), simplified for
 local single-user operation.
 
 | Entity | Storage | Notes |
@@ -198,30 +193,40 @@ persisted. There are no subagents anywhere in the model or the UI.
 
 ## 5. Frontend
 
-`projects/ui` is ported wholesale from naaf: the app shell (`AppShell`, `Sidebar`, `Topbar`,
-`ChatPanel`, routes), the `components/ui` primitive set and its tests, the `lib/api` typed
-envelope client and React Query key factories, `lib/hooks` (including `useEventSource`), the
-MSW mock layer, and the vitest + playwright configuration.
+React 18 + Vite + Tailwind 4, React Query for server state, React Router for routing, MSW for
+mocking, vitest + testing-library for unit tests, Playwright for E2E.
 
-Port, then rework:
+Structure:
 
-- naaf→roster renaming throughout (package name, env vars, API paths, copy)
-- remove UI for concepts roster drops: subagents, inbox, owner/auth, budget enforcement
-- **Inbox → Threads**: two tabs (All, Action Needed) plus a project filter; no project shows as
-  selected in the sidebar on this global view
-- add **Agents** and **Agent Detail** (rename → renames the folder, `AGENT.md` editor, model
-  picker writing `config.yaml`)
-- add **MCP Servers** and **MCP Server Detail** (connection, per-tool toggles, per-agent
-  access, recent calls)
-- add work-item detail **Attachments** and **Activity** tabs; remove the old agent-monitor tab
-- sidebar nav becomes Dashboard · Threads · Agents · MCP Servers, with the PROJECTS group
-  below carrying a `+` button
+```
+projects/ui/src/
+  app/              # shell: providers, router, layout, Sidebar, Topbar, ChatPanel, error boundary
+  modules/          # feature slices (board, detail, threads, agents, mcp, dashboard, settings)
+  components/ui/    # design-system primitives (Button, Modal, StatusBadge, Chip, …)
+  lib/api/          # typed envelope client, per-domain modules, React Query key factories
+  lib/hooks/        # useEventSource, useLocalStorage, useResizableWidth, …
+```
 
-Mock-first stays the default (`VITE_USE_MOCKS=true`), so the UI runs and is developed with no
+Screens to build, per the handoff canvases: Issues List, Board, Work Item Detail (Spec /
+Thread / Attachments / Activity tabs), Threads (All and Action Needed tabs plus a project
+filter), Agents, Agent Detail (rename → renames the folder, `AGENT.md` editor, model picker
+writing `config.yaml`), MCP Servers, MCP Server Detail (connection, per-tool toggles,
+per-agent access, recent calls), Dashboard, Settings (Secrets), and the Create Project and
+Create Work Item modals.
+
+Sidebar navigation is Dashboard · Threads · Agents · MCP Servers, with the PROJECTS group
+below carrying a `+` button.
+
+Mock-first is the default (`VITE_USE_MOCKS=true`), so the UI runs and is developed with no
 backend. A live-API flag proxies `/api` to the local server.
 
-Design tokens, layout dimensions, and per-screen specifications come from
-`docs/design/README.md`; the hi-fi canvas is the visual authority.
+Design tokens, layout dimensions, component states, and per-screen specifications come from
+`docs/design/README.md`.
+
+> **Implementation provenance:** the shell, primitive set, API client, hooks, MSW layer, and
+> test configuration are copied from the existing SPA at `../naaf/projects/ui` as a starting
+> point, then renamed and reworked to the structure and screens above. This is a one-time code
+> transplant, not a shared dependency — nothing in roster's design derives from that project.
 
 ---
 
@@ -247,7 +252,7 @@ Design tokens, layout dimensions, and per-screen specifications come from
 - **Integration** — API routers against a real SQLite database via httpx; run lifecycle driven
   through `FakeRuntime`; SSE streams asserted end to end.
 - **Frontend** — vitest + testing-library for primitives, hooks, and screens against MSW.
-- **E2E** — playwright over a scripted journey: create project → create work item → start a
+- **E2E** — Playwright over a scripted journey: create project → create work item → start a
   run against `FakeRuntime` → observe events → resolve the item.
 - 80% coverage gate on the backend, enforced by `make coverage` and CI.
 - TDD: the failing test is written first; AAA structure; descriptive behavior names.
@@ -264,7 +269,7 @@ make test         # pytest
 make coverage     # 80% gate
 make lint         # ruff + mypy + eslint + tsc
 make db-upgrade   # alembic upgrade head
-make e2e          # playwright
+make e2e          # Playwright
 ```
 
 No Docker is required to run roster. Commits follow `<type>: <description>`
@@ -273,40 +278,38 @@ No Docker is required to run roster. Commits follow `<type>: <description>`
 
 ---
 
-## 9. Explicitly dropped from naaf
+## 9. Non-goals
 
-These exist in naaf and are deliberately absent here, because each one exists to serve
-distribution, multi-tenancy, or sandboxing — none of which roster has:
+Roster is a local tool, and the following are out of scope by design. Each is listed so that
+future work does not reintroduce it by reflex:
 
-| Dropped | Reason |
+| Not building | Why |
 |---|---|
-| Celery + beat + Redis | No scheduling tier; asyncio tasks in-process |
-| Pub/sub bus + per-agent queues | Direct subprocess management instead |
-| Docker containers per agent | Agents run as local subprocesses |
-| docker-compose Postgres | SQLite file |
-| `libs/{crud_router,db,storage}` | Single package; no shared workspace libraries |
-| `Repository` / `UnitOfWork` protocols | Query functions taking an `AsyncSession` |
-| `CrudRouter` | Hand-written routers |
-| `owner_id` scoping, Auth0, dev-user auth | Single user, localhost only |
-| Sync + async dual engines | One async engine |
-| Sandbox / egress proxy / GitHub App | Local trust model |
-| Budget enforcement plumbing | Token usage is displayed, not enforced |
-
-The response envelope is the one naaf convention retained by choice.
+| Task queue / scheduler tier (Celery, RQ, cron workers) | Runs are asyncio tasks in the API process |
+| Message broker or pub/sub bus | The `RunManager` talks to subprocesses directly |
+| Containerised agent execution | Agents are local subprocesses on a trusted machine |
+| Client/server database (Postgres, MySQL) | One user, one machine — a SQLite file |
+| Shared workspace libraries | Single package; extract only when a second consumer exists |
+| `Repository` / `UnitOfWork` abstractions | Query functions taking an `AsyncSession` |
+| Generic CRUD router generation | Routers are written by hand |
+| Authentication, tenancy, owner scoping | Single user, bound to localhost |
+| Sandboxing, egress proxying, hosted git-app tokens | Local trust model |
+| Budget enforcement | Token usage is displayed, not enforced |
+| Horizontal scaling, multi-node coordination | Not a distributed service |
 
 ---
 
 ## 10. Decisions recorded
 
 1. **Light hexagonal, one package** — testable layering without port/adapter ceremony.
-2. **`projects/` layout kept** — matches naaf muscle memory; workspace allows later extraction.
+2. **`projects/` layout** — server and UI as sibling projects; the workspace allows a later
+   library extraction without restructuring.
 3. **Subprocesses from the API process** — no broker, no worker tier, no containers.
-4. **Async-only SQLAlchemy on SQLite** — avoids naaf's SSE event-loop failure by construction.
-5. **Envelope retained** — makes the UI port free; it is a response shape, not architecture.
+4. **Async-only SQLAlchemy on SQLite** — keeps streaming routes off blocking sessions.
+5. **Uniform `{success, data, error}` envelope** — one place for client error handling.
 6. **Alembic from the start** — projects and threads are real user data worth migrating.
 7. **`~/.roster/` data root** — keeps the repo clean and gives Electron an obvious target.
-8. **Port naaf's UI, then rework** — the design is an evolution of that UI; the concern about
-   inherited architecture applies to the backend, not the frontend.
+8. **Mock-first UI** — screens are developed and tested without a running backend.
 
 ---
 
@@ -314,7 +317,7 @@ The response envelope is the one naaf convention retained by choice.
 
 Deferred to follow-up plans, each with its own spec:
 
-- The screen-by-screen rework toward the new design (Threads, Agents, MCP, detail tabs)
+- The screen-by-screen build-out (Threads, Agents, MCP, work-item detail tabs)
 - `SubprocessRuntime` — the real agent runtime and lead-agent coordination protocol
 - MCP server connection handling and per-tool permissions
 - Secrets encryption at rest
