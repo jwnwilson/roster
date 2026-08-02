@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "roster-server"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.20",
+    "alembic>=1.13",
+    "sse-starlette>=2.1",
+    "pyyaml>=6",
+    "python-multipart>=0.0.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/config", "src/domain", "src/adapters", "src/api", "src/runs", "src/cli"]
