@@ -13,7 +13,7 @@ from config.settings import Settings, agents_dir, get_settings
 from domain.agents import Agent, agent_folder, read_agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
-from domain.runs import Run
+from domain.runs import Run, is_terminal
 from interactors.api.deps import get_file_store, get_run_manager, get_uow, get_uow_factory
 from interactors.api.envelope import ok
 from interactors.runs.manager import RunManager
@@ -24,7 +24,6 @@ from interactors.runs.manager import RunManager
 router = APIRouter(tags=["runs"])
 
 POLL_INTERVAL_SECONDS = 0.25
-TERMINAL_STATUSES = ("complete", "failed")
 
 # How long a non-terminal run may produce nothing at all before the stream gives
 # up. Roster is a single-process server, so an endpoint that can poll forever is
@@ -141,7 +140,7 @@ async def stream_run_events(
                 seen = len(page.results)
                 last_progress = monotonic()
 
-            if run.status in TERMINAL_STATUSES:
+            if is_terminal(run.status):
                 return
             if monotonic() - last_progress >= STREAM_IDLE_TIMEOUT_SECONDS:
                 # Said out loud rather than closing silently: a bare disconnect is
