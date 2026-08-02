@@ -33,7 +33,8 @@ rework.
 `make dev` boots the API against SQLite (migrated and seeded) and the UI; the UI renders
 against MSW mocks with no backend; the backend serves health plus projects and work-items;
 the agent-folder reader, the project-memory store, and a fake runtime are in place; CI is
-green; and `CLAUDE.md`, `docs/architecture.md`, and ADR-0001 are written.
+green; and `docs/architecture.md` and ADR-0001 are written (`AGENTS.md` and
+`docs/project-history.md` already exist and are kept current).
 
 ---
 
@@ -41,12 +42,13 @@ green; and `CLAUDE.md`, `docs/architecture.md`, and ADR-0001 are written.
 
 ```
 roster/
-  CLAUDE.md                 # stack, conventions, worktree→PR workflow
+  AGENTS.md                 # stack, conventions, .roster contract, workflow
   Makefile                  # install dev run test coverage lint db-upgrade e2e
   pyproject.toml            # uv workspace, single member: projects/server
   .env.example  .gitignore
   .github/workflows/{ci,e2e}.yml
   docs/
+    project-history.md      # what ships, what is designed-only, what is next — read first
     design/                 # UI handoff bundle
     architecture.md         # layering rules new code must follow
     adr/0001-local-single-process.md

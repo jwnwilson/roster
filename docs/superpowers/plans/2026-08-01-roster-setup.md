@@ -40,7 +40,8 @@ Every task's requirements implicitly include this section.
 | `Makefile` | install, dev, run, test, coverage, lint, db-upgrade, e2e |
 | `.gitignore`, `.env.example` | ignore rules; documented settings |
 | `.github/workflows/ci.yml` | backend job (ruff+mypy+pytest) and UI job (eslint+tsc+vitest) |
-| `docs/CLAUDE.md`, `docs/architecture.md`, `docs/adr/0001-local-single-process.md` | conventions, layering rules, the local-single-process decision |
+| `AGENTS.md`, `docs/project-history.md` | **already written** — conventions and status; keep them current as tasks land |
+| `docs/architecture.md`, `docs/adr/0001-local-single-process.md` | layering rules, the local-single-process decision (Task 14) |
 
 **Backend — `projects/server/`**
 
@@ -3070,8 +3071,8 @@ git commit -m "feat: workspace-first project creation wired to the API"
 ## Task 14: Seed, `make dev`, CI, and documentation
 
 **Files:**
-- Create: `projects/server/src/cli/seed.py`, `.github/workflows/ci.yml`, `CLAUDE.md`, `docs/architecture.md`, `docs/adr/0001-local-single-process.md`
-- Modify: `Makefile`
+- Create: `projects/server/src/cli/seed.py`, `.github/workflows/ci.yml`, `docs/architecture.md`, `docs/adr/0001-local-single-process.md`
+- Modify: `Makefile`, `AGENTS.md`, `docs/project-history.md`
 - Test: `projects/server/tests/test_seed.py`
 
 - [ ] **Step 1: Write the failing seed test**
@@ -3195,8 +3196,10 @@ jobs:
 
 - [ ] **Step 6: Write the documentation**
 
-- `CLAUDE.md` — stack, the layering rules, the `.roster` folder contract, dev commands, commit
-  format, and the worktree→PR workflow.
+- `AGENTS.md` and `docs/project-history.md` already exist. Update them rather than rewriting:
+  correct anything in `AGENTS.md` that drifted during Tasks 1–13, and add a dated `## Status`
+  entry to `project-history.md` recording what now ships, with **Current state** and
+  **Outstanding** brought up to date.
 - `docs/architecture.md` — the layer boundaries from spec §3 with the placement rules new code
   must follow, and the "nothing in `domain/` assumes a repository" rule from §4.
 - `docs/adr/0001-local-single-process.md` — the decision to run agents as subprocesses inside the
