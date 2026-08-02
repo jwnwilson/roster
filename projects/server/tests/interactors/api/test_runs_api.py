@@ -8,6 +8,13 @@ from interactors.api.deps import get_run_manager
 from interactors.runs.manager import RunManager
 
 
+async def _count(engine, sql: str) -> int:
+    """Row counts straight from the database — there is no GET /work-items/{id}
+    route, and a cascade is precisely a thing no route can show you."""
+    async with engine.connect() as connection:
+        return int((await connection.exec_driver_sql(sql)).scalar_one())
+
+
 @pytest.fixture
 async def work_item(client):
     project = await client.post("/projects", json={"name": "P", "source": {"kind": "none"}})
@@ -70,9 +77,10 @@ async def test_listing_events_for_an_unknown_run_is_404(client):
     assert response.status_code == 404
 
 
-async def test_a_run_for_a_work_item_whose_project_vanished_is_404(client, work_item):
-    # Arrange — the project row is gone but the work item survives it (no cascade
-    # delete), so the run route must not assume the project is always resolvable.
+async def test_a_run_for_a_work_item_whose_project_was_deleted_is_404(client, work_item, engine):
+    # Arrange — `work_items.project_id` is ON DELETE CASCADE, so deleting the
+    # project takes the work item with it. The run route's *first* lookup is the
+    # one that 404s here; the project lookup below it is covered separately.
     await client.delete(f"/projects/{work_item['project_id']}")
 
     # Act
@@ -81,6 +89,38 @@ async def test_a_run_for_a_work_item_whose_project_vanished_is_404(client, work_
     )
 
     # Assert
+    assert response.status_code == 404
+    survivors = await _count(
+        engine, f"SELECT count(*) FROM work_items WHERE id = '{work_item['id']}'"
+    )
+    assert survivors == 0
+
+
+async def test_a_run_for_a_work_item_whose_project_row_is_missing_is_404(
+    client, work_item, engine
+):
+    # Arrange — cascade means the API can no longer produce an orphaned work item,
+    # so build that state deliberately: the run route must still not assume the
+    # project is resolvable just because the work item was. PRAGMA foreign_keys is
+    # a no-op inside a transaction, hence AUTOCOMMIT.
+    async with engine.connect() as connection:
+        connection = await connection.execution_options(isolation_level="AUTOCOMMIT")
+        await connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        await connection.exec_driver_sql(
+            f"DELETE FROM projects WHERE id = '{work_item['project_id']}'"
+        )
+        await connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    # Act
+    response = await client.post(
+        f"/work-items/{work_item['id']}/runs", json={"agent_name": "atlas"}
+    )
+
+    # Assert — the work item is still there; only the project lookup fails
+    survivors = await _count(
+        engine, f"SELECT count(*) FROM work_items WHERE id = '{work_item['id']}'"
+    )
+    assert survivors == 1
     assert response.status_code == 404
 
 

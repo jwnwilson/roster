@@ -1,8 +1,9 @@
 import asyncio
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import event, pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -57,6 +58,14 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _disable_foreign_keys(dbapi_connection: Any, _record: Any) -> None:
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("PRAGMA foreign_keys=OFF")
+    finally:
+        cursor.close()
+
+
 def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
 
@@ -77,6 +86,15 @@ async def run_async_migrations() -> None:
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
+    # Deliberately *not* `adapters.db.engine.make_engine`: that one turns
+    # `foreign_keys` ON, and SQLite cannot ALTER a foreign key, so migration 0003
+    # recreates each child table (create tmp → copy → drop original → rename).
+    # With enforcement on, the drop step is refused the moment any child row
+    # exists. Enforcement is a runtime property of the app's own engine; a
+    # migration is the one place that has to move the constraints themselves.
+    # The pragma has to be set on `connect`, before anything opens a transaction —
+    # inside one it is silently a no-op.
+    event.listen(connectable.sync_engine, "connect", _disable_foreign_keys)
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
