@@ -566,6 +566,21 @@ future work does not reintroduce it by reflex:
 13. **The `FileStore` port is rooted** — containment is enforced once, inside the store, on every
     operation, rather than re-checked by each caller. This is where the Task 9 traversal and
     symlink hardening ended up, and it now covers every file read rather than `restore()` alone.
+15. **The project-folder store is rooted at `/`, deliberately** — an accepted widening of (13),
+    recorded here so it is a decision rather than an implementation detail. An operator declaring
+    a `local` or `git` project is naming a folder on their own machine, and a repo at `/opt/src/x`
+    or on another volume is an ordinary case. Rooting that one store at the data root rejected
+    those folders and — worse — reported them as "does not exist", which is false.
+    **The consequence, stated plainly:** an unauthenticated `POST /projects` on localhost can
+    create a `.roster/` subtree inside any existing directory the operator can write to. That is
+    accepted under §1's trust model — single user, single machine, no auth, no tenancy — where the
+    caller is already the operator. It creates directories only; it never reads, overwrites, or
+    deletes anything that was already there.
+    **This is not a general relaxation.** It applies to exactly one store, used once, on one
+    operator-supplied path, and never to a name an agent can choose. Everything an agent names
+    stays contained: agent folders remain rooted at the data root, and each project's memory
+    remains rooted at its own `.roster/memory`. If roster ever grows a remote listener or a second
+    user, this decision is the first thing that has to be revisited.
 
 ---
 
