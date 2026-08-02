@@ -17,6 +17,8 @@ class InvalidTransition(Exception):
 
 
 def validate_transition(current: Status, target: Status) -> None:
+    if current not in _ORDER:
+        raise InvalidTransition(current, target)
     if target not in _ORDER:
         raise InvalidTransition(current, target)
     if current == target:

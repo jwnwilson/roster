@@ -19,3 +19,8 @@ def test_transition_to_the_same_status_is_rejected():
 def test_transition_from_done_to_backlog_is_rejected():
     with pytest.raises(InvalidTransition):
         validate_transition("done", "backlog")
+
+
+def test_unknown_current_status_is_rejected():
+    with pytest.raises(InvalidTransition):
+        validate_transition("bogus", "todo")

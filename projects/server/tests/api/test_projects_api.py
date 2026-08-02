@@ -56,6 +56,31 @@ async def test_listing_projects_returns_a_paginated_envelope(client):
     assert body["data"][0]["name"] == "One"
 
 
+async def test_getting_a_project_returns_200_with_the_envelope(client):
+    # Arrange
+    created = await client.post("/projects", json={"name": "Solo", "source": {"kind": "none"}})
+    project_id = created.json()["data"]["id"]
+
+    # Act
+    response = await client.get(f"/projects/{project_id}")
+
+    # Assert
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["id"] == project_id
+    assert body["data"]["name"] == "Solo"
+
+
+async def test_getting_an_unknown_project_returns_404(client):
+    # Act
+    response = await client.get("/projects/does-not-exist")
+
+    # Assert
+    assert response.status_code == 404
+    assert response.json()["success"] is False
+
+
 async def test_deleting_a_project_returns_204_and_leaves_files_on_disk(client, settings):
     # Arrange
     created = await client.post("/projects", json={"name": "Temp", "source": {"kind": "none"}})
