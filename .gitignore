@@ -9,3 +9,7 @@ node_modules/
 dist/
 .worktrees/
 .env
+
+# UI
+projects/ui/node_modules/
+projects/ui/dist/
