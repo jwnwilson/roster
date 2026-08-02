@@ -35,9 +35,6 @@ def agents_dir(settings: Settings) -> Path:
     return settings.data_root / "agents"
 
 
-def projects_dir(settings: Settings) -> Path:
-    return settings.data_root / "projects"
-
-
-def project_dir(settings: Settings, project_id: str) -> Path:
-    return projects_dir(settings) / project_id
+# There is deliberately no `projects_dir` here. Where a managed project folder
+# lives is a roster rule, and `domain.projects.resolve_folder` owns it — spelling
+# it a second time in config/ made the same layout answerable from two layers.

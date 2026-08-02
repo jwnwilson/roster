@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from config.settings import Settings, agents_dir, db_path, get_settings, project_dir
+from config.settings import Settings, agents_dir, db_path, get_settings
 
 
 def test_data_root_expands_user_home():
@@ -17,9 +17,10 @@ def test_path_helpers_hang_off_the_data_root(tmp_path):
     settings = Settings(data_root=tmp_path)
 
     # Act / Assert
+    # Only these two. Where a project folder lives is `domain.projects`' answer,
+    # not config's — see the note in settings.py.
     assert db_path(settings) == tmp_path / "roster.db"
     assert agents_dir(settings) == tmp_path / "agents"
-    assert project_dir(settings, "abc123") == tmp_path / "projects" / "abc123"
 
 
 def test_compaction_defaults_match_the_spec(tmp_path):
