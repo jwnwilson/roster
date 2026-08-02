@@ -3,10 +3,11 @@ from typing import Any, cast
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from adapters.db.orm import ProjectRow, RunEventRow, RunRow, WorkItemRow
+from adapters.db.orm import MessageRow, ProjectRow, RunEventRow, RunRow, ThreadRow, WorkItemRow
 from adapters.db.repository import AsyncSqlRepository
 from domain.projects import Project, ProjectSource, SourceKind
 from domain.runs import Run, RunEvent
+from domain.threads import Message, Thread
 from domain.work_items import WorkItem
 
 
@@ -51,6 +52,16 @@ class WorkItemRepository(AsyncSqlRepository[WorkItem]):
         instance, not per project."""
         query = select(func.coalesce(func.max(WorkItemRow.sequence), 0) + 1)
         return int((await self.session.execute(query)).scalar_one())
+
+
+class ThreadRepository(AsyncSqlRepository[Thread]):
+    orm_model = ThreadRow
+    dto = Thread
+
+
+class MessageRepository(AsyncSqlRepository[Message]):
+    orm_model = MessageRow
+    dto = Message
 
 
 class RunRepository(AsyncSqlRepository[Run]):
