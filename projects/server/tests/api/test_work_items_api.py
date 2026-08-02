@@ -92,3 +92,52 @@ async def test_listing_is_scoped_to_a_project(client, project_id):
     # Assert
     titles = [item["title"] for item in response.json()["data"]]
     assert titles == ["Mine"]
+
+
+async def test_invalid_priority_returns_422_with_the_envelope(client, project_id):
+    # Act
+    response = await client.post(
+        "/work-items",
+        json={
+            "project_id": project_id,
+            "type": "task",
+            "title": "Bad priority",
+            "priority": "bogus",
+        },
+    )
+
+    # Assert
+    assert response.status_code == 422
+    body = response.json()
+    assert body["success"] is False
+    assert "priority" in body["error"]
+
+
+async def test_invalid_status_value_returns_422_not_409(client, project_id):
+    # Arrange
+    created = await client.post(
+        "/work-items", json={"project_id": project_id, "type": "task", "title": "Bad status"}
+    )
+    item_id = created.json()["data"]["id"]
+
+    # Act
+    response = await client.patch(f"/work-items/{item_id}", json={"status": "bogus"})
+
+    # Assert
+    assert response.status_code == 422
+    assert response.json()["success"] is False
+
+
+async def test_valid_transition_still_returns_200(client, project_id):
+    # Arrange
+    created = await client.post(
+        "/work-items", json={"project_id": project_id, "type": "task", "title": "Still works"}
+    )
+    item_id = created.json()["data"]["id"]
+
+    # Act
+    response = await client.patch(f"/work-items/{item_id}", json={"status": "todo"})
+
+    # Assert
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "todo"

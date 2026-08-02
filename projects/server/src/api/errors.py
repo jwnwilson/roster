@@ -1,7 +1,9 @@
 import logging
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from adapters.project_folder import FolderUnavailable
 from api.envelope import fail
@@ -13,6 +15,14 @@ logger = logging.getLogger("roster")
 
 
 def register_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation(_: Request, exc: RequestValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content=fail(str(exc)))
+
+    @app.exception_handler(ValidationError)
+    async def _model_validation(_: Request, exc: ValidationError) -> JSONResponse:
+        return JSONResponse(status_code=422, content=fail(str(exc)))
+
     @app.exception_handler(InvalidTransition)
     async def _transition(_: Request, exc: InvalidTransition) -> JSONResponse:
         return JSONResponse(status_code=409, content=fail(str(exc)))

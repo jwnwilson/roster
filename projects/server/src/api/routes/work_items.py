@@ -6,17 +6,17 @@ from adapters.db import work_items as db
 from api.deps import get_session
 from api.envelope import ok, ok_list
 from domain.ids import new_id, work_item_key
-from domain.transitions import validate_transition
-from domain.work_items import WorkItem, validate_parent
+from domain.transitions import Status, validate_transition
+from domain.work_items import Priority, WorkItem, WorkItemType, validate_parent
 
 router = APIRouter(prefix="/work-items", tags=["work-items"])
 
 
 class WorkItemIn(BaseModel):
     project_id: str
-    type: str
+    type: WorkItemType
     title: str
-    priority: str = "medium"
+    priority: Priority = "medium"
     epic_id: str | None = None
     feature_id: str | None = None
     spec: str | None = None
@@ -24,8 +24,8 @@ class WorkItemIn(BaseModel):
 
 class WorkItemPatch(BaseModel):
     title: str | None = None
-    status: str | None = None
-    priority: str | None = None
+    status: Status | None = None
+    priority: Priority | None = None
     spec: str | None = None
 
 
