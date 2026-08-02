@@ -72,6 +72,10 @@ async def get_run_manager(
     the `getattr` and the assignment, so no other coroutine can interleave with
     it: the check-then-set is effectively atomic without needing a lock.
     """
+    # Safety depends on this staying uninterrupted: do not add an `await` between
+    # the check and the assignment below, or the threadpool-style race this
+    # function exists to avoid comes back — silently, since nothing here would
+    # fail loudly if it did.
     manager = getattr(request.app.state, "run_manager", None)
     if manager is None:
         manager = RunManager(
