@@ -3174,6 +3174,222 @@ git commit -m "refactor: move api, cli, and the run manager into interactors"
 
 ---
 
+## Task 13: Repository and UnitOfWork for database access
+
+A refactor, like Task 12. **Behaviour must not change** — the existing suite is the safety net, and
+every test must still pass with its **assertions** unchanged. Setup changes (constructing a UoW
+instead of a session) are expected. **If an assertion needs changing, stop and ask.**
+
+**This reverses an earlier decision.** The original spec ruled out `Repository`/`UnitOfWork` as
+ceremony, and per-entity query functions taking an `AsyncSession` were built on that basis. The
+operator has reversed it: the pattern is proven in another codebase, it gives one transaction
+boundary per request or run rather than a commit per call, and it puts query behaviour in one
+place. Spec §3 and §11 (decision 14) now record the reversal.
+
+**The reference implementation** is `../naaf/projects/server/src/adapters/database/` plus the
+library it depends on at `../naaf/libs/db/src/naaf_db/`. **Read both before starting.** Do not copy
+them wholesale — three adaptations are required:
+
+1. **Async only.** naaf has a sync `SqlUnitOfWork` and an async sibling for streaming reads. Roster
+   is async-only by spec; build one `AsyncUnitOfWork` and no sync path.
+2. **No `required_filters`.** naaf threads an owner-scoping filter through every repository for
+   multi-tenant auth. Roster has no auth and no tenancy, and adding the mechanism "in case" is
+   exactly the speculative generality the spec forbids. Drop it entirely.
+3. **No workspace library.** naaf's generic base lives in `libs/db`. Roster has no `libs/`; the base
+   classes go directly in `adapters/db/`.
+
+**Files:**
+- Create: `src/adapters/db/ports.py` (`Repository` protocol, `UnitOfWork` protocol, `PaginatedResult`), `src/adapters/db/repository.py` (`AsyncSqlRepository[DTO]` base), `src/adapters/db/repositories.py` (one subclass per entity), `src/adapters/db/uow.py` (`AsyncUnitOfWork`), `src/adapters/db/_query.py` (filter/order/DTO helpers)
+- Create: `src/domain/errors.py` — `RecordNotFound`, `IntegrityConflict`
+- Delete: `src/adapters/db/{projects,work_items,runs}.py` once nothing imports them
+- Modify: `src/interactors/api/deps.py`, every router, `src/interactors/runs/manager.py`, `src/interactors/api/errors.py`, `tests/conftest.py`
+- Test: `tests/adapters/test_repository.py`, `tests/adapters/test_uow.py`
+
+**Interfaces:**
+- Produces: `PaginatedResult[DTO]`; `Repository` protocol with `create/read/read_multi/update/delete`; `AsyncSqlRepository[DTO]` binding `orm_model` and `dto`; `AsyncUnitOfWork` with a `transaction()` async context manager and `projects` / `work_items` / `runs` / `run_events` properties; `get_uow()` dependency.
+
+- [ ] **Step 1: Write the failing repository tests**
+
+`projects/server/tests/adapters/test_repository.py`:
+
+```python
+import pytest
+
+from adapters.db.repositories import ProjectRepository
+from domain.errors import RecordNotFound
+from domain.projects import Project, ProjectSource
+
+
+def _project(name: str = "api") -> Project:
+    return Project(
+        id="p1", name=name,
+        source=ProjectSource(kind="none"),
+        folder_path="/tmp/p1",
+    )
+
+
+async def test_create_then_read_round_trips(session):
+    # Arrange
+    repo = ProjectRepository(session)
+
+    # Act
+    await repo.create(_project())
+    found = await repo.read("p1")
+
+    # Assert
+    assert found.name == "api"
+    assert isinstance(found, Project)
+
+
+async def test_reading_an_unknown_id_raises_record_not_found(session):
+    with pytest.raises(RecordNotFound):
+        await ProjectRepository(session).read("nope")
+
+
+async def test_read_multi_paginates_and_reports_the_total(session):
+    # Arrange
+    repo = ProjectRepository(session)
+    for index in range(3):
+        await repo.create(_project(f"p{index}").model_copy(update={"id": f"id{index}"}))
+
+    # Act
+    page = await repo.read_multi(page_size=2, page_number=1)
+
+    # Assert
+    assert len(page.results) == 2
+    assert page.total == 3
+    assert page.page_size == 2
+
+
+async def test_read_multi_filters_on_an_exact_field(session):
+    # Arrange
+    repo = ProjectRepository(session)
+    await repo.create(_project("keep"))
+    await repo.create(_project("drop").model_copy(update={"id": "p2"}))
+
+    # Act
+    page = await repo.read_multi(filters={"name": "keep"})
+
+    # Assert
+    assert [p.name for p in page.results] == ["keep"]
+
+
+async def test_delete_removes_the_row(session):
+    # Arrange
+    repo = ProjectRepository(session)
+    await repo.create(_project())
+
+    # Act
+    await repo.delete("p1")
+
+    # Assert
+    with pytest.raises(RecordNotFound):
+        await repo.read("p1")
+```
+
+- [ ] **Step 2: Run and confirm they fail**
+
+Run: `uv run pytest projects/server/tests/adapters/test_repository.py -v` → FAIL, no module.
+
+- [ ] **Step 3: Write the ports, the query helpers, and the generic base**
+
+`ports.py` carries `PaginatedResult[DTO]` (a Pydantic generic with `results`, `total`, `page_size`,
+`page_number`), the `Repository` protocol, and the roster-specific `UnitOfWork` protocol naming its
+repositories. `_query.py` carries the filter, ordering, and row→DTO helpers. `repository.py`
+carries `AsyncSqlRepository[DTO]` with `orm_model` / `dto` class attributes and
+`create/read/read_multi/update/delete`, mapping SQLAlchemy's `IntegrityError` to
+`IntegrityConflict` and a missing row to `RecordNotFound`.
+
+Follow naaf's `async_repository.py` closely for the mechanics — it is the proven part — but drop
+every `required_filters` reference as you go.
+
+- [ ] **Step 4: Run and confirm they pass**
+
+- [ ] **Step 5: Write the failing UnitOfWork tests**
+
+`projects/server/tests/adapters/test_uow.py` — the transaction boundary is the whole point, so
+test it rather than the property plumbing:
+
+```python
+async def test_repositories_share_one_session_within_a_transaction(uow):
+    async with uow.transaction() as tx:
+        assert tx.projects.session is tx.work_items.session
+
+
+async def test_a_transaction_commits_on_clean_exit(uow, session_factory):
+    # Act
+    async with uow.transaction() as tx:
+        await tx.projects.create(_project())
+
+    # Assert — visible from a fresh session
+    async with session_factory() as fresh:
+        assert await ProjectRepository(fresh).read("p1")
+
+
+async def test_a_raising_transaction_rolls_everything_back(uow, session_factory):
+    # Act
+    with pytest.raises(RuntimeError):
+        async with uow.transaction() as tx:
+            await tx.projects.create(_project())
+            raise RuntimeError("boom")
+
+    # Assert — the write is gone, not merely uncommitted in this session
+    async with session_factory() as fresh:
+        with pytest.raises(RecordNotFound):
+            await ProjectRepository(fresh).read("p1")
+
+
+async def test_a_partial_failure_rolls_back_earlier_writes_in_the_same_transaction(
+    uow, session_factory
+):
+    # This is what the UnitOfWork buys over per-call commits: two writes, one scope.
+    with pytest.raises(Exception):
+        async with uow.transaction() as tx:
+            await tx.projects.create(_project())
+            await tx.work_items.create(_work_item(project_id="does-not-exist"))
+
+    async with session_factory() as fresh:
+        with pytest.raises(RecordNotFound):
+            await ProjectRepository(fresh).read("p1")
+```
+
+- [ ] **Step 6: Run, confirm failing, then write `uow.py`**
+
+`AsyncUnitOfWork` takes an `async_sessionmaker`, lazily creates one session, caches repositories
+against it, and exposes `transaction()` as an async context manager that commits on clean exit,
+rolls back on exception, and always closes and clears its caches.
+
+- [ ] **Step 7: Migrate the callers**
+
+Replace `get_session` with `get_uow` in `interactors/api/deps.py`, and convert every router to open
+a transaction and use repositories. Convert `RunManager` to take the UoW factory rather than a
+session factory. Register handlers mapping `RecordNotFound` → 404 and `IntegrityConflict` → 409 in
+`interactors/api/errors.py`, replacing the hand-rolled 404s where they duplicate it.
+
+Delete `adapters/db/{projects,work_items,runs}.py` once nothing imports them. **Do not leave the
+old query functions beside the repositories** — two ways to reach the database is exactly the drift
+this task exists to remove.
+
+> **Watch the run manager specifically.** It writes run events from a background task while an SSE
+> stream reads them from a request. Those are different transactions, and a UoW that holds a
+> transaction open for the life of a run would stop the stream ever seeing an event. Give the
+> background task short transactions per write, not one long one — and if the existing SSE test
+> starts hanging, that is the cause.
+
+- [ ] **Step 8: Run the whole suite**
+
+Run: `uv run pytest` — **all tests pass with assertions unchanged.** Then `make lint`,
+`make coverage` (80% gate), and `make run` to confirm the app still boots.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add -A projects/server
+git commit -m "refactor: repository and unit of work for database access"
+```
+
+---
+
 ## Done means
 
 - `make dev` boots migrations, seed, API, and UI in one command.

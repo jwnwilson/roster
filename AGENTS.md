@@ -90,9 +90,14 @@ the outside world gets in, it is an interactor.
 - **`config/`** — settings only, importable by any layer except domain.
 
 **Dependency direction:** `interactors → domain → adapter ports`, and `interactors → adapters` for
-construction. **No adapter imports `interactors/` or `domain/` rules.** No `scripts/` folder. There
-are **no** `Repository` or `UnitOfWork` protocols and no generic CRUD router — query functions take
-an `AsyncSession`, and routers are written by hand.
+construction. **No adapter imports `interactors/` or `domain/` rules.** No `scripts/` folder.
+
+**Database access goes through the UnitOfWork.** `adapters/db/` provides a generic
+`AsyncSqlRepository[DTO]` base, one thin subclass per entity binding an ORM model to a domain DTO,
+and an `AsyncUnitOfWork` owning a single session and transaction boundary with the repositories
+exposed as properties. Interactors depend on the `UnitOfWork` protocol rather than on
+`AsyncSession` directly, so a request or a run is one atomic scope. Routers are still written by
+hand — there is no generic CRUD router.
 
 **Storage is injected, never assumed.** Anything touching files goes through the `FileStore` port,
 which is rooted: paths resolving outside the root raise `FileNotFoundError`. Containment is a

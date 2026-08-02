@@ -62,7 +62,7 @@ roster/
         domain/             # rosters rules and entities — no I/O; may import adapter PORTS only
         adapters/           # project-agnostic infrastructure + the ports it implements
           storage/          #   FileStore protocol, local + in-memory implementations
-          db/               #   SQLAlchemy models, session factory, query modules, migrations
+          db/               #   SQLAlchemy models, repositories, UnitOfWork, migrations
           agents/           #   AgentRuntime (FakeRuntime, SubprocessRuntime later)
         interactors/        # entry points and orchestration
           api/              #   app factory, routers, deps, SSE
@@ -100,9 +100,12 @@ imports a concrete adapter, `interactors/`, or `config/` — configuration arriv
 co-located in the domain module that owns it; there is no central `models.py`. Entities are
 updated via `model_copy(update={...})` and never mutated.
 
-**`adapters/db/`** — SQLAlchemy declarative models, an async session factory, and per-domain
-query modules that take an `AsyncSession` argument directly. There are **no** `Repository` or
-`UnitOfWork` protocols and no generic CRUD abstraction; queries are written out.
+**`adapters/db/`** — SQLAlchemy declarative models, an async session factory, and a
+**Repository + UnitOfWork** layer. A generic `AsyncSqlRepository[DTO]` base provides
+create/read/read_multi/update/delete against an ORM model and a Pydantic DTO; one thin subclass
+per entity binds the two. An `AsyncUnitOfWork` owns a single session and transaction boundary and
+exposes the repositories as properties, so a request or a run is one atomic scope. Interactors
+depend on the `UnitOfWork` protocol rather than on `AsyncSession` directly.
 
 **`adapters/agents/`** — the `AgentRuntime` protocol and its implementations: `SubprocessRuntime`
 (real) and `FakeRuntime` (tests and the default `make dev`). Folder *parsing* is a roster rule and
@@ -513,7 +516,6 @@ future work does not reintroduce it by reflex:
 | Containerised agent execution | Agents are local subprocesses on a trusted machine |
 | Client/server database (Postgres, MySQL) | One user, one machine — a SQLite file |
 | Shared workspace libraries | Single package; extract only when a second consumer exists |
-| `Repository` / `UnitOfWork` abstractions | Query functions taking an `AsyncSession` |
 | Generic CRUD router generation | Routers are written by hand |
 | Authentication, tenancy, owner scoping | Single user, bound to localhost |
 | Sandboxing, egress proxying, hosted git-app tokens | Local trust model |
@@ -555,6 +557,12 @@ future work does not reintroduce it by reflex:
     and orchestration live in `interactors/`. The layer test: would it make sense in a different
     product (adapter), does it encode how roster works (domain), or is it how the outside world
     gets in (interactor)?
+14. **Repository + UnitOfWork replaces bare query functions** (reversal of an earlier decision).
+    The original spec ruled these out as ceremony. Reversed on the operator.s call: a proven
+    pattern already in use elsewhere, giving one transaction boundary per request or run rather
+    than per-call commits, and a single place to change query behaviour. Adapted rather than
+    copied — async-only (no sync sibling), no `required_filters` owner-scoping since roster has
+    no auth, and the generic base lives in `adapters/db/` rather than a workspace library.
 13. **The `FileStore` port is rooted** — containment is enforced once, inside the store, on every
     operation, rather than re-checked by each caller. This is where the Task 9 traversal and
     symlink hardening ended up, and it now covers every file read rather than `restore()` alone.
