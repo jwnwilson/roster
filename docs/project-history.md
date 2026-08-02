@@ -24,8 +24,12 @@ no broker, no containers.
 
 ## Current state (2026-08-02)
 
-**The backend is nearly complete; no UI exists yet.** Work runs on two branches: `feat/setup`
-(backend, PR #1) and `feat/ui` (not started).
+**The backend is nearly complete but is about to lose a subsystem; no UI exists yet.** Work runs on
+two branches: `feat/setup` (backend, PR #1) and `feat/ui` (spec revision only so far).
+
+**Runs have been removed from the design** — see the status entry below. Everything PR #1 ships
+still stands except the run subsystem, which is now scheduled for deletion and replacement by
+threads. Read that entry before starting any backend work.
 
 What ships on `feat/setup` — **120 tests, 88.89% coverage** against an 80% gate:
 
@@ -42,6 +46,40 @@ What ships on `feat/setup` — **120 tests, 88.89% coverage** against an 80% gat
 Not yet done on the backend: **Task 12**, the layering refactor — moving agent, memory, and
 project-folder logic into `domain/` behind a rooted `FileStore` port, and introducing `interactors/`
 for entry points and orchestration.
+
+## Status (2026-08-02) — runs removed; the thread becomes the unit of agent work
+
+Brainstorming the UI surfaced that half the design's "live" screens were not actually backed, and
+the decision taken in response was larger than the UI: **roster no longer has a run entity.**
+Recorded in spec §3, §4, §5, §6, §10 and decisions 13–15.
+
+**What changed.** The unit of agent work is now a *turn inside a thread*, and the messages that
+turn writes are the only record — no `Run` row, no `RunEvent` table, no run id, no run monitor. A
+`Thread` belongs to a project and *optionally* to a work item, and that one nullable
+`work_item_id` is what lets the design's three thread surfaces (chat panel, work-item Thread tab,
+global Threads screen) share one table, one endpoint set, and one resolution rule.
+
+**Why it was not just a rename.** Threads absorb what runs did because the design had already
+decided they should: the handoff deleted the agent-monitor tab in favour of the Thread tab. The
+prior-art schema being transplanted models a message as `text | file_write | question | event`, so
+a thread can carry tool output and agent questions, not only chat.
+
+**The consequence that drove the design.** Memory's only automatic writer was run completion. It
+now hangs off a thread moving to `resolved` — and because resolving an already-resolved thread is
+a 409, the journal entry is written exactly once, enforced by a domain rule rather than by care.
+**Threads therefore stopped being an optional mocked screen: project memory does not work without
+them.** That inverts the UI plan's central premise, in which Threads was the largest fixture.
+
+**Two long-standing gaps closed in passing.** `Agent.status` can finally be `working`, read from
+the turn manager's in-memory set — the folder reader only ever emitted `active` or `disabled`, so
+the Agents screen, Board ribbon and Dashboard panel had no source. And `WorkItem` gains
+`agent_name`, without which the assigned-agent avatar on every row, card and detail header
+rendered from nothing.
+
+**Known collision:** backend Task 12 moves `src/runs/manager.py` → `src/interactors/runs/manager.py`
+and updates every test importing `runs.*`. That work is on code now scheduled for deletion. PR #1
+will merge containing a subsystem already slated for removal — deliberate, and cheaper than
+reopening it.
 
 ## Status (2026-08-02) — UI split into its own plan
 
@@ -118,14 +156,19 @@ to the delivered files.
 
 ## Outstanding
 
-**Backend** — Task 12 only: the `FileStore` port, the domain move, and `interactors/`.
+**Backend** — Task 12 (the `FileStore` port, the domain move, `interactors/`), then a new plan for
+the runs→threads change: delete the run subsystem and its two tables, build `Thread`/`Message`
+persistence and endpoints, move the memory write trigger to thread resolution, rehome
+`POST /projects/{id}/memory/compact` out of `routes/runs.py`, and add `WorkItem.agent_name`.
 
-**UI** — all 14 tasks. Transplant, design tokens, shell, the live/mocked registry, then screens.
+**UI** — needs replanning. The existing 14-task plan predates the runs decision and its live/mocked
+table is obsolete in both directions: Threads moves from the largest fixture to a core live screen,
+while every token, spend, and progress figure in the design is confirmed to have no source at all.
 
 **Deferred beyond both plans**, each needing its own spec:
 
-- `Thread`, `Message`, `McpServer`, `Secret`, `Attachment` persistence and endpoints — until these
-  exist, their screens stay fixtures
+- `McpServer`, `Secret`, `Attachment` persistence and endpoints — until these exist, their screens
+  stay fixtures
 - Agent write endpoints (rename, edit `AGENT.md`, model change)
 - `SubprocessRuntime` — the real agent runtime and the lead-agent coordination protocol
 - Cloning a remote git source into the project folder
