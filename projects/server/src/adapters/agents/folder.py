@@ -7,39 +7,76 @@ from domain.agents import DEFAULT_MODEL, DEFAULT_TOKEN_LIMIT, Agent
 
 def read_agent(folder: Path) -> Agent:
     """Read one agent folder. A broken folder becomes a disabled agent, never an exception."""
-    instructions_path = folder / "AGENT.md"
-    if not instructions_path.is_file():
-        return Agent(name=folder.name, status="disabled", problem="AGENT.md is missing")
+    try:
+        instructions_path = folder / "AGENT.md"
+        if not instructions_path.is_file():
+            return Agent(
+                name=folder.name, status="disabled", problem="AGENT.md is missing"
+            )
 
-    config: dict = {}
-    config_path = folder / "config.yaml"
-    if config_path.is_file():
+        config: dict = {}
+        config_path = folder / "config.yaml"
+        if config_path.is_file():
+            try:
+                config = yaml.safe_load(config_path.read_text()) or {}
+            except yaml.YAMLError as error:
+                return Agent(
+                    name=folder.name,
+                    status="disabled",
+                    problem=f"config.yaml is invalid: {error}",
+                )
+            if not isinstance(config, dict):
+                return Agent(
+                    name=folder.name,
+                    status="disabled",
+                    problem="config.yaml is not a mapping",
+                )
+
+        skills_root = folder / "skills"
+        if skills_root.exists() and not skills_root.is_dir():
+            return Agent(
+                name=folder.name,
+                status="disabled",
+                problem="skills exists but is not a directory",
+            )
+        skills = (
+            sorted(child.name for child in skills_root.iterdir() if child.is_dir())
+            if skills_root.is_dir()
+            else []
+        )
+
+        model = config.get("model", DEFAULT_MODEL)
+        if not isinstance(model, str):
+            return Agent(
+                name=folder.name,
+                status="disabled",
+                problem=f"model must be a string, got {type(model).__name__}",
+            )
+
+        token_limit = config.get("token_limit", DEFAULT_TOKEN_LIMIT)
         try:
-            config = yaml.safe_load(config_path.read_text()) or {}
-        except yaml.YAMLError as error:
+            token_limit = int(token_limit)
+        except (ValueError, TypeError):
             return Agent(
-                name=folder.name, status="disabled", problem=f"config.yaml is invalid: {error}"
-            )
-        if not isinstance(config, dict):
-            return Agent(
-                name=folder.name, status="disabled", problem="config.yaml is not a mapping"
+                name=folder.name,
+                status="disabled",
+                problem=f"token_limit must be an integer, got {token_limit}",
             )
 
-    skills_root = folder / "skills"
-    skills = (
-        sorted(child.name for child in skills_root.iterdir() if child.is_dir())
-        if skills_root.is_dir()
-        else []
-    )
-
-    return Agent(
-        name=folder.name,
-        model=str(config.get("model", DEFAULT_MODEL)),
-        token_limit=int(config.get("token_limit", DEFAULT_TOKEN_LIMIT)),
-        temperature=config.get("temperature"),
-        instructions=instructions_path.read_text(),
-        skills=skills,
-    )
+        return Agent(
+            name=folder.name,
+            model=model,
+            token_limit=token_limit,
+            temperature=config.get("temperature"),
+            instructions=instructions_path.read_text(),
+            skills=skills,
+        )
+    except Exception as error:
+        return Agent(
+            name=folder.name,
+            status="disabled",
+            problem=f"failed to read agent: {error}",
+        )
 
 
 def read_agents(agents_root: Path) -> list[Agent]:
