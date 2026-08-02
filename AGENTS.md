@@ -27,11 +27,26 @@ no containers. It could be wrapped in Electron later.
   test plan. Keep unrelated edits out.
 - Before finishing any piece of work, `make lint` and `make coverage` (80% gate) must be green,
   plus `pnpm lint` and `pnpm test` if the UI changed.
-- **This repository has no remote yet**, so work currently lands on `main` directly. Once a remote
-  exists, switch to the worktree → PR flow: start each task in `git worktree add -b <type>/<slug>
-  .worktrees/<slug> origin/main`, do the work there, push with `-u`, open a PR with `gh pr create`,
-  and let `main` advance only by merge. Never `git clone` or `cp -r` this repo to get an isolated
-  workspace — use a worktree.
+- **Every change ships as a pull request. `main` advances only by merge — never commit to it
+  directly.** The remote is `git@github.com:jwnwilson/roster.git`.
+
+  ```bash
+  git fetch origin
+  git worktree add -b <type>/<slug> .claude/worktrees/<slug> origin/main
+  # …work, committing as you go…
+  git push -u origin <type>/<slug>
+  gh pr create --fill        # then edit in a summary and a test plan
+  ```
+
+  Never `git clone` or `cp -r` this repo to get an isolated workspace — use a worktree.
+
+- **Branch from `origin/main`, not from another feature branch.** Branching off in-flight work
+  couples two reviews together and makes the second PR's diff include the first's. If work genuinely
+  depends on an unmerged branch, say so in the PR body and wait for the parent to land.
+- **Name the branch for what it contains.** A branch that ends up holding something its name does
+  not describe should be renamed before the PR, not explained in the description.
+- **Open the PR only once the gate is green** — `make lint` and `make coverage` locally first. CI
+  repeating them is a backstop, not the first time anyone checks.
 - Commits use `<type>: <description>` — feat/fix/refactor/docs/test/chore/perf/ci. No attribution
   trailers.
 

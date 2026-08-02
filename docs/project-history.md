@@ -166,8 +166,8 @@ review could have seen it: every task correctly reported its own brief satisfied
 
 ## Outstanding
 
-**Backend:** merge `feat/threads`. It carries the spec revision, both plans, and the eight
-implementation commits. The UI plan rides along because it was written on the same branch before the
+**Backend:** review and merge the `feat/threads` PR. It carries the spec revision, both plans, and
+the eight implementation commits. The UI plan rides along because it was written on the same branch before the
 split and belongs on `main` regardless — but no UI *code* is on it.
 
 **UI:** all 14 tasks — harvest, tokens, shell, the capability registry, then screens. Branch off
