@@ -20,4 +20,4 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/config", "src/domain", "src/adapters", "src/api", "src/runs", "src/cli"]
+packages = ["src/config", "src/domain", "src/adapters", "src/interactors"]

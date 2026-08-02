@@ -2,7 +2,6 @@ from collections.abc import AsyncIterator
 from typing import Protocol
 
 from domain.agents import Agent
-from domain.memory import empty_digest
 
 
 class AgentRuntime(Protocol):
@@ -21,7 +20,13 @@ class AgentRuntime(Protocol):
     async def summarise(
         self, agent: Agent, digest: str, entries: list[str], budget_bytes: int
     ) -> str:
-        """Fold the digest and journal entries into a replacement digest."""
+        """Fold the journal entries into `digest` and return its replacement.
+
+        `digest` is always supplied by the caller, never invented here: what an
+        as-yet-unwritten digest should look like is a roster rule (see
+        `domain.memory.empty_digest`), and a runtime is project-agnostic
+        infrastructure.
+        """
         ...
 
 
@@ -44,5 +49,4 @@ class FakeRuntime:
     ) -> str:
         if self._summary_error:
             raise self._summary_error
-        body = digest or empty_digest("project")
-        return f"{body}\n\n<!-- folded {len(entries)} entries -->"
+        return f"{digest}\n\n<!-- folded {len(entries)} entries -->"

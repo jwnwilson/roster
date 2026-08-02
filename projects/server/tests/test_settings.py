@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from config.settings import Settings, agents_dir, db_path, get_settings, project_dir
+from config.settings import Settings, agents_dir, db_path, get_settings
 
 
 def test_data_root_expands_user_home():
@@ -17,9 +17,10 @@ def test_path_helpers_hang_off_the_data_root(tmp_path):
     settings = Settings(data_root=tmp_path)
 
     # Act / Assert
+    # Only these two. Where a project folder lives is `domain.projects`' answer,
+    # not config's — see the note in settings.py.
     assert db_path(settings) == tmp_path / "roster.db"
     assert agents_dir(settings) == tmp_path / "agents"
-    assert project_dir(settings, "abc123") == tmp_path / "projects" / "abc123"
 
 
 def test_compaction_defaults_match_the_spec(tmp_path):
@@ -33,26 +34,29 @@ def test_compaction_defaults_match_the_spec(tmp_path):
     assert settings.memory_snapshot_keep == 20
 
 
-def test_get_settings_caches_the_real_default_data_root():
-    # Arrange / Act — no override in play; this call seeds get_settings'
-    # lru_cache with the real (non-tmp_path) default for the next test.
-    settings = get_settings()
-
-    # Assert
-    assert settings.data_root == Path("~/.roster").expanduser().resolve()
-
-
-def test_get_settings_observes_monkeypatched_data_root_not_the_previous_test_cache(
+def test_get_settings_cache_is_cleared_between_tests_so_overrides_are_observed(
     monkeypatch, tmp_path
 ):
-    # Arrange — the previous test cached get_settings() with the real default.
-    # get_settings() has exactly one cache key (it takes no arguments), so
-    # without the autouse cache-clear fixture in conftest.py this call would
-    # still return that stale real-home value instead of the override below.
+    # Arrange — this was two tests, where the first seeded get_settings' lru_cache
+    # with the real default and the second proved the cache didn't leak into it.
+    # That only worked because of the order pytest happened to run them in, and
+    # the second passed on its own even with the autouse fixture broken — so the
+    # pair guarded nothing it claimed to. Everything it needs is now set up here.
+    #
+    # The autouse `_clear_settings_cache` fixture in conftest.py must hand every
+    # test an empty cache; assert that directly, since it is the whole protection
+    # for the suite (get_settings takes no arguments, so it has exactly one cache
+    # key — one stale entry poisons every later test).
+    assert get_settings.cache_info().currsize == 0
+
+    # Seed it exactly as any earlier test that touched get_settings() would have.
+    assert get_settings().data_root == Path("~/.roster").expanduser().resolve()
+    assert get_settings.cache_info().currsize == 1
+
+    # Act — clearing is precisely what the fixture does between tests.
+    get_settings.cache_clear()
     monkeypatch.setenv("ROSTER_DATA_ROOT", str(tmp_path))
 
-    # Act
-    settings = get_settings()
-
-    # Assert
-    assert settings.data_root == tmp_path
+    # Assert — a seeded-then-cleared cache observes the override, not the
+    # stale real-home value.
+    assert get_settings().data_root == tmp_path

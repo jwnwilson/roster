@@ -62,7 +62,7 @@ roster/
         domain/             # rosters rules and entities — no I/O; may import adapter PORTS only
         adapters/           # project-agnostic infrastructure + the ports it implements
           storage/          #   FileStore protocol, local + in-memory implementations
-          db/               #   SQLAlchemy models, session factory, query modules, migrations
+          db/               #   SQLAlchemy models, repositories, UnitOfWork, migrations
           agents/           #   AgentRuntime (FakeRuntime, SubprocessRuntime later)
         interactors/        # entry points and orchestration
           api/              #   app factory, routers, deps, SSE
@@ -100,9 +100,12 @@ imports a concrete adapter, `interactors/`, or `config/` — configuration arriv
 co-located in the domain module that owns it; there is no central `models.py`. Entities are
 updated via `model_copy(update={...})` and never mutated.
 
-**`adapters/db/`** — SQLAlchemy declarative models, an async session factory, and per-domain
-query modules that take an `AsyncSession` argument directly. There are **no** `Repository` or
-`UnitOfWork` protocols and no generic CRUD abstraction; queries are written out.
+**`adapters/db/`** — SQLAlchemy declarative models, an async session factory, and a
+**Repository + UnitOfWork** layer. A generic `AsyncSqlRepository[DTO]` base provides
+create/read/read_multi/update/delete against an ORM model and a Pydantic DTO; one thin subclass
+per entity binds the two. An `AsyncUnitOfWork` owns a single session and transaction boundary and
+exposes the repositories as properties, so a request or an agent turn is one atomic scope. Interactors
+depend on the `UnitOfWork` protocol rather than on `AsyncSession` directly.
 
 **`adapters/agents/`** — the `AgentRuntime` protocol and its implementations: `SubprocessRuntime`
 (real) and `FakeRuntime` (tests and the default `make dev`). Folder *parsing* is a roster rule and
@@ -586,7 +589,6 @@ future work does not reintroduce it by reflex:
 | Containerised agent execution | Agents are local subprocesses on a trusted machine |
 | Client/server database (Postgres, MySQL) | One user, one machine — a SQLite file |
 | Shared workspace libraries | Single package; extract only when a second consumer exists |
-| `Repository` / `UnitOfWork` abstractions | Query functions taking an `AsyncSession` |
 | Generic CRUD router generation | Routers are written by hand |
 | Authentication, tenancy, owner scoping | Single user, bound to localhost |
 | Sandboxing, egress proxying, hosted git-app tokens | Local trust model |
@@ -628,24 +630,45 @@ future work does not reintroduce it by reflex:
     and orchestration live in `interactors/`. The layer test: would it make sense in a different
     product (adapter), does it encode how roster works (domain), or is it how the outside world
     gets in (interactor)?
-13. **The thread is the unit of agent work; there is no run entity** (2026-08-02, supersedes the
+13. **The `FileStore` port is rooted** — containment is enforced once, inside the store, on every
+    operation, rather than re-checked by each caller. This is where the Task 9 traversal and
+    symlink hardening ended up, and it now covers every file read rather than `restore()` alone.
+14. **Repository + UnitOfWork replaces bare query functions** (reversal of an earlier decision).
+    The original spec ruled these out as ceremony. Reversed on the operator's call: a proven
+    pattern already in use elsewhere, giving one transaction boundary per request rather
+    than per-call commits, and a single place to change query behaviour. Adapted rather than
+    copied — async-only (no sync sibling), no `required_filters` owner-scoping since roster has
+    no auth, and the generic base lives in `adapters/db/` rather than a workspace library.
+15. **The project-folder store is rooted at `/`, deliberately** — an accepted widening of (13),
+    recorded here so it is a decision rather than an implementation detail. An operator declaring
+    a `local` or `git` project is naming a folder on their own machine, and a repo at `/opt/src/x`
+    or on another volume is an ordinary case. Rooting that one store at the data root rejected
+    those folders and — worse — reported them as "does not exist", which is false.
+    **The consequence, stated plainly:** an unauthenticated `POST /projects` on localhost can
+    create a `.roster/` subtree inside any existing directory the operator can write to. That is
+    accepted under §1's trust model — single user, single machine, no auth, no tenancy — where the
+    caller is already the operator. It creates directories only; it never reads, overwrites, or
+    deletes anything that was already there.
+    **This is not a general relaxation.** It applies to exactly one store, used once, on one
+    operator-supplied path, and never to a name an agent can choose. Everything an agent names
+    stays contained: agent folders remain rooted at the data root, and each project's memory
+    remains rooted at its own `.roster/memory`. If roster ever grows a remote listener or a second
+    user, this decision is the first thing that has to be revisited.
+16. **The thread is the unit of agent work; there is no run entity** (2026-08-02, supersedes the
     original run design). An agent takes *turns* inside a thread and the messages it writes are the
     only record — no run row, no event table, no run monitor. This removes an entity, two tables,
     and a whole UI surface, and it matches the design handoff, which had already deleted the agent
     monitor tab in favour of the Thread tab. The cost is accepted deliberately: turn history does
     not survive a restart, because the conversation does.
-14. **Resolving a thread is the single memory write trigger.** Memory previously hung off run
+17. **Resolving a thread is the single memory write trigger.** Memory previously hung off run
     completion; with runs gone it hangs off the move to `resolved`, and that move is rejected when
     the thread is already resolved — so the journal entry is written exactly once, enforced by a
     domain rule rather than by care. Threads therefore stop being an optional screen: project
     memory does not work without them.
-15. **`WorkItem` carries `agent_name`.** The design shows an assigned agent on every list row,
+18. **`WorkItem` carries `agent_name`.** The design shows an assigned agent on every list row,
     kanban card, and detail header. Assignment is a property of the work item rather than something
     inferred from whichever agent last posted, so the board renders from stored data instead of
     reconstructing intent from a conversation.
-16. **The `FileStore` port is rooted** — containment is enforced once, inside the store, on every
-    operation, rather than re-checked by each caller. This is where the Task 9 traversal and
-    symlink hardening ended up, and it now covers every file read rather than `restore()` alone.
 
 ---
 

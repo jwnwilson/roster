@@ -3,9 +3,9 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from adapters.db.engine import Base, make_engine, make_sessionmaker
-from api.app import create_app
-from api.deps import get_session, get_session_factory
+from adapters.db.uow import AsyncUnitOfWork
 from config.settings import Settings, get_settings
+from interactors.api.app import create_app
 
 
 @pytest.fixture(autouse=True)
@@ -28,10 +28,19 @@ async def engine():
 
 
 @pytest_asyncio.fixture
-async def session(engine):
-    factory = make_sessionmaker(engine)
-    async with factory() as session:
+async def session_factory(engine):
+    return make_sessionmaker(engine)
+
+
+@pytest_asyncio.fixture
+async def session(session_factory):
+    async with session_factory() as session:
         yield session
+
+
+@pytest_asyncio.fixture
+async def uow(session_factory):
+    return AsyncUnitOfWork(session_factory)
 
 
 @pytest.fixture
@@ -40,20 +49,18 @@ def settings(tmp_path):
 
 
 @pytest_asyncio.fixture
-async def client(engine, settings):
-    app = create_app()
-    factory = make_sessionmaker(engine)
+async def client(session_factory, settings):
+    # The database is injected through the constructor, not patched in through
+    # `dependency_overrides`. That is what the parameter is for, and it is what
+    # makes the isolation total rather than per-dependency: `app.state` is the
+    # one place anything reaches a session from, so the request's UnitOfWork,
+    # RunManager's background writes and the SSE stream *all* land on this
+    # fixture's in-memory engine by construction. There is nothing left to
+    # forget to override, and no route can reach the real `~/.roster`.
+    app = create_app(session_factory=session_factory)
 
-    async def _session_override():
-        async with factory() as session:
-            yield session
-
-    app.dependency_overrides[get_session] = _session_override
-    # RunManager and the SSE stream open their own sessions independently of any
-    # single request's session (they outlive it), via this sessionmaker — it must
-    # point at the same fixture-backed in-memory engine or it silently talks to a
-    # different, schema-less database.
-    app.dependency_overrides[get_session_factory] = lambda: factory
+    # Settings still need an override: they are read through `Depends`, and their
+    # `data_root` decides where agent and project folders are written.
     app.dependency_overrides[get_settings] = lambda: settings
 
     transport = ASGITransport(app=app)

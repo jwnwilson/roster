@@ -27,8 +27,16 @@ addopts = "-q --import-mode=importlib"
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["config", "domain", "adapters", "api", "runs", "cli"]
+source = ["config", "domain", "adapters", "interactors"]
 omit = ["*/migrations/*", "*/tests/*"]
+# Statement-only coverage reported 100% on modules whose branches were never both
+# taken — an `if` guard with no test for the false arm looked fully covered.
+branch = true
+# SQLAlchemy's asyncio layer bridges the sync DBAPI through greenlet_spawn, and a
+# `sys.settrace` trace function is per-greenlet: every statement after an awaited
+# query went unrecorded, so API-driven routes reported 64–82% while being fully
+# exercised. Teaching coverage to follow greenlet switches is what fixes it.
+concurrency = ["thread", "greenlet"]
 
 [tool.ruff]
 target-version = "py312"
