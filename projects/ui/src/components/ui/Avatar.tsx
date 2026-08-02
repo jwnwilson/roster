@@ -5,9 +5,9 @@ const SHAPE: Record<AvatarVariant, string> = {
   agent: "rounded-[5px] bg-accent",
   // Muted subagent avatar — dark fill so the lead stays visually distinct (D3).
   subagent:
-    "rounded-[5px] bg-[#1e2028] border border-[rgba(255,255,255,0.09)] text-[#7a7d86]",
+    "rounded-[5px] bg-text-7 border border-[rgba(255,255,255,0.09)] text-text-3",
   // Circular user avatar.
-  user: "rounded-full bg-[#1c1e26] border-[1.5px] border-[rgba(255,255,255,0.13)] text-text-3",
+  user: "rounded-full bg-bg-avatar border-[1.5px] border-[rgba(255,255,255,0.13)] text-text-3",
 };
 
 export function Avatar({

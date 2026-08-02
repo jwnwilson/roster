@@ -7,8 +7,8 @@ describe("StatusBadge", () => {
     render(<StatusBadge kind="action_needed" />);
     expect(screen.getByText(/ACTION NEEDED/i)).toBeInTheDocument();
   });
-  it("renders RUNNING for the running kind", () => {
-    render(<StatusBadge kind="running" />);
-    expect(screen.getByText(/RUNNING/i)).toBeInTheDocument();
+  it("renders WORKING for the working kind", () => {
+    render(<StatusBadge kind="working" />);
+    expect(screen.getByText(/WORKING/i)).toBeInTheDocument();
   });
 });

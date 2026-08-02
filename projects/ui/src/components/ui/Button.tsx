@@ -5,7 +5,7 @@ const VARIANTS: Record<Variant, string> = {
   primary: "bg-accent text-white",
   secondary: "border border-[rgba(255,255,255,0.12)] text-text-3",
   tertiary: "border border-border text-text-4",
-  danger: "bg-[#e5686b] text-white",
+  danger: "bg-error-text text-white",
 };
 
 export function Button(

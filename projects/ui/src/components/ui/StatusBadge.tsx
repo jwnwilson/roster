@@ -1,12 +1,12 @@
-export type BadgeKind = "action_needed" | "review_needed" | "info" | "resolved" | "running" | "idle";
+export type BadgeKind = "action_needed" | "review_needed" | "info" | "resolved" | "working" | "idle";
 
 const BADGES: Record<BadgeKind, { label: string; bg: string; border: string; color: string }> = {
-  action_needed: { label: "ACTION NEEDED", bg: "rgba(190,65,50,0.12)", border: "rgba(190,65,50,0.20)", color: "#b05848" },
-  review_needed: { label: "REVIEW NEEDED", bg: "rgba(170,130,30,0.10)", border: "rgba(170,130,30,0.18)", color: "#907030" },
-  info:          { label: "INFO",          bg: "rgba(50,80,160,0.10)",  border: "rgba(50,80,160,0.18)",  color: "#4868a0" },
-  resolved:      { label: "RESOLVED",      bg: "rgba(50,110,60,0.08)",  border: "rgba(50,110,60,0.14)",  color: "#3d6a48" },
-  running:       { label: "RUNNING",       bg: "rgba(124,108,240,0.12)", border: "rgba(124,108,240,0.25)", color: "#bab7f6" },
-  idle:          { label: "IDLE",          bg: "transparent",            border: "rgba(255,255,255,0.05)", color: "#22252c" },
+  action_needed: { label: "ACTION NEEDED", bg: "var(--badge-action-bg)", border: "var(--badge-action-border)", color: "var(--badge-action-text)" },
+  review_needed: { label: "REVIEW NEEDED", bg: "var(--badge-review-bg)", border: "var(--badge-review-border)", color: "var(--badge-review-text)" },
+  info:          { label: "INFO",          bg: "var(--badge-info-bg)",  border: "var(--badge-info-border)",  color: "var(--badge-info-text)" },
+  resolved:      { label: "RESOLVED",      bg: "var(--badge-resolved-bg)",  border: "var(--badge-resolved-border)",  color: "var(--badge-resolved-text)" },
+  working:       { label: "WORKING",       bg: "rgba(124,108,240,0.12)", border: "rgba(124,108,240,0.25)", color: "var(--accent-text)" },
+  idle:          { label: "IDLE",          bg: "transparent",            border: "rgba(255,255,255,0.05)", color: "var(--text-7)" },
 };
 
 export function StatusBadge({ kind }: { kind: BadgeKind }) {

@@ -16,6 +16,6 @@ describe("StatusCircle", () => {
 
   it("uses an accent arc for in_progress", () => {
     const { container } = render(<StatusCircle status="in_progress" />);
-    expect(container.innerHTML.toLowerCase()).toContain("#7c6cf0");
+    expect(container.innerHTML.toLowerCase()).toContain("var(--accent)");
   });
 });

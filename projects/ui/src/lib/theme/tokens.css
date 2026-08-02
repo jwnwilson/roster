@@ -32,6 +32,70 @@
   --red-border: rgba(180,60,60,0.20);
   --yellow-text: #907030;
   --blue-text: #4868a0;
+  /* Type scale — handoff §Typography. Sizes are exact; the design is dense
+     and half-pixel steps are load-bearing, so they are not rounded. */
+  --text-size-9: 9px;
+  --text-size-9-5: 9.5px;
+  --text-size-10: 10px;
+  --text-size-10-5: 10.5px;
+  --text-size-11: 11px;
+  --text-size-11-5: 11.5px;
+  --text-size-12: 12px;
+  --text-size-12-5: 12.5px;
+  --text-size-13: 13px;
+  --text-size-13-5: 13.5px;
+  --text-size-15: 15px;
+  --text-size-17: 17px;
+  /* Spacing — handoff §Spacing, base unit 4px */
+  --space-4: 4px;
+  --space-5: 5px;
+  --space-6: 6px;
+  --space-7: 7px;
+  --space-8: 8px;
+  --space-9: 9px;
+  --space-10: 10px;
+  --space-11: 11px;
+  --space-12: 12px;
+  --space-13: 13px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  /* Radii — handoff §Border Radius */
+  --radius-3: 3px;
+  --radius-4: 4px;
+  --radius-5: 5px;
+  --radius-6: 6px;
+  --radius-7: 7px;
+  --radius-8: 8px;
+  --radius-9: 9px;
+  /* Shadows — handoff §Shadows. Cards and panels are border-only. */
+  --shadow-frame: 0 8px 32px rgba(0, 0, 0, 0.60);
+  /* Badge colours — handoff §Screen G "Badge types". These are the four states
+     a thread can be in, so they are named for the state rather than the hue. */
+  --badge-action-bg: rgba(190, 65, 50, 0.12);
+  --badge-action-border: rgba(190, 65, 50, 0.20);
+  --badge-action-text: #b05848;
+  --badge-review-bg: rgba(170, 130, 30, 0.10);
+  --badge-review-border: rgba(170, 130, 30, 0.18);
+  --badge-review-text: #907030;
+  --badge-info-bg: rgba(50, 80, 160, 0.10);
+  --badge-info-border: rgba(50, 80, 160, 0.18);
+  --badge-info-text: #4868a0;
+  --badge-resolved-bg: rgba(50, 110, 60, 0.08);
+  --badge-resolved-border: rgba(50, 110, 60, 0.14);
+  --badge-resolved-text: #3d6a48;
+  /* Surfaces and strokes the handoff names per-component rather than in its
+     token block — collected here so no component carries a literal. */
+  --bg-column-header: #0b0c0f;
+  --bg-track: #181a20;
+  --bg-avatar: #1c1e26;
+  --bg-badge: #181a22;
+  --stroke-idle: #2e3038;
+  --stroke-todo: #3a3d46;
+  --dot-muted: #3a3d44;
+  --fill-secondary: #44474f;
+  --error-text: #e5686b;
 }
 
 /* Map tokens into the Tailwind v4 theme so utilities like bg-bg-base,
@@ -66,6 +130,63 @@
   --color-yellow-text: var(--yellow-text);
   --color-blue-text: var(--blue-text);
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Scales — mapped so utilities generate: text-11-5, rounded-7, p-13,
+     shadow-frame. A token under :root that is not mapped here is inert. */
+  --text-9: var(--text-size-9);
+  --text-9-5: var(--text-size-9-5);
+  --text-10: var(--text-size-10);
+  --text-10-5: var(--text-size-10-5);
+  --text-11: var(--text-size-11);
+  --text-11-5: var(--text-size-11-5);
+  --text-12: var(--text-size-12);
+  --text-12-5: var(--text-size-12-5);
+  --text-13: var(--text-size-13);
+  --text-13-5: var(--text-size-13-5);
+  --text-15: var(--text-size-15);
+  --text-17: var(--text-size-17);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-7: var(--space-7);
+  --spacing-8: var(--space-8);
+  --spacing-9: var(--space-9);
+  --spacing-10: var(--space-10);
+  --spacing-11: var(--space-11);
+  --spacing-12: var(--space-12);
+  --spacing-13: var(--space-13);
+  --spacing-14: var(--space-14);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+  --spacing-24: var(--space-24);
+  --radius-3: var(--radius-3);
+  --radius-4: var(--radius-4);
+  --radius-5: var(--radius-5);
+  --radius-6: var(--radius-6);
+  --radius-7: var(--radius-7);
+  --radius-8: var(--radius-8);
+  --radius-9: var(--radius-9);
+  --shadow-frame: var(--shadow-frame);
+  --color-badge-action-bg: var(--badge-action-bg);
+  --color-badge-action-border: var(--badge-action-border);
+  --color-badge-action-text: var(--badge-action-text);
+  --color-badge-review-bg: var(--badge-review-bg);
+  --color-badge-review-border: var(--badge-review-border);
+  --color-badge-review-text: var(--badge-review-text);
+  --color-badge-info-bg: var(--badge-info-bg);
+  --color-badge-info-border: var(--badge-info-border);
+  --color-badge-info-text: var(--badge-info-text);
+  --color-badge-resolved-bg: var(--badge-resolved-bg);
+  --color-badge-resolved-border: var(--badge-resolved-border);
+  --color-badge-resolved-text: var(--badge-resolved-text);
+  --color-bg-column-header: var(--bg-column-header);
+  --color-bg-track: var(--bg-track);
+  --color-bg-avatar: var(--bg-avatar);
+  --color-bg-badge: var(--bg-badge);
+  --color-stroke-idle: var(--stroke-idle);
+  --color-stroke-todo: var(--stroke-todo);
+  --color-dot-muted: var(--dot-muted);
+  --color-fill-secondary: var(--fill-secondary);
+  --color-error-text: var(--error-text);
 }
 
 @keyframes pulse {

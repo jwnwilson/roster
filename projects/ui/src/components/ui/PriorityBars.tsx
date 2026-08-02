@@ -9,7 +9,7 @@ export function PriorityBars({ priority }: { priority: "low" | "medium" | "high"
         const filled = i < level;
         return (
           <span key={i} data-bar data-filled={filled}
-            style={{ width: 3, height: h, borderRadius: 1, background: filled ? "#4a4d56" : "#25272e" }} />
+            style={{ width: 3, height: h, borderRadius: 1, background: filled ? "var(--text-4)" : "var(--text-7)" }} />
         );
       })}
     </div>

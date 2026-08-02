@@ -22,13 +22,13 @@ export function Topbar({ title, count, view, onViewChange, onNew }: TopbarProps)
       <span className="text-[13.5px] font-semibold text-text-1">{title}</span>
 
       {/* Count */}
-      <span className="font-mono text-[10px] text-[#30333c]">{count}</span>
+      <span className="font-mono text-[10px] text-text-6">{count}</span>
 
       {/* Vertical divider */}
       <div className="mx-1 h-[14px] w-px bg-[rgba(255,255,255,0.08)]" />
 
       {/* Filter chip */}
-      <button className="inline-flex h-[26px] items-center gap-1 rounded-[5px] border border-border-strong px-[9px] text-[11px] text-[#66696f]">
+      <button className="inline-flex h-[26px] items-center gap-1 rounded-[5px] border border-border-strong px-[9px] text-[11px] text-text-3">
         All
         <ChevronDownIcon className="h-3 w-3" />
       </button>
