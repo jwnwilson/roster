@@ -1,8 +1,11 @@
 import pytest
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
 from adapters.db.engine import Base, make_engine, make_sessionmaker
-from config.settings import get_settings
+from api.app import create_app
+from api.deps import get_session
+from config.settings import Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
@@ -29,3 +32,25 @@ async def session(engine):
     factory = make_sessionmaker(engine)
     async with factory() as session:
         yield session
+
+
+@pytest.fixture
+def settings(tmp_path):
+    return Settings(data_root=tmp_path)
+
+
+@pytest_asyncio.fixture
+async def client(engine, settings):
+    app = create_app()
+    factory = make_sessionmaker(engine)
+
+    async def _session_override():
+        async with factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = _session_override
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
+        yield http_client
