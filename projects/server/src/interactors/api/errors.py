@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from domain.agents import UnknownAgent
 from domain.errors import IntegrityConflict, RecordNotFound
 from domain.projects import FolderUnavailable, InvalidSource
 from domain.transitions import InvalidTransition
@@ -41,6 +42,10 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RecordNotFound)
     async def _record_not_found(_: Request, exc: RecordNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content=fail(str(exc)))
+
+    @app.exception_handler(UnknownAgent)
+    async def _unknown_agent(_: Request, exc: UnknownAgent) -> JSONResponse:
         return JSONResponse(status_code=404, content=fail(str(exc)))
 
     @app.exception_handler(IntegrityConflict)

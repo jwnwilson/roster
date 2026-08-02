@@ -17,6 +17,10 @@ CONFIG_FILE = "config.yaml"
 SKILLS_DIR = "skills"
 
 
+class UnknownAgent(Exception):
+    """The name given does not identify an agent folder. Surfaced as a 404."""
+
+
 class Agent(BaseModel):
     name: str
     model: str = DEFAULT_MODEL
@@ -27,6 +31,20 @@ class Agent(BaseModel):
     status: AgentStatus = "active"
     # Populated only when status == "disabled" — shown in the UI instead of a crash.
     problem: str | None = None
+
+
+def agent_folder(agents_root: Path, name: str) -> Path:
+    """Where the agent called `name` lives, or `UnknownAgent` if that isn't a name.
+
+    An agent is a folder directly under the agents root (spec §4), so its name is
+    exactly one path segment. A name carrying separators, `.`/`..`, or nothing at
+    all does not identify an agent, and joining it anyway is how `"../../etc"`
+    came to be recorded as a run against an agent called `"etc"` — the store's
+    containment stopped anything being read, but the run itself was nonsense.
+    """
+    if not name or name in (".", "..") or name != Path(name).name:
+        raise UnknownAgent(f"{name!r} is not an agent name")
+    return agents_root / name
 
 
 def _is_file(store: FileStore, path: Path) -> bool:

@@ -10,7 +10,7 @@ from sse_starlette.sse import EventSourceResponse
 from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.ports import FileStore
 from config.settings import Settings, agents_dir, get_settings
-from domain.agents import Agent, read_agent
+from domain.agents import Agent, agent_folder, read_agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
 from domain.runs import Run
@@ -68,7 +68,7 @@ async def create_run(
         # to a disabled Agent, and FakeRuntime doesn't care about status. A
         # future runtime that actually shells out is expected to refuse a
         # disabled agent itself.
-        agent = read_agent(agents_dir(settings) / payload.agent_name, store)
+        agent = read_agent(agent_folder(agents_dir(settings), payload.agent_name), store)
 
         run = Run(
             id=new_id(),

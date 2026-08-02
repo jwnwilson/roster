@@ -4,7 +4,13 @@ import pytest
 
 from adapters.storage.local import LocalFileStore
 from adapters.storage.memory import InMemoryFileStore
-from domain.agents import create_agent_folder, read_agent, read_agents
+from domain.agents import (
+    UnknownAgent,
+    agent_folder,
+    create_agent_folder,
+    read_agent,
+    read_agents,
+)
 
 
 def _write_agent(root, name, config="model: claude-opus-5\ntoken_limit: 200000\n"):
@@ -18,6 +24,19 @@ def _write_agent(root, name, config="model: claude-opus-5\ntoken_limit: 200000\n
 @pytest.fixture
 def store(tmp_path):
     return LocalFileStore(tmp_path)
+
+
+def test_an_agent_name_resolves_to_a_folder_directly_under_the_agents_root(tmp_path):
+    assert agent_folder(tmp_path, "atlas") == tmp_path / "atlas"
+
+
+@pytest.mark.parametrize("name", ["../../etc", "atlas/../../etc", "/etc", "", ".", "..", "a/b"])
+def test_an_agent_name_that_is_not_one_path_segment_is_not_an_agent(tmp_path, name):
+    # An agent is a folder directly under the agents root (spec §4). Anything else
+    # is not an agent this roster has — silently truncating "../../etc" to "etc"
+    # produced a run recorded against an agent that never existed.
+    with pytest.raises(UnknownAgent):
+        agent_folder(tmp_path, name)
 
 
 def test_creating_an_agent_folder_produces_one_the_reader_accepts(tmp_path):

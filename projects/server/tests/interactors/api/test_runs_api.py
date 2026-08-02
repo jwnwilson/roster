@@ -64,6 +64,24 @@ async def test_run_events_accumulate_from_the_fake_runtime(client, work_item):
     assert any(event["type"] == "tool_call" for event in events.json()["data"])
 
 
+@pytest.mark.parametrize(
+    "agent_name", ["../../../../etc", "atlas/../../etc", "/etc", "", ".", ".."]
+)
+async def test_a_run_for_an_agent_name_that_is_not_one_path_segment_is_404(
+    client, work_item, agent_name, engine
+):
+    # Arrange / Act — containment already stops this reaching anything, but the
+    # run was still recorded (201) against agent "etc" and then executed against a
+    # folder that does not exist. Silent nonsense is not a safe outcome.
+    response = await client.post(
+        f"/work-items/{work_item['id']}/runs", json={"agent_name": agent_name}
+    )
+
+    # Assert
+    assert response.status_code == 404
+    assert await _count(engine, "SELECT count(*) FROM runs") == 0
+
+
 async def test_run_for_an_unknown_work_item_is_404(client):
     response = await client.post("/work-items/nope/runs", json={"agent_name": "atlas"})
     assert response.status_code == 404
