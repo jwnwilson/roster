@@ -267,6 +267,40 @@ async def test_a_journal_emptied_while_waiting_for_the_lock_skips_a_redundant_co
     assert summarise_calls == []
 
 
+async def test_a_launched_run_stays_reachable_until_it_finishes(folder, engine):
+    # Arrange — asyncio keeps only a weak reference to a running task, so a
+    # fire-and-forget create_task can be collected mid-run; and a task nobody
+    # holds is a run nobody can enumerate.
+    settings = Settings(data_root=folder)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    manager = RunManager(
+        runtime=FakeRuntime(), settings=settings, uow_factory=lambda: AsyncUnitOfWork(factory)
+    )
+    project = Project(
+        id="proj1", name="P", source=ProjectSource(kind="none"), folder_path=str(folder)
+    )
+    work_item = WorkItem(
+        id="wi1", key="ROS-1", project_id="proj1", type="task", title="Do it", sequence=1
+    )
+    uow = AsyncUnitOfWork(factory)
+    async with uow.transaction() as tx:
+        await tx.projects.create(project)
+        await tx.work_items.create(work_item)
+        await tx.runs.create(
+            Run(id="run1", project_id="proj1", work_item_id="wi1", agent_name="atlas")
+        )
+
+    # Act
+    task = manager.launch("run1", Agent(name="atlas"), project, work_item)
+
+    # Assert — held and enumerable while it runs, released once it is done
+    assert manager.in_flight() == ["run1"]
+    await task
+    assert manager.in_flight() == []
+    async with uow.transaction() as tx:
+        assert (await tx.runs.read("run1")).status == "complete"
+
+
 class StatusWatchingRuntime:
     """Records the run's own status at the moment the post-run memory step runs."""
 

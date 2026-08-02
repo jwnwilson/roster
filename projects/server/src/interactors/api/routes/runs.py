@@ -80,10 +80,11 @@ async def create_run(
         created_run = await tx.runs.create(run)
 
     # Fire-and-track: the run executes for as long as it takes, well past this
-    # request's response. RunManager.start opens its own short transactions via
-    # its own UoW factory rather than reusing `uow`, which closes when this
-    # handler returns.
-    asyncio.create_task(manager.start(created_run.id, agent, project, work_item))
+    # request's response. RunManager.launch holds the task (the loop only holds a
+    # weak reference) and registers it as in-flight; RunManager.start opens its
+    # own short transactions via its own UoW factory rather than reusing `uow`,
+    # which closes when this handler returns.
+    manager.launch(created_run.id, agent, project, work_item)
 
     return ok(created_run.model_dump(mode="json"))
 

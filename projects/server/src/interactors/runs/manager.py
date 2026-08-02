@@ -58,6 +58,28 @@ class RunManager:
         self._settings = settings
         self._uow_factory = uow_factory
         self._compaction_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._in_flight: dict[str, asyncio.Task[None]] = {}
+
+    def launch(
+        self, run_id: str, agent: Agent, project: Project, work_item: WorkItem
+    ) -> asyncio.Task[None]:
+        """Start `run_id` in the background and keep the task reachable while it runs.
+
+        The event loop holds only a *weak* reference to a running task, so a caller
+        that discards `create_task`'s result can have its run garbage-collected
+        part-way through with no error anywhere. Holding it here fixes that and
+        makes in-flight runs enumerable, which a fire-and-forget task never is.
+        """
+        task = asyncio.create_task(self.start(run_id, agent, project, work_item))
+        self._in_flight[run_id] = task
+        # Discarded on completion (success, failure, or cancellation) so a
+        # long-lived process doesn't accumulate finished tasks forever.
+        task.add_done_callback(lambda _: self._in_flight.pop(run_id, None))
+        return task
+
+    def in_flight(self) -> list[str]:
+        """The ids of the runs this manager is currently executing."""
+        return sorted(self._in_flight)
 
     async def start(self, run_id: str, agent: Agent, project: Project, work_item: WorkItem) -> None:
         """Stream the runtime's events into RunEventRows, then always write memory.
