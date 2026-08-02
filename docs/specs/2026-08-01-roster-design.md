@@ -546,17 +546,18 @@ future work does not reintroduce it by reflex:
     Source kind is declared at creation (`git` / `local` / `none`) because detection cannot
     distinguish "no code" from "empty folder"; it swaps the run's terminal step between `pr`
     and `deliver`. No domain code assumes a repo.
+11. **Memory and artifacts consolidate into `<project folder>/.roster/`** — one place per
+    project rather than a parallel tree keyed by ID, so context and output travel with the
+    project. `.roster/` is tracked by git when the project is a repo; roster writes files but
+    never commits them itself.
 12. **Ports live in `adapters/`, not `domain/`** — domain imports the protocol and receives an
     implementation by injection, so storage can change without touching roster rules. Entry points
     and orchestration live in `interactors/`. The layer test: would it make sense in a different
     product (adapter), does it encode how roster works (domain), or is it how the outside world
     gets in (interactor)?
 13. **The `FileStore` port is rooted** — containment is enforced once, inside the store, on every
-    operation, rather than re-checked by each caller. This is where Task 9 hardening ended up.
-11. **Memory and artifacts consolidate into `<project folder>/.roster/`** — one place per
-    project rather than a parallel tree keyed by ID, so context and output travel with the
-    project. `.roster/` is tracked by git when the project is a repo; roster writes files but
-    never commits them itself.
+    operation, rather than re-checked by each caller. This is where the Task 9 traversal and
+    symlink hardening ended up, and it now covers every file read rather than `restore()` alone.
 
 ---
 
