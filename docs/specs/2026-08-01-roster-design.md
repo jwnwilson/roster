@@ -43,10 +43,10 @@ green; and `docs/architecture.md` and ADR-0001 are written (`AGENTS.md` and
 ```
 roster/
   AGENTS.md                 # stack, conventions, .roster contract, workflow
-  Makefile                  # install dev run test coverage lint db-upgrade e2e
+  Makefile                  # install dev run test coverage lint db-upgrade
   pyproject.toml            # uv workspace, single member: projects/server
   .env.example  .gitignore
-  .github/workflows/{ci,e2e}.yml
+  .github/workflows/ci.yml
   docs/
     project-history.md      # what ships, what is designed-only, what is next — read first
     design/                 # UI handoff bundle
@@ -59,14 +59,16 @@ roster/
       pyproject.toml        # roster-server
       alembic.ini
       src/
-        domain/             # pure entities + rules — no I/O, no adapter imports
-        adapters/
-          db/               # SQLAlchemy models, session factory, query modules, migrations
-          agents/           # agent-folder reader + runtime implementations
-          memory/           # project-memory journal, digest, snapshots
-        api/                # app factory, routers, deps, SSE
+        domain/             # rosters rules and entities — no I/O; may import adapter PORTS only
+        adapters/           # project-agnostic infrastructure + the ports it implements
+          storage/          #   FileStore protocol, local + in-memory implementations
+          db/               #   SQLAlchemy models, session factory, query modules, migrations
+          agents/           #   AgentRuntime (FakeRuntime, SubprocessRuntime later)
+        interactors/        # entry points and orchestration
+          api/              #   app factory, routers, deps, SSE
+          cli/              #   seed
+          runs/             #   RunManager
         config/             # settings — neutral, importable by every layer
-        cli/                # seed
       tests/
     ui/                     # React + Vite + Tailwind SPA
 ```
@@ -91,8 +93,10 @@ port/adapter ceremony beyond what that separation needs.
 
 ### Layers
 
-**`domain/`** — Pydantic entities and pure rules: status transitions, work-item hierarchy,
-thread/message rules. No argparse, no I/O, no adapter imports. Each entity model is
+**`domain/`** — roster rules and entities: status transitions, work-item hierarchy, agent-folder
+parsing, memory compaction, project-folder resolution. No argparse and no I/O of its own. It may
+import **port protocols** from `adapters/` and receives an implementation by injection; it never
+imports a concrete adapter, `interactors/`, or `config/` — configuration arrives as plain values. Each entity model is
 co-located in the domain module that owns it; there is no central `models.py`. Entities are
 updated via `model_copy(update={...})` and never mutated.
 
@@ -100,23 +104,32 @@ updated via `model_copy(update={...})` and never mutated.
 query modules that take an `AsyncSession` argument directly. There are **no** `Repository` or
 `UnitOfWork` protocols and no generic CRUD abstraction; queries are written out.
 
-**`adapters/agents/`** — the agent-folder reader and the runtime. An `AgentRuntime` protocol
-with two implementations: `SubprocessRuntime` (real) and `FakeRuntime` (used by tests and
-the default `make dev`).
+**`adapters/agents/`** — the `AgentRuntime` protocol and its implementations: `SubprocessRuntime`
+(real) and `FakeRuntime` (tests and the default `make dev`). Folder *parsing* is a roster rule and
+lives in `domain/agents.py`.
 
-**`adapters/memory/`** — the project-memory store: journal appends, digest reads and writes,
-snapshot rotation, and the compaction trigger. All filesystem work for §5 lives here; the
-rules for *when* to compact are pure and live in `domain/memory.py`.
+**`adapters/storage/`** — the `FileStore` protocol and its implementations: a local filesystem
+store and an in-memory store for tests. **Every store is rooted**: a path resolving outside the
+root raises `FileNotFoundError`, so containment is a property of the store applied to every
+operation, not a check each caller repeats. All of §5 memory logic — journal, digest, snapshots,
+compaction — lives in `domain/memory.py` and reaches disk only through this port.
 
-**`api/`** — FastAPI wiring: app factory, one hand-written router per resource, the session
-dependency, SSE endpoints.
+**`interactors/`** — entry points and orchestration: the FastAPI app factory, one hand-written
+router per resource, the session dependency, SSE endpoints, the seed CLI, and the `RunManager`.
+This is the only layer that may import from everywhere; it constructs concrete adapters and drives
+domain logic with them.
 
 **`config/`** — `Settings` (env prefix `roster_`) and the data-root path helpers. Deliberately its
 own module rather than part of `api/`: adapters and the run manager need settings too, and an
 adapter importing from the API layer inverts the layering. Domain code takes plain values, never
 the `Settings` object.
 
-**`cli/`** — the seed entry point. There is no `scripts/` folder.
+There is no `scripts/` folder.
+
+**Which layer does something belong in?** Ask whether it would still make sense in a different
+product. If yes, it is an adapter. If it encodes how *roster* works, it is domain. If it is how the
+outside world gets in, it is an interactor. An adapter containing a roster rule — "a malformed
+config disables the agent" — is misplaced, and so is domain code that opens a file.
 
 ### Why async-only
 
@@ -378,7 +391,7 @@ wrong:
 
 - `GET /projects/{id}/memory` — digest plus pending-journal count
 - `GET /projects/{id}/memory/journal` — uncompacted entries
-- `POST /projects/{id}/memory/compact` — force a compaction
+- `POST /projects/{id}/memory/compact` — force a compaction regardless of threshold, without appending a journal entry. Returns `{digest, compacted, folded_entries}`: 200 when it compacts or when the journal is empty (a legitimate no-op), 503 when the compaction itself fails, with digest and journal left untouched. Run-triggered compaction differs deliberately — there a failure is non-fatal and the run still finishes
 - `GET /projects/{id}/memory/snapshots` and `POST /projects/{id}/memory/snapshots/{ts}/restore`
 
 A UI surface for reading, editing, and reverting memory is deferred (§12); the design bundle
@@ -389,7 +402,7 @@ has no memory screen yet.
 ## 6. Frontend
 
 React 18 + Vite + Tailwind 4, React Query for server state, React Router for routing, MSW for
-mocking, vitest + testing-library for unit tests, Playwright for E2E.
+mocking, and vitest + testing-library for unit tests. End-to-end testing is deferred (§12).
 
 Structure:
 
@@ -465,8 +478,6 @@ Design tokens, layout dimensions, component states, and per-screen specification
   runs appending without loss, compaction firing at the threshold, a failed compaction leaving
   digest and journal untouched, and snapshot restore.
 - **Frontend** — vitest + testing-library for primitives, hooks, and screens against MSW.
-- **E2E** — Playwright over a scripted journey: create project → create work item → start a
-  run against `FakeRuntime` → observe events → resolve the item.
 - 80% coverage gate on the backend, enforced by `make coverage` and CI.
 - TDD: the failing test is written first; AAA structure; descriptive behavior names.
 
@@ -482,7 +493,6 @@ make test         # pytest
 make coverage     # 80% gate
 make lint         # ruff + mypy + eslint + tsc
 make db-upgrade   # alembic upgrade head
-make e2e          # Playwright
 ```
 
 No Docker is required to run roster. Commits follow `<type>: <description>`
@@ -540,6 +550,14 @@ future work does not reintroduce it by reflex:
     project rather than a parallel tree keyed by ID, so context and output travel with the
     project. `.roster/` is tracked by git when the project is a repo; roster writes files but
     never commits them itself.
+12. **Ports live in `adapters/`, not `domain/`** — domain imports the protocol and receives an
+    implementation by injection, so storage can change without touching roster rules. Entry points
+    and orchestration live in `interactors/`. The layer test: would it make sense in a different
+    product (adapter), does it encode how roster works (domain), or is it how the outside world
+    gets in (interactor)?
+13. **The `FileStore` port is rooted** — containment is enforced once, inside the store, on every
+    operation, rather than re-checked by each caller. This is where the Task 9 traversal and
+    symlink hardening ended up, and it now covers every file read rather than `restore()` alone.
 
 ---
 
@@ -550,6 +568,7 @@ Deferred to follow-up plans, each with its own spec:
 - The screen-by-screen build-out (Threads, Agents, MCP, work-item detail tabs)
 - `SubprocessRuntime` — the real agent runtime and lead-agent coordination protocol
 - MCP server connection handling and per-tool permissions
+- An end-to-end test suite and its CI workflow. Deferred deliberately, not forgotten: the journey worth covering (create project → create work item → start a run → observe events → resolve the item) only becomes meaningful once the screens in the deferred UI build-out exist. Revisit when they do — it is the only check that would catch the UI and the API disagreeing.
 - Cloning a remote git source. Setup accepts and validates a `source.kind = "git"` remote URL and
   records it; the clone into the project folder lands with `SubprocessRuntime`, since that is the
   first thing that needs a working tree on disk. A `git` project pointed at an existing local
