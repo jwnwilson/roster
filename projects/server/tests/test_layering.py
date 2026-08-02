@@ -30,6 +30,16 @@ ADAPTER_ONLY_SUBSTRINGS = ("sqlite+aiosqlite", "data_root.mkdir")
 # outside world through a port or an adapter.
 FORBIDDEN_SUBSTRINGS = ("import os", "os.environ", "os.getenv", "subprocess.", "import shutil")
 
+# **Stated exemption.** `interactors/` may import from SQLAlchemy for *type
+# annotations only* — `deps.py` hands out an `async_sessionmaker[AsyncSession]`
+# built by `adapters.db.session`, and an interactor holding a factory it is not
+# allowed to name would be worse than the import. The rule these guards enforce is
+# "don't *do* infrastructure", not "never name its types": nothing here may build
+# an engine, open a session, or execute a statement, and the test below is what
+# keeps the exemption that narrow. Do not "fix" this import away — doing so
+# re-couples the layers to satisfy a rule that never meant this.
+TYPE_ONLY_PACKAGES = ("sqlalchemy",)
+
 
 def _modules(layer: str) -> list[Path]:
     return sorted(p for p in (SRC / layer).rglob("*.py") if "migrations" not in p.parts)
@@ -81,6 +91,50 @@ def test_database_connection_details_stay_inside_the_adapter(layer):
     }
 
     assert offenders == set()
+
+
+def _annotation_node_ids(tree: ast.AST) -> set[int]:
+    """Every node reachable from an annotation — parameter, variable or return."""
+    annotations: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AnnAssign):
+            annotations.append(node.annotation)
+        elif isinstance(node, ast.arg) and node.annotation is not None:
+            annotations.append(node.annotation)
+        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and node.returns is not None:
+            annotations.append(node.returns)
+    return {id(child) for annotation in annotations for child in ast.walk(annotation)}
+
+
+def _names_imported_from(tree: ast.AST, packages: tuple[str, ...]) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            if any(_is_under(node.module, package) for package in packages):
+                names |= {alias.asname or alias.name for alias in node.names}
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if any(_is_under(alias.name, package) for package in packages):
+                    names.add(alias.asname or alias.name.split(".")[0])
+    return names
+
+
+@pytest.mark.parametrize("path", _modules("interactors"), ids=lambda p: p.name)
+def test_interactors_name_sqlalchemy_types_but_never_use_them(path):
+    # The exemption above, kept honest: an annotation is naming, anything else is
+    # doing. `AsyncSession(...)`, `session.execute(...)` or a bare reference in a
+    # function body all fail here.
+    tree = ast.parse(path.read_text())
+    imported = _names_imported_from(tree, TYPE_ONLY_PACKAGES)
+    in_annotations = _annotation_node_ids(tree)
+
+    used_as_values = {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and node.id in imported and id(node) not in in_annotations
+    }
+
+    assert used_as_values == set()
 
 
 @pytest.mark.parametrize("layer", ["domain", "interactors"])
