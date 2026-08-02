@@ -70,7 +70,7 @@ def resolve_folder(
         return data_root / "projects" / project_id
 
     if source.path:
-        folder = Path(source.path).expanduser().resolve()
+        folder = store.resolve(Path(source.path))
         try:
             is_existing_dir = store.is_dir(folder)
         except FileNotFoundError:

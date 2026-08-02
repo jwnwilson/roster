@@ -66,3 +66,35 @@ def test_reading_a_symlink_pointing_outside_the_root_is_refused(tmp_path):
     # Act / Assert
     with pytest.raises(FileNotFoundError):
         store.read_text(tmp_path / "link.md")
+
+
+def test_resolve_collapses_dot_segments(store, tmp_path):
+    # Arrange
+    messy = tmp_path / "a" / ".." / "b"
+
+    # Act / Assert
+    assert store.resolve(messy) == tmp_path / "b"
+
+
+def test_resolve_does_not_require_the_path_to_exist_or_be_inside_the_root(store, tmp_path):
+    # A folder a domain caller is deciding *about* — e.g. an external local/git project
+    # folder — legitimately lives outside this store's root; resolve() must not refuse it
+    # the way every other FileStore method does.
+    elsewhere = tmp_path.parent / "some-other-project" / "nested"
+
+    # Act / Assert — must not raise
+    resolved = store.resolve(elsewhere)
+    assert resolved == elsewhere
+
+
+def test_writing_a_deeply_nested_path_registers_every_intermediate_directory(store, tmp_path):
+    # A write under a path whose parents were never separately mkdir()'d must still leave
+    # every intermediate directory looking like a real directory — mirrors what
+    # `mkdir(parents=True)` does for the real filesystem, and both backends must agree.
+    # Arrange / Act
+    store.write_text_atomic(tmp_path / "a" / "b" / "c.md", "x")
+
+    # Assert
+    assert store.is_dir(tmp_path / "a") is True
+    assert store.is_dir(tmp_path / "a" / "b") is True
+    assert store.list(tmp_path / "a" / "b", "*.md") == [tmp_path / "a" / "b" / "c.md"]

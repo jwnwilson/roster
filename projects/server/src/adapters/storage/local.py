@@ -46,3 +46,9 @@ class LocalFileStore:
 
     def mkdir(self, path: Path) -> None:
         self._checked(path).mkdir(parents=True, exist_ok=True)
+
+    def resolve(self, path: Path) -> Path:
+        # Not routed through _checked — see ports.FileStore.resolve. This is the one
+        # method allowed to touch a path outside the root, and the one place `~` and
+        # symlinks legitimately get resolved against the real filesystem.
+        return path.expanduser().resolve()

@@ -17,6 +17,18 @@ class FileStore(Protocol):
     def is_dir(self, path: Path) -> bool: ...
     def mkdir(self, path: Path) -> None: ...
 
+    def resolve(self, path: Path) -> Path:
+        """Canonicalise `path` (expand `~`, collapse `.`/`..`) without requiring it to exist
+        or to be inside this store's root.
+
+        Deliberately not gated by containment, unlike every other method here: this is how
+        domain code decides *what a path is* — e.g. turning a user-supplied project folder
+        into its canonical form — which has to work for a folder that legitimately lives
+        outside this store's root (an external local/git project can be anywhere). Checking
+        whether the result is usable is a separate, later step via `is_dir`/`exists`.
+        """
+        ...
+
 
 def resolve_within(root: Path, path: Path) -> Path:
     """Resolve `path` and refuse it unless it lives inside `root`.
