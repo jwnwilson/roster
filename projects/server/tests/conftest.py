@@ -58,4 +58,8 @@ async def client(engine, settings):
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http_client:
+        # Exposed so individual tests can add their own dependency_overrides
+        # (e.g. swapping in a RunManager wired to a failing runtime) without
+        # every test needing its own bespoke client fixture.
+        http_client.app = app
         yield http_client

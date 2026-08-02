@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,6 +21,17 @@ from domain.work_items import WorkItem
 logger = logging.getLogger("roster.runs")
 
 TIMESTAMP_FORMAT = "%Y-%m-%dT%H-%M-%SZ"
+
+
+@dataclass(frozen=True)
+class CompactionResult:
+    """Outcome of one compaction attempt — carried explicitly so a caller never
+    has to infer "did anything happen" from the digest text alone."""
+
+    compacted: bool
+    digest: str
+    folded_entries: int
+    error: str | None = None
 
 
 class RunManager:
@@ -112,27 +124,24 @@ class RunManager:
             logger.exception("post-run memory write failed for run %s", run_id)
 
     async def write_memory(
-        self,
-        folder: Path,
-        agent: Agent,
-        run_id: str,
-        timestamp: str,
-        summary: str,
-        force: bool = False,
+        self, folder: Path, agent: Agent, run_id: str, timestamp: str, summary: str
     ) -> None:
         """Append this run's entry, then compact if the journal has grown enough.
 
-        `force` skips the should_compact() threshold check and always attempts
-        a compaction — used by the manual "compact now" endpoint, which has no
-        threshold of its own to honour. It still goes through the same lock and
-        the same failure handling as every other compaction.
+        A run-triggered compaction failure is never fatal to the run: it's
+        logged, best-effort recorded as a RunEvent, and swallowed here — the
+        next finished run (or a manual /memory/compact call) retries it. This
+        is deliberately different from compact_now()'s own caller-facing
+        contract (see there) — a run must not fail because memory housekeeping
+        did, but an explicit "compact now" request must not silently claim
+        success when it didn't happen.
         """
         store = MemoryStore(folder=folder, settings=self._settings)
         store.append_entry(run_id, timestamp, summary)
 
         entries = store.read_journal()
         total_bytes = sum(len(entry.text.encode()) for entry in entries)
-        if not force and not should_compact(
+        if not should_compact(
             len(entries),
             total_bytes,
             self._settings.memory_compact_entries,
@@ -140,11 +149,27 @@ class RunManager:
         ):
             return
 
+        result = await self.compact_now(folder, agent)
+        if result.error is not None:
+            await self._record_compaction_failure(run_id, result.error)
+
+    async def compact_now(self, folder: Path, agent: Agent) -> CompactionResult:
+        """Fold whatever is currently in the journal into the digest. Never appends.
+
+        Used both by write_memory (above, only once the threshold is crossed)
+        and by the manual /memory/compact endpoint (unconditionally). All of
+        the locking and race-safety lives here, in one place, so both callers
+        share it exactly:
+        """
+        store = MemoryStore(folder=folder, settings=self._settings)
         async with self._compaction_locks[str(folder)]:
-            # Re-read inside the lock: another run may have compacted while we waited.
+            # Read inside the lock: another run may have compacted (or be
+            # compacting) this same folder concurrently.
             entries = store.read_journal()
             if not entries:
-                return
+                return CompactionResult(
+                    compacted=False, digest=store.read_digest(), folded_entries=0
+                )
             try:
                 digest = await self._runtime.summarise(
                     agent,
@@ -153,12 +178,22 @@ class RunManager:
                     self._settings.memory_digest_budget_bytes,
                 )
                 store.compact(digest, [entry.path for entry in entries])
+                return CompactionResult(
+                    compacted=True, digest=digest, folded_entries=len(entries)
+                )
             except Exception as error:
-                # Journal and digest are untouched; the next finished run retries.
+                # Journal and digest are untouched; the caller decides how to
+                # treat this (non-fatal retry for a run, 503 for an explicit
+                # API request) — compact_now itself never raises.
                 logger.exception("compaction failed for %s", folder)
-                await self._record_compaction_failure(run_id, error)
+                return CompactionResult(
+                    compacted=False,
+                    digest=store.read_digest(),
+                    folded_entries=0,
+                    error=str(error),
+                )
 
-    async def _record_compaction_failure(self, run_id: str, error: Exception) -> None:
+    async def _record_compaction_failure(self, run_id: str, message: str) -> None:
         if self._session_factory is None:
             return
         try:
@@ -169,7 +204,7 @@ class RunManager:
                         id=new_id(),
                         run_id=run_id,
                         type="error",
-                        message=f"memory compaction failed: {error}",
+                        message=f"memory compaction failed: {message}",
                         created_at=datetime.now(UTC),
                     ),
                 )

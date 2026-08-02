@@ -70,22 +70,62 @@ async def test_compaction_fires_once_the_threshold_is_crossed(folder):
     assert "project memory" in store.read_digest()
 
 
-async def test_force_compacts_even_when_the_threshold_is_not_crossed(folder):
+async def test_compact_now_folds_a_journal_below_the_normal_threshold(folder):
     # Arrange — the default threshold (10 entries) is nowhere near crossed by
-    # a single entry; force=True must compact anyway.
+    # a single entry; compact_now must fold it anyway since it isn't
+    # threshold-gated at all (that's the whole point of a manual "compact
+    # now" trigger).
     settings = Settings(data_root=folder)
     manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
+    store = MemoryStore(folder=folder, settings=settings)
+    store.append_entry("r1", "2026-08-01T10-00-00Z", "a small entry")
 
     # Act
-    await manager.write_memory(
-        folder=folder, agent=Agent(name="atlas"), run_id="r1",
-        timestamp="2026-08-01T10-00-00Z", summary="entry", force=True,
-    )
+    result = await manager.compact_now(folder, Agent(name="system"))
 
     # Assert
-    store = MemoryStore(folder=folder, settings=settings)
+    assert result.compacted is True
+    assert result.folded_entries == 1
+    assert "project memory" in result.digest
     assert store.read_journal() == []
-    assert "project memory" in store.read_digest()
+
+
+async def test_compact_now_on_an_empty_journal_is_a_clean_no_op(folder):
+    # Arrange — nothing to fold is a legitimate outcome, not an error: the
+    # caller must be able to tell "nothing happened" from "it failed".
+    settings = Settings(data_root=folder)
+    manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
+    store = MemoryStore(folder=folder, settings=settings)
+    store.write_digest("# existing digest")
+
+    # Act
+    result = await manager.compact_now(folder, Agent(name="system"))
+
+    # Assert
+    assert result.compacted is False
+    assert result.folded_entries == 0
+    assert result.error is None
+    assert result.digest == "# existing digest"
+
+
+async def test_compact_now_reports_a_failed_summarise_without_touching_state(folder):
+    # Arrange
+    settings = Settings(data_root=folder)
+    runtime = FakeRuntime(summary_error=RuntimeError("model unavailable"))
+    manager = RunManager(runtime=runtime, settings=settings, session_factory=None)
+    store = MemoryStore(folder=folder, settings=settings)
+    store.write_digest("# untouched digest")
+    store.append_entry("r1", "2026-08-01T10-00-00Z", "entry")
+
+    # Act
+    result = await manager.compact_now(folder, Agent(name="system"))
+
+    # Assert — the caller (the API route) is responsible for turning this
+    # into a 503; compact_now itself never raises
+    assert result.compacted is False
+    assert result.error == "model unavailable"
+    assert store.read_digest() == "# untouched digest"
+    assert len(store.read_journal()) == 1
 
 
 async def test_a_failing_compaction_leaves_the_journal_intact(folder):
@@ -101,6 +141,45 @@ async def test_a_failing_compaction_leaves_the_journal_intact(folder):
     )
 
     # Assert — the entry survives so the next run can retry (spec §5 Safety)
+    assert len(MemoryStore(folder=folder, settings=settings).read_journal()) == 1
+
+
+async def test_a_run_triggered_compaction_failure_is_recorded_as_a_run_event(folder, engine):
+    # Arrange — a run-triggered compaction failure must never fail the run
+    # (proven above), but it must still be visible somewhere: recorded as a
+    # RunEvent on the run that triggered it, distinct from an explicit
+    # /memory/compact call (which the API layer turns into a 503 instead).
+    settings = Settings(data_root=folder, memory_compact_entries=1)
+    runtime = FakeRuntime(summary_error=RuntimeError("model unavailable"))
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    manager = RunManager(runtime=runtime, settings=settings, session_factory=factory)
+
+    project = Project(
+        id="proj1", name="P", source=ProjectSource(kind="none"), folder_path=str(folder)
+    )
+    work_item = WorkItem(
+        id="wi1", key="ROS-1", project_id="proj1", type="task", title="Do it", sequence=1
+    )
+    async with factory() as session:
+        await projects_db.insert_project(session, project)
+        await work_items_db.insert_work_item(session, work_item)
+        await runs_db.insert_run(
+            session,
+            Run(id="run1", project_id="proj1", work_item_id="wi1", agent_name="atlas"),
+        )
+
+    # Act
+    await manager.write_memory(
+        folder=folder, agent=Agent(name="atlas"), run_id="run1",
+        timestamp="2026-08-01T10-00-00Z", summary="entry",
+    )
+
+    # Assert
+    async with factory() as session:
+        events = await runs_db.list_events(session, "run1")
+    failure_events = [e for e in events if e.type == "error"]
+    assert len(failure_events) == 1
+    assert "compaction failed" in failure_events[0].message
     assert len(MemoryStore(folder=folder, settings=settings).read_journal()) == 1
 
 

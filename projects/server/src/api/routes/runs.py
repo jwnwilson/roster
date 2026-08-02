@@ -1,5 +1,4 @@
 import asyncio
-from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -11,14 +10,13 @@ from adapters.agents.folder import read_agent
 from adapters.db import projects as projects_db
 from adapters.db import runs as runs_db
 from adapters.db import work_items as work_items_db
-from adapters.memory.store import MemoryStore
 from api.deps import get_run_manager, get_session, get_session_factory
 from api.envelope import ok
 from config.settings import Settings, agents_dir, get_settings
 from domain.agents import Agent
 from domain.ids import new_id
 from domain.runs import Run
-from runs.manager import TIMESTAMP_FORMAT, RunManager
+from runs.manager import RunManager
 
 # This router intentionally carries no shared `prefix`: it fronts three distinct
 # top-level resources (work items' runs, runs themselves, and a project's memory),
@@ -29,11 +27,11 @@ POLL_INTERVAL_SECONDS = 0.25
 TERMINAL_STATUSES = ("complete", "failed")
 
 # A manual "compact now" call isn't tied to any run or any agent that actually
-# did work — this stands in for both so it can still go through the exact same
-# RunManager.write_memory path (and its lock/failure handling) that a real run
-# uses, rather than a second, divergent compaction code path.
+# did work — this stands in for the agent so compact_now can still reach
+# runtime.summarise. FakeRuntime ignores it; a real runtime will need to get
+# its model from somewhere else for this path — noted as a follow-up, not
+# solved here.
 _MANUAL_COMPACTION_AGENT = Agent(name="system")
-_MANUAL_COMPACTION_RUN_ID = "manual-compact"
 
 
 class RunIn(BaseModel):
@@ -132,26 +130,24 @@ async def stream_run_events(
 async def compact_memory(
     project_id: str,
     session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings),
     manager: RunManager = Depends(get_run_manager),
 ) -> dict:
     project = await projects_db.get_project(session, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="project not found")
 
-    # force=True: an operator-triggered compaction has no journal-size threshold
-    # of its own to honour, but still shares the same lock and the same
-    # never-fail-the-caller handling as a run finishing normally — a failed
-    # forced compaction is reported as the (unchanged) current digest, not a
-    # 500, since the journal entry it appended is retried by the next run
-    # anyway (spec §5 Safety).
-    await manager.write_memory(
-        folder=Path(project.folder_path),
-        agent=_MANUAL_COMPACTION_AGENT,
-        run_id=_MANUAL_COMPACTION_RUN_ID,
-        timestamp=datetime.now(UTC).strftime(TIMESTAMP_FORMAT),
-        summary="",
-        force=True,
+    # Unlike write_memory's own (non-fatal) run-triggered compaction, an
+    # explicit "compact now" request must not silently claim success when
+    # nothing actually happened: a failure here is reported as 503, not 200
+    # with the stale digest, so the caller can't mistake it for a real no-op.
+    result = await manager.compact_now(Path(project.folder_path), _MANUAL_COMPACTION_AGENT)
+    if result.error is not None:
+        raise HTTPException(status_code=503, detail=result.error)
+
+    return ok(
+        {
+            "digest": result.digest,
+            "compacted": result.compacted,
+            "folded_entries": result.folded_entries,
+        }
     )
-    store = MemoryStore(folder=Path(project.folder_path), settings=settings)
-    return ok({"digest": store.read_digest()})
