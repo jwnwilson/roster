@@ -61,7 +61,7 @@ async def test_run_events_accumulate_from_the_fake_runtime(client, work_item):
 
     # Assert
     assert run.json()["data"]["status"] == "complete"
-    assert any(event["type"] == "tool_call" for event in events.json()["data"])
+    assert any(event["type"] == "file_write" for event in events.json()["data"])
 
 
 @pytest.mark.parametrize(
@@ -160,7 +160,7 @@ async def test_event_stream_yields_events_and_closes_once_the_run_completes(clie
                 seen_types.append(line.removeprefix("event:").strip())
 
     # Assert
-    assert "tool_call" in seen_types
+    assert "file_write" in seen_types
     final = await client.get(f"/runs/{run_id}")
     assert final.json()["data"]["status"] == "complete"
 

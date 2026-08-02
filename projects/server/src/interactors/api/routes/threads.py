@@ -1,9 +1,16 @@
+import asyncio
 from datetime import UTC, datetime
+from time import monotonic
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
 
 from adapters.db.uow import AsyncUnitOfWork
+from adapters.storage.ports import FileStore
+from config.settings import Settings, agents_dir, get_settings
+from domain.agents import Agent, agent_folder, read_agent
+from domain.errors import RecordNotFound
 from domain.ids import new_id
 from domain.threads import (
     AuthorKind,
@@ -16,8 +23,9 @@ from domain.threads import (
     summarise_threads,
     validate_transition,
 )
-from interactors.api.deps import get_uow
+from interactors.api.deps import get_file_store, get_turn_manager, get_uow
 from interactors.api.envelope import ok, ok_list
+from interactors.turns.manager import AgentTurnManager
 
 router = APIRouter(prefix="/threads", tags=["threads"])
 
@@ -26,6 +34,21 @@ router = APIRouter(prefix="/threads", tags=["threads"])
 # what real pagination will look like once a caller asks for it.
 _LIST_PAGE_SIZE = 50
 _LIST_PAGE_NUMBER = 1
+
+POLL_INTERVAL_SECONDS = 0.25
+
+# How long an open thread may produce nothing at all before the stream gives up.
+# Roster is a single-process server, so an endpoint that can poll forever is a
+# denial of service against itself: one idle thread per browser tab is enough.
+# Ending the stream does not end anything — the client reconnects and picks up
+# from the messages already in the database.
+STREAM_IDLE_TIMEOUT_SECONDS = 300.0
+STREAM_TIMEOUT_EVENT = "stream_timeout"
+STREAM_TIMEOUT_MESSAGE = (
+    "no messages for "
+    f"{int(STREAM_IDLE_TIMEOUT_SECONDS)}s and the thread is still open; "
+    "closing the stream, reconnect to resume"
+)
 
 
 class ThreadIn(BaseModel):
@@ -49,6 +72,8 @@ class MessageIn(BaseModel):
     kind: MessageKind = "text"
     content: str
     payload: dict | None = None
+    # Naming an agent is what starts its turn. Absent, the message is just stored.
+    agent_name: str | None = None
 
 
 async def _summarise(uow: AsyncUnitOfWork, thread_ids: list[str]) -> dict[str, ThreadSummary]:
@@ -153,7 +178,13 @@ async def list_messages(thread_id: str, uow: AsyncUnitOfWork = Depends(get_uow))
 
 @router.post("/{thread_id}/messages", status_code=status.HTTP_201_CREATED)
 async def create_message(
-    thread_id: str, payload: MessageIn, uow: AsyncUnitOfWork = Depends(get_uow)
+    thread_id: str,
+    payload: MessageIn,
+    background: BackgroundTasks,
+    uow: AsyncUnitOfWork = Depends(get_uow),
+    settings: Settings = Depends(get_settings),
+    manager: AgentTurnManager = Depends(get_turn_manager),
+    store: FileStore = Depends(get_file_store),
 ) -> dict:
     thread = await uow.threads.read(thread_id)
 
@@ -161,7 +192,7 @@ async def create_message(
         id=new_id(),
         thread_id=thread_id,
         created_at=datetime.now(UTC),
-        **payload.model_dump(),
+        **payload.model_dump(exclude={"agent_name"}),
     )
     created = await uow.messages.create(message)
 
@@ -169,6 +200,87 @@ async def create_message(
     # lives in the domain; this only applies its result.
     moved = status_after_message(thread.status, created.kind)
     if moved != thread.status:
-        await uow.threads.update(thread_id, thread.model_copy(update={"status": moved}))
+        thread = await uow.threads.update(
+            thread_id, thread.model_copy(update={"status": moved})
+        )
+
+    if payload.agent_name is not None:
+        project = await uow.projects.read(thread.project_id)
+        # A broken or missing agent folder never raises here — read_agent degrades
+        # to a disabled Agent, and FakeRuntime does not care about status. A future
+        # runtime that actually shells out is expected to refuse a disabled agent.
+        agent = read_agent(agent_folder(agents_dir(settings), payload.agent_name), store)
+
+        # Handed to `background` rather than launched here, and the ordering is
+        # load-bearing: this handler returns *before* get_uow commits. Launching
+        # inline would start a task inserting messages — which carry a foreign key
+        # to threads — over its own connection, against a thread row no other
+        # connection can see yet. Starlette runs background tasks after the
+        # response, which is after the dependency teardown that commits.
+        background.add_task(
+            _launch_once_committed, manager, thread, agent, project.folder_path
+        )
 
     return ok(created.model_dump(mode="json"))
+
+
+async def _launch_once_committed(
+    manager: AgentTurnManager, thread: Thread, agent: Agent, project_folder: str
+) -> None:
+    """Start the turn on the event loop, from a background task.
+
+    `async def` is required, not stylistic: Starlette hands a *synchronous*
+    background function to a worker thread, and `launch` calls
+    `asyncio.create_task`, which needs the running loop.
+    """
+    manager.launch(thread, agent, project_folder)
+
+
+@router.get("/{thread_id}/stream")
+async def stream_thread(thread_id: str, request: Request):
+    # Deliberately not `Depends(get_uow)`: that transaction is the *request's*, and
+    # it is committed and closed the moment this handler returns the response —
+    # long before the generator below starts polling. A stream needs a fresh, short
+    # transaction per poll, so it goes to the same single source every dependency
+    # reads and builds its own.
+    session_factory = request.app.state.session_factory
+
+    async def event_source():
+        seen = 0
+        last_progress = monotonic()
+        while True:
+            # sse_starlette already stops iterating a generator whose consumer went
+            # away, but a dead client can otherwise leave this loop polling forever
+            # against a thread that is never resolved.
+            if await request.is_disconnected():
+                return
+
+            # A short transaction per poll, not one held open for the stream's
+            # lifetime: the turn manager writes each message from its own short
+            # transaction in a background task, and only a committed write is
+            # visible to a fresh transaction here.
+            async with AsyncUnitOfWork(session_factory).transaction() as tx:
+                try:
+                    thread = await tx.threads.read(thread_id)
+                except RecordNotFound:
+                    return
+                page = await tx.messages.read_multi(
+                    filters={"thread_id": thread_id}, page_size=0, order_by="created_at"
+                )
+
+            for message in page.results[seen:]:
+                yield {"event": message.kind, "id": message.id, "data": message.content}
+            if len(page.results) > seen:
+                seen = len(page.results)
+                last_progress = monotonic()
+
+            if thread.status == "resolved":
+                return
+            if monotonic() - last_progress >= STREAM_IDLE_TIMEOUT_SECONDS:
+                # Said out loud rather than closing silently: a bare disconnect is
+                # indistinguishable from the thread being finished, and it is not.
+                yield {"event": STREAM_TIMEOUT_EVENT, "data": STREAM_TIMEOUT_MESSAGE}
+                return
+            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+
+    return EventSourceResponse(event_source())

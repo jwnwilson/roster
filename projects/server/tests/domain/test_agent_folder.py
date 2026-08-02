@@ -5,9 +5,11 @@ import pytest
 from adapters.storage.local import LocalFileStore
 from adapters.storage.memory import InMemoryFileStore
 from domain.agents import (
+    Agent,
     UnknownAgent,
     agent_folder,
     create_agent_folder,
+    mark_working,
     read_agent,
     read_agents,
 )
@@ -233,3 +235,30 @@ def test_non_scalar_model_yields_disabled_agent(tmp_path, store):
     assert "model" in broken.problem
     good = next(a for a in agents if a.name == "good")
     assert good.status == "active"
+
+
+def test_an_agent_taking_a_turn_is_marked_working():
+    agents = [Agent(name="atlas", status="active"), Agent(name="beacon", status="active")]
+
+    marked = mark_working(agents, {"atlas"})
+
+    assert [(a.name, a.status) for a in marked] == [("atlas", "working"), ("beacon", "active")]
+
+
+def test_a_disabled_agent_is_never_marked_working():
+    # A broken folder cannot be taking a turn; hiding the reason behind a healthy
+    # status would waste the whole disabled-with-reason mechanism.
+    agents = [Agent(name="cinder", status="disabled", problem="AGENT.md is missing")]
+
+    marked = mark_working(agents, {"cinder"})
+
+    assert marked[0].status == "disabled"
+    assert marked[0].problem == "AGENT.md is missing"
+
+
+def test_marking_leaves_the_originals_untouched():
+    agents = [Agent(name="atlas", status="active")]
+
+    mark_working(agents, {"atlas"})
+
+    assert agents[0].status == "active"

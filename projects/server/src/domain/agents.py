@@ -151,3 +151,18 @@ def read_agents(agents_root: Path, store: FileStore) -> list[Agent]:
         ],
         key=lambda a: a.name,
     )
+
+
+def mark_working(agents: list[Agent], busy: set[str]) -> list[Agent]:
+    """Spec §3: an in-flight turn is the only thing that makes an agent Working.
+
+    A disabled agent stays disabled — a broken folder cannot be taking a turn, and
+    letting `busy` override that would hide the reason the folder is broken behind
+    a status that looks healthy.
+    """
+    return [
+        agent.model_copy(update={"status": "working"})
+        if agent.name in busy and agent.status != "disabled"
+        else agent
+        for agent in agents
+    ]

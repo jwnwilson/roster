@@ -1,4 +1,12 @@
+import asyncio
+
 import pytest
+
+from adapters.db.uow import AsyncUnitOfWork
+from adapters.storage.local import LocalFileStore
+from config.settings import get_settings
+from domain.agents import create_agent_folder
+from interactors.turns.manager import AgentTurnManager
 
 
 @pytest.fixture
@@ -230,3 +238,113 @@ async def test_a_late_question_does_not_reopen_a_resolved_thread(client, thread_
     thread = (await client.get(f"/threads/{thread_id}")).json()["data"]
     # Reopening is what would permit a second journal entry for the same work.
     assert thread["status"] == "resolved"
+
+
+@pytest.fixture
+def agent_folder_on_disk(settings):
+    root = settings.data_root / "agents"
+    root.mkdir(parents=True, exist_ok=True)
+    create_agent_folder(
+        root / "atlas",
+        LocalFileStore(settings.data_root.parent),
+        "You are atlas.",
+        {"model": "claude-opus-5", "token_limit": 200000},
+    )
+    return "atlas"
+
+
+async def test_naming_an_agent_starts_its_turn_and_its_output_lands(
+    client, thread_id, agent_folder_on_disk
+):
+    # Act — the background task runs after the response, so the messages appear
+    # on the next request rather than in this one's body.
+    await client.post(
+        f"/threads/{thread_id}/messages",
+        json={"author_kind": "user", "content": "start please",
+              "agent_name": agent_folder_on_disk},
+    )
+
+    # Assert
+    messages = (await client.get(f"/threads/{thread_id}/messages")).json()["data"]
+    assert [m["content"] for m in messages][0] == "start please"
+    assert any(m["author_name"] == "atlas" for m in messages)
+    assert any(m["kind"] == "file_write" for m in messages)
+
+
+async def test_a_message_naming_no_agent_starts_nothing(client, thread_id):
+    await client.post(
+        f"/threads/{thread_id}/messages", json={"author_kind": "user", "content": "just a note"}
+    )
+
+    messages = (await client.get(f"/threads/{thread_id}/messages")).json()["data"]
+    assert [m["content"] for m in messages] == ["just a note"]
+
+
+async def test_an_agent_mid_turn_is_reported_as_working(client, thread_id, agent_folder_on_disk):
+    # Arrange — a runtime that blocks so the turn is observably in flight. The
+    # manager is primed onto app.state, which is the one place get_turn_manager
+    # looks, so the app uses this one rather than building its own.
+    release = asyncio.Event()
+
+    class BlockingRuntime:
+        async def execute(self, agent, project_folder, task):
+            await release.wait()
+            yield ("text", "done")
+
+        async def summarise(self, agent, digest, entries, budget_bytes):
+            return digest
+
+    settings = client.app.dependency_overrides[get_settings]()
+    client.app.state.turn_manager = AgentTurnManager(
+        runtime=BlockingRuntime(),
+        settings=settings,
+        uow_factory=lambda: AsyncUnitOfWork(client.app.state.session_factory),
+    )
+
+    # Act
+    await client.post(
+        f"/threads/{thread_id}/messages",
+        json={"author_kind": "user", "content": "go", "agent_name": agent_folder_on_disk},
+    )
+
+    # Assert — spec §3: an in-flight turn is the only source of Working
+    agents = (await client.get("/agents")).json()["data"]
+    assert [a["status"] for a in agents if a["name"] == "atlas"] == ["working"]
+
+    # Let the turn finish so the task does not outlive the test.
+    release.set()
+
+
+async def test_an_idle_agent_is_not_reported_as_working(client, agent_folder_on_disk):
+    agents = (await client.get("/agents")).json()["data"]
+
+    assert [a["status"] for a in agents if a["name"] == "atlas"] == ["active"]
+
+
+async def test_the_stream_closes_on_a_resolved_thread(client, thread_id):
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    async with client.stream("GET", f"/threads/{thread_id}/stream") as response:
+        lines = [line async for line in response.aiter_lines()]
+
+    # A resolved thread is finished: the stream ends rather than polling forever.
+    assert response.status_code == 200
+    assert not any(line.startswith("event: text") for line in lines)
+
+
+async def test_the_stream_replays_the_messages_already_in_the_thread(client, thread_id):
+    await _post_message(client, thread_id, "already here")
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    async with client.stream("GET", f"/threads/{thread_id}/stream") as response:
+        body = "".join([line async for line in response.aiter_lines()])
+
+    assert "already here" in body
+
+
+async def test_the_stream_on_a_missing_thread_ends_without_error(client):
+    async with client.stream("GET", "/threads/nope/stream") as response:
+        lines = [line async for line in response.aiter_lines()]
+
+    assert response.status_code == 200
+    assert not any(line.startswith("event: text") for line in lines)

@@ -9,6 +9,7 @@ from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
 from config.settings import Settings, get_settings
 from interactors.runs.manager import RunManager
+from interactors.turns.manager import AgentTurnManager
 
 
 async def get_uow(request: Request) -> AsyncIterator[AsyncUnitOfWork]:
@@ -104,4 +105,44 @@ async def get_run_manager(
             uow_factory=lambda: AsyncUnitOfWork(session_factory),
         )
         request.app.state.run_manager = manager
+    return manager
+
+
+async def get_turn_manager(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> AgentTurnManager:
+    """One AgentTurnManager per app instance, not per request.
+
+    Its per-folder compaction locks are only meaningful if every turn for a given
+    project routes through the same instance — a fresh manager per request would
+    hand out a fresh, unshared lock dict and defeat them. Its in-flight set is the
+    only source of `Working` status (spec §3), which a per-request instance would
+    make permanently empty.
+
+    It cannot take the request's uow: its background task writes messages *after*
+    the response, by which time the request's transaction is committed and its
+    session closed. So it takes a factory built over `app.state.session_factory`
+    and opens a short-lived transaction per write.
+
+    This is `async def`, not a plain `def`, on purpose. FastAPI runs a synchronous
+    dependency in a threadpool; two concurrent first requests could then each run
+    the check-then-set below on a different OS thread, both observe the manager
+    unset, and each construct its own with its own lock dict and its own in-flight
+    set. Declaring this `async def` makes FastAPI await it directly on the single
+    event loop, and nothing here awaits between the `getattr` and the assignment,
+    so the check-then-set is effectively atomic without needing a lock.
+    """
+    # Safety depends on this staying uninterrupted: do not add an `await` between
+    # the check and the assignment below, or the threadpool-style race this
+    # function exists to avoid comes back — silently.
+    manager = getattr(request.app.state, "turn_manager", None)
+    if manager is None:
+        session_factory = request.app.state.session_factory
+        manager = AgentTurnManager(
+            runtime=_build_runtime(settings),
+            settings=settings,
+            uow_factory=lambda: AsyncUnitOfWork(session_factory),
+        )
+        request.app.state.turn_manager = manager
     return manager
