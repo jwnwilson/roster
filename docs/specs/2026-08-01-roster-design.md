@@ -14,8 +14,9 @@ tasks.
 
 A **project is any body of work the operator wants agents to carry out** — a code repository,
 a research effort, a set of documents, a recurring ops chore. Roster is not a git tool that
-happens to have a UI; git is one capability a project may have, detected rather than assumed
-(§4).
+happens to have a UI: a project declares its source as a git repository, a plain local folder,
+or no code at all, and every project keeps its memory and its output in a `.roster/` folder of
+its own (§4).
 
 The defining constraint is that **roster is not a distributed service**. It runs as local
 processes on one machine, for one person. There is no tenancy, no authentication, no
@@ -129,13 +130,13 @@ Runtime data lives under a configurable root, defaulting to `~/.roster/`:
       AGENT.md       # instructions
       skills/        # one folder per skill
       config.yaml    # model, token limit, temperature
-  projects/          # one folder per project — see §4 and §5
+  projects/          # managed project folders — only for source.kind = "none" projects
     <project_id>/
-      MEMORY.md      # compacted digest
-      journal/       # append-only entries, one per finished run
-      snapshots/     # previous digests, written before each compaction
-      workspace/     # managed workspace — only when the project has no external folder
+      .roster/       # memory + artifacts, exactly as in any other project folder — §4
 ```
+
+Projects with a `git` or `local` source keep everything inside their own folder; the data root
+holds only the database, the agent folders, and managed project folders for source-less work.
 
 Keeping data out of the repo means the repo stays clean, `git clean` is safe, and an
 Electron build has an obvious per-user location to target.
@@ -144,14 +145,14 @@ Electron build has an obvious per-user location to target.
 
 Agent runs execute as **subprocesses spawned from the API process**. A `RunManager` owns one
 asyncio task per run; the task spawns the agent subprocess with `cwd` set to the project's
-**workspace** (§4), streams its stdout into `RunEvent` rows, and pushes those events to the UI
-over SSE.
+**project folder** (§4), streams its stdout into `RunEvent` rows, and pushes those events to the
+UI over SSE.
 
 ```
 uvicorn (FastAPI)
   └─ RunManager (asyncio)
-       ├─ subprocess: agent "atlas"   cwd=~/repos/api-service              (git workspace)
-       ├─ subprocess: agent "beacon"  cwd=~/.roster/projects/<id>/workspace (managed)
+       ├─ subprocess: agent "atlas"   cwd=~/repos/api-service          (source.kind=git)
+       ├─ subprocess: agent "beacon"  cwd=~/.roster/projects/<id>      (source.kind=none)
        └─ events → SQLite → SSE → UI
 ```
 
@@ -191,7 +192,7 @@ local single-user operation.
 
 | Entity | Storage | Notes |
 |---|---|---|
-| `Project` | DB | name, workspace path, detected capabilities, item count — see below |
+| `Project` | DB | name, `source.kind` (`git`/`local`/`none`), source URL or path, resolved project-folder path, item count — see below |
 | `WorkItem` | DB | type `epic`/`feature`/`task`; status `backlog`/`todo`/`in_progress`/`in_review`/`done`; priority; parent epic/feature; spec markdown; token usage |
 | `Thread` | DB | conversation scope: global, project, or work-item |
 | `Message` | DB | role `user`/`agent`/`lead_agent`, content, attachments |
@@ -201,45 +202,70 @@ local single-user operation.
 | `Secret` | DB | name + encrypted value, referenced by agents |
 | `Attachment` | DB + disk | uploads and agent-produced files |
 | `Agent` | **disk only** | read from `~/.roster/agents/<name>/`; never written to the DB |
-| `ProjectMemory` | **disk only** | digest, journal, and snapshots under `~/.roster/projects/<project_id>/` — see §5 |
+| `ProjectMemory` | **disk only** | digest, journal, and snapshots under `<project folder>/.roster/memory/` — see §5 |
+| `Artifact` | disk + DB row | files under `<project folder>/.roster/artifacts/`, indexed as `Attachment`s |
 
-### Projects and workspaces
+### Projects, source, and the `.roster` folder
 
-A project is a **named body of work with a workspace** — one directory that agents run in. It is
-not required to be, or contain, a git repository.
+A project is a **named body of work with a project folder** — one directory that agents run in.
+It is not required to be, or contain, a git repository.
 
-A workspace arrives one of two ways:
+**Source is declared, not inferred.** At creation the operator picks one of three source kinds,
+matching the design's `PROJECT TYPE` control:
 
-- **External** — the operator points the project at an existing folder (`~/repos/api-service`,
-  `~/Documents/q3-research`). Roster reads and writes in place; it never copies or moves it.
-- **Managed** — the operator creates a project without pointing anywhere, and roster creates
-  `~/.roster/projects/<project_id>/workspace/` for it.
-
-**Capabilities are detected, not declared.** On project creation and at each run start, roster
-inspects the workspace and records what it finds. The only capability in scope now is `git`
-(a `.git` directory is present). There is no `kind` field and no taxonomy to maintain: an
-empty folder is a valid project, and `git init`-ing that folder later upgrades the project on
-the next run with no migration and no edit to its record.
-
-**The run lifecycle branches on capability, not on project type:**
-
-| Workspace | Terminal step | Deliverable |
+| `source.kind` | Field | Project folder |
 |---|---|---|
-| git repository | `pr` | a branch, commits, and an opened pull request |
-| any other folder | `deliver` | files written in the workspace, registered as `Attachment`s, plus a summary posted to the work item's thread |
+| `git` | remote URL, or the path of an existing local repository | the repository working tree |
+| `local` | path to an existing folder | that folder |
+| `none` | — | `~/.roster/projects/<project_id>/`, created by roster |
+
+Declaring beats detecting here for one reason: detection cannot tell "this project has no code"
+from "this project's folder happens to be empty", and those need different run behaviour.
+
+**Every project folder gets a `.roster/` directory.** Memory and artifacts live inside the
+project, not in a parallel tree keyed by ID:
+
+```
+<project folder>/
+  .roster/
+    memory/
+      MEMORY.md      # compacted digest — see §5
+      journal/       # append-only entries, one per finished run
+      snapshots/     # previous digests
+    artifacts/       # specs, notes, reports, agent-generated files
+  …the project's own files…
+```
+
+The artifact store has no location choice: it is always `<project folder>/.roster/artifacts`.
+Every project has one, including `source.kind = "none"` projects, which is the point — work with
+no code still has a durable, reviewable home for its output.
+
+**`.roster/` is not git-ignored.** When the project folder is a repository, memory and artifacts
+are tracked like any other file, so they travel with the repo and show up in review. Roster
+never commits on its own: it writes files, and those changes ride along in whatever commit the
+agent makes. A compaction is not a commit.
+
+**The run lifecycle branches on source kind at the terminal step only:**
+
+| `source.kind` | Terminal step | Deliverable |
+|---|---|---|
+| `git` | `pr` | a branch, commits (including anything written under `.roster/`), and an opened pull request |
+| `local` or `none` | `deliver` | files written to `.roster/artifacts/`, registered as `Attachment`s, plus a summary posted to the work item's thread |
 
 Everything before the terminal step — plan, work, verify, approval gates, the memory write — is
-identical on both paths. An agent on a research project writes documents and a summary; an
-agent on a repository writes code and opens a PR. Neither path is the privileged one.
+identical on all three. An agent on a research project writes documents and a summary; an agent
+on a repository writes code and opens a PR. Neither path is the privileged one.
 
 What this forces on the rest of the design:
 
-- Nothing in `domain/` may assume a repository exists. Git is a capability check at the edge,
-  never an ambient assumption.
+- Nothing in `domain/` may assume a repository exists. Git is checked at the edge from the
+  declared source kind, never an ambient assumption.
 - A work item is not "a change to code". Its `spec` markdown states the task, whatever its
   nature, and its status vocabulary (`backlog` … `in_review` … `done`) is already generic.
-- `Attachment` is the general deliverable channel, not just an upload inbox — it is how
-  non-repo work leaves a run in reviewable form.
+- `Attachment` records point at files inside `.roster/artifacts/`; it is the general deliverable
+  channel, not just an upload inbox.
+- Agents get write access to `.roster/` in the project folder they are running in, and nowhere
+  else under it that the task does not require.
 
 **Agents are folder-backed.** `AGENT.md`, `skills/`, and `config.yaml` on disk are the source
 of truth; roster reads them and never stores agent configuration itself. Renaming an agent in
@@ -262,13 +288,17 @@ a project reads the same digest.
 ### Layout
 
 ```
-~/.roster/projects/<project_id>/
+<project folder>/.roster/memory/
   MEMORY.md                                   # compacted digest — what agents read
   journal/
     2026-08-01T14-22-03Z-run-<run_id>.md      # append-only, one file per finished run
   snapshots/
     2026-08-01T14-22-05Z-MEMORY.md            # digest as it was before a compaction
 ```
+
+Memory sits inside the project it describes, alongside `.roster/artifacts/` (§4), so a project
+carries its own context: copy or clone the folder and the memory comes with it. Where the project
+folder is a repository, memory is tracked and reviewable like any other file.
 
 Memory lives on disk rather than in the database because agents are filesystem-native: an agent
 subprocess can read `MEMORY.md` directly, the same way it reads `AGENT.md`. Nothing about memory
@@ -374,15 +404,17 @@ Create Work Item modals.
 Sidebar navigation is Dashboard · Threads · Agents · MCP Servers, with the PROJECTS group
 below carrying a `+` button.
 
-**Deviation from the handoff.** The design assumes every project is a git repository: the
-sidebar uses a git-repo glyph and the Create Project modal asks for a repo URL. Roster's model
-is workspace-first (§4), so three things change and nothing else does:
+**Deviation from the handoff.** The design's Create Project modal carries a required
+`ARTIFACT STORE` block (Artifact repo · Local folder · Same as project). Roster fixes that
+location at `<project folder>/.roster/artifacts` (§4), so:
 
-- Create Project asks for a **workspace folder**, defaulting to "create a managed workspace for
-  me". No repo URL field.
-- Git is shown as a **detected badge** on the project, never asked for.
-- The sidebar glyph is a neutral project mark, with a small git indicator only on projects
-  where a repository was detected.
+- The artifact-store block is **removed** from the modal. The modal keeps the `PROJECT TYPE`
+  segmented control (Git repository · Local folder · No code) and its matching field exactly as
+  designed.
+- The artifact-store chip in the A/B topbar stays, but it is informational — it shows the path
+  and opens the folder; it is not a picker.
+- The sidebar keeps the design's icon rule as-is: git glyph for `source.kind = "git"`, plain
+  folder glyph otherwise.
 
 Mock-first is the default (`VITE_USE_MOCKS=true`), so the UI runs and is developed with no
 backend. A live-API flag proxies `/api` to the local server.
@@ -471,8 +503,10 @@ future work does not reintroduce it by reflex:
 | Horizontal scaling, multi-node coordination | Not a distributed service |
 | Vector store / embedding retrieval over memory | Memory is a small compacted digest read in full, not a corpus to search |
 | Per-agent private memory | Memory is project-scoped and shared; agents differ by instructions and skills, not recall |
-| Non-git version control (svn, hg) | `git` is the one detected capability; every other workspace is simply a folder |
-| A project-type taxonomy | Capabilities are detected from the workspace, not declared at creation |
+| Non-git version control (svn, hg) | `source.kind = "local"` covers any other folder |
+| A configurable artifact-store location | Always `<project folder>/.roster/artifacts` |
+| A remote artifact repository separate from the project | Artifacts live with the project; a git project versions them in its own repo |
+| Roster committing or pushing on its own | Roster writes files; agents commit them as part of their normal work |
 
 ---
 
@@ -490,9 +524,14 @@ future work does not reintroduce it by reflex:
 9. **Project memory as journal + compacted digest on disk** — appends are concurrency-safe by
    construction, compaction is a separate retryable step, and snapshots make lossy compression
    reversible. Memory is project-scoped and shared by all agents; only roster writes it.
-10. **Projects are workspaces, not repositories** — every project is a folder agents work in;
-    git is a detected capability that swaps the run's terminal step from `deliver` to `pr`.
-    No project-type taxonomy, and no domain code that assumes a repo.
+10. **Projects are folders, not repositories** — every project is a folder agents work in.
+    Source kind is declared at creation (`git` / `local` / `none`) because detection cannot
+    distinguish "no code" from "empty folder"; it swaps the run's terminal step between `pr`
+    and `deliver`. No domain code assumes a repo.
+11. **Memory and artifacts consolidate into `<project folder>/.roster/`** — one place per
+    project rather than a parallel tree keyed by ID, so context and output travel with the
+    project. `.roster/` is tracked by git when the project is a repo; roster writes files but
+    never commits them itself.
 
 ---
 
@@ -503,6 +542,10 @@ Deferred to follow-up plans, each with its own spec:
 - The screen-by-screen build-out (Threads, Agents, MCP, work-item detail tabs)
 - `SubprocessRuntime` — the real agent runtime and lead-agent coordination protocol
 - MCP server connection handling and per-tool permissions
+- Cloning a remote git source. Setup accepts and validates a `source.kind = "git"` remote URL and
+  records it; the clone into the project folder lands with `SubprocessRuntime`, since that is the
+  first thing that needs a working tree on disk. A `git` project pointed at an existing local
+  repository path works from day one.
 - The memory UI — reading, hand-editing, and reverting a project's digest (no screen exists in
   the design bundle yet); the API in §5 lands first
 - Tuning compaction prompt quality and the digest budget against real project history
