@@ -2,7 +2,8 @@ import os
 
 import pytest
 
-from adapters.agents.folder import read_agents
+from adapters.storage.local import LocalFileStore
+from domain.agents import read_agents
 
 
 def _write_agent(root, name, config="model: claude-opus-5\ntoken_limit: 200000\n"):
@@ -13,12 +14,17 @@ def _write_agent(root, name, config="model: claude-opus-5\ntoken_limit: 200000\n
     return folder
 
 
-def test_reads_name_model_and_skills_from_disk(tmp_path):
+@pytest.fixture
+def store(tmp_path):
+    return LocalFileStore(tmp_path)
+
+
+def test_reads_name_model_and_skills_from_disk(tmp_path, store):
     # Arrange
     _write_agent(tmp_path, "atlas")
 
     # Act
-    agents = read_agents(tmp_path)
+    agents = read_agents(tmp_path, store)
 
     # Assert
     assert len(agents) == 1
@@ -28,51 +34,51 @@ def test_reads_name_model_and_skills_from_disk(tmp_path):
     assert agents[0].status == "active"
 
 
-def test_malformed_config_yields_a_disabled_agent_with_a_reason(tmp_path):
+def test_malformed_config_yields_a_disabled_agent_with_a_reason(tmp_path, store):
     # Arrange
     _write_agent(tmp_path, "beacon", config="model: [unclosed\n")
 
     # Act
-    agents = read_agents(tmp_path)
+    agents = read_agents(tmp_path, store)
 
     # Assert
     assert agents[0].status == "disabled"
     assert agents[0].problem is not None
 
 
-def test_missing_agent_md_yields_a_disabled_agent(tmp_path):
+def test_missing_agent_md_yields_a_disabled_agent(tmp_path, store):
     # Arrange
     folder = _write_agent(tmp_path, "cinder")
     (folder / "AGENT.md").unlink()
 
     # Act
-    agents = read_agents(tmp_path)
+    agents = read_agents(tmp_path, store)
 
     # Assert
     assert agents[0].status == "disabled"
     assert "AGENT.md" in agents[0].problem
 
 
-def test_missing_agents_root_is_not_an_error(tmp_path):
-    assert read_agents(tmp_path / "absent") == []
+def test_missing_agents_root_is_not_an_error(tmp_path, store):
+    assert read_agents(tmp_path / "absent", store) == []
 
 
-def test_agents_are_sorted_by_name(tmp_path):
+def test_agents_are_sorted_by_name(tmp_path, store):
     # Arrange
     _write_agent(tmp_path, "forge")
     _write_agent(tmp_path, "atlas")
 
     # Act / Assert
-    assert [agent.name for agent in read_agents(tmp_path)] == ["atlas", "forge"]
+    assert [agent.name for agent in read_agents(tmp_path, store)] == ["atlas", "forge"]
 
 
-def test_non_numeric_token_limit_yields_disabled_agent(tmp_path):
+def test_non_numeric_token_limit_yields_disabled_agent(tmp_path, store):
     # Arrange
     _write_agent(tmp_path, "broken", config="model: claude-opus-5\ntoken_limit: not-a-number\n")
     _write_agent(tmp_path, "good")
 
     # Act
-    agents = read_agents(tmp_path)
+    agents = read_agents(tmp_path, store)
 
     # Assert
     assert len(agents) == 2
@@ -83,7 +89,7 @@ def test_non_numeric_token_limit_yields_disabled_agent(tmp_path):
     assert good.status == "active"
 
 
-def test_non_numeric_temperature_yields_disabled_agent(tmp_path):
+def test_non_numeric_temperature_yields_disabled_agent(tmp_path, store):
     # Arrange
     _write_agent(
         tmp_path, "broken", config="model: claude-opus-5\ntemperature: hot\n"
@@ -91,7 +97,7 @@ def test_non_numeric_temperature_yields_disabled_agent(tmp_path):
     _write_agent(tmp_path, "good")
 
     # Act
-    agents = read_agents(tmp_path)
+    agents = read_agents(tmp_path, store)
 
     # Assert
     assert len(agents) == 2
@@ -103,7 +109,7 @@ def test_non_numeric_temperature_yields_disabled_agent(tmp_path):
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permissions")
-def test_unreadable_agent_md_yields_disabled_agent(tmp_path):
+def test_unreadable_agent_md_yields_disabled_agent(tmp_path, store):
     # Arrange
     folder = _write_agent(tmp_path, "broken")
     agent_file = folder / "AGENT.md"
@@ -112,7 +118,7 @@ def test_unreadable_agent_md_yields_disabled_agent(tmp_path):
 
     # Act
     try:
-        agents = read_agents(tmp_path)
+        agents = read_agents(tmp_path, store)
 
         # Assert
         assert len(agents) == 2
@@ -127,7 +133,7 @@ def test_unreadable_agent_md_yields_disabled_agent(tmp_path):
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permissions")
-def test_unreadable_config_yaml_yields_disabled_agent(tmp_path):
+def test_unreadable_config_yaml_yields_disabled_agent(tmp_path, store):
     # Arrange
     folder = _write_agent(tmp_path, "broken")
     config_file = folder / "config.yaml"
@@ -136,7 +142,7 @@ def test_unreadable_config_yaml_yields_disabled_agent(tmp_path):
 
     # Act
     try:
-        agents = read_agents(tmp_path)
+        agents = read_agents(tmp_path, store)
 
         # Assert
         assert len(agents) == 2
@@ -150,7 +156,7 @@ def test_unreadable_config_yaml_yields_disabled_agent(tmp_path):
         config_file.chmod(0o644)
 
 
-def test_skills_as_file_yields_disabled_agent(tmp_path):
+def test_skills_as_file_yields_disabled_agent(tmp_path, store):
     # Arrange
     import shutil
 
@@ -160,7 +166,7 @@ def test_skills_as_file_yields_disabled_agent(tmp_path):
     _write_agent(tmp_path, "good")
 
     # Act
-    agents = read_agents(tmp_path)
+    agents = read_agents(tmp_path, store)
 
     # Assert
     assert len(agents) == 2
@@ -171,13 +177,13 @@ def test_skills_as_file_yields_disabled_agent(tmp_path):
     assert good.status == "active"
 
 
-def test_non_scalar_model_yields_disabled_agent(tmp_path):
+def test_non_scalar_model_yields_disabled_agent(tmp_path, store):
     # Arrange
     _write_agent(tmp_path, "broken", config="model: [opus, sonnet]\n")
     _write_agent(tmp_path, "good")
 
     # Act
-    agents = read_agents(tmp_path)
+    agents = read_agents(tmp_path, store)
 
     # Assert
     assert len(agents) == 2

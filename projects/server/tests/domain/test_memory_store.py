@@ -2,15 +2,28 @@ from pathlib import Path
 
 import pytest
 
-from adapters.memory.store import MemoryStore
-from adapters.project_folder import scaffold
-from config.settings import Settings
+from adapters.storage.local import LocalFileStore
+from domain.memory import MemoryStore
+from domain.projects import memory_dir, scaffold
+
+DEFAULT_SNAPSHOT_KEEP = 20
+
+
+def _memory_store(folder: Path, snapshot_keep: int) -> MemoryStore:
+    # scaffold() needs a store wide enough to reach both memory/ and artifacts/;
+    # MemoryStore itself is deliberately narrower — rooted at just this project's
+    # memory tree, matching how it's wired in interactors/ (see runs/manager.py
+    # and api/routes/memory.py) — so a symlink planted inside snapshots/ can't
+    # reach a sibling file elsewhere in the project folder.
+    scaffold(folder, LocalFileStore(folder))
+    return MemoryStore(
+        folder=folder, store=LocalFileStore(memory_dir(folder)), snapshot_keep=snapshot_keep
+    )
 
 
 @pytest.fixture
 def store(tmp_path):
-    scaffold(tmp_path)
-    return MemoryStore(folder=tmp_path, settings=Settings(data_root=tmp_path))
+    return _memory_store(tmp_path, DEFAULT_SNAPSHOT_KEEP)
 
 
 def test_appending_entries_never_overwrites(store):
@@ -79,9 +92,7 @@ def test_missing_digest_reads_as_empty_string(store):
 
 def test_snapshots_are_trimmed_to_the_configured_limit(tmp_path):
     # Arrange
-    scaffold(tmp_path)
-    settings = Settings(data_root=tmp_path, memory_snapshot_keep=2)
-    store = MemoryStore(folder=tmp_path, settings=settings)
+    store = _memory_store(tmp_path, snapshot_keep=2)
 
     # Act
     for index in range(4):
@@ -137,9 +148,7 @@ def test_read_journal_skips_an_entry_with_invalid_utf8_content(store):
 
 def test_snapshot_keep_zero_never_writes_a_snapshot_file(tmp_path):
     # Arrange
-    scaffold(tmp_path)
-    settings = Settings(data_root=tmp_path, memory_snapshot_keep=0)
-    store = MemoryStore(folder=tmp_path, settings=settings)
+    store = _memory_store(tmp_path, snapshot_keep=0)
     store.write_digest("# old digest")
     entry = store.append_entry("run1", "2026-08-01T10-00-00Z", "x")
 
@@ -154,9 +163,7 @@ def test_snapshot_keep_zero_never_writes_a_snapshot_file(tmp_path):
 
 def test_negative_snapshot_keep_behaves_like_zero_not_unlimited(tmp_path):
     # Arrange
-    scaffold(tmp_path)
-    settings = Settings(data_root=tmp_path, memory_snapshot_keep=-1)
-    store = MemoryStore(folder=tmp_path, settings=settings)
+    store = _memory_store(tmp_path, snapshot_keep=-1)
     store.write_digest("# old digest")
     entry = store.append_entry("run1", "2026-08-01T10-00-00Z", "x")
 
@@ -188,8 +195,7 @@ def test_compaction_leaves_digest_and_journal_untouched_when_snapshot_write_fail
 
 def test_restore_rejects_a_traversal_path_and_leaves_the_digest_untouched(tmp_path):
     # Arrange
-    scaffold(tmp_path)
-    store = MemoryStore(folder=tmp_path, settings=Settings(data_root=tmp_path))
+    store = _memory_store(tmp_path, DEFAULT_SNAPSHOT_KEEP)
     store.write_digest("# real memory")
     secret = tmp_path / "secret.txt"
     secret.write_text("top secret, not memory")
@@ -202,8 +208,7 @@ def test_restore_rejects_a_traversal_path_and_leaves_the_digest_untouched(tmp_pa
 
 def test_restore_rejects_an_absolute_path_and_leaves_the_digest_untouched(tmp_path):
     # Arrange
-    scaffold(tmp_path)
-    store = MemoryStore(folder=tmp_path, settings=Settings(data_root=tmp_path))
+    store = _memory_store(tmp_path, DEFAULT_SNAPSHOT_KEEP)
     store.write_digest("# real memory")
     secret = tmp_path / "secret.txt"
     secret.write_text("top secret, not memory")
@@ -230,8 +235,7 @@ def test_restore_round_trips_a_real_snapshot_back_onto_the_digest(store):
 
 def test_restore_rejects_a_symlink_inside_snapshots_dir_pointing_outside_it(tmp_path):
     # Arrange
-    scaffold(tmp_path)
-    store = MemoryStore(folder=tmp_path, settings=Settings(data_root=tmp_path))
+    store = _memory_store(tmp_path, DEFAULT_SNAPSHOT_KEEP)
     store.write_digest("# real memory")
     secret = tmp_path / "secret.txt"
     secret.write_text("top secret, not memory")
