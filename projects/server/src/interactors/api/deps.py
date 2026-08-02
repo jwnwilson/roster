@@ -23,12 +23,18 @@ def _url(settings: Settings) -> str:
     return f"sqlite+aiosqlite:///{db_path(settings)}"
 
 
+def session_factory_for(settings: Settings) -> async_sessionmaker[AsyncSession]:
+    """The sessionmaker as a plain call, for code with no request to hang a
+    `Depends` chain off — the lifespan hook, which runs before any request."""
+    return _sessionmaker(_url(settings))
+
+
 def get_session_factory(
     settings: Settings = Depends(get_settings),
 ) -> async_sessionmaker[AsyncSession]:
     """The sessionmaker itself (not a bound session) for anything that outlives a
     request: the UnitOfWork factory below and RunManager's background task."""
-    return _sessionmaker(_url(settings))
+    return session_factory_for(settings)
 
 
 async def get_uow(

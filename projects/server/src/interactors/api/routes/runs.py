@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from pathlib import Path
+from time import monotonic
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -24,6 +25,19 @@ router = APIRouter(tags=["runs"])
 
 POLL_INTERVAL_SECONDS = 0.25
 TERMINAL_STATUSES = ("complete", "failed")
+
+# How long a non-terminal run may produce nothing at all before the stream gives
+# up. Roster is a single-process server, so an endpoint that can poll forever is
+# a denial of service against itself: one stuck run per browser tab is enough.
+# Ending the stream does not end the run — the client reconnects and picks up
+# from the events already in the database.
+STREAM_IDLE_TIMEOUT_SECONDS = 300.0
+STREAM_TIMEOUT_EVENT = "stream_timeout"
+STREAM_TIMEOUT_MESSAGE = (
+    "no events for "
+    f"{int(STREAM_IDLE_TIMEOUT_SECONDS)}s and the run is still open; "
+    "closing the stream, reconnect to resume"
+)
 
 # A manual "compact now" call isn't tied to any run or any agent that actually
 # did work — this stands in for the agent so compact_now can still reach
@@ -99,6 +113,7 @@ async def stream_run_events(
 ) -> EventSourceResponse:
     async def event_source():
         seen = 0
+        last_progress = monotonic()
         while True:
             # sse_starlette already stops iterating a generator whose consumer went
             # away, but a dead client can otherwise leave this loop polling forever
@@ -121,9 +136,17 @@ async def stream_run_events(
 
             for event in page.results[seen:]:
                 yield {"event": event.type, "id": event.id, "data": event.message}
-            seen = len(page.results)
+            if len(page.results) > seen:
+                seen = len(page.results)
+                last_progress = monotonic()
 
             if run.status in TERMINAL_STATUSES:
+                return
+            if monotonic() - last_progress >= STREAM_IDLE_TIMEOUT_SECONDS:
+                # Said out loud rather than closing silently: a bare disconnect is
+                # indistinguishable from the run having finished, and the run has
+                # not finished.
+                yield {"event": STREAM_TIMEOUT_EVENT, "data": STREAM_TIMEOUT_MESSAGE}
                 return
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 

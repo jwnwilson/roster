@@ -4,7 +4,9 @@ import pytest
 
 from adapters.agents.runtime import FakeRuntime
 from config.settings import Settings, get_settings
+from domain.runs import Run
 from interactors.api.deps import get_run_manager
+from interactors.api.routes import runs as runs_routes
 from interactors.runs.manager import RunManager
 
 
@@ -262,3 +264,50 @@ async def test_a_failing_compaction_is_503_and_leaves_digest_and_journal_untouch
 async def test_forcing_a_compaction_for_an_unknown_project_is_404(client):
     response = await client.post("/projects/nope/memory/compact")
     assert response.status_code == 404
+
+
+async def test_streaming_a_run_that_never_existed_closes_immediately(client):
+    # Act — no run row, so there is nothing to wait for; the stream must not sit
+    # there polling an id that will never appear.
+    async with client.stream("GET", "/runs/nope/events/stream") as response:
+        lines = [line async for line in response.aiter_lines()]
+
+    # Assert
+    assert response.status_code == 200
+    assert not [line for line in lines if line.startswith("event:")]
+
+
+async def test_a_silent_non_terminal_run_stops_streaming_after_the_idle_timeout(
+    client, uow, monkeypatch
+):
+    # Arrange — a run stuck in "running" with no events at all, exactly what an
+    # orphaned run looks like. Before the idle guard this polled forever, which
+    # on a single-process server is a denial of service against itself.
+    monkeypatch.setattr(runs_routes, "STREAM_IDLE_TIMEOUT_SECONDS", 0.05)
+    project = await client.post("/projects", json={"name": "P", "source": {"kind": "none"}})
+    project_id = project.json()["data"]["id"]
+    item = await client.post(
+        "/work-items", json={"project_id": project_id, "type": "task", "title": "Do it"}
+    )
+    async with uow.transaction() as tx:
+        await tx.runs.create(
+            Run(
+                id="orphan",
+                project_id=project_id,
+                work_item_id=item.json()["data"]["id"],
+                agent_name="atlas",
+                status="running",
+            )
+        )
+
+    # Act
+    seen_types = []
+    async with client.stream("GET", "/runs/orphan/events/stream") as response:
+        async for line in response.aiter_lines():
+            if line.startswith("event:"):
+                seen_types.append(line.removeprefix("event:").strip())
+
+    # Assert — the stream ends and says why; the run row itself is left alone,
+    # so a reconnect resumes rather than losing it.
+    assert seen_types == [runs_routes.STREAM_TIMEOUT_EVENT]
+    assert (await client.get("/runs/orphan")).json()["data"]["status"] == "running"
