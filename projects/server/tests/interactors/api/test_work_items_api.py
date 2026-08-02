@@ -158,3 +158,48 @@ async def test_valid_transition_still_returns_200(client, project_id):
     # Assert
     assert response.status_code == 200
     assert response.json()["data"]["status"] == "todo"
+
+
+async def test_a_work_item_can_be_assigned_to_an_agent(client, project_id):
+    created = await client.post(
+        "/work-items",
+        json={"project_id": project_id, "type": "task", "title": "Ship it",
+              "agent_name": "atlas"},
+    )
+
+    assert created.json()["data"]["agent_name"] == "atlas"
+
+
+async def test_a_work_item_starts_unassigned(client, project_id):
+    created = await client.post(
+        "/work-items", json={"project_id": project_id, "type": "task", "title": "Ship it"}
+    )
+
+    assert created.json()["data"]["agent_name"] is None
+
+
+async def test_assignment_can_be_changed_after_creation(client, project_id):
+    created = await client.post(
+        "/work-items", json={"project_id": project_id, "type": "task", "title": "Ship it"}
+    )
+
+    response = await client.patch(
+        f"/work-items/{created.json()['data']['id']}", json={"agent_name": "beacon"}
+    )
+
+    assert response.json()["data"]["agent_name"] == "beacon"
+
+
+async def test_assignment_survives_an_unrelated_patch(client, project_id):
+    created = await client.post(
+        "/work-items",
+        json={"project_id": project_id, "type": "task", "title": "Ship it",
+              "agent_name": "atlas"},
+    )
+
+    response = await client.patch(
+        f"/work-items/{created.json()['data']['id']}", json={"status": "todo"}
+    )
+
+    # exclude_none on the patch means an omitted field must not blank the column.
+    assert response.json()["data"]["agent_name"] == "atlas"

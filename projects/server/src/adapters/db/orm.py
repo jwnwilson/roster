@@ -36,6 +36,8 @@ class WorkItemRow(Base):
     epic_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     feature_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     spec: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # No foreign key: agents live on disk, not in this database (spec §4).
+    agent_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

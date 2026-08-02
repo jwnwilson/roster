@@ -11,8 +11,8 @@ SERVER_ROOT = Path(__file__).resolve().parents[1]
 SEED = """
 INSERT INTO projects (id, name, source_kind, folder_path)
     VALUES ('p1', 'P', 'none', '/tmp/p1');
-INSERT INTO work_items (id, key, project_id, type, title, status, priority, sequence)
-    VALUES ('w1', 'ROS-1', 'p1', 'task', 'T', 'backlog', 'medium', 1);
+INSERT INTO work_items (id, key, project_id, type, title, status, priority, sequence, agent_name)
+    VALUES ('w1', 'ROS-1', 'p1', 'task', 'T', 'backlog', 'medium', 1, 'atlas');
 INSERT INTO threads (id, project_id, work_item_id, title, status, read)
     VALUES ('t1', 'p1', 'w1', 'Set up CI', 'info', 0);
 INSERT INTO threads (id, project_id, work_item_id, title, status, read)
@@ -82,6 +82,20 @@ def test_deleting_a_project_cascades_on_the_migrated_schema(migrated):
     assert _counts(migrated, ALL_TABLES) == {
         "projects": 0, "work_items": 0, "threads": 0, "messages": 0,
     }
+
+
+def test_an_assigned_agent_survives_a_downgrade_and_upgrade(migrated):
+    # 0006 adds a column; going back drops it, and coming forward must not lose
+    # the rows around it.
+    _alembic(migrated, "downgrade", "0005")
+    _alembic(migrated, "upgrade", "head")
+
+    with sqlite3.connect(migrated / "roster.db") as connection:
+        rows = connection.execute("SELECT id, agent_name FROM work_items").fetchall()
+
+    # The column comes back empty — a dropped column takes its values with it,
+    # which is why the downgrade is reversible in schema but not in data.
+    assert rows == [("w1", None)]
 
 
 def test_the_run_tables_are_gone_at_head(migrated):
