@@ -265,7 +265,9 @@ async def test_naming_an_agent_starts_its_turn_and_its_output_lands(
               "agent_name": agent_folder_on_disk},
     )
 
-    # Assert
+    # Assert — drain first: the turn is a background task that outlives the
+    # request, and asserting before it finishes is a race.
+    await client.app.state.turn_manager.drain()
     messages = (await client.get(f"/threads/{thread_id}/messages")).json()["data"]
     assert [m["content"] for m in messages][0] == "start please"
     assert any(m["author_name"] == "atlas" for m in messages)
@@ -312,8 +314,10 @@ async def test_an_agent_mid_turn_is_reported_as_working(client, thread_id, agent
     agents = (await client.get("/agents")).json()["data"]
     assert [a["status"] for a in agents if a["name"] == "atlas"] == ["working"]
 
-    # Let the turn finish so the task does not outlive the test.
+    # Let the turn finish and wait for it: a task still writing when the loop is
+    # torn down fails as "Event loop is closed", and only sometimes.
     release.set()
+    await client.app.state.turn_manager.drain()
 
 
 async def test_an_idle_agent_is_not_reported_as_working(client, agent_folder_on_disk):

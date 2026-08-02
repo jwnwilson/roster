@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -78,6 +79,20 @@ class AgentTurnManager:
         # long-lived process doesn't accumulate finished tasks forever.
         task.add_done_callback(lambda _: self._in_flight.pop(key, None))
         return task
+
+    async def drain(self) -> None:
+        """Wait for every in-flight turn to finish.
+
+        A turn outlives the request that started it by design, which is fine in
+        production and a hazard in a test: the event loop and connection pool are
+        torn down while a background task is still writing, and the failure is
+        timing-dependent — it passed locally and failed on CI. Anything that ends
+        the process (or a test) while turns are in flight should await this first.
+        """
+        tasks = list(self._in_flight.values())
+        for task in tasks:
+            with suppress(Exception):
+                await task
 
     def busy_agents(self) -> list[str]:
         """The agents currently taking a turn.
