@@ -1,6 +1,8 @@
 export * from "./types";
 export { DashboardIcon } from "./DashboardIcon";
-export { InboxIcon } from "./InboxIcon";
+export { ThreadsIcon } from "./ThreadsIcon";
+export { McpIcon } from "./McpIcon";
+export { FolderIcon } from "./FolderIcon";
 export { ProjectsIcon } from "./ProjectsIcon";
 export { AgentsIcon } from "./AgentsIcon";
 export { SettingsIcon } from "./SettingsIcon";

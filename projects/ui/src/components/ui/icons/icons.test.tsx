@@ -4,7 +4,7 @@ import * as Icons from "./index";
 
 describe("icon set", () => {
   const names = [
-    "DashboardIcon", "InboxIcon", "ProjectsIcon", "AgentsIcon", "SettingsIcon",
+    "DashboardIcon", "ThreadsIcon", "McpIcon", "FolderIcon", "ProjectsIcon", "AgentsIcon", "SettingsIcon",
     "SearchIcon", "GitRepoIcon", "ListIcon", "GridIcon", "PlusIcon",
     "ChevronDownIcon", "ChevronRightIcon", "CheckIcon", "DocumentIcon", "PencilIcon",
   ] as const;

@@ -1,18 +1,28 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useSearchParams } from "react-router-dom";
+import type { ReactNode } from "react";
 
-/** The outer shell every route renders inside.
- *
- * A skeleton at this point: Task 4 builds the Sidebar, Topbar and ChatPanel to
- * the handoff's dimensions (sidebar 214px, topbar 44px, chat panel 292px / 34px
- * collapsed). The inherited versions of those were welded to the source
- * project's API and did not come across — see the Task 1 commit body.
- */
-export function AppShell() {
+import { ChatPanel } from "./ChatPanel";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { Sidebar } from "./Sidebar";
+
+export interface AppShellProps {
+  /** Test seam: routes render through `Outlet` in the app itself. */
+  children?: ReactNode;
+}
+
+/** The outer shell every route renders inside, to the handoff's dimensions:
+ *  sidebar 214px, chat panel 292px open / 34px collapsed. */
+export function AppShell({ children }: AppShellProps) {
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get("project") ?? undefined;
+
   return (
     <div className="flex h-full bg-bg-base text-text-1">
+      <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
-        <Outlet />
+        <ErrorBoundary>{children ?? <Outlet />}</ErrorBoundary>
       </main>
+      <ChatPanel projectId={projectId} />
     </div>
   );
 }

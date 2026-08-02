@@ -1,8 +1,8 @@
 import type { IconProps } from "./types";
 
-export function PencilIcon({ size = 11, className }: IconProps) {
+export function PencilIcon({ size = 11, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 11 11" fill="none" className={className}>
+    <svg width={size} height={size} viewBox="0 0 11 11" fill="none" {...props}>
       <path
         d="M7.4 1.6l2 2L4 9l-2.4.6L2.2 7.2 7.4 1.6z"
         stroke="currentColor"
