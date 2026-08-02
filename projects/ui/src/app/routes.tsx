@@ -2,6 +2,7 @@ import { Navigate } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 
 import { AppShell } from "./AppShell";
+import { BoardRoute } from "../modules/board/BoardRoute";
 
 /** Placeholder until the task that owns this screen builds it.
  *
@@ -27,7 +28,7 @@ export const routes: RouteObject[] = [
       { path: "agents/:name", element: <NotBuiltYet screen="Agent detail" /> },
       { path: "mcp", element: <NotBuiltYet screen="MCP servers" /> },
       { path: "mcp/:name", element: <NotBuiltYet screen="MCP server detail" /> },
-      { path: "projects", element: <NotBuiltYet screen="Board" /> },
+      { path: "projects", element: <BoardRoute /> },
       {
         path: "projects/:projectId/items/:itemId",
         element: <NotBuiltYet screen="Work item detail" />,
