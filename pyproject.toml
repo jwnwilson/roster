@@ -1,0 +1,55 @@
+[project]
+name = "roster"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = ["projects/server"]
+
+[tool.uv.sources]
+roster-server = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "roster-server",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "aiosqlite>=0.20",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["projects/server/tests"]
+addopts = "-q --import-mode=importlib"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["config", "domain", "adapters", "interactors"]
+omit = ["*/migrations/*", "*/tests/*"]
+# Statement-only coverage reported 100% on modules whose branches were never both
+# taken — an `if` guard with no test for the false arm looked fully covered.
+branch = true
+# SQLAlchemy's asyncio layer bridges the sync DBAPI through greenlet_spawn, and a
+# `sys.settrace` trace function is per-greenlet: every statement after an awaited
+# query went unrecorded, so API-driven routes reported 64–82% while being fully
+# exercised. Teaching coverage to follow greenlet switches is what fixes it.
+concurrency = ["thread", "greenlet"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["projects/server/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom calls Depends(...) in argument defaults by design.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
