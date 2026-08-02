@@ -17,9 +17,10 @@ Every task's requirements implicitly include this section.
 - **Python ≥ 3.12**, package manager `uv`. Never call `pip` or `python` directly; use `uv run`.
 - **Async only.** No synchronous SQLAlchemy engine, session, or `Session` import anywhere. Every DB call is `await`ed on an `AsyncSession`.
 - **No mutation.** Pydantic models are updated with `model_copy(update={...})`, never by attribute assignment.
-- **Domain purity.** `src/domain/` imports nothing from `src/adapters/` or `src/api/`, performs no I/O, and never assumes a git repository exists.
+- **Domain purity.** `src/domain/` imports nothing from `src/config/`, `src/adapters/`, `src/api/`, or `src/runs/`; performs no I/O; and never assumes a git repository exists. Configuration reaches domain functions as plain arguments, never as a `Settings` object.
+- **Settings live in `src/config/settings.py`**, a neutral module every layer may import. Nothing outside it reads `os.environ`, and no adapter imports from `src/api/`.
 - **Envelope.** Every JSON response is `{"success": bool, "data": ..., "error": str | null}`, plus `"meta"` for paginated collections. 204 responses have no body.
-- **Settings prefix** is `roster_` (e.g. `roster_data_root`). Never read `os.environ` directly outside `settings.py`.
+- **Settings prefix** is `roster_` (e.g. `roster_data_root`). Never read `os.environ` outside `src/config/settings.py`.
 - **Data root** defaults to `~/.roster/`. Tests must never write to the real data root — always a `tmp_path`.
 - **IDs** are UUID hex strings (32 chars, no dashes). Work items also carry a human key `ROS-<n>`.
 - **Line length 100**, ruff lint rules `["E", "F", "I", "UP", "B"]`, mypy `python_version = "3.12"`.
@@ -47,7 +48,7 @@ Every task's requirements implicitly include this section.
 
 | Path | Responsibility |
 |---|---|
-| `src/api/settings.py` | `Settings` (env prefix `roster_`) and `data_root` path helpers |
+| `src/config/settings.py` | `Settings` (env prefix `roster_`) and `data_root` path helpers |
 | `src/api/app.py` | app factory, exception handlers, router registration |
 | `src/api/envelope.py` | envelope helpers `ok()`, `ok_list()`, `fail()` |
 | `src/api/deps.py` | `get_session`, `get_run_manager`, `get_memory_store` dependencies |
@@ -135,7 +136,7 @@ addopts = "-q --import-mode=importlib"
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["domain", "adapters", "api", "runs", "cli"]
+source = ["config", "domain", "adapters", "api", "runs", "cli"]
 omit = ["*/migrations/*", "*/tests/*"]
 
 [tool.ruff]
@@ -177,7 +178,7 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/domain", "src/adapters", "src/api", "src/runs", "src/cli"]
+packages = ["src/config", "src/domain", "src/adapters", "src/api", "src/runs", "src/cli"]
 ```
 
 - [ ] **Step 3: Write the failing test**
@@ -326,7 +327,7 @@ git commit -m "feat: repository skeleton with health endpoint"
 ## Task 2: Settings and the data root
 
 **Files:**
-- Create: `projects/server/src/api/settings.py`
+- Create: `projects/server/src/config/settings.py`
 - Test: `projects/server/tests/test_settings.py`
 
 **Interfaces:**
@@ -340,7 +341,7 @@ git commit -m "feat: repository skeleton with health endpoint"
 ```python
 from pathlib import Path
 
-from api.settings import Settings, agents_dir, db_path, project_dir
+from config.settings import Settings, agents_dir, db_path, project_dir
 
 
 def test_data_root_expands_user_home():
@@ -376,11 +377,11 @@ def test_compaction_defaults_match_the_spec(tmp_path):
 - [ ] **Step 2: Run the test and confirm it fails**
 
 Run: `uv run pytest projects/server/tests/test_settings.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'api.settings'`.
+Expected: FAIL — `ModuleNotFoundError: No module named 'config.settings'`.
 
 - [ ] **Step 3: Implement settings**
 
-`projects/server/src/api/settings.py`:
+`projects/server/src/config/settings.py`:
 
 ```python
 from functools import lru_cache
@@ -436,7 +437,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add projects/server/src/api/settings.py projects/server/tests/test_settings.py
+git add projects/server/src/config/settings.py projects/server/tests/test_settings.py
 git commit -m "feat: settings and data-root path helpers"
 ```
 
@@ -450,7 +451,7 @@ git commit -m "feat: settings and data-root path helpers"
 - Test: `projects/server/tests/test_db_engine.py`
 
 **Interfaces:**
-- Consumes: `api.settings.Settings`, `db_path`.
+- Consumes: `config.settings.Settings`, `db_path`.
 - Produces: `Base`; `make_engine(url: str) -> AsyncEngine`; `make_sessionmaker(engine) -> async_sessionmaker[AsyncSession]`; ORM classes `ProjectRow`, `WorkItemRow`; pytest fixture `session` yielding an `AsyncSession` against in-memory SQLite.
 
 - [ ] **Step 1: Write the failing test**
@@ -600,7 +601,7 @@ Then edit `projects/server/alembic.ini` so `script_location = src/adapters/db/mi
 ```python
 from adapters.db.engine import Base
 from adapters.db import orm  # noqa: F401  — import registers the tables on Base.metadata
-from api.settings import db_path, get_settings
+from config.settings import db_path, get_settings
 
 target_metadata = Base.metadata
 
@@ -1000,7 +1001,7 @@ git commit -m "feat: domain entities, hierarchy, and status transition rules"
 - Test: `projects/server/tests/adapters/test_project_folder.py`
 
 **Interfaces:**
-- Consumes: `domain.projects.ProjectSource`, `api.settings.Settings`, `project_dir`.
+- Consumes: `domain.projects.ProjectSource`, `config.settings.Settings`, `project_dir`.
 - Produces: `resolve_folder(source: ProjectSource, project_id: str, settings: Settings) -> Path`; `scaffold(folder: Path) -> None`; `memory_dir(folder) -> Path`; `artifacts_dir(folder) -> Path`; `FolderUnavailable` exception.
 
 - [ ] **Step 1: Write the failing test**
@@ -1017,7 +1018,7 @@ from adapters.project_folder import (
     resolve_folder,
     scaffold,
 )
-from api.settings import Settings
+from config.settings import Settings
 from domain.projects import ProjectSource
 
 
@@ -1091,7 +1092,7 @@ Expected: FAIL — no module `adapters.project_folder`.
 ```python
 from pathlib import Path
 
-from api.settings import Settings, project_dir
+from config.settings import Settings, project_dir
 from domain.projects import ProjectSource
 
 ROSTER_DIR = ".roster"
@@ -1174,7 +1175,7 @@ from httpx import ASGITransport, AsyncClient
 from adapters.db.engine import make_sessionmaker
 from api.app import create_app
 from api.deps import get_session
-from api.settings import Settings, get_settings
+from config.settings import Settings, get_settings
 
 
 @pytest.fixture
@@ -1292,7 +1293,7 @@ from functools import lru_cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.db.engine import make_engine, make_sessionmaker
-from api.settings import Settings, db_path, get_settings
+from config.settings import Settings, db_path, get_settings
 
 
 @lru_cache
@@ -1383,7 +1384,7 @@ from adapters import project_folder
 from adapters.db import projects as db
 from api.deps import get_session
 from api.envelope import ok, ok_list
-from api.settings import Settings, get_settings
+from config.settings import Settings, get_settings
 from domain.ids import new_id
 from domain.projects import Project, ProjectSource, validate_source
 
@@ -1813,7 +1814,7 @@ git commit -m "feat: work items API with hierarchy and transition validation"
 - Test: `projects/server/tests/adapters/test_agent_folder.py`, `tests/api/test_agents_api.py`
 
 **Interfaces:**
-- Consumes: `api.settings.agents_dir`.
+- Consumes: `config.settings.agents_dir`.
 - Produces: `Agent(name, model, token_limit, temperature, instructions, skills, status, problem)`; `AgentStatus = Literal["working", "active", "disabled"]`; `read_agents(agents_root: Path) -> list[Agent]`; `read_agent(folder: Path) -> Agent`.
 
 - [ ] **Step 1: Write the failing test**
@@ -2017,7 +2018,7 @@ from fastapi import APIRouter, Depends
 
 from adapters.agents.folder import read_agents
 from api.envelope import ok_list
-from api.settings import Settings, agents_dir, get_settings
+from config.settings import Settings, agents_dir, get_settings
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -2051,36 +2052,35 @@ git commit -m "feat: read folder-backed agents from disk"
 - Test: `projects/server/tests/domain/test_memory_rules.py`, `tests/adapters/test_memory_store.py`
 
 **Interfaces:**
-- Consumes: `adapters.project_folder.memory_dir`, `api.settings.Settings`.
-- Produces: `should_compact(entry_count: int, total_bytes: int, settings) -> bool`; `DIGEST_SECTIONS: tuple[str, ...]`; `empty_digest(project_name: str) -> str`; and `MemoryStore(folder: Path, settings: Settings)` with `read_digest() -> str`, `write_digest(text) -> None`, `read_journal() -> list[JournalEntry]`, `append_entry(run_id, timestamp, text) -> Path`, `compact(new_digest: str, folded_entries: list[Path]) -> None`, `snapshots() -> list[Path]`, `restore(name: str) -> None`; and the frozen dataclass `JournalEntry(path, text)`.
+- Consumes: `adapters.project_folder.memory_dir`, `config.settings.Settings`.
+- Produces: `should_compact(entry_count: int, total_bytes: int, max_entries: int, max_bytes: int) -> bool`; `DIGEST_SECTIONS: tuple[str, ...]`; `empty_digest(project_name: str) -> str`; and `MemoryStore(folder: Path, settings: Settings)` with `read_digest() -> str`, `write_digest(text) -> None`, `read_journal() -> list[JournalEntry]`, `append_entry(run_id, timestamp, text) -> Path`, `compact(new_digest: str, folded_entries: list[Path]) -> None`, `snapshots() -> list[Path]`, `restore(name: str) -> None`; and the frozen dataclass `JournalEntry(path, text)`.
 
 - [ ] **Step 1: Write the failing rules test**
 
 `projects/server/tests/domain/test_memory_rules.py`:
 
 ```python
-from api.settings import Settings
 from domain.memory import DIGEST_SECTIONS, empty_digest, should_compact
 
-
-def _settings(tmp_path):
-    return Settings(data_root=tmp_path)
-
-
-def test_no_compaction_below_both_thresholds(tmp_path):
-    assert should_compact(entry_count=3, total_bytes=1_000, settings=_settings(tmp_path)) is False
+# Spec §5 defaults, passed in as plain values — domain/ takes no Settings object.
+MAX_ENTRIES = 10
+MAX_BYTES = 32_768
 
 
-def test_entry_count_threshold_triggers_compaction(tmp_path):
-    assert should_compact(entry_count=10, total_bytes=10, settings=_settings(tmp_path)) is True
+def test_no_compaction_below_both_thresholds():
+    assert should_compact(3, 1_000, MAX_ENTRIES, MAX_BYTES) is False
 
 
-def test_byte_threshold_triggers_compaction(tmp_path):
-    assert should_compact(entry_count=1, total_bytes=32_768, settings=_settings(tmp_path)) is True
+def test_entry_count_threshold_triggers_compaction():
+    assert should_compact(10, 10, MAX_ENTRIES, MAX_BYTES) is True
 
 
-def test_empty_journal_never_triggers_compaction(tmp_path):
-    assert should_compact(entry_count=0, total_bytes=0, settings=_settings(tmp_path)) is False
+def test_byte_threshold_triggers_compaction():
+    assert should_compact(1, 32_768, MAX_ENTRIES, MAX_BYTES) is True
+
+
+def test_empty_journal_never_triggers_compaction():
+    assert should_compact(0, 0, MAX_ENTRIES, MAX_BYTES) is False
 
 
 def test_empty_digest_contains_every_required_section():
@@ -2102,8 +2102,6 @@ Expected: FAIL — no module `domain.memory`.
 `projects/server/src/domain/memory.py`:
 
 ```python
-from api.settings import Settings
-
 DIGEST_SECTIONS: tuple[str, ...] = (
     "Overview",
     "Architecture",
@@ -2114,14 +2112,16 @@ DIGEST_SECTIONS: tuple[str, ...] = (
 )
 
 
-def should_compact(entry_count: int, total_bytes: int, settings: Settings) -> bool:
-    """Spec §5: compaction fires on entry count OR raw journal size. Never on an empty journal."""
+def should_compact(
+    entry_count: int, total_bytes: int, max_entries: int, max_bytes: int
+) -> bool:
+    """Spec §5: compaction fires on entry count OR raw journal size. Never on an empty journal.
+
+    Takes plain values, not a Settings object — domain/ imports nothing from other layers.
+    """
     if entry_count == 0:
         return False
-    return (
-        entry_count >= settings.memory_compact_entries
-        or total_bytes >= settings.memory_compact_bytes
-    )
+    return entry_count >= max_entries or total_bytes >= max_bytes
 
 
 def empty_digest(project_name: str) -> str:
@@ -2129,8 +2129,8 @@ def empty_digest(project_name: str) -> str:
     return f"# {project_name} — project memory\n\n{sections}"
 ```
 
-> `domain/memory.py` imports `Settings` for its threshold values only. That is a settings object,
-> not I/O — the module still performs no filesystem or database work.
+> `domain/memory.py` imports nothing at all. Thresholds arrive as arguments from the caller that
+> holds the `Settings` object, which keeps the domain layer genuinely free of the other layers.
 
 - [ ] **Step 4: Run and confirm it passes**
 
@@ -2146,7 +2146,7 @@ import pytest
 
 from adapters.memory.store import MemoryStore
 from adapters.project_folder import scaffold
-from api.settings import Settings
+from config.settings import Settings
 
 
 @pytest.fixture
@@ -2250,7 +2250,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from adapters.project_folder import memory_dir
-from api.settings import Settings
+from config.settings import Settings
 
 DIGEST_NAME = "MEMORY.md"
 
@@ -2466,7 +2466,7 @@ from adapters.db import projects as project_db
 from adapters.memory.store import MemoryStore
 from api.deps import get_session
 from api.envelope import ok
-from api.settings import Settings, get_settings
+from config.settings import Settings, get_settings
 
 router = APIRouter(prefix="/projects/{project_id}/memory", tags=["memory"])
 
@@ -2633,7 +2633,7 @@ import pytest
 from adapters.agents.runtime import FakeRuntime
 from adapters.memory.store import MemoryStore
 from adapters.project_folder import scaffold
-from api.settings import Settings
+from config.settings import Settings
 from domain.agents import Agent
 from runs.manager import RunManager
 
@@ -2775,7 +2775,7 @@ from pathlib import Path
 
 from adapters.agents.runtime import AgentRuntime
 from adapters.memory.store import MemoryStore
-from api.settings import Settings
+from config.settings import Settings
 from domain.agents import Agent
 from domain.memory import should_compact
 
@@ -2800,7 +2800,12 @@ class RunManager:
 
         entries = store.read_journal()
         total_bytes = sum(len(entry.text.encode()) for entry in entries)
-        if not should_compact(len(entries), total_bytes, self._settings):
+        if not should_compact(
+            len(entries),
+            total_bytes,
+            self._settings.memory_compact_entries,
+            self._settings.memory_compact_bytes,
+        ):
             return
 
         async with self._compaction_locks[str(folder)]:
@@ -3090,7 +3095,7 @@ async def test_seed_creates_a_project_with_work_items_and_an_agent(session, sett
     # Assert
     from adapters.agents.folder import read_agents
     from adapters.db import projects, work_items
-    from api.settings import agents_dir
+    from config.settings import agents_dir
 
     created = await projects.list_projects(session)
     assert len(created) == 1

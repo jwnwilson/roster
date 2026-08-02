@@ -110,7 +110,7 @@ Every project folder contains one:
 - **Status changes** go through `domain/transitions.validate_transition` — invalid transitions
   return HTTP 409.
 - **IDs** are UUID hex strings (32 chars); work items also carry a human key `ROS-<n>`.
-- **Settings** are read only through `api/settings.py` (prefix `roster_`), never `os.environ`.
+- **Settings** are read only through `config/settings.py` (prefix `roster_`), never `os.environ`.
 - **Errors are never swallowed.** Domain errors map to specific statuses; unexpected exceptions
   are logged with context and returned as a 500 with a generic message. Memory failures surface as
   `RunEvent`s and never block a run from finishing.

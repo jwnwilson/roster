@@ -64,7 +64,8 @@ roster/
           db/               # SQLAlchemy models, session factory, query modules, migrations
           agents/           # agent-folder reader + runtime implementations
           memory/           # project-memory journal, digest, snapshots
-        api/                # app factory, routers, deps, SSE, settings
+        api/                # app factory, routers, deps, SSE
+        config/             # settings — neutral, importable by every layer
         cli/                # seed
       tests/
     ui/                     # React + Vite + Tailwind SPA
@@ -108,7 +109,12 @@ snapshot rotation, and the compaction trigger. All filesystem work for §5 lives
 rules for *when* to compact are pure and live in `domain/memory.py`.
 
 **`api/`** — FastAPI wiring: app factory, one hand-written router per resource, the session
-dependency, SSE endpoints, settings.
+dependency, SSE endpoints.
+
+**`config/`** — `Settings` (env prefix `roster_`) and the data-root path helpers. Deliberately its
+own module rather than part of `api/`: adapters and the run manager need settings too, and an
+adapter importing from the API layer inverts the layering. Domain code takes plain values, never
+the `Settings` object.
 
 **`cli/`** — the seed entry point. There is no `scripts/` folder.
 
