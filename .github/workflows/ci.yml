@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  server:
+    name: server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --dev
+      - name: Lint
+        run: make lint
+      - name: Tests and coverage gate
+        run: make coverage
+
+  ui:
+    name: ui
+    runs-on: ubuntu-latest
+    # Skipped until the UI exists, so a backend-only change is never blocked by a
+    # job with nothing to run.
+    steps:
+      - uses: actions/checkout@v4
+      - id: exists
+        run: |
+          if [ -d projects/ui ]; then echo "ui=true" >> "$GITHUB_OUTPUT";
+          else echo "ui=false" >> "$GITHUB_OUTPUT"; fi
+      - uses: pnpm/action-setup@v4
+        if: steps.exists.outputs.ui == 'true'
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        if: steps.exists.outputs.ui == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: projects/ui/pnpm-lock.yaml
+      - name: Install
+        if: steps.exists.outputs.ui == 'true'
+        working-directory: projects/ui
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        if: steps.exists.outputs.ui == 'true'
+        working-directory: projects/ui
+        run: pnpm lint
+      - name: Tests
+        if: steps.exists.outputs.ui == 'true'
+        working-directory: projects/ui
+        run: pnpm test
