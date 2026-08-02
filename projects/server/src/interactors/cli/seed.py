@@ -9,11 +9,11 @@ rather than mocks.
 
 import asyncio
 
-from adapters.db.engine import make_engine, make_sessionmaker
+from adapters.db.session import temporary_session_factory
 from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
-from config.settings import Settings, agents_dir, db_path, get_settings
+from config.settings import Settings, agents_dir, get_settings
 from domain.agents import DEFAULT_MODEL, DEFAULT_TOKEN_LIMIT, create_agent_folder
 from domain.ids import new_id, work_item_key
 from domain.projects import Project, ProjectSource, create_project_folder
@@ -103,16 +103,15 @@ def _write_agent_folder(settings: Settings, store: FileStore) -> None:
 
 async def _seed_the_configured_data_root() -> bool:
     settings = get_settings()
-    settings.data_root.mkdir(parents=True, exist_ok=True)
-    engine = make_engine(f"sqlite+aiosqlite:///{db_path(settings)}")
-    try:
+    # A one-shot process: `temporary_session_factory` gives the seed an engine of
+    # its own and disposes it on the way out, rather than leaving the shared one
+    # open behind a CLI that is about to exit.
+    async with temporary_session_factory(settings) as factory:
         # Rooted at the data root, not one level above it like the API's shared
         # store: everything the seed writes — the managed project folder and the
         # agent folder — lives under it by construction.
         store = LocalFileStore(settings.data_root)
-        return await seed(AsyncUnitOfWork(make_sessionmaker(engine)), settings, store)
-    finally:
-        await engine.dispose()
+        return await seed(AsyncUnitOfWork(factory), settings, store)
 
 
 def main() -> None:

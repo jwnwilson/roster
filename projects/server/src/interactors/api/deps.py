@@ -1,41 +1,27 @@
 from collections.abc import Callable
-from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from adapters.agents.runtime import AgentRuntime, FakeRuntime
-from adapters.db.engine import make_engine, make_sessionmaker
+from adapters.db.session import session_factory
 from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
-from config.settings import Settings, db_path, get_settings
+from config.settings import Settings, get_settings
 from interactors.runs.manager import RunManager
-
-
-@lru_cache
-def _sessionmaker(url: str) -> async_sessionmaker[AsyncSession]:
-    return make_sessionmaker(make_engine(url))
-
-
-def _url(settings: Settings) -> str:
-    settings.data_root.mkdir(parents=True, exist_ok=True)
-    return f"sqlite+aiosqlite:///{db_path(settings)}"
-
-
-def session_factory_for(settings: Settings) -> async_sessionmaker[AsyncSession]:
-    """The sessionmaker as a plain call, for code with no request to hang a
-    `Depends` chain off — the lifespan hook, which runs before any request."""
-    return _sessionmaker(_url(settings))
 
 
 def get_session_factory(
     settings: Settings = Depends(get_settings),
 ) -> async_sessionmaker[AsyncSession]:
     """The sessionmaker itself (not a bound session) for anything that outlives a
-    request: the UnitOfWork factory below and RunManager's background task."""
-    return session_factory_for(settings)
+    request: the UnitOfWork factory below and RunManager's background task.
+
+    How that sessionmaker is built — the URL, the engine, the caching — belongs to
+    `adapters.db.session` and is deliberately not repeated here."""
+    return session_factory(settings)
 
 
 async def get_uow(

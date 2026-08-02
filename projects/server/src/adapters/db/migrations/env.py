@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from adapters.db import orm  # noqa: F401  — import registers the tables on Base.metadata
 from adapters.db.engine import Base
-from config.settings import db_path, get_settings
+from adapters.db.session import prepare_database_url
+from config.settings import get_settings
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -24,9 +25,9 @@ target_metadata = Base.metadata
 
 
 def _url() -> str:
-    settings = get_settings()
-    settings.data_root.mkdir(parents=True, exist_ok=True)
-    return f"sqlite+aiosqlite:///{db_path(settings)}"
+    # The URL comes from the same place the app's does — only the *engine* below
+    # is this environment's own (see the comment there).
+    return prepare_database_url(get_settings())
 
 
 # other values from the config, defined by the needs of env.py,

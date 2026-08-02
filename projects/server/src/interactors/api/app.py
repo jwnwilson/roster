@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from adapters.db.session import session_factory
 from adapters.db.uow import AsyncUnitOfWork
 from config.settings import get_settings
-from interactors.api.deps import session_factory_for
 from interactors.api.envelope import ok
 from interactors.api.errors import register_error_handlers
 from interactors.api.routes import agents, memory, projects, runs, work_items
@@ -24,11 +24,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     suite — it would silently look covered while never executing. Whatever goes
     here needs its own direct test; see tests/interactors/runs/test_reconcile.py.
     """
-    settings = get_settings()
-    settings.data_root.mkdir(parents=True, exist_ok=True)
-    session_factory = session_factory_for(settings)
+    factory = session_factory(get_settings())
     try:
-        await fail_interrupted_runs(lambda: AsyncUnitOfWork(session_factory))
+        await fail_interrupted_runs(lambda: AsyncUnitOfWork(factory))
     except Exception:
         # A database that cannot be reconciled — not migrated yet, say — must not
         # stop the API from booting: the operator needs it up to fix that.
