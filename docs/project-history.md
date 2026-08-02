@@ -170,9 +170,9 @@ review could have seen it: every task correctly reported its own brief satisfied
 the eight implementation commits. The UI plan rides along because it was written on the same branch before the
 split and belongs on `main` regardless — but no UI *code* is on it.
 
-**UI:** all 14 tasks — harvest, tokens, shell, the capability registry, then screens. Branch off
-`main` once `feat/threads` lands, rather than reusing the old branch, so the UI starts from a tree
-that already has threads in it. Provenance is
+**UI:** Task 1 done on `feat/ui` (60 tests green). Tasks 2–14 outstanding — The harvest turned out to be **12% of the source SPA, not two-thirds**:
+the rest was welded to a generated schema for a different API, so Tasks 4–12 are builds rather than
+reworks. Resume with `superpowers/ui-session-brief.md`. Provenance is
 keyed by capability rather than screen, because the live/mocked boundary runs *through* screens: the
 board's work items are live while the assigned-agent avatar and token count on the same card are
 not. Threads, `workItems.assignedAgent` and `agents.workingStatus` are now backed and can come out
