@@ -75,7 +75,7 @@ Every task's requirements implicitly include this section.
 | `src/runs/manager.py` | `RunManager` — asyncio task per run, memory write on terminal |
 | `src/cli/seed.py` | seed a demo project, work items, and an agent folder |
 
-**Frontend — `projects/ui/`** — transplanted in Task 12; structure per spec §6.
+**Frontend — `projects/ui/`** — transplanted in Task 13; structure per spec §6.
 
 ## Not in this plan
 
@@ -2920,7 +2920,260 @@ git commit -m "feat: run manager, fake runtime, SSE stream, and post-run memory"
 
 ---
 
-## Task 12: Transplant the UI
+## Task 12: Move file logic into the domain behind a storage port
+
+A refactor, not a feature. **Behaviour must not change** — the existing suite is the safety net, and
+every test must still pass at the end, with the same assertions. If a test needs its *setup*
+changed (constructing a store to inject), that is expected; if a test needs its *assertions*
+changed, stop and ask, because that means behaviour moved.
+
+**Why:** `adapters/` should hold only project-agnostic infrastructure — how to talk to files,
+databases, and APIs. Today it also holds roster's rules: how an agent folder is parsed, when
+memory compacts, where a project folder resolves. Those are domain decisions. Moving them lets the
+storage backend change without touching core logic, and lets the logic be tested against an
+in-memory store with no filesystem at all.
+
+**Files:**
+- Create: `projects/server/src/adapters/storage/{__init__,ports,local,memory}.py`
+- Move logic into: `projects/server/src/domain/{agents,memory,projects}.py`
+- Shrink or delete: `src/adapters/agents/folder.py`, `src/adapters/memory/store.py`, `src/adapters/project_folder.py`
+- Move wholesale: `src/api/` → `src/interactors/api/`, `src/cli/` → `src/interactors/cli/`, `src/runs/manager.py` → `src/interactors/runs/manager.py`
+- Modify: `pyproject.toml` (both), `Makefile`, and every test that imports `api.*`, `cli.*`, or `runs.*`
+- Test: `projects/server/tests/adapters/test_storage.py` (new), plus updates to existing tests
+
+**Interfaces:**
+- Consumes: everything built in Tasks 1–11.
+- Produces: `FileStore` protocol; `LocalFileStore(root)`; `InMemoryFileStore(root)`; domain functions and classes that take a `FileStore` by injection.
+
+- [ ] **Step 1: Write the failing test for the storage port**
+
+`projects/server/tests/adapters/test_storage.py` — test both implementations through the same
+tests, so the fake cannot drift from the real one:
+
+```python
+import pytest
+
+from adapters.storage.local import LocalFileStore
+from adapters.storage.memory import InMemoryFileStore
+
+
+@pytest.fixture(params=["local", "memory"])
+def store(request, tmp_path):
+    return LocalFileStore(tmp_path) if request.param == "local" else InMemoryFileStore(tmp_path)
+
+
+def test_write_then_read_round_trips(store, tmp_path):
+    # Arrange / Act
+    store.write_text_atomic(tmp_path / "a.md", "hello")
+
+    # Assert
+    assert store.read_text(tmp_path / "a.md") == "hello"
+
+
+def test_reading_a_missing_file_raises_file_not_found(store, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        store.read_text(tmp_path / "nope.md")
+
+
+def test_list_returns_matching_paths_sorted(store, tmp_path):
+    # Arrange
+    store.mkdir(tmp_path / "d")
+    for name in ("c.md", "a.md", "b.txt"):
+        store.write_text_atomic(tmp_path / "d" / name, "x")
+
+    # Act
+    found = store.list(tmp_path / "d", "*.md")
+
+    # Assert
+    assert [path.name for path in found] == ["a.md", "c.md"]
+
+
+def test_listing_a_missing_directory_returns_empty(store, tmp_path):
+    assert store.list(tmp_path / "absent", "*.md") == []
+
+
+def test_delete_is_idempotent(store, tmp_path):
+    store.write_text_atomic(tmp_path / "a.md", "x")
+    store.delete(tmp_path / "a.md")
+    store.delete(tmp_path / "a.md")  # must not raise
+    assert store.exists(tmp_path / "a.md") is False
+
+
+def test_reading_outside_the_root_is_refused(store, tmp_path):
+    # Arrange — a real file one level above the store's root
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("TOP SECRET")
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        store.read_text(outside)
+
+
+def test_reading_a_symlink_pointing_outside_the_root_is_refused(tmp_path):
+    # Arrange — local store only; symlinks are a filesystem concept
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("TOP SECRET")
+    (tmp_path / "link.md").symlink_to(outside)
+    store = LocalFileStore(tmp_path)
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        store.read_text(tmp_path / "link.md")
+```
+
+- [ ] **Step 2: Run and confirm they fail**
+
+Run: `uv run pytest projects/server/tests/adapters/test_storage.py -v`
+Expected: FAIL — no module `adapters.storage.local`.
+
+- [ ] **Step 3: Write the port**
+
+`projects/server/src/adapters/storage/ports.py`:
+
+```python
+from pathlib import Path
+from typing import Protocol
+
+
+class FileStore(Protocol):
+    """How roster reads and writes files. Domain logic depends on this, never on a filesystem.
+
+    Every implementation is rooted: paths resolving outside the root raise FileNotFoundError,
+    so containment is a property of the store rather than something each caller re-checks.
+    """
+
+    def read_text(self, path: Path) -> str: ...
+    def write_text_atomic(self, path: Path, text: str) -> None: ...
+    def list(self, directory: Path, pattern: str) -> list[Path]: ...
+    def delete(self, path: Path) -> None: ...
+    def exists(self, path: Path) -> bool: ...
+    def is_dir(self, path: Path) -> bool: ...
+    def mkdir(self, path: Path) -> None: ...
+```
+
+- [ ] **Step 4: Write `LocalFileStore`, moving the containment check into it**
+
+`projects/server/src/adapters/storage/local.py`. Requirements:
+
+- Constructor takes `root: Path` and stores `root.resolve()`.
+- A private `_checked(path)` resolves the path and raises `FileNotFoundError` unless it is inside
+  the resolved root. **Every method goes through it.** This is where the symlink and traversal
+  hardening from Task 9 now lives — as a property of the store, applied to every operation, rather
+  than a check `restore()` performs on its own.
+- `write_text_atomic` keeps the temp-file-plus-rename behaviour from `store.py`.
+- `read_text` propagates `FileNotFoundError`; `delete` is idempotent (`missing_ok=True`);
+  `list` returns `[]` for a missing directory and sorts its results.
+
+- [ ] **Step 5: Write `InMemoryFileStore`**
+
+`projects/server/src/adapters/storage/memory.py` — a dict of `Path -> str` plus a set of
+directories, same root-containment rule, same exceptions. It exists so domain logic can be tested
+with no filesystem. It does not implement symlinks; the symlink test above targets `LocalFileStore`
+only, which is correct — symlinks are a filesystem concept, not a storage-contract one.
+
+- [ ] **Step 6: Run and confirm they pass**
+
+Run: `uv run pytest projects/server/tests/adapters/test_storage.py -v`
+Expected: PASS.
+
+- [ ] **Step 7: Move memory logic into the domain**
+
+Move the body of `adapters/memory/store.py` into `domain/memory.py`, alongside the existing
+`should_compact` / `DIGEST_SECTIONS` / `empty_digest`. `MemoryStore.__init__` now takes
+`(folder: Path, store: FileStore, snapshot_keep: int)` — a `FileStore` instead of doing its own
+I/O, and a plain int instead of a `Settings` object, matching the existing domain rule that
+configuration arrives as plain values.
+
+Replace every direct filesystem call with a `self._store` call. Keep **all** existing behaviour:
+skipping unreadable journal entries, refusing an empty digest, snapshot-before-digest ordering,
+`snapshot_keep <= 0` writing no snapshot, and the `restore()` allowlist. **The allowlist stays in
+the domain** — "name must be one of the snapshots that exist" is a rule. **The containment check
+does not** — it is now the store's job, per Step 4.
+
+Delete `adapters/memory/` once nothing imports it.
+
+- [ ] **Step 8: Move agent-folder logic into the domain**
+
+Move `read_agent` / `read_agents` from `adapters/agents/folder.py` into `domain/agents.py`, taking
+a `FileStore`. Keep the categorical `try/except Exception` backstop and every specific message —
+missing `AGENT.md`, invalid `config.yaml`, non-mapping config, `skills` as a file, non-scalar
+`model`, non-integer `token_limit`. `adapters/agents/` keeps only `runtime.py`.
+
+- [ ] **Step 9: Move project-folder logic into the domain**
+
+Move `resolve_folder` / `scaffold` / `memory_dir` / `artifacts_dir` and `FolderUnavailable` from
+`adapters/project_folder.py` into `domain/projects.py`, taking a `FileStore` where they touch disk.
+`memory_dir` and `artifacts_dir` stay pure path builders with no store access. Delete
+`adapters/project_folder.py`.
+
+- [ ] **Step 10: Create `interactors/` and move the entry points into it**
+
+`adapters/` is infrastructure; `interactors/` is where the outside world enters and where
+orchestration wires domain to adapters. Move:
+
+```
+src/api/            → src/interactors/api/          (app.py, deps.py, errors.py, envelope.py, routes/)
+src/cli/            → src/interactors/cli/          (seed.py)
+src/runs/manager.py → src/interactors/runs/manager.py
+```
+
+`RunManager` belongs here rather than in `adapters/` or `domain/`: it is not infrastructure and it
+is not a pure rule — it drives a run by calling domain logic through adapter ports. That is exactly
+what an interactor is.
+
+Update every import of `api.*`, `cli.*`, and `runs.*` across `src/` and `tests/`.
+
+- [ ] **Step 11: Update the places that name those paths by string**
+
+These will not be caught by an import-fixing pass and will fail at runtime rather than at import:
+
+- `projects/server/pyproject.toml` — `[tool.hatch.build.targets.wheel] packages`: replace
+  `"src/api"`, `"src/cli"`, `"src/runs"` with `"src/interactors"`.
+- root `pyproject.toml` — `[tool.coverage.run] source`: replace `"api"`, `"cli"`, `"runs"` with
+  `"interactors"`.
+- `Makefile` — the `run` and `dev` targets: `uvicorn api.app:create_app` becomes
+  `uvicorn interactors.api.app:create_app`. The seed invocation `python -m cli.seed` becomes
+  `python -m interactors.cli.seed`.
+- `projects/server/src/adapters/db/migrations/env.py` — imports `config.settings`, which does not
+  move, but check it does not reach into `api.*`.
+
+After this step, run `uv run pytest` **and** `make run` (then Ctrl-C) — the suite passing does not
+prove the uvicorn factory path is right, because nothing under test imports it by string.
+
+- [ ] **Step 12: Wire up the store**
+
+Add a `get_file_store()` dependency in `src/interactors/api/deps.py` returning
+`LocalFileStore(settings.data_root.parent)` — rooted high enough to reach both the data root and
+external project folders, since a `local` or `git` project can live anywhere. Inject it in the
+routes that construct a `MemoryStore` or read agents, in `RunManager`, and in
+`interactors/cli/seed.py`.
+
+> **If that root turns out to be wrong** — for instance if it can't reach a project folder on
+> another volume — stop and ask rather than widening it to `/`. A store rooted at the filesystem
+> root would silently undo the containment guarantee this task is built on.
+
+- [ ] **Step 13: Run the whole suite**
+
+Run: `uv run pytest`
+Expected: **all tests pass with their assertions unchanged.** Setup changes are fine. If any
+assertion had to change, stop and report which and why before continuing.
+
+Then `make lint` and `make coverage` (80% gate).
+
+- [ ] **Step 14: Commit**
+
+Two commits read better than one here:
+
+```bash
+git add -A projects/server
+git commit -m "refactor: move file logic into the domain behind a storage port"
+# then, if you separated the moves:
+git commit -m "refactor: move api, cli, and the run manager into interactors"
+```
+
+---
+
+## Task 13: Transplant the UI
 
 The source SPA is at `../naaf/projects/ui` (spec §6 provenance note). This is a one-time copy
 followed by a rename pass — the destination must not contain the source project's name anywhere.
@@ -2981,7 +3234,7 @@ git commit -m "feat: transplant the SPA shell, primitives, and API client"
 
 ---
 
-## Task 13: Project creation and live project data in the UI
+## Task 14: Project creation and live project data in the UI
 
 **Files:**
 - Modify: `projects/ui/src/lib/api/` (project types and hooks), the Create Project modal, the sidebar project list
@@ -3080,7 +3333,7 @@ git commit -m "feat: workspace-first project creation wired to the API"
 
 ---
 
-## Task 14: Seed, `make dev`, CI, and documentation
+## Task 15: Seed, `make dev`, CI, and documentation
 
 **Files:**
 - Create: `projects/server/src/cli/seed.py`, `.github/workflows/ci.yml`, `docs/architecture.md`, `docs/adr/0001-local-single-process.md`
