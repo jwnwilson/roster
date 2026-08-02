@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
+import { afterAll, afterEach, beforeAll } from "vitest";
+
+import { server } from "../mocks/server";
 
 // Polyfill localStorage for jsdom environments that stub it without full Storage API
 const makeLocalStorage = () => {
@@ -19,8 +21,12 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
-// MSW's server/db wiring returns in Task 3, which rebuilds the mock layer
-// against roster's own endpoints.
+// `onUnhandledRequest: "error"` is deliberate: a request nothing handles is a
+// screen reaching for an endpoint that does not exist, which is exactly the
+// mistake the capability registry exists to catch.
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
+  server.resetHandlers();
   localStorage.clear();
 });
+afterAll(() => server.close());
