@@ -13,7 +13,7 @@ from config.settings import Settings
 from domain.agents import Agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
-from domain.memory import MemoryStore, should_compact
+from domain.memory import MemoryStore, empty_digest, should_compact
 from domain.projects import Project, memory_dir
 from domain.runs import RunEvent, RunStatus
 from domain.work_items import WorkItem
@@ -183,9 +183,13 @@ class RunManager:
                     compacted=False, digest=store.read_digest(), folded_entries=0
                 )
             try:
+                # A project that has never compacted has no digest yet. What that
+                # blank digest should look like is roster's rule (spec §5), so it
+                # is seeded here and handed over — the runtime is project-agnostic
+                # infrastructure and never invents roster's shapes for itself.
                 digest = await self._runtime.summarise(
                     agent,
-                    store.read_digest(),
+                    store.read_digest() or empty_digest(folder.name),
                     [entry.text for entry in entries],
                     self._settings.memory_digest_budget_bytes,
                 )

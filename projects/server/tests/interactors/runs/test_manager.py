@@ -6,7 +6,7 @@ from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from config.settings import Settings
 from domain.agents import Agent
-from domain.memory import MemoryStore
+from domain.memory import DIGEST_SECTIONS, MemoryStore
 from domain.projects import Project, ProjectSource, memory_dir, scaffold
 from domain.runs import Run
 from domain.work_items import WorkItem
@@ -94,6 +94,25 @@ async def test_compact_now_folds_a_journal_below_the_normal_threshold(folder):
     assert result.folded_entries == 1
     assert "project memory" in result.digest
     assert store.read_journal() == []
+
+
+async def test_compacting_a_project_with_no_digest_yet_starts_from_rosters_template(folder):
+    # Arrange — the very first compaction has nothing to build on. Seeding it with
+    # roster's own section layout is a roster rule, so the interactor supplies it;
+    # the runtime only ever folds into whatever digest it is handed.
+    settings = Settings(data_root=folder)
+    manager = RunManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
+    store = _memory_store(folder, settings)
+    store.append_entry("r1", "2026-08-01T10-00-00Z", "the first entry ever")
+    assert store.read_digest() == ""
+
+    # Act
+    result = await manager.compact_now(folder, Agent(name="system"))
+
+    # Assert
+    assert result.compacted is True
+    for section in DIGEST_SECTIONS:
+        assert f"## {section}" in result.digest
 
 
 async def test_compact_now_on_an_empty_journal_is_a_clean_no_op(folder):
