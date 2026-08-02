@@ -3,12 +3,11 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from adapters.db.uow import AsyncUnitOfWork
-from adapters.storage.local import LocalFileStore
 from config.settings import Settings, get_settings
 from domain.memory import MemoryStore
-from domain.projects import memory_dir
 from interactors.api.deps import get_uow
 from interactors.api.envelope import ok
+from interactors.memory_stores import open_project_memory
 
 router = APIRouter(prefix="/projects/{project_id}/memory", tags=["memory"])
 
@@ -16,16 +15,7 @@ router = APIRouter(prefix="/projects/{project_id}/memory", tags=["memory"])
 async def _store(project_id: str, uow: AsyncUnitOfWork, settings: Settings) -> MemoryStore:
     async with uow.transaction() as tx:
         project = await tx.projects.read(project_id)
-    folder = Path(project.folder_path)
-    # Rooted at this project's own memory tree, not a wide app-level store — a
-    # symlink planted inside snapshots/ must not be able to reach a sibling file
-    # elsewhere in the project folder, let alone another project's memory.
-    file_store = LocalFileStore(memory_dir(folder))
-    return MemoryStore(
-        folder=folder,
-        store=file_store,
-        snapshot_keep=settings.memory_snapshot_keep,
-    )
+    return open_project_memory(Path(project.folder_path), settings.memory_snapshot_keep)
 
 
 @router.get("")

@@ -8,15 +8,15 @@ from pathlib import Path
 
 from adapters.agents.runtime import AgentRuntime
 from adapters.db.uow import AsyncUnitOfWork
-from adapters.storage.local import LocalFileStore
 from config.settings import Settings
 from domain.agents import Agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
 from domain.memory import MemoryStore, empty_digest, should_compact
-from domain.projects import Project, memory_dir
+from domain.projects import Project
 from domain.runs import RunEvent, RunStatus
 from domain.work_items import WorkItem
+from interactors.memory_stores import open_project_memory
 
 logger = logging.getLogger("roster.runs")
 
@@ -258,14 +258,7 @@ class RunManager:
             logger.exception("failed to record compaction-failure event for run %s", run_id)
 
     def _memory_store(self, folder: Path) -> MemoryStore:
-        # Rooted at this project's own memory tree, not the wide app-level store — a
-        # symlink planted inside snapshots/ must not be able to reach a sibling file
-        # elsewhere in the project folder, let alone another project's memory. See
-        # domain.memory.MemoryStore.restore for the allowlist half of this guarantee.
-        file_store = LocalFileStore(memory_dir(folder))
-        return MemoryStore(
-            folder=folder, store=file_store, snapshot_keep=self._settings.memory_snapshot_keep
-        )
+        return open_project_memory(folder, self._settings.memory_snapshot_keep)
 
 
 def _build_summary(status: RunStatus, lines: list[str]) -> str:
