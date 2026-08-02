@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from functools import lru_cache
+from pathlib import Path
 
 from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -57,14 +58,33 @@ def get_uow_factory(
 
 
 def get_file_store(settings: Settings = Depends(get_settings)) -> FileStore:
-    """Rooted one level above data_root, so it can reach both roster's own managed
-    projects (under data_root) and an external local/git project folder that lives
-    alongside it. If a project folder ever needs to live somewhere this root can't
-    reach (a different volume, say), that is a decision to widen deliberately —
-    never by rooting at "/", which would silently undo the containment guarantee
-    the store exists to provide.
+    """Roster's own data root — agent folders and managed project folders.
+
+    Everything read through this store is named by *agents* or by roster itself,
+    so containment here is load-bearing: an agent-supplied name must not be able
+    to walk out of the data root. Operator-declared project folders do not come
+    through here; see `get_project_folder_store`.
     """
     return LocalFileStore(settings.data_root.parent)
+
+
+def get_project_folder_store(settings: Settings = Depends(get_settings)) -> FileStore:
+    """A store rooted at the filesystem root, used only to resolve and scaffold the
+    project folder an operator declared at project creation.
+
+    Rooting at "/" is deliberate and narrow. Roster is single-user and local
+    (spec §1): the operator is telling roster where their own project lives on
+    their own machine, and a repo at /opt/src/x or on another volume is an
+    ordinary case, not an attack. Rooting this at data_root.parent rejected those
+    folders — and, worse, reported them as "does not exist", which is false.
+
+    Containment exists to stop *agent-supplied* names escaping the memory tree,
+    and that is unaffected: the per-project memory stores (RunManager, the memory
+    routes) stay rooted at each project's own `.roster/memory`, and agent folders
+    stay rooted at the data root above. This store is used once, on one
+    operator-supplied path, and never for anything an agent can name.
+    """
+    return LocalFileStore(Path(settings.data_root.anchor))
 
 
 def _build_runtime(settings: Settings) -> AgentRuntime:

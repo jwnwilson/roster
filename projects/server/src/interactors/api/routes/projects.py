@@ -6,7 +6,7 @@ from adapters.storage.ports import FileStore
 from config.settings import Settings, get_settings
 from domain.ids import new_id
 from domain.projects import Project, ProjectSource, resolve_folder, scaffold, validate_source
-from interactors.api.deps import get_file_store, get_uow
+from interactors.api.deps import get_project_folder_store, get_uow
 from interactors.api.envelope import ok, ok_list
 
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -34,7 +34,7 @@ async def create_project(
     payload: ProjectIn,
     uow: AsyncUnitOfWork = Depends(get_uow),
     settings: Settings = Depends(get_settings),
-    store: FileStore = Depends(get_file_store),
+    store: FileStore = Depends(get_project_folder_store),
 ) -> dict:
     validate_source(payload.source.kind, payload.source.url, payload.source.path)
     source = ProjectSource(**payload.source.model_dump())

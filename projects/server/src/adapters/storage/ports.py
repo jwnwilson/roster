@@ -2,6 +2,16 @@ from pathlib import Path
 from typing import Protocol
 
 
+class OutsideStoreRoot(FileNotFoundError):
+    """A path resolved outside the store's root.
+
+    A subclass of `FileNotFoundError` so every existing handler keeps working, but
+    a distinct type so a caller can report *why* a path is unusable. Collapsing
+    "outside this store" into "does not exist" produces error messages that are
+    simply untrue, and untrue errors send people looking in the wrong place.
+    """
+
+
 class FileStore(Protocol):
     """How roster reads and writes files. Domain logic depends on this, never on a filesystem.
 
@@ -39,5 +49,5 @@ def resolve_within(root: Path, path: Path) -> Path:
     """
     resolved = path.resolve()
     if not resolved.is_relative_to(root):
-        raise FileNotFoundError(f"{path} is outside the store root")
+        raise OutsideStoreRoot(f"{path} is outside the store root {root}")
     return resolved

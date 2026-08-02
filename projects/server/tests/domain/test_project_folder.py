@@ -105,3 +105,21 @@ def test_local_project_pointed_at_a_regular_file_is_rejected(tmp_path, store):
     # Act / Assert
     with pytest.raises(FolderUnavailable):
         resolve_folder(source, "p1", store, tmp_path)
+
+
+def test_a_folder_outside_the_stores_root_is_reported_as_such_not_as_missing(tmp_path):
+    # Arrange — a folder that plainly exists, just not under this store's root.
+    root = tmp_path / "root"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    source = ProjectSource(kind="local", path=str(elsewhere))
+
+    # Act
+    with pytest.raises(FolderUnavailable) as error:
+        resolve_folder(source, "p1", LocalFileStore(root), root)
+
+    # Assert — collapsing this into "does not exist" sent operators looking for a
+    # typo in a path that was perfectly correct.
+    assert "outside" in str(error.value)
+    assert "does not exist" not in str(error.value)

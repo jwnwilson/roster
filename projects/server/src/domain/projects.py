@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from adapters.storage.ports import FileStore
+from adapters.storage.ports import FileStore, OutsideStoreRoot
 
 SourceKind = Literal["git", "local", "none"]
 
@@ -73,10 +73,11 @@ def resolve_folder(
         folder = store.resolve(Path(source.path))
         try:
             is_existing_dir = store.is_dir(folder)
-        except FileNotFoundError:
-            # Outside the store's root — treated the same as "does not exist": either
-            # way roster cannot use it as a project folder.
-            is_existing_dir = False
+        except OutsideStoreRoot as error:
+            # Deliberately *not* folded into "does not exist": the folder may be
+            # perfectly real and the operator would go looking for a typo that
+            # isn't there. The two failures have different fixes.
+            raise FolderUnavailable(f"{folder} is outside this store's root") from error
         if not is_existing_dir:
             raise FolderUnavailable(f"{folder} does not exist or is not a directory")
         return folder

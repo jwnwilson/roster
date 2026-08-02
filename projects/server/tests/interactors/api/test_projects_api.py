@@ -1,4 +1,7 @@
 import asyncio
+import shutil
+import tempfile
+from pathlib import Path
 
 
 async def test_creating_a_source_less_project_scaffolds_its_roster_folder(client, settings):
@@ -143,3 +146,36 @@ async def test_deleting_a_project_cascades_to_its_work_items_runs_and_events(
             assert remaining == 0, f"{table} rows survived the cascade"
     # The operator's folder on disk is untouched — that is the deliberate part.
     assert (settings.data_root / "projects" / project_id).is_dir()
+
+
+async def test_a_project_folder_outside_the_data_root_is_accepted(client):
+    # Arrange — an operator declaring where their own project lives on their own
+    # machine (spec §1: single-user, local). This used to be rejected with a
+    # false "does not exist", because the shared store was rooted at $HOME.
+    outside = Path(tempfile.mkdtemp(prefix="roster-outside-"))
+    try:
+        # Act
+        response = await client.post(
+            "/projects",
+            json={"name": "External", "source": {"kind": "local", "path": str(outside)}},
+        )
+
+        # Assert
+        assert response.status_code == 201, response.json()
+        assert response.json()["data"]["folder_path"] == str(outside.resolve())
+        assert (outside / ".roster" / "artifacts").is_dir()
+    finally:
+        shutil.rmtree(outside)
+
+
+async def test_a_project_folder_that_really_is_missing_still_says_so(client, tmp_path):
+    # Act
+    response = await client.post(
+        "/projects",
+        json={"name": "Ghost", "source": {"kind": "local", "path": str(tmp_path / "nope")}},
+    )
+
+    # Assert — widening the root must not turn a genuine typo into a silent
+    # success or a misleading message.
+    assert response.status_code == 400
+    assert "does not exist" in response.json()["error"]
