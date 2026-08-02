@@ -18,6 +18,38 @@ def test_the_url_names_rosters_database_with_its_async_driver(tmp_path):
     assert url == f"sqlite+aiosqlite:///{db_path(settings)}"
 
 
+def test_an_operator_supplied_db_url_is_used_verbatim(tmp_path):
+    # Arrange — `db_url` is a settings value first (the reference's shape); the
+    # derivation below is only what fills it in when the operator said nothing.
+    settings = Settings(data_root=tmp_path, db_url="sqlite+aiosqlite:///:memory:")
+
+    # Act / Assert
+    assert prepare_database_url(settings) == "sqlite+aiosqlite:///:memory:"
+
+
+def test_the_db_url_setting_is_read_from_the_environment(monkeypatch, tmp_path):
+    # Arrange
+    monkeypatch.setenv("ROSTER_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("ROSTER_DB_URL", "sqlite+aiosqlite:///:memory:")
+
+    # Act / Assert — settings are the only way configuration reaches roster
+    # (AGENTS.md), so an operator pointing the database elsewhere does it here.
+    assert Settings().db_url == "sqlite+aiosqlite:///:memory:"
+
+
+def test_an_operator_supplied_url_does_not_create_the_data_root_folder(tmp_path):
+    # Arrange — the mkdir exists because *roster* chose a path SQLite will not
+    # create for itself. When the operator names the URL, roster did not choose
+    # the path and has no business guessing which folder to make.
+    settings = Settings(data_root=tmp_path / "fresh", db_url="sqlite+aiosqlite:///:memory:")
+
+    # Act
+    prepare_database_url(settings)
+
+    # Assert
+    assert not (tmp_path / "fresh").exists()
+
+
 def test_preparing_the_url_creates_the_folder_the_database_lives_in(tmp_path):
     # Arrange — a first boot against a data root that does not exist yet.
     settings = Settings(data_root=tmp_path / "fresh")

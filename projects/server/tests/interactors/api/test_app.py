@@ -43,6 +43,25 @@ async def test_create_app_builds_a_session_factory_from_settings_when_given_none
     assert (tmp_path / "roster.db").exists()
 
 
+async def test_create_app_opens_the_database_the_db_url_setting_names(monkeypatch, tmp_path):
+    # Arrange — an operator pointing roster at a database of their choosing. The
+    # data root is somewhere else entirely, so only `db_url` can explain which
+    # file ends up being opened.
+    elsewhere = tmp_path / "elsewhere" / "chosen.db"
+    elsewhere.parent.mkdir()
+    monkeypatch.setenv("ROSTER_DATA_ROOT", str(tmp_path / "root"))
+    monkeypatch.setenv("ROSTER_DB_URL", f"sqlite+aiosqlite:///{elsewhere}")
+
+    # Act
+    app = create_app()
+    async with app.state.session_factory() as session:
+        await session.execute(text("select 1"))
+
+    # Assert
+    assert elsewhere.exists()
+    assert not (tmp_path / "root" / "roster.db").exists()
+
+
 async def test_an_engine_create_app_built_itself_is_disposed_on_shutdown(monkeypatch, tmp_path):
     # Arrange
     monkeypatch.setenv("roster_data_root", str(tmp_path))
