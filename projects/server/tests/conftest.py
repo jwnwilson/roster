@@ -84,7 +84,7 @@ async def client(session_factory, settings):
     # `dependency_overrides`. That is what the parameter is for, and it is what
     # makes the isolation total rather than per-dependency: `app.state` is the
     # one place anything reaches a session from, so the request's UnitOfWork,
-    # RunManager's background writes and the SSE stream *all* land on this
+    # the turn manager's background writes and the SSE stream *all* land on this
     # fixture's in-memory engine by construction. There is nothing left to
     # forget to override, and no route can reach the real `~/.roster`.
     app = create_app(session_factory=session_factory)
@@ -96,7 +96,7 @@ async def client(session_factory, settings):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as http_client:
         # Exposed so individual tests can add their own dependency_overrides
-        # (e.g. swapping in a RunManager wired to a failing runtime) without
+        # (e.g. swapping in a turn manager wired to a failing runtime) without
         # every test needing its own bespoke client fixture.
         http_client.app = app
         yield http_client

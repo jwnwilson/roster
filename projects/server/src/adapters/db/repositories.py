@@ -3,10 +3,9 @@ from typing import Any, cast
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from adapters.db.orm import MessageRow, ProjectRow, RunEventRow, RunRow, ThreadRow, WorkItemRow
+from adapters.db.orm import MessageRow, ProjectRow, ThreadRow, WorkItemRow
 from adapters.db.repository import AsyncSqlRepository
 from domain.projects import Project, ProjectSource, SourceKind
-from domain.runs import Run, RunEvent
 from domain.threads import Message, Thread
 from domain.work_items import WorkItem
 
@@ -79,13 +78,3 @@ class MessageRepository(AsyncSqlRepository[Message]):
         )
         rows = (await self.session.execute(query)).scalars().all()
         return [self._to_dto(row) for row in rows]
-
-
-class RunRepository(AsyncSqlRepository[Run]):
-    orm_model = RunRow
-    dto = Run
-
-
-class RunEventRepository(AsyncSqlRepository[RunEvent]):
-    orm_model = RunEventRow
-    dto = RunEvent

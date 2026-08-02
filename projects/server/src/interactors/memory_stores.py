@@ -2,7 +2,7 @@
 
 Constructing a `MemoryStore` means choosing what its `FileStore` is rooted at, and
 that choice is a security boundary rather than a detail. Two copies of it (the
-memory routes and the run manager each had one) is two places for it to drift.
+memory routes and the turn manager each had one) is two places for it to drift.
 """
 
 from pathlib import Path

@@ -7,8 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from adapters.db.repositories import (
     MessageRepository,
     ProjectRepository,
-    RunEventRepository,
-    RunRepository,
     ThreadRepository,
     WorkItemRepository,
 )
@@ -69,11 +67,3 @@ class AsyncUnitOfWork:
     @property
     def messages(self) -> MessageRepository:
         return self._repo("messages", MessageRepository)
-
-    @property
-    def runs(self) -> RunRepository:
-        return self._repo("runs", RunRepository)
-
-    @property
-    def run_events(self) -> RunEventRepository:
-        return self._repo("run_events", RunEventRepository)

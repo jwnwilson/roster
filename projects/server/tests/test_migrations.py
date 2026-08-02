@@ -13,10 +13,6 @@ INSERT INTO projects (id, name, source_kind, folder_path)
     VALUES ('p1', 'P', 'none', '/tmp/p1');
 INSERT INTO work_items (id, key, project_id, type, title, status, priority, sequence)
     VALUES ('w1', 'ROS-1', 'p1', 'task', 'T', 'backlog', 'medium', 1);
-INSERT INTO runs (id, project_id, work_item_id, agent_name, status)
-    VALUES ('r1', 'p1', 'w1', 'atlas', 'complete');
-INSERT INTO run_events (id, run_id, type, message, created_at)
-    VALUES ('e1', 'r1', 'status', 'hi', '2026-08-02 00:00:00');
 INSERT INTO threads (id, project_id, work_item_id, title, status, read)
     VALUES ('t1', 'p1', 'w1', 'Set up CI', 'info', 0);
 INSERT INTO threads (id, project_id, work_item_id, title, status, read)
@@ -25,9 +21,9 @@ INSERT INTO messages (id, thread_id, author_kind, author_name, kind, content, cr
     VALUES ('m1', 't1', 'agent', 'atlas', 'text', 'starting', '2026-08-02 00:00:00');
 """
 
-# The tables that exist at revision 0002, which is as far back as the round-trip
-# test below goes. Threads and messages arrive in 0004 and are counted separately.
-TABLES = ("projects", "work_items", "runs", "run_events")
+# The run tables were dropped in 0005, so the round-trip test below only goes back
+# to 0003 — 0002 predates threads, and nothing seeds runs any more.
+TABLES = ("projects", "work_items")
 
 ALL_TABLES = (*TABLES, "threads", "messages")
 
@@ -60,13 +56,13 @@ def migrated(tmp_path):
 
 
 def test_the_cascade_migration_round_trips_without_losing_rows(migrated):
-    # Arrange — migration 0003 recreates and copies three tables in each
-    # direction, which is exactly where rows get dropped silently.
+    # Arrange — migration 0003 recreates and copies tables in each direction,
+    # which is exactly where rows get dropped silently.
     before = _counts(migrated)
-    assert before == {"projects": 1, "work_items": 1, "runs": 1, "run_events": 1}
+    assert before == {"projects": 1, "work_items": 1}
 
     # Act
-    _alembic(migrated, "downgrade", "0002")
+    _alembic(migrated, "downgrade", "0003")
     after_downgrade = _counts(migrated)
     _alembic(migrated, "upgrade", "head")
 
@@ -84,9 +80,21 @@ def test_deleting_a_project_cascades_on_the_migrated_schema(migrated):
 
     # Assert
     assert _counts(migrated, ALL_TABLES) == {
-        "projects": 0, "work_items": 0, "runs": 0, "run_events": 0,
-        "threads": 0, "messages": 0,
+        "projects": 0, "work_items": 0, "threads": 0, "messages": 0,
     }
+
+
+def test_the_run_tables_are_gone_at_head(migrated):
+    # Spec decision 16: a turn has no persisted identity, so there is nothing for
+    # these rows to become. Their absence is the point of the change.
+    with sqlite3.connect(migrated / "roster.db") as connection:
+        names = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+
+    assert "runs" not in names
+    assert "run_events" not in names
 
 
 def test_the_threads_migration_round_trips(migrated):

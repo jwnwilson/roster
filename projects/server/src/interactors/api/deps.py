@@ -8,7 +8,6 @@ from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
 from config.settings import Settings, get_settings
-from interactors.runs.manager import RunManager
 from interactors.turns.manager import AgentTurnManager
 
 
@@ -52,7 +51,7 @@ def get_project_folder_store(settings: Settings = Depends(get_settings)) -> File
     folders — and, worse, reported them as "does not exist", which is false.
 
     Containment exists to stop *agent-supplied* names escaping the memory tree,
-    and that is unaffected: the per-project memory stores (RunManager, the memory
+    and that is unaffected: the per-project memory stores (the turn manager, the memory
     routes) stay rooted at each project's own `.roster/memory`, and agent folders
     stay rooted at the data root above. This store is used once, on one
     operator-supplied path, and never for anything an agent can name.
@@ -63,49 +62,6 @@ def get_project_folder_store(settings: Settings = Depends(get_settings)) -> File
 def _build_runtime(settings: Settings) -> AgentRuntime:
     # Only FakeRuntime exists today; a real subprocess runtime is a later task.
     return FakeRuntime()
-
-
-async def get_run_manager(
-    request: Request,
-    settings: Settings = Depends(get_settings),
-) -> RunManager:
-    """One RunManager per app instance, not per request.
-
-    Its per-folder compaction locks (see RunManager) are only meaningful if every
-    run for a given project routes through the same instance — a fresh RunManager
-    per request would hand out a fresh, unshared lock dict and defeat them.
-
-    It cannot take the request's uow. Its background task writes run events and
-    the terminal status *after* the response, by which time the request's
-    transaction is committed and its session closed. So it takes a factory built
-    over `app.state.session_factory` and opens a short-lived transaction per
-    write — the same single source every request reads, reached the only way a
-    caller that outlives a request can reach it.
-
-    This is `async def`, not a plain `def`, on purpose. FastAPI runs a synchronous
-    dependency in a threadpool; two concurrent first requests could then each run
-    the check-then-set below on a different OS thread, both observe `run_manager`
-    unset, and each construct its own RunManager with its own, independent
-    compaction-lock dict — defeating the invariant above even though the check
-    looks atomic on the page. Declaring this `async def` instead makes FastAPI
-    await it directly on the single event loop, and nothing here awaits between
-    the `getattr` and the assignment, so no other coroutine can interleave with
-    it: the check-then-set is effectively atomic without needing a lock.
-    """
-    # Safety depends on this staying uninterrupted: do not add an `await` between
-    # the check and the assignment below, or the threadpool-style race this
-    # function exists to avoid comes back — silently, since nothing here would
-    # fail loudly if it did.
-    manager = getattr(request.app.state, "run_manager", None)
-    if manager is None:
-        session_factory = request.app.state.session_factory
-        manager = RunManager(
-            runtime=_build_runtime(settings),
-            settings=settings,
-            uow_factory=lambda: AsyncUnitOfWork(session_factory),
-        )
-        request.app.state.run_manager = manager
-    return manager
 
 
 async def get_turn_manager(

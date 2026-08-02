@@ -13,7 +13,7 @@ DEFAULT_SNAPSHOT_KEEP = 20
 def _memory_store(folder: Path, snapshot_keep: int) -> MemoryStore:
     # scaffold() needs a store wide enough to reach both memory/ and artifacts/;
     # MemoryStore itself is deliberately narrower — rooted at just this project's
-    # memory tree, matching how it's wired in interactors/ (see runs/manager.py
+    # memory tree, matching how it's wired in interactors/ (see turns/manager.py
     # and api/routes/memory.py) — so a symlink planted inside snapshots/ can't
     # reach a sibling file elsewhere in the project folder.
     scaffold(folder, LocalFileStore(folder))

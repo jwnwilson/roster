@@ -33,7 +33,7 @@ async def test_a_file_backed_engine_runs_in_wal_journal_mode(tmp_path):
     # Arrange — WAL is a property of a *file* database; ":memory:" always reports
     # "memory" no matter what is asked of it, so this has to use a real file.
     # Spec §3 lists WAL in the stack: SSE readers poll every 250 ms while the
-    # RunManager's background tasks write events, which is exactly the
+    # The turn manager's background tasks write messages, which is exactly the
     # reader-blocks-writer contention WAL removes.
     engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'probe.db'}")
 
