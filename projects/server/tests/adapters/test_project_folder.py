@@ -67,3 +67,40 @@ def test_scaffold_is_idempotent(tmp_path):
 
     # Assert
     assert (artifacts_dir(tmp_path) / "report.md").read_text() == "keep me"
+
+
+def test_git_source_with_local_repo_path_uses_the_existing_directory(tmp_path):
+    # Arrange
+    settings = Settings(data_root=tmp_path)
+    existing_repo = tmp_path / "my_repo"
+    existing_repo.mkdir()
+
+    # Act
+    folder = resolve_folder(ProjectSource(kind="git", path=str(existing_repo)), "p1", settings)
+
+    # Assert
+    assert folder == existing_repo
+
+
+def test_git_source_with_remote_url_only_gets_a_managed_folder(tmp_path):
+    # Arrange
+    settings = Settings(data_root=tmp_path)
+    source = ProjectSource(kind="git", url="https://github.com/acme/api")
+
+    # Act
+    folder = resolve_folder(source, "p1", settings)
+
+    # Assert
+    assert folder == tmp_path / "projects" / "p1"
+
+
+def test_local_project_pointed_at_a_regular_file_is_rejected(tmp_path):
+    # Arrange
+    settings = Settings(data_root=tmp_path)
+    file_path = tmp_path / "file.txt"
+    file_path.write_text("I am a file")
+    source = ProjectSource(kind="local", path=str(file_path))
+
+    # Act / Assert
+    with pytest.raises(FolderUnavailable):
+        resolve_folder(source, "p1", settings)
