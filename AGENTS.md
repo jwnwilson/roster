@@ -41,7 +41,7 @@ no containers. It could be wrapped in Electron later.
 - Agent runs are asyncio-managed **subprocesses inside the API process** — no Celery, no Redis,
   no broker, no worker service, no Docker
 - React 18 + Vite + Tailwind 4 + React Query + React Router, MSW for mocks
-- pytest + pytest-asyncio + httpx, 80% coverage gate; vitest + testing-library; Playwright
+- pytest + pytest-asyncio + httpx, 80% coverage gate; vitest + testing-library (end-to-end testing deferred)
 
 ## Architecture
 
@@ -50,16 +50,17 @@ no containers. It could be wrapped in Electron later.
 ```
 projects/
   server/src/
-    domain/        # pure entities + rules — projects, work items, transitions, agents, memory, runs
-    adapters/
-      db/          # SQLAlchemy models, session factory, per-entity query functions
-      agents/      # agent-folder reader + AgentRuntime (FakeRuntime now, SubprocessRuntime later)
-      memory/      # journal, digest, snapshots
-      project_folder.py   # resolve the project folder, scaffold .roster/
-    api/           # app factory, routers, deps, SSE
+    domain/        # roster's rules and entities — projects, work items, transitions,
+                   #   agents (folder parsing), memory (digest/journal/compaction), runs
+    adapters/      # project-agnostic infrastructure + the ports it implements
+      storage/     #   ports.py (FileStore protocol), local.py, memory.py (in-memory, for tests)
+      db/          #   SQLAlchemy models, session factory, per-entity query functions
+      agents/      #   AgentRuntime (FakeRuntime now, SubprocessRuntime later)
+    interactors/   # entry points and orchestration — where the outside world comes in
+      api/         #   app factory, routers, deps, errors, envelope, SSE
+      cli/         #   seed
+      runs/        #   RunManager — one asyncio task per run
     config/        # settings — neutral module, importable by every layer
-    runs/          # RunManager — one asyncio task per run
-    cli/           # seed
   ui/
     app/           # shell: providers, router, layout, Sidebar, Topbar, ChatPanel, error boundary
     modules/       # feature slices (board, detail, threads, agents, mcp, dashboard, settings)
@@ -68,12 +69,35 @@ projects/
     lib/hooks/     # useEventSource, useLocalStorage, …
 ```
 
-**Placement rules.** Business logic in `domain/` — no I/O, no imports from any other layer (not
-even `config/`; thresholds and paths arrive as plain arguments), each entity model co-located in
-the module that owns it, no central `models.py`. Port implementations in `adapters/`; wiring and
-startup in `api/`; settings in `config/`. **No adapter imports from `api/`.** No `scripts/` folder. There are **no** `Repository` or
-`UnitOfWork` protocols and no generic CRUD router — query functions take an `AsyncSession`, and
-routers are written by hand.
+### Placement rules
+
+The test for which layer something belongs in: **would it still make sense in a different
+product?** If yes it is an adapter. If it encodes how *roster* works, it is domain. If it is how
+the outside world gets in, it is an interactor.
+
+- **`domain/`** — roster's rules and entities. Knows *what* an agent folder means, *when* memory
+  compacts, *where* a project folder resolves. Performs **no I/O itself**: it may import **port
+  protocols** from `adapters/` and receives an implementation by injection. Never imports a
+  concrete adapter, `interactors/`, or `config/` — thresholds and paths arrive as plain arguments.
+  Each entity model is co-located in the module that owns it; there is no central `models.py`.
+- **`adapters/`** — infrastructure that is not about roster: how to read a file, talk to a
+  database, run a subprocess, call an API. **Ports live here with their implementations**, so
+  domain can import the protocol. An adapter must contain no roster rules — if you find yourself
+  writing "if the config is malformed, disable the agent" in an adapter, that belongs in domain.
+- **`interactors/`** — entry points and orchestration: HTTP routers, the CLI, the run manager.
+  This is the only layer that may import from everywhere. It wires a concrete adapter into domain
+  logic and drives it.
+- **`config/`** — settings only, importable by any layer except domain.
+
+**Dependency direction:** `interactors → domain → adapter ports`, and `interactors → adapters` for
+construction. **No adapter imports `interactors/` or `domain/` rules.** No `scripts/` folder. There
+are **no** `Repository` or `UnitOfWork` protocols and no generic CRUD router — query functions take
+an `AsyncSession`, and routers are written by hand.
+
+**Storage is injected, never assumed.** Anything touching files goes through the `FileStore` port,
+which is rooted: paths resolving outside the root raise `FileNotFoundError`. Containment is a
+property of the store, applied to every operation — callers do not re-check it, and domain logic
+never touches `pathlib` I/O directly.
 
 **Nothing in `domain/` may assume a git repository exists.** A project declares its source as
 `git`, `local`, or `none`; git is checked at the edge and only swaps the run's terminal step
@@ -129,7 +153,6 @@ make test         # pytest
 make coverage     # 80% gate
 make lint         # ruff + mypy
 make db-upgrade   # alembic upgrade head
-make e2e          # Playwright
 
 cd projects/ui && pnpm dev    # UI alone, fully mocked (VITE_USE_MOCKS=true)
 ```

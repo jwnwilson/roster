@@ -1,12 +1,14 @@
-# Roster Setup Implementation Plan
+# Roster Backend Setup Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Stand up the roster repository so `make dev` boots a FastAPI backend on SQLite plus a React UI, with projects, work items, agent-folder reading, project memory, and a fake agent runtime working end to end.
+**Goal:** Stand up the roster repository and its backend — projects, work items, agent-folder reading, project memory, and a fake agent runtime working end to end, on a layered architecture with storage behind a port.
 
-**Architecture:** Light hexagonal in one Python package — `domain/` holds pure entities and rules, `adapters/` holds SQLAlchemy, agent-folder, and memory I/O, `api/` holds FastAPI wiring. Runs execute as asyncio-managed subprocesses inside the API process; a fake runtime stands in until the real one lands. The UI is a React SPA transplanted from an existing codebase, then reworked.
+**Scope:** backend only. The UI transplant and screen work have their own plan: [2026-08-02-roster-ui.md](2026-08-02-roster-ui.md).
 
-**Tech Stack:** Python 3.12, uv, FastAPI, Pydantic v2, SQLAlchemy 2.0 async, aiosqlite, Alembic, sse-starlette, pytest/pytest-asyncio/httpx, ruff, mypy · React 18, Vite, Tailwind 4, React Query, React Router, MSW, Vitest, Playwright, pnpm.
+**Architecture:** Three layers in one Python package — `domain/` holds roster rules and entities, `adapters/` holds infrastructure and the ports it implements (storage, database, agent runtime), `interactors/` holds entry points and orchestration (API, CLI, run manager). Runs execute as asyncio-managed subprocesses inside the API process; a fake runtime stands in until the real one lands.
+
+**Tech Stack:** Python 3.12, uv, FastAPI, Pydantic v2, SQLAlchemy 2.0 async, aiosqlite, Alembic, sse-starlette, pytest/pytest-asyncio/httpx, ruff, mypy. (Frontend stack is covered by the UI plan.)
 
 **Spec:** [`docs/specs/2026-08-01-roster-design.md`](../../specs/2026-08-01-roster-design.md). Read it before Task 1. Where this plan and the spec disagree, the spec wins — stop and flag it.
 
@@ -38,7 +40,7 @@ Every task's requirements implicitly include this section.
 | Path | Responsibility |
 |---|---|
 | `pyproject.toml` | uv workspace (one member), pytest/coverage/ruff/mypy config |
-| `Makefile` | install, dev, run, test, coverage, lint, db-upgrade, e2e |
+| `Makefile` | install, dev, run, test, coverage, lint, db-upgrade |
 | `.gitignore`, `.env.example` | ignore rules; documented settings |
 | `.github/workflows/ci.yml` | backend job (ruff+mypy+pytest) and UI job (eslint+tsc+vitest) |
 | `AGENTS.md`, `docs/project-history.md` | **already written** — conventions and status; keep them current as tasks land |
@@ -75,14 +77,14 @@ Every task's requirements implicitly include this section.
 | `src/runs/manager.py` | `RunManager` — asyncio task per run, memory write on terminal |
 | `src/cli/seed.py` | seed a demo project, work items, and an agent folder |
 
-**Frontend — `projects/ui/`** — transplanted in Task 12; structure per spec §6.
+**Frontend — `projects/ui/`** — transplanted in Task 13; structure per spec §6.
 
 ## Not in this plan
 
 The spec's domain model (§4) names entities this plan deliberately does not build, because they
 belong to the screen build-out deferred in spec §12. Do not add them here:
 
-`Thread`, `Message`, `McpServer`, `Secret`, `Attachment` (the table and upload endpoints — the
+**Everything UI** — the transplant, the screens, and the `make dev` UI wiring all live in the UI plan. Also: an end-to-end suite and its CI workflow (deferred), `Thread`, `Message`, `McpServer`, `Secret`, `Attachment` (the table and upload endpoints — the
 `.roster/artifacts` folder they will index is created in Task 5), the board and dashboard
 screens, the real `SubprocessRuntime`, and cloning a remote git source.
 
@@ -265,7 +267,7 @@ Expected: PASS.
 `Makefile` (tabs, not spaces, for recipe lines):
 
 ```make
-.PHONY: install test coverage lint run db-upgrade dev e2e
+.PHONY: install test coverage lint run db-upgrade dev
 
 install:
 	uv sync
@@ -2919,308 +2921,255 @@ git commit -m "feat: run manager, fake runtime, SSE stream, and post-run memory"
 
 ---
 
-## Task 12: Transplant the UI
+## Task 12: Move file logic into the domain behind a storage port
 
-The source SPA is at `../naaf/projects/ui` (spec §6 provenance note). This is a one-time copy
-followed by a rename pass — the destination must not contain the source project's name anywhere.
+A refactor, not a feature. **Behaviour must not change** — the existing suite is the safety net, and
+every test must still pass at the end, with the same assertions. If a test needs its *setup*
+changed (constructing a store to inject), that is expected; if a test needs its *assertions*
+changed, stop and ask, because that means behaviour moved.
 
-**Files:**
-- Create: everything under `projects/ui/`
-
-- [ ] **Step 1: Copy the source tree, excluding build and dependency output**
-
-```bash
-mkdir -p projects/ui
-rsync -a --exclude node_modules --exclude dist --exclude .env \
-  ../naaf/projects/ui/ projects/ui/
-```
-
-> The `sed -i ''` form in the next step is BSD/macOS syntax. On Linux use `sed -i` with no
-> argument.
-
-- [ ] **Step 2: Rename the project throughout**
-
-```bash
-cd projects/ui
-grep -rl -i naaf src e2e openapi package.json index.html *.ts *.js 2>/dev/null \
-  | xargs sed -i '' -e 's/NAAF/Roster/g' -e 's/naaf/roster/g'
-git mv openapi/naaf-api.yaml openapi/roster-api.yaml 2>/dev/null || \
-  mv openapi/naaf-api.yaml openapi/roster-api.yaml
-```
-
-Then update `package.json`'s `name` to `roster-ui` and its `gen:api` script to point at
-`openapi/roster-api.yaml`.
-
-- [ ] **Step 3: Verify nothing survived the rename**
-
-Run: `grep -ri naaf projects/ui --exclude-dir=node_modules | grep -v pnpm-lock`
-Expected: no output. Any hit is a bug — fix it before continuing.
-
-- [ ] **Step 4: Install and run the existing test suite**
-
-Run: `cd projects/ui && pnpm install && pnpm lint && pnpm test`
-Expected: eslint and tsc clean; vitest green.
-
-Failures here are almost always references to screens or API paths that roster does not have yet.
-Delete the offending module and its tests rather than stubbing them — Task 13 rebuilds what is
-needed. Record every deletion in the commit body.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add projects/ui
-git commit -m "feat: transplant the SPA shell, primitives, and API client"
-```
-
----
-
-## Task 13: Project creation and live project data in the UI
+**Why:** `adapters/` should hold only project-agnostic infrastructure — how to talk to files,
+databases, and APIs. Today it also holds roster's rules: how an agent folder is parsed, when
+memory compacts, where a project folder resolves. Those are domain decisions. Moving them lets the
+storage backend change without touching core logic, and lets the logic be tested against an
+in-memory store with no filesystem at all.
 
 **Files:**
-- Modify: `projects/ui/src/lib/api/` (project types and hooks), the Create Project modal, the sidebar project list
-- Test: alongside each, with MSW handlers
+- Create: `projects/server/src/adapters/storage/{__init__,ports,local,memory}.py`
+- Move logic into: `projects/server/src/domain/{agents,memory,projects}.py`
+- Shrink or delete: `src/adapters/agents/folder.py`, `src/adapters/memory/store.py`, `src/adapters/project_folder.py`
+- Move wholesale: `src/api/` → `src/interactors/api/`, `src/cli/` → `src/interactors/cli/`, `src/runs/manager.py` → `src/interactors/runs/manager.py`
+- Modify: `pyproject.toml` (both), `Makefile`, and every test that imports `api.*`, `cli.*`, or `runs.*`
+- Test: `projects/server/tests/adapters/test_storage.py` (new), plus updates to existing tests
 
 **Interfaces:**
-- Consumes: Task 6's API and Task 12's client.
-- Produces: `useProjects()`, `useCreateProject()`, and a `CreateProjectModal` matching spec §6.
+- Consumes: everything built in Tasks 1–11.
+- Produces: `FileStore` protocol; `LocalFileStore(root)`; `InMemoryFileStore(root)`; domain functions and classes that take a `FileStore` by injection.
 
-- [ ] **Step 1: Write the failing test for the source-kind control**
+- [ ] **Step 1: Write the failing test for the storage port**
 
-`projects/ui/src/modules/create/CreateProjectModal.test.tsx`:
-
-```tsx
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
-
-import { CreateProjectModal } from "./CreateProjectModal";
-
-describe("CreateProjectModal", () => {
-  it("offers the three project types from the design", () => {
-    render(<CreateProjectModal open onClose={() => {}} onCreate={vi.fn()} />);
-
-    expect(screen.getByRole("radio", { name: /git repository/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /local folder/i })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: /no code/i })).toBeInTheDocument();
-  });
-
-  it("hides the source field entirely for a no-code project", async () => {
-    render(<CreateProjectModal open onClose={() => {}} onCreate={vi.fn()} />);
-
-    await userEvent.click(screen.getByRole("radio", { name: /no code/i }));
-
-    expect(screen.queryByLabelText(/repository url|folder path/i)).not.toBeInTheDocument();
-  });
-
-  it("submits the declared source shape the API expects", async () => {
-    const onCreate = vi.fn();
-    render(<CreateProjectModal open onClose={() => {}} onCreate={onCreate} />);
-
-    await userEvent.type(screen.getByLabelText(/name/i), "Q3 research");
-    await userEvent.click(screen.getByRole("radio", { name: /no code/i }));
-    await userEvent.click(screen.getByRole("button", { name: /create/i }));
-
-    expect(onCreate).toHaveBeenCalledWith({
-      name: "Q3 research",
-      source: { kind: "none" },
-    });
-  });
-
-  it("does not offer an artifact store choice", () => {
-    render(<CreateProjectModal open onClose={() => {}} onCreate={vi.fn()} />);
-
-    expect(screen.queryByText(/artifact store/i)).not.toBeInTheDocument();
-  });
-});
-```
-
-- [ ] **Step 2: Run it and confirm it fails**
-
-Run: `cd projects/ui && pnpm vitest run src/modules/create/CreateProjectModal.test.tsx`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Build the modal**
-
-Implement `CreateProjectModal.tsx` using the existing `Modal`, `TextInput`, and `Button`
-primitives: a name field, a three-way segmented control (`git` / `local` / `none`) rendered as
-radios, and one conditional field — repository URL for `git`, folder path for `local`, nothing for
-`none`. Styling follows `docs/design/README.md` (`--accent: #7c6cf0`, 5px radius, 28px control
-height). No artifact-store block (spec §6 deviation).
-
-- [ ] **Step 4: Run and confirm it passes**
-
-Run: `cd projects/ui && pnpm vitest run src/modules/create/CreateProjectModal.test.tsx`
-Expected: PASS (4 tests).
-
-- [ ] **Step 5: Wire projects to the live API**
-
-Add `listProjects` / `createProject` to `lib/api`, a `useProjects` query and `useCreateProject`
-mutation with query-key invalidation, MSW handlers returning the envelope shape, and the sidebar
-project list reading from `useProjects()` — git glyph when `source.kind === "git"`, folder glyph
-otherwise.
-
-- [ ] **Step 6: Run the UI suite**
-
-Run: `cd projects/ui && pnpm lint && pnpm test`
-Expected: PASS.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add projects/ui
-git commit -m "feat: workspace-first project creation wired to the API"
-```
-
----
-
-## Task 14: Seed, `make dev`, CI, and documentation
-
-**Files:**
-- Create: `projects/server/src/cli/seed.py`, `.github/workflows/ci.yml`, `docs/architecture.md`, `docs/adr/0001-local-single-process.md`
-- Modify: `Makefile`, `AGENTS.md`, `docs/project-history.md`
-- Test: `projects/server/tests/test_seed.py`
-
-- [ ] **Step 1: Write the failing seed test**
-
-`projects/server/tests/test_seed.py`:
+`projects/server/tests/adapters/test_storage.py` — test both implementations through the same
+tests, so the fake cannot drift from the real one:
 
 ```python
-from cli.seed import seed
+import pytest
+
+from adapters.storage.local import LocalFileStore
+from adapters.storage.memory import InMemoryFileStore
 
 
-async def test_seed_creates_a_project_with_work_items_and_an_agent(session, settings):
-    # Act
-    await seed(session, settings)
-
-    # Assert
-    from adapters.agents.folder import read_agents
-    from adapters.db import projects, work_items
-    from config.settings import agents_dir
-
-    created = await projects.list_projects(session)
-    assert len(created) == 1
-    assert len(await work_items.list_work_items(session, created[0].id)) >= 3
-    assert [agent.name for agent in read_agents(agents_dir(settings))] == ["atlas"]
+@pytest.fixture(params=["local", "memory"])
+def store(request, tmp_path):
+    return LocalFileStore(tmp_path) if request.param == "local" else InMemoryFileStore(tmp_path)
 
 
-async def test_seed_is_idempotent(session, settings):
-    # Act
-    await seed(session, settings)
-    await seed(session, settings)
+def test_write_then_read_round_trips(store, tmp_path):
+    # Arrange / Act
+    store.write_text_atomic(tmp_path / "a.md", "hello")
 
     # Assert
-    from adapters.db import projects
+    assert store.read_text(tmp_path / "a.md") == "hello"
 
-    assert len(await projects.list_projects(session)) == 1
+
+def test_reading_a_missing_file_raises_file_not_found(store, tmp_path):
+    with pytest.raises(FileNotFoundError):
+        store.read_text(tmp_path / "nope.md")
+
+
+def test_list_returns_matching_paths_sorted(store, tmp_path):
+    # Arrange
+    store.mkdir(tmp_path / "d")
+    for name in ("c.md", "a.md", "b.txt"):
+        store.write_text_atomic(tmp_path / "d" / name, "x")
+
+    # Act
+    found = store.list(tmp_path / "d", "*.md")
+
+    # Assert
+    assert [path.name for path in found] == ["a.md", "c.md"]
+
+
+def test_listing_a_missing_directory_returns_empty(store, tmp_path):
+    assert store.list(tmp_path / "absent", "*.md") == []
+
+
+def test_delete_is_idempotent(store, tmp_path):
+    store.write_text_atomic(tmp_path / "a.md", "x")
+    store.delete(tmp_path / "a.md")
+    store.delete(tmp_path / "a.md")  # must not raise
+    assert store.exists(tmp_path / "a.md") is False
+
+
+def test_reading_outside_the_root_is_refused(store, tmp_path):
+    # Arrange — a real file one level above the store's root
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("TOP SECRET")
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        store.read_text(outside)
+
+
+def test_reading_a_symlink_pointing_outside_the_root_is_refused(tmp_path):
+    # Arrange — local store only; symlinks are a filesystem concept
+    outside = tmp_path.parent / "secret.txt"
+    outside.write_text("TOP SECRET")
+    (tmp_path / "link.md").symlink_to(outside)
+    store = LocalFileStore(tmp_path)
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        store.read_text(tmp_path / "link.md")
 ```
 
-- [ ] **Step 2: Run it, confirm it fails, then implement `seed(session, settings)`**
+- [ ] **Step 2: Run and confirm they fail**
 
-It creates one `source.kind = "none"` demo project (returning early if any project already
-exists), scaffolds its folder, inserts one epic plus two tasks, and writes an `atlas` agent
-folder with `AGENT.md`, `skills/`, and `config.yaml` under `agents_dir(settings)`. Add a
-`if __name__ == "__main__":` block that opens a session from `api.deps` and runs it with
-`asyncio.run`.
+Run: `uv run pytest projects/server/tests/adapters/test_storage.py -v`
+Expected: FAIL — no module `adapters.storage.local`.
 
-Run: `uv run pytest projects/server/tests/test_seed.py -v` → PASS.
+- [ ] **Step 3: Write the port**
 
-- [ ] **Step 3: Add the `dev` and `e2e` Make targets**
+`projects/server/src/adapters/storage/ports.py`:
 
-```make
-dev:
-	$(MAKE) db-upgrade
-	uv run python -m cli.seed
-	uv run uvicorn api.app:create_app --factory --reload --port 8000 & \
-	cd projects/ui && pnpm dev; \
-	kill %1
+```python
+from pathlib import Path
+from typing import Protocol
 
-e2e:
-	cd projects/ui && pnpm test:e2e
+
+class FileStore(Protocol):
+    """How roster reads and writes files. Domain logic depends on this, never on a filesystem.
+
+    Every implementation is rooted: paths resolving outside the root raise FileNotFoundError,
+    so containment is a property of the store rather than something each caller re-checks.
+    """
+
+    def read_text(self, path: Path) -> str: ...
+    def write_text_atomic(self, path: Path, text: str) -> None: ...
+    def list(self, directory: Path, pattern: str) -> list[Path]: ...
+    def delete(self, path: Path) -> None: ...
+    def exists(self, path: Path) -> bool: ...
+    def is_dir(self, path: Path) -> bool: ...
+    def mkdir(self, path: Path) -> None: ...
 ```
 
-- [ ] **Step 4: Verify the whole stack boots**
+- [ ] **Step 4: Write `LocalFileStore`, moving the containment check into it**
 
-Run: `make dev`
-Expected: migrations apply, the seed reports the demo project, the API answers on
-`http://localhost:8000/health`, and the UI serves on `http://localhost:5173`. Ctrl-C stops both.
+`projects/server/src/adapters/storage/local.py`. Requirements:
 
-- [ ] **Step 5: Add CI**
+- Constructor takes `root: Path` and stores `root.resolve()`.
+- A private `_checked(path)` resolves the path and raises `FileNotFoundError` unless it is inside
+  the resolved root. **Every method goes through it.** This is where the symlink and traversal
+  hardening from Task 9 now lives — as a property of the store, applied to every operation, rather
+  than a check `restore()` performs on its own.
+- `write_text_atomic` keeps the temp-file-plus-rename behaviour from `store.py`.
+- `read_text` propagates `FileNotFoundError`; `delete` is idempotent (`missing_ok=True`);
+  `list` returns `[]` for a missing directory and sorts its results.
 
-`.github/workflows/ci.yml` — two jobs, mirroring the local gates:
+- [ ] **Step 5: Write `InMemoryFileStore`**
 
-```yaml
-name: CI
+`projects/server/src/adapters/storage/memory.py` — a dict of `Path -> str` plus a set of
+directories, same root-containment rule, same exceptions. It exists so domain logic can be tested
+with no filesystem. It does not implement symlinks; the symlink test above targets `LocalFileStore`
+only, which is correct — symlinks are a filesystem concept, not a storage-contract one.
 
-on:
-  push:
-    branches: [main]
-  pull_request:
+- [ ] **Step 6: Run and confirm they pass**
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+Run: `uv run pytest projects/server/tests/adapters/test_storage.py -v`
+Expected: PASS.
 
-permissions:
-  contents: read
+- [ ] **Step 7: Move memory logic into the domain**
 
-jobs:
-  backend:
-    name: Backend (ruff + mypy + pytest)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v8.2.0
-        with:
-          version: "0.9.24"
-          enable-cache: true
-      - run: uv python install 3.12
-      - run: uv sync
-      - run: make lint
-      - run: make coverage
+Move the body of `adapters/memory/store.py` into `domain/memory.py`, alongside the existing
+`should_compact` / `DIGEST_SECTIONS` / `empty_digest`. `MemoryStore.__init__` now takes
+`(folder: Path, store: FileStore, snapshot_keep: int)` — a `FileStore` instead of doing its own
+I/O, and a plain int instead of a `Settings` object, matching the existing domain rule that
+configuration arrives as plain values.
 
-  ui:
-    name: UI (eslint + tsc + vitest)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: projects/ui
-    steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-        with:
-          version: "10.26.2"
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: pnpm
-          cache-dependency-path: projects/ui/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm test
+Replace every direct filesystem call with a `self._store` call. Keep **all** existing behaviour:
+skipping unreadable journal entries, refusing an empty digest, snapshot-before-digest ordering,
+`snapshot_keep <= 0` writing no snapshot, and the `restore()` allowlist. **The allowlist stays in
+the domain** — "name must be one of the snapshots that exist" is a rule. **The containment check
+does not** — it is now the store's job, per Step 4.
+
+Delete `adapters/memory/` once nothing imports it.
+
+- [ ] **Step 8: Move agent-folder logic into the domain**
+
+Move `read_agent` / `read_agents` from `adapters/agents/folder.py` into `domain/agents.py`, taking
+a `FileStore`. Keep the categorical `try/except Exception` backstop and every specific message —
+missing `AGENT.md`, invalid `config.yaml`, non-mapping config, `skills` as a file, non-scalar
+`model`, non-integer `token_limit`. `adapters/agents/` keeps only `runtime.py`.
+
+- [ ] **Step 9: Move project-folder logic into the domain**
+
+Move `resolve_folder` / `scaffold` / `memory_dir` / `artifacts_dir` and `FolderUnavailable` from
+`adapters/project_folder.py` into `domain/projects.py`, taking a `FileStore` where they touch disk.
+`memory_dir` and `artifacts_dir` stay pure path builders with no store access. Delete
+`adapters/project_folder.py`.
+
+- [ ] **Step 10: Create `interactors/` and move the entry points into it**
+
+`adapters/` is infrastructure; `interactors/` is where the outside world enters and where
+orchestration wires domain to adapters. Move:
+
+```
+src/api/            → src/interactors/api/          (app.py, deps.py, errors.py, envelope.py, routes/)
+src/cli/            → src/interactors/cli/          (seed.py)
+src/runs/manager.py → src/interactors/runs/manager.py
 ```
 
-- [ ] **Step 6: Write the documentation**
+`RunManager` belongs here rather than in `adapters/` or `domain/`: it is not infrastructure and it
+is not a pure rule — it drives a run by calling domain logic through adapter ports. That is exactly
+what an interactor is.
 
-- `AGENTS.md` and `docs/project-history.md` already exist. Update them rather than rewriting:
-  correct anything in `AGENTS.md` that drifted during Tasks 1–13, and add a dated `## Status`
-  entry to `project-history.md` recording what now ships, with **Current state** and
-  **Outstanding** brought up to date.
-- `docs/architecture.md` — the layer boundaries from spec §3 with the placement rules new code
-  must follow, and the "nothing in `domain/` assumes a repository" rule from §4.
-- `docs/adr/0001-local-single-process.md` — the decision to run agents as subprocesses inside the
-  API process instead of a worker tier: context, decision, consequences (including that runs do
-  not survive an API restart).
+Update every import of `api.*`, `cli.*`, and `runs.*` across `src/` and `tests/`.
 
-- [ ] **Step 7: Final verification**
+- [ ] **Step 11: Update the places that name those paths by string**
 
-Run: `make lint && make coverage && cd projects/ui && pnpm lint && pnpm test`
-Expected: all green, backend coverage ≥ 80%.
+These will not be caught by an import-fixing pass and will fail at runtime rather than at import:
 
-- [ ] **Step 8: Commit**
+- `projects/server/pyproject.toml` — `[tool.hatch.build.targets.wheel] packages`: replace
+  `"src/api"`, `"src/cli"`, `"src/runs"` with `"src/interactors"`.
+- root `pyproject.toml` — `[tool.coverage.run] source`: replace `"api"`, `"cli"`, `"runs"` with
+  `"interactors"`.
+- `Makefile` — the `run` and `dev` targets: `uvicorn api.app:create_app` becomes
+  `uvicorn interactors.api.app:create_app`. The seed invocation `python -m cli.seed` becomes
+  `python -m interactors.cli.seed`.
+- `projects/server/src/adapters/db/migrations/env.py` — imports `config.settings`, which does not
+  move, but check it does not reach into `api.*`.
+
+After this step, run `uv run pytest` **and** `make run` (then Ctrl-C) — the suite passing does not
+prove the uvicorn factory path is right, because nothing under test imports it by string.
+
+- [ ] **Step 12: Wire up the store**
+
+Add a `get_file_store()` dependency in `src/interactors/api/deps.py` returning
+`LocalFileStore(settings.data_root.parent)` — rooted high enough to reach both the data root and
+external project folders, since a `local` or `git` project can live anywhere. Inject it in the
+routes that construct a `MemoryStore` or read agents, in `RunManager`, and in
+`interactors/cli/seed.py`.
+
+> **If that root turns out to be wrong** — for instance if it can't reach a project folder on
+> another volume — stop and ask rather than widening it to `/`. A store rooted at the filesystem
+> root would silently undo the containment guarantee this task is built on.
+
+- [ ] **Step 13: Run the whole suite**
+
+Run: `uv run pytest`
+Expected: **all tests pass with their assertions unchanged.** Setup changes are fine. If any
+assertion had to change, stop and report which and why before continuing.
+
+Then `make lint` and `make coverage` (80% gate).
+
+- [ ] **Step 14: Commit**
+
+Two commits read better than one here:
 
 ```bash
-git add .
-git commit -m "feat: seed, dev stack, CI, and project documentation"
+git add -A projects/server
+git commit -m "refactor: move file logic into the domain behind a storage port"
+# then, if you separated the moves:
+git commit -m "refactor: move api, cli, and the run manager into interactors"
 ```
 
 ---
