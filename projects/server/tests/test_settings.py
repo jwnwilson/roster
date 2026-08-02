@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from config.settings import Settings, agents_dir, db_path, project_dir
+from config.settings import Settings, agents_dir, db_path, get_settings, project_dir
 
 
 def test_data_root_expands_user_home():
@@ -31,3 +31,28 @@ def test_compaction_defaults_match_the_spec(tmp_path):
     assert settings.memory_compact_bytes == 32_768
     assert settings.memory_digest_budget_bytes == 8_192
     assert settings.memory_snapshot_keep == 20
+
+
+def test_get_settings_caches_the_real_default_data_root():
+    # Arrange / Act — no override in play; this call seeds get_settings'
+    # lru_cache with the real (non-tmp_path) default for the next test.
+    settings = get_settings()
+
+    # Assert
+    assert settings.data_root == Path("~/.roster").expanduser().resolve()
+
+
+def test_get_settings_observes_monkeypatched_data_root_not_the_previous_test_cache(
+    monkeypatch, tmp_path
+):
+    # Arrange — the previous test cached get_settings() with the real default.
+    # get_settings() has exactly one cache key (it takes no arguments), so
+    # without the autouse cache-clear fixture in conftest.py this call would
+    # still return that stale real-home value instead of the override below.
+    monkeypatch.setenv("ROSTER_DATA_ROOT", str(tmp_path))
+
+    # Act
+    settings = get_settings()
+
+    # Assert
+    assert settings.data_root == tmp_path
