@@ -1,6 +1,7 @@
 # Session brief: roster UI migration
 
-Paste this into a fresh session to brainstorm and plan the UI work.
+Paste the contents of this file into a fresh session to start the UI work. It runs in parallel
+with the backend — see "Where the work happens" below for the one point of coupling.
 
 ---
 
@@ -18,10 +19,18 @@ written, and there are real open questions below.
 
 ## Where the work happens
 
-Worktree `.claude/worktrees/roster-ui` on branch `feat/ui`, branched from the backend branch
-because the UI needs the API. The backend has one task left (a layering refactor that moves
-`api/` to `interactors/`), so **rebase or merge before wiring anything to live endpoints** —
-otherwise you will chase import paths that moved underneath you.
+Worktree `.claude/worktrees/roster-ui` on branch `feat/ui`, branched from the backend branch.
+
+**You can work in parallel with the backend's remaining task.** The backend has one task left — a
+layering refactor moving `api/` to `interactors/` — but that changes **Python import paths only**.
+The HTTP routes are unchanged, and the UI talks to the backend over HTTP, so nothing you build is
+affected by it. The single exception is the `make dev` wiring in the final task, which references
+`uvicorn interactors.api.app:create_app` — merge the backend branch before doing that one, and
+confirm the factory path against the Makefile rather than assuming it.
+
+To run the backend while developing against live endpoints: `make run` from the backend worktree
+at `.claude/worktrees/roster-setup`, which serves on `:8000`. Or develop entirely against mocks,
+which is the default and needs no backend at all.
 
 ## What already exists
 
