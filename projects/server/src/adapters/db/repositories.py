@@ -1,7 +1,7 @@
-from typing import cast
+from typing import Any, cast
 
+from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError as SqlIntegrityError
 
 from adapters.db.orm import ProjectRow, RunEventRow, RunRow, WorkItemRow
 from adapters.db.repository import AsyncSqlRepository
@@ -13,8 +13,8 @@ from domain.work_items import WorkItem
 class ProjectRepository(AsyncSqlRepository[Project]):
     """`Project.source` is a nested `ProjectSource`, but `ProjectRow` stores it
     flattened as `source_kind` / `source_url` / `source_path` — the one entity
-    where the generic column-name-parity the base class relies on doesn't hold,
-    so create/update/_to_dto are overridden to do that mapping by hand."""
+    where the column-name parity the base class relies on doesn't hold. Only that
+    mapping is overridden; create/update/delete stay the base class's."""
 
     orm_model = ProjectRow
     dto = Project
@@ -31,38 +31,14 @@ class ProjectRepository(AsyncSqlRepository[Project]):
             updated_at=row.updated_at,
         )
 
-    async def create(self, dto: Project) -> Project:  # type: ignore[override]
-        row = ProjectRow(
-            id=dto.id,
-            name=dto.name,
-            source_kind=dto.source.kind,
-            source_url=dto.source.url,
-            source_path=dto.source.path,
-            folder_path=dto.folder_path,
-        )
-        self.session.add(row)
-        try:
-            await self.session.flush()
-        except SqlIntegrityError as err:
-            await self.session.rollback()
-            raise self.conflict_error(str(err.orig)) from err
-        await self.session.refresh(row)
-        return self._to_dto(row)
-
-    async def update(self, id: str, dto: Project) -> Project:  # type: ignore[override]
-        row = await self._get_one_row(id)
-        row.name = dto.name
-        row.source_kind = dto.source.kind
-        row.source_url = dto.source.url
-        row.source_path = dto.source.path
-        row.folder_path = dto.folder_path
-        try:
-            await self.session.flush()
-        except SqlIntegrityError as err:
-            await self.session.rollback()
-            raise self.conflict_error(str(err.orig)) from err
-        await self.session.refresh(row)
-        return self._to_dto(row)
+    def _row_data(self, dto: BaseModel) -> dict[str, Any]:
+        data = dict(super()._row_data(dto))
+        source = data.pop("source")
+        return data | {
+            "source_kind": source["kind"],
+            "source_url": source["url"],
+            "source_path": source["path"],
+        }
 
 
 class WorkItemRepository(AsyncSqlRepository[WorkItem]):

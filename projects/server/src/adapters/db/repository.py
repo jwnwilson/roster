@@ -30,6 +30,16 @@ class AsyncSqlRepository(Generic[DTO]):  # noqa: UP046
     def _to_dto(self, row: Any) -> DTO:
         return cast(DTO, _query.to_dto(self.dto, row))
 
+    def _row_data(self, dto: BaseModel) -> dict[str, Any]:
+        """`dto`'s column values, keyed by column name.
+
+        The only seam a subclass needs when a DTO field does not map 1:1 onto a
+        column (a nested model stored flattened, say). Persistence itself —
+        add/flush/rollback/refresh — stays here, in one place: a subclass that
+        re-declares `create` or `update` has copy-pasted this class, not extended it.
+        """
+        return dto.model_dump()
+
     async def _get_one_row(self, id: str) -> Any:
         query = _query.base_select(self.orm_model).where(self.orm_model.id == id)
         row = (await self.session.execute(query)).scalar_one_or_none()
@@ -38,7 +48,9 @@ class AsyncSqlRepository(Generic[DTO]):  # noqa: UP046
         return row
 
     async def create(self, dto: BaseModel) -> DTO:
-        data = {k: v for k, v in dto.model_dump().items() if v is not None}
+        # Nones are dropped rather than written: an unset column takes its server
+        # default (created_at/updated_at) instead of an explicit NULL.
+        data = {k: v for k, v in self._row_data(dto).items() if v is not None}
         row = self.orm_model(**data)
         self.session.add(row)
         try:
@@ -81,7 +93,10 @@ class AsyncSqlRepository(Generic[DTO]):  # noqa: UP046
 
     async def update(self, id: str, dto: BaseModel) -> DTO:
         row = await self._get_one_row(id)
-        for key, value in dto.model_dump(exclude_unset=True).items():
+        # Nones are written here, unlike create: clearing a nullable column is a
+        # legitimate update, and every caller passes a whole DTO read back through
+        # `_to_dto` rather than a sparse patch.
+        for key, value in self._row_data(dto).items():
             if key in ("id", "created_at"):
                 continue
             setattr(row, key, value)

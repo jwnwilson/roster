@@ -59,6 +59,38 @@ async def test_read_multi_filters_on_an_exact_field(session):
     assert [p.name for p in page.results] == ["keep"]
 
 
+async def test_updating_a_project_flattens_its_nested_source(session):
+    # Arrange
+    repo = ProjectRepository(session)
+    created = await repo.create(_project())
+
+    # Act
+    updated = await repo.update(
+        "p1",
+        created.model_copy(
+            update={
+                "name": "renamed",
+                "source": ProjectSource(kind="local", path="/tmp/elsewhere"),
+                "folder_path": "/tmp/elsewhere",
+            }
+        ),
+    )
+
+    # Assert
+    assert updated.name == "renamed"
+    assert updated.source == ProjectSource(kind="local", path="/tmp/elsewhere")
+    assert (await repo.read("p1")).source.path == "/tmp/elsewhere"
+
+
+def test_project_repository_maps_columns_rather_than_reimplementing_persistence():
+    # The base class owns add/flush/rollback/refresh; a subclass that re-declares
+    # create or update has copy-pasted that body instead of extending it.
+    overridden = set(ProjectRepository.__dict__) & {"create", "update", "delete", "read"}
+
+    assert overridden == set()
+    assert "_row_data" in ProjectRepository.__dict__
+
+
 async def test_delete_removes_the_row(session):
     # Arrange
     repo = ProjectRepository(session)
