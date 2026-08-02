@@ -47,6 +47,41 @@ async def test_memory_of_an_unknown_project_is_404(client):
     assert response.status_code == 404
 
 
+async def test_a_project_that_has_never_compacted_lists_no_snapshots(client, project):
+    # Act
+    response = await client.get(f"/projects/{project['id']}/memory/snapshots")
+
+    # Assert — nothing to restore yet is a normal state, not an error.
+    assert response.status_code == 200
+    assert response.json()["data"] == []
+
+
+async def test_snapshots_are_listed_oldest_first_and_nothing_else_is(client, project, tmp_path):
+    # Arrange — the timestamped prefix is what makes a plain sort chronological
+    # (see `domain.memory.journal_timestamp`). The stray file is there because the
+    # listing is what the restore UI offers, and offering something that cannot be
+    # restored is worse than not listing it.
+    snapshots = tmp_path / "projects" / project["id"] / ".roster" / "memory" / "snapshots"
+    (snapshots / "2026-08-02T09-00-00Z-bbb-MEMORY.md").write_text("# newer")
+    (snapshots / "2026-08-01T10-00-00Z-aaa-MEMORY.md").write_text("# older")
+    (snapshots / "notes.txt").write_text("not a snapshot")
+
+    # Act
+    response = await client.get(f"/projects/{project['id']}/memory/snapshots")
+
+    # Assert
+    assert response.status_code == 200
+    assert response.json()["data"] == [
+        "2026-08-01T10-00-00Z-aaa-MEMORY.md",
+        "2026-08-02T09-00-00Z-bbb-MEMORY.md",
+    ]
+
+
+async def test_listing_snapshots_of_an_unknown_project_is_404(client):
+    response = await client.get("/projects/nope/memory/snapshots")
+    assert response.status_code == 404
+
+
 async def test_restoring_a_snapshot_replaces_the_digest(client, project, tmp_path):
     # Arrange
     memory = tmp_path / "projects" / project["id"] / ".roster" / "memory"
