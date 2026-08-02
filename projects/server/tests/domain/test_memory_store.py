@@ -1,9 +1,10 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from adapters.storage.local import LocalFileStore
-from domain.memory import MemoryStore
+from domain.memory import MemoryStore, journal_timestamp
 from domain.projects import memory_dir, scaffold
 
 DEFAULT_SNAPSHOT_KEEP = 20
@@ -246,3 +247,19 @@ def test_restore_rejects_a_symlink_inside_snapshots_dir_pointing_outside_it(tmp_
     with pytest.raises(FileNotFoundError):
         store.restore(link_name)
     assert store.read_digest() == "# real memory"
+
+
+def test_a_journal_timestamp_is_the_prefix_the_snapshot_stamp_is_read_from(tmp_path):
+    # Arrange — `_write_snapshot` derives a snapshot's stamp by splitting a folded
+    # entry's filename on "-run-", so the timestamp format and the filename
+    # convention are one rule. Half of it used to live in the run manager, where
+    # nothing tied the two together.
+    store = _memory_store(tmp_path, DEFAULT_SNAPSHOT_KEEP)
+    stamp = journal_timestamp(datetime(2026, 8, 1, 10, 30, 5, tzinfo=UTC))
+
+    # Act
+    path = store.append_entry("r1", stamp, "did the thing")
+
+    # Assert
+    assert stamp == "2026-08-01T10-30-05Z"
+    assert path.name.split("-run-")[0] == stamp

@@ -12,15 +12,13 @@ from config.settings import Settings
 from domain.agents import Agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
-from domain.memory import MemoryStore, empty_digest, should_compact
+from domain.memory import MemoryStore, empty_digest, journal_timestamp, should_compact
 from domain.projects import Project
 from domain.runs import RunEvent, RunStatus
 from domain.work_items import WorkItem
 from interactors.memory_stores import open_project_memory
 
 logger = logging.getLogger("roster.runs")
-
-TIMESTAMP_FORMAT = "%Y-%m-%dT%H-%M-%SZ"
 
 
 @dataclass(frozen=True)
@@ -148,7 +146,7 @@ class RunManager:
         self, agent: Agent, project: Project, run_id: str, status: RunStatus, lines: list[str]
     ) -> None:
         summary = _build_summary(status, lines)
-        timestamp = datetime.now(UTC).strftime(TIMESTAMP_FORMAT)
+        timestamp = journal_timestamp(datetime.now(UTC))
         try:
             await self.write_memory(
                 folder=Path(project.folder_path),

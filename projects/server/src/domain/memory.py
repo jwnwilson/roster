@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -6,6 +7,13 @@ from adapters.storage.ports import FileStore
 from domain.projects import memory_dir
 
 DIGEST_NAME = "MEMORY.md"
+
+# Colons are illegal in filenames on some filesystems, so this is ISO 8601 with the
+# time separated by hyphens. It lives here, next to `append_entry` (which puts it at
+# the front of every journal filename) and `_write_snapshot` (which reads it back
+# off the front): the format and the filename convention are one rule and must not
+# be maintained in two layers.
+JOURNAL_TIMESTAMP_FORMAT = "%Y-%m-%dT%H-%M-%SZ"
 
 DIGEST_SECTIONS: tuple[str, ...] = (
     "Overview",
@@ -27,6 +35,11 @@ def should_compact(
     if entry_count == 0:
         return False
     return entry_count >= max_entries or total_bytes >= max_bytes
+
+
+def journal_timestamp(moment: datetime) -> str:
+    """`moment` as the prefix of a journal entry's filename."""
+    return moment.strftime(JOURNAL_TIMESTAMP_FORMAT)
 
 
 def empty_digest(project_name: str) -> str:
