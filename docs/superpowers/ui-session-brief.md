@@ -1,11 +1,14 @@
-# Session brief: roster UI — resuming at Task 2
+# Session brief: roster UI — resuming at Task 6
 
 Paste this into a fresh session to continue the UI build. It replaces the original brief, which
 predated the threads work and is no longer accurate.
 
 ---
 
-I want to continue building roster's frontend. **Task 1 is done; start at Task 2.**
+I want to continue building roster's frontend.
+
+**Done:** Tasks 1–5 (board half), Task 9 (Threads), and CI (pulled forward from Task 14).
+**Next:** Task 6 (Work Item Detail), then 7, 8, 10, 11, 12, 13, and the rest of 14.
 
 ## Read these first, in this order
 
@@ -35,7 +38,18 @@ threads (spec decisions 16–18, PR #2). Live endpoints:
   `POST /threads/mark-all-read`, `GET /threads/{id}/stream` (SSE)
 - `GET /projects/{id}/memory` and friends
 
-**UI: Task 1 done.** `projects/ui` installs, lints and tests clean — 60 tests, 24 files.
+**UI: 105 tests green, CI running on every push.** What exists:
+
+| Built | Notes |
+|---|---|
+| Tokens | colours were already exact; type scale, spacing, radii, shadow added; no hardcoded hex remains |
+| Capability registry | keyed by capability, not screen; `mocks/live-parity/` vs `mocks/unbacked/`, enforced by test |
+| App shell | Sidebar (live projects, git vs folder glyph), ChatPanel (lead-agent threads, collapse persisted), error boundary |
+| Board | live work items and assigned agent; five columns always present; loading/empty/error |
+| Threads | **fully live** — two tabs, badges from stored status, 409-on-repeat-resolve surfaced, read marked server-side |
+
+**Still placeholders in `src/app/routes.tsx`:** Dashboard, Agents, Agent detail, MCP, MCP detail,
+Work item detail, Settings. Replacing those is the remaining work.
 
 Run it: `cd projects/ui && pnpm test`. Backend: `make dev` (API only, port 8000).
 
@@ -72,13 +86,14 @@ Replacing those placeholders is the shape of the remaining work.
 
 ## Two things worth deciding early
 
-**There is no CI.** No `.github/workflows` at all — PR #2 merged with nothing running
-automatically. Plan Task 14 creates both a backend and a UI job. There is a good case for doing it
-first, out of order, so nothing else merges unchecked.
+**CI exists now** (`.github/workflows/ci.yml`, backend + UI jobs) and earned its place on the first
+run: it caught a real defect in the merged threads work — two tests started background turns that
+outlived them, so teardown closed the event loop mid-write. Passed locally every time, failed on
+CI's slower machine. Fixed with `AgentTurnManager.drain()`.
 
-**Screen order.** The plan builds Board first. With 12% reuse, building Board and Threads properly
-against live data before the mocked screens would prove the whole stack sooner — Threads is now
-fully live, including SSE, and project memory depends on it.
+**Not yet done on Threads:** the SSE stream. `GET /threads/{id}/stream` is live and
+`useEventSource` is harvested, but nothing consumes it yet, so spec §7's reconnect-with-backoff is
+still outstanding. Plan Task 9 Step 4 has the tests.
 
 ## What is still genuinely unbacked
 
