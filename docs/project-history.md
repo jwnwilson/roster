@@ -115,6 +115,8 @@ persistence; agent write endpoints; `SubprocessRuntime` and lead-agent coordinat
 remote git source; the memory UI; an end-to-end suite and its CI workflow; secrets encryption at
 rest; Electron packaging.
 
+**Optional, not planned:** the UnitOfWork could be split into a generic base plus a thin app subclass holding only the repository properties, mirroring the reference's `naaf_db` / `adapters/database` layering. Roster collapsed the two into one class because it has no `libs/` workspace package — the split is still possible without one (a base module beside it), but with a single consumer it buys structure rather than reuse. Worth doing if the generic half is ever shared.
+
 **Known open items:** `next_sequence()` numbers `ROS-<n>` globally rather than per project;
 `page_size=0` is an undocumented "unbounded" sentinel; `next_sequence` + insert are not atomic
 under concurrent creates; coverage under-reports every line after the first `await` in an async
