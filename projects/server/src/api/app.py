@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from api.envelope import ok
 from api.errors import register_error_handlers
-from api.routes import agents, projects, work_items
+from api.routes import agents, memory, projects, work_items
 
 
 def create_app() -> FastAPI:
@@ -15,5 +15,6 @@ def create_app() -> FastAPI:
     app.include_router(agents.router)
     app.include_router(projects.router)
     app.include_router(work_items.router)
+    app.include_router(memory.router)
     register_error_handlers(app)
     return app
