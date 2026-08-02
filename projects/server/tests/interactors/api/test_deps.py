@@ -47,6 +47,29 @@ async def test_get_uow_hands_the_route_a_uow_whose_transaction_is_already_open(s
         assert (await tx.projects.read("p1")).name == "P"
 
 
+async def test_every_request_reaches_the_database_through_one_shared_engine(session_factory):
+    # Arrange — one app, two requests. This is what used to be pinned on the
+    # `lru_cache`d `adapters.db.session.session_factory`: one local SQLite file
+    # deserves one engine and one connection pool, however many callers ask for
+    # it. That caching is gone, because `app.state` now guarantees the same thing
+    # structurally — so the property is pinned here, where it is real.
+    request = _request(session_factory)
+    first_request, second_request = get_uow(request), get_uow(request)
+
+    # Act
+    first, second = await anext(first_request), await anext(second_request)
+    binds = (first.session.bind, second.session.bind)
+    for dependency in (first_request, second_request):
+        with pytest.raises(StopAsyncIteration):
+            await anext(dependency)
+
+    # Assert — a fresh UnitOfWork and a fresh transaction per request, but one
+    # engine underneath both. A second engine here would mean a second connection
+    # pool against the same file.
+    assert first is not second
+    assert binds[0] is binds[1]
+
+
 async def test_the_request_transaction_rolls_back_when_the_route_raises(session_factory):
     # Arrange
     generator = get_uow(_request(session_factory))

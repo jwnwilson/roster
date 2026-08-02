@@ -16,7 +16,6 @@ the app's lifespan, the seed CLI, and the migration environment all come here.
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from functools import lru_cache
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -48,20 +47,6 @@ def prepare_database_url(settings: Settings) -> str:
     return f"{DRIVER}:///{db_path(settings)}"
 
 
-@lru_cache
-def _factory_for(url: str) -> async_sessionmaker[AsyncSession]:
-    return make_sessionmaker(make_engine(url))
-
-
-def session_factory(settings: Settings) -> async_sessionmaker[AsyncSession]:
-    """The process-wide sessionmaker for roster's database.
-
-    Cached per URL: one local SQLite file deserves one engine and one connection
-    pool, however many callers ask for it.
-    """
-    return _factory_for(prepare_database_url(settings))
-
-
 @asynccontextmanager
 async def temporary_session_factory(
     settings: Settings,
@@ -69,8 +54,13 @@ async def temporary_session_factory(
     """A sessionmaker over an engine of its own, disposed on exit.
 
     For a one-shot process (the seed CLI) that should hand its connection back
-    rather than leave it open. Deliberately not the cached factory above —
-    disposing that one would pull the engine out from under every other caller.
+    rather than leave it open, instead of exiting behind an engine nothing will
+    ever close.
+
+    There is deliberately no process-wide cached factory beside this one. A
+    long-running process gets its factory from `create_app`, which builds it once
+    and publishes it on `app.state`; that is the single source, and a second
+    cached engine sitting here would quietly contradict it.
     """
     engine = make_engine(prepare_database_url(settings))
     try:

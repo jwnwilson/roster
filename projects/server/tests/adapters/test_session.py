@@ -1,8 +1,4 @@
-from adapters.db.session import (
-    prepare_database_url,
-    session_factory,
-    temporary_session_factory,
-)
+from adapters.db.session import prepare_database_url, temporary_session_factory
 from config.settings import Settings, db_path
 
 
@@ -62,28 +58,25 @@ def test_preparing_the_url_creates_the_folder_the_database_lives_in(tmp_path):
     assert (tmp_path / "fresh").is_dir()
 
 
-def test_one_session_factory_is_shared_per_database(tmp_path):
-    # Arrange
-    settings = Settings(data_root=tmp_path)
-
-    # Act / Assert — a fresh engine per caller would mean a fresh connection pool
-    # per caller, which is not what "one local SQLite file" means.
-    assert session_factory(settings) is session_factory(settings)
-
-
 async def test_a_temporary_factory_works_and_disposes_its_engine(tmp_path):
     # Arrange — a one-shot process (the seed CLI) gets an engine of its own so it
-    # can hand it back rather than leaving the shared one open behind it.
+    # can hand it back rather than exiting behind one nothing will ever close.
     settings = Settings(data_root=tmp_path)
 
     # Act
     async with temporary_session_factory(settings) as factory:
         async with factory() as session:
             value = (await session.execute(_select_one())).scalar_one()
+        engine = factory.kw["bind"]
+        pool_while_open = engine.pool
 
-    # Assert
+    # Assert — the second half of this test's name was never actually checked:
+    # it used to assert only that the factory differed from the process-wide
+    # cached one, which no longer exists. Disposal is what the name claims, so
+    # that is what is asserted now — `dispose()` swaps in a fresh pool, and an
+    # unchanged pool identity would mean the connections outlived the CLI.
     assert value == 1
-    assert session_factory(settings) is not factory
+    assert engine.pool is not pool_while_open
 
 
 def _select_one():
