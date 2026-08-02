@@ -23,9 +23,9 @@ no containers.
 
 ## Current state (2026-08-02)
 
-**Backend complete; runs replaced by threads; no UI yet.** **310 tests, ~95% coverage** (branch
-measurement on) against an 80% gate. The threads work is on `feat/ui` alongside the UI plan and has
-not been merged.
+**Backend complete; runs replaced by threads; no UI yet.** **310 tests, 95.14% coverage** (branch
+measurement on) against an 80% gate. The threads work is on `feat/threads` and has not been merged
+— `main` still has the run subsystem until it does.
 
 Architecture is four layers in one package:
 
@@ -166,10 +166,13 @@ review could have seen it: every task correctly reported its own brief satisfied
 
 ## Outstanding
 
-**Backend:** merge the threads work off `feat/ui`, ideally as its own PR — it currently shares a
-branch with the UI plan, which is a branch-hygiene accident rather than a decision.
+**Backend:** merge `feat/threads`. It carries the spec revision, both plans, and the eight
+implementation commits. The UI plan rides along because it was written on the same branch before the
+split and belongs on `main` regardless — but no UI *code* is on it.
 
-**UI:** all 14 tasks — harvest, tokens, shell, the capability registry, then screens. Provenance is
+**UI:** all 14 tasks — harvest, tokens, shell, the capability registry, then screens. Branch off
+`main` once `feat/threads` lands, rather than reusing the old branch, so the UI starts from a tree
+that already has threads in it. Provenance is
 keyed by capability rather than screen, because the live/mocked boundary runs *through* screens: the
 board's work items are live while the assigned-agent avatar and token count on the same card are
 not. Threads, `workItems.assignedAgent` and `agents.workingStatus` are now backed and can come out
