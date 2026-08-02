@@ -41,15 +41,13 @@ async def create_project(
     project_id = new_id()
     folder = create_project_folder(source, project_id, store, settings.data_root)
     project = Project(id=project_id, name=payload.name, source=source, folder_path=str(folder))
-    async with uow.transaction() as tx:
-        created = await tx.projects.create(project)
+    created = await uow.projects.create(project)
     return ok(created.model_dump(mode="json"))
 
 
 @router.get("")
 async def list_projects(uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
-    async with uow.transaction() as tx:
-        page = await tx.projects.read_multi(page_size=0, order_by="name")
+    page = await uow.projects.read_multi(page_size=0, order_by="name")
     return ok_list(
         [item.model_dump(mode="json") for item in page.results],
         page.total,
@@ -60,14 +58,12 @@ async def list_projects(uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
 
 @router.get("/{project_id}")
 async def read_project(project_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
-    async with uow.transaction() as tx:
-        project = await tx.projects.read(project_id)
+    project = await uow.projects.read(project_id)
     return ok(project.model_dump(mode="json"))
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_project(project_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> Response:
-    async with uow.transaction() as tx:
-        await tx.projects.delete(project_id)
+    await uow.projects.delete(project_id)
     # Deliberate: roster forgets the project, it does not delete the operator's folder.
     return Response(status_code=status.HTTP_204_NO_CONTENT)

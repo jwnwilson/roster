@@ -13,8 +13,7 @@ router = APIRouter(prefix="/projects/{project_id}/memory", tags=["memory"])
 
 
 async def _store(project_id: str, uow: AsyncUnitOfWork, settings: Settings) -> MemoryStore:
-    async with uow.transaction() as tx:
-        project = await tx.projects.read(project_id)
+    project = await uow.projects.read(project_id)
     return open_project_memory(Path(project.folder_path), settings.memory_snapshot_keep)
 
 

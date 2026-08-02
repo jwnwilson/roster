@@ -1,11 +1,9 @@
-from collections.abc import Callable
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from fastapi import Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from adapters.agents.runtime import AgentRuntime, FakeRuntime
-from adapters.db.session import session_factory
 from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
@@ -13,34 +11,22 @@ from config.settings import Settings, get_settings
 from interactors.runs.manager import RunManager
 
 
-def get_session_factory(
-    settings: Settings = Depends(get_settings),
-) -> async_sessionmaker[AsyncSession]:
-    """The sessionmaker itself (not a bound session) for anything that outlives a
-    request: the UnitOfWork factory below and RunManager's background task.
+async def get_uow(request: Request) -> AsyncIterator[AsyncUnitOfWork]:
+    """One UnitOfWork *and one open transaction* per request.
 
-    How that sessionmaker is built — the URL, the engine, the caching — belongs to
-    `adapters.db.session` and is deliberately not repeated here."""
-    return session_factory(settings)
+    The dependency owns the transaction boundary, not the route: it opens the
+    transaction before the route runs and commits (or rolls back, if the route
+    raised) when FastAPI tears the dependency down. A route therefore writes
+    straight through `uow.projects.create(...)` and never spells out an
+    `async with` of its own — every write in a request lands in one commit, and
+    a request that fails half way through leaves nothing behind.
 
-
-async def get_uow(
-    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
-) -> AsyncUnitOfWork:
-    """One UnitOfWork per request. Cheap to construct — no session is opened until
-    a route enters `uow.transaction()` — so this stays a plain dependency rather
-    than a generator: the transaction itself owns opening and closing the session.
+    The session factory comes off `request.app.state`, where `create_app` put
+    it. Nothing here builds one.
     """
-    return AsyncUnitOfWork(session_factory)
-
-
-def get_uow_factory(
-    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
-) -> Callable[[], AsyncUnitOfWork]:
-    """A UnitOfWork *factory*, not a bound instance, for callers that outlive a
-    request and must open a fresh, short transaction per write rather than
-    holding one open for their whole lifetime (see RunManager)."""
-    return lambda: AsyncUnitOfWork(session_factory)
+    uow = AsyncUnitOfWork(request.app.state.session_factory)
+    async with uow.transaction():
+        yield uow
 
 
 def get_file_store(settings: Settings = Depends(get_settings)) -> FileStore:
@@ -81,13 +67,19 @@ def _build_runtime(settings: Settings) -> AgentRuntime:
 async def get_run_manager(
     request: Request,
     settings: Settings = Depends(get_settings),
-    uow_factory: Callable[[], AsyncUnitOfWork] | None = Depends(get_uow_factory),
 ) -> RunManager:
     """One RunManager per app instance, not per request.
 
     Its per-folder compaction locks (see RunManager) are only meaningful if every
     run for a given project routes through the same instance — a fresh RunManager
     per request would hand out a fresh, unshared lock dict and defeat them.
+
+    It cannot take the request's uow. Its background task writes run events and
+    the terminal status *after* the response, by which time the request's
+    transaction is committed and its session closed. So it takes a factory built
+    over `app.state.session_factory` and opens a short-lived transaction per
+    write — the same single source every request reads, reached the only way a
+    caller that outlives a request can reach it.
 
     This is `async def`, not a plain `def`, on purpose. FastAPI runs a synchronous
     dependency in a threadpool; two concurrent first requests could then each run
@@ -105,10 +97,11 @@ async def get_run_manager(
     # fail loudly if it did.
     manager = getattr(request.app.state, "run_manager", None)
     if manager is None:
+        session_factory = request.app.state.session_factory
         manager = RunManager(
             runtime=_build_runtime(settings),
             settings=settings,
-            uow_factory=uow_factory,
+            uow_factory=lambda: AsyncUnitOfWork(session_factory),
         )
         request.app.state.run_manager = manager
     return manager

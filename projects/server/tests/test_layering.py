@@ -31,9 +31,10 @@ ADAPTER_ONLY_SUBSTRINGS = ("sqlite+aiosqlite", "data_root.mkdir")
 FORBIDDEN_SUBSTRINGS = ("import os", "os.environ", "os.getenv", "subprocess.", "import shutil")
 
 # **Stated exemption.** `interactors/` may import from SQLAlchemy for *type
-# annotations only* — `deps.py` hands out an `async_sessionmaker[AsyncSession]`
-# built by `adapters.db.session`, and an interactor holding a factory it is not
-# allowed to name would be worse than the import. The rule these guards enforce is
+# annotations only* — `app.py` takes an `async_sessionmaker[AsyncSession]` as a
+# constructor parameter and publishes it on `app.state`, and an interactor holding
+# a factory it is not allowed to name would be worse than the import. The rule
+# these guards enforce is
 # "don't *do* infrastructure", not "never name its types": nothing here may build
 # an engine, open a session, or execute a statement, and the test below is what
 # keeps the exemption that narrow. Do not "fix" this import away — doing so

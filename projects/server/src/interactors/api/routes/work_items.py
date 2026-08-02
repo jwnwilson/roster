@@ -37,24 +37,22 @@ class WorkItemPatch(BaseModel):
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_work_item(payload: WorkItemIn, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
     validate_parent(payload.type, payload.epic_id, payload.feature_id)
-    async with uow.transaction() as tx:
-        sequence = await tx.work_items.next_sequence()
-        item = WorkItem(
-            id=new_id(),
-            key=work_item_key(sequence),
-            sequence=sequence,
-            **payload.model_dump(),
-        )
-        created = await tx.work_items.create(item)
+    sequence = await uow.work_items.next_sequence()
+    item = WorkItem(
+        id=new_id(),
+        key=work_item_key(sequence),
+        sequence=sequence,
+        **payload.model_dump(),
+    )
+    created = await uow.work_items.create(item)
     return ok(created.model_dump(mode="json"))
 
 
 @router.get("")
 async def list_items(project_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
-    async with uow.transaction() as tx:
-        page = await tx.work_items.read_multi(
-            filters={"project_id": project_id}, page_size=0, order_by="sequence"
-        )
+    page = await uow.work_items.read_multi(
+        filters={"project_id": project_id}, page_size=0, order_by="sequence"
+    )
     return ok_list(
         [item.model_dump(mode="json") for item in page.results],
         page.total,
@@ -67,12 +65,11 @@ async def list_items(project_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -
 async def patch_item(
     item_id: str, payload: WorkItemPatch, uow: AsyncUnitOfWork = Depends(get_uow)
 ) -> dict:
-    async with uow.transaction() as tx:
-        item = await tx.work_items.read(item_id)
+    item = await uow.work_items.read(item_id)
 
-        changes = payload.model_dump(exclude_none=True)
-        if "status" in changes:
-            validate_transition(item.status, changes["status"])
+    changes = payload.model_dump(exclude_none=True)
+    if "status" in changes:
+        validate_transition(item.status, changes["status"])
 
-        updated = await tx.work_items.update(item_id, item.model_copy(update=changes))
+    updated = await uow.work_items.update(item_id, item.model_copy(update=changes))
     return ok(updated.model_dump(mode="json"))

@@ -1,9 +1,8 @@
 import asyncio
-from collections.abc import Callable
 from pathlib import Path
 from time import monotonic
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -13,8 +12,10 @@ from config.settings import Settings, agents_dir, get_settings
 from domain.agents import Agent, agent_folder, read_agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
+from domain.projects import Project
 from domain.runs import Run, is_terminal
-from interactors.api.deps import get_file_store, get_run_manager, get_uow, get_uow_factory
+from domain.work_items import WorkItem
+from interactors.api.deps import get_file_store, get_run_manager, get_uow
 from interactors.api.envelope import ok
 from interactors.runs.manager import RunManager
 
@@ -54,63 +55,85 @@ class RunIn(BaseModel):
 async def create_run(
     item_id: str,
     payload: RunIn,
+    background: BackgroundTasks,
     uow: AsyncUnitOfWork = Depends(get_uow),
     settings: Settings = Depends(get_settings),
     manager: RunManager = Depends(get_run_manager),
     store: FileStore = Depends(get_file_store),
 ) -> dict:
-    async with uow.transaction() as tx:
-        work_item = await tx.work_items.read(item_id)
-        project = await tx.projects.read(work_item.project_id)
+    work_item = await uow.work_items.read(item_id)
+    project = await uow.projects.read(work_item.project_id)
 
-        # A broken/missing agent folder never raises here — read_agent degrades
-        # to a disabled Agent, and FakeRuntime doesn't care about status. A
-        # future runtime that actually shells out is expected to refuse a
-        # disabled agent itself.
-        agent = read_agent(agent_folder(agents_dir(settings), payload.agent_name), store)
+    # A broken/missing agent folder never raises here — read_agent degrades
+    # to a disabled Agent, and FakeRuntime doesn't care about status. A
+    # future runtime that actually shells out is expected to refuse a
+    # disabled agent itself.
+    agent = read_agent(agent_folder(agents_dir(settings), payload.agent_name), store)
 
-        run = Run(
-            id=new_id(),
-            project_id=project.id,
-            work_item_id=work_item.id,
-            agent_name=agent.name,
-            status="running",
-        )
-        created_run = await tx.runs.create(run)
+    run = Run(
+        id=new_id(),
+        project_id=project.id,
+        work_item_id=work_item.id,
+        agent_name=agent.name,
+        status="running",
+    )
+    created_run = await uow.runs.create(run)
 
     # Fire-and-track: the run executes for as long as it takes, well past this
     # request's response. RunManager.launch holds the task (the loop only holds a
     # weak reference) and registers it as in-flight; RunManager.start opens its
     # own short transactions via its own UoW factory rather than reusing `uow`,
     # which closes when this handler returns.
-    manager.launch(created_run.id, agent, project, work_item)
+    #
+    # Handed to `background` rather than called here, and the ordering is
+    # load-bearing now that the request's transaction is owned by `get_uow`: this
+    # handler returns *before* that transaction commits. Launching inline would
+    # start a task that inserts run_events — which carry a foreign key to
+    # `runs` — over its own connection, against a run row no other connection can
+    # see yet. Starlette runs background tasks after the response, which is after
+    # the dependency teardown that commits.
+    background.add_task(_launch_once_committed, manager, created_run.id, agent, project, work_item)
 
     return ok(created_run.model_dump(mode="json"))
 
 
+async def _launch_once_committed(
+    manager: RunManager, run_id: str, agent: Agent, project: Project, work_item: WorkItem
+) -> None:
+    """Start the run on the event loop, from a background task.
+
+    `async def` is required, not stylistic: Starlette hands a *synchronous*
+    background function to a worker thread, and `RunManager.launch` calls
+    `asyncio.create_task`, which needs the running loop. An async background task
+    is awaited on the loop itself.
+    """
+    manager.launch(run_id, agent, project, work_item)
+
+
 @router.get("/runs/{run_id}")
 async def read_run(run_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
-    async with uow.transaction() as tx:
-        run = await tx.runs.read(run_id)
+    run = await uow.runs.read(run_id)
     return ok(run.model_dump(mode="json"))
 
 
 @router.get("/runs/{run_id}/events")
 async def list_run_events(run_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
-    async with uow.transaction() as tx:
-        await tx.runs.read(run_id)
-        page = await tx.run_events.read_multi(
-            filters={"run_id": run_id}, page_size=0, order_by="created_at"
-        )
+    await uow.runs.read(run_id)
+    page = await uow.run_events.read_multi(
+        filters={"run_id": run_id}, page_size=0, order_by="created_at"
+    )
     return ok([event.model_dump(mode="json") for event in page.results])
 
 
 @router.get("/runs/{run_id}/events/stream")
-async def stream_run_events(
-    run_id: str,
-    request: Request,
-    uow_factory: Callable[[], AsyncUnitOfWork] = Depends(get_uow_factory),
-) -> EventSourceResponse:
+async def stream_run_events(run_id: str, request: Request) -> EventSourceResponse:
+    # Deliberately not `Depends(get_uow)`: that transaction is the *request's*,
+    # and it is committed and closed the moment this handler returns the
+    # response — long before the generator below starts polling. A stream needs a
+    # fresh, short transaction per poll, so it goes to the same single source
+    # every dependency reads and builds its own.
+    session_factory = request.app.state.session_factory
+
     async def event_source():
         seen = 0
         last_progress = monotonic()
@@ -125,7 +148,7 @@ async def stream_run_events(
             # lifetime: RunManager writes each event from its own short
             # transaction in a background task, and only a committed write is
             # visible to a fresh transaction here.
-            async with uow_factory().transaction() as tx:
+            async with AsyncUnitOfWork(session_factory).transaction() as tx:
                 try:
                     run = await tx.runs.read(run_id)
                 except RecordNotFound:
@@ -159,8 +182,7 @@ async def compact_memory(
     uow: AsyncUnitOfWork = Depends(get_uow),
     manager: RunManager = Depends(get_run_manager),
 ) -> dict:
-    async with uow.transaction() as tx:
-        project = await tx.projects.read(project_id)
+    project = await uow.projects.read(project_id)
 
     # Unlike write_memory's own (non-fatal) run-triggered compaction, an
     # explicit "compact now" request must not silently claim success when

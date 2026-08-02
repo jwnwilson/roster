@@ -6,7 +6,6 @@ from adapters.db.engine import Base, make_engine, make_sessionmaker
 from adapters.db.uow import AsyncUnitOfWork
 from config.settings import Settings, get_settings
 from interactors.api.app import create_app
-from interactors.api.deps import get_session_factory, get_uow
 
 
 @pytest.fixture(autouse=True)
@@ -51,22 +50,17 @@ def settings(tmp_path):
 
 @pytest_asyncio.fixture
 async def client(session_factory, settings):
-    app = create_app()
+    # The database is injected through the constructor, not patched in through
+    # `dependency_overrides`. That is what the parameter is for, and it is what
+    # makes the isolation total rather than per-dependency: `app.state` is the
+    # one place anything reaches a session from, so the request's UnitOfWork,
+    # RunManager's background writes and the SSE stream *all* land on this
+    # fixture's in-memory engine by construction. There is nothing left to
+    # forget to override, and no route can reach the real `~/.roster`.
+    app = create_app(session_factory=session_factory)
 
-    # RunManager and the SSE stream open their own UnitOfWork independently of
-    # any single request's (they outlive it), via this sessionmaker — it must
-    # point at the same fixture-backed in-memory engine or it silently talks to
-    # a different, schema-less database. Both overrides below exist for the
-    # same reason: `get_uow` builds its UnitOfWork from `get_session_factory`
-    # via a proper `Depends` chain, but overriding it directly (rather than
-    # relying on that chain alone) keeps this fixture robust to either
-    # dependency ever bypassing `Depends` the way the old `get_session` once
-    # did — tests must never reach the real `~/.roster`.
-    async def _uow_override():
-        return AsyncUnitOfWork(session_factory)
-
-    app.dependency_overrides[get_uow] = _uow_override
-    app.dependency_overrides[get_session_factory] = lambda: session_factory
+    # Settings still need an override: they are read through `Depends`, and their
+    # `data_root` decides where agent and project folders are written.
     app.dependency_overrides[get_settings] = lambda: settings
 
     transport = ASGITransport(app=app)
