@@ -68,38 +68,44 @@ async def test_restoring_an_unknown_project_snapshot_is_404(client):
     assert response.status_code == 404
 
 
-async def test_restoring_a_traversal_name_is_404_and_leaves_digest_unchanged(
+# The two tests below exist because {name} is a default Starlette `str` path
+# segment, which structurally cannot contain a real "/" no matter how it's
+# encoded:
+#   - Single-encoded ("..%2Fsecret") gets decoded to a literal "/" by the ASGI
+#     server *before* route matching, so it fails to match {name} at all and
+#     the router 404s the request — store.restore() never runs. A test using
+#     this form would pass identically against a fully unhardened restore(),
+#     so it's vacuous: it proves routing, not defence.
+#   - Double-encoded ("..%252Fsecret") survives that single decode pass as the
+#     literal text "..%2Fsecret" (no real "/"), so it reaches store.restore()
+#     intact — but as garbage that can't resolve to any real path either, so
+#     it 404s under hardened *or* unhardened restore() alike. Confirmed with
+#     the naive stub (`(snapshots_dir / name).read_text()`, no allowlist, no
+#     resolve check): this input still 404s, because no file literally named
+#     "..%2F..%2F..%2Fsecret" exists on disk.
+#
+# Conclusion: no string an HTTP caller sends through {name} can escape
+# snapshots_dir on this route — that's not a property of the allowlist, it's
+# structural to how Starlette extracts a single path segment. The only
+# HTTP-reachable escape is a symlink placed inside snapshots_dir with a
+# legal-looking name, which is a legitimate allowlist entry but can point
+# anywhere on disk. The *resolve check* in MemoryStore.restore — not the
+# allowlist — is the load-bearing control against that, and is what the
+# symlink test below proves: it fails (200, digest replaced) against the
+# naive stub, and only passes with the resolve check in place.
+
+
+async def test_an_encoded_name_reaches_the_store_and_is_rejected_as_unknown(
     client, project, tmp_path
 ):
-    # A single-encoded "..%2F..%2Fsecret" never reaches the handler at all: Starlette
-    # decodes %2F to a literal "/" before route matching, and {name} is one path
-    # segment that cannot contain "/", so the router itself 404s the request before
-    # store.restore() ever runs. That form asserts FastAPI's segment matching, not
-    # the store's traversal defence, so it would pass identically against a
-    # completely unhardened restore() — it's vacuous.
-    #
-    # Double encoding survives the single decode pass the ASGI server performs:
-    # "%252F" becomes the literal three characters "%2F" (still no real "/"), so the
-    # segment still matches as one path component and `name` reaches
-    # store.restore() intact as the literal string "..%2F..%2F..%2Fsecret". Verified
-    # directly against FastAPI's own routing (not just this app) that this is what
-    # arrives — Starlette only ever performs one decode pass building scope["path"],
-    # so no amount of extra encoding produces a real "/" inside a single default
-    # `str` path segment. That means this exact garbage name can never resolve to
-    # the planted `secret` file below, under hardened or unhardened restore() alike
-    # — confirmed by stubbing restore() with the naive, unhardened
-    # `(snapshots_dir / name).read_text()` and re-running this test: it still 404s,
-    # because no file literally named "..%2F..%2F..%2Fsecret" exists.
-    #
-    # So this test is not proof against disk-level traversal (nothing sent through
-    # {name} as plain text can be — see the symlink test below for the vector that
-    # actually reaches outside snapshots_dir, and that one *does* fail against an
-    # unhardened restore()). What this test guards against regressing is the
-    # original bug: a crafted `name` that survives routing must still reach
-    # store.restore() and come back 404 via the allowlist, not silently succeed or
-    # 500. The `secret` file is planted so a future change to routing or to `name`
-    # handling that ever did let this resolve outside snapshots_dir would be caught
-    # by the unchanged-digest assertion, not just the status code.
+    # Plumbing test, not a security test — see the module comment above for
+    # why no string here can escape snapshots_dir. This guards the Critical
+    # bug the route originally had: a crafted `name` that survives routing
+    # must still reach store.restore() and come back a clean 404 via the
+    # allowlist, not silently succeed or 500. The `secret` file is planted so
+    # a future change to the route (e.g. switching to a `:path` converter)
+    # that ever did let this resolve outside snapshots_dir would be caught by
+    # the unchanged-digest assertion, not just the status code.
     #
     # Arrange
     memory = tmp_path / "projects" / project["id"] / ".roster" / "memory"
@@ -121,10 +127,15 @@ async def test_restoring_a_traversal_name_is_404_and_leaves_digest_unchanged(
 async def test_restoring_a_symlinked_snapshot_is_404_and_leaves_digest_unchanged(
     client, project, tmp_path
 ):
-    # The allowlist alone can't catch this: a symlink planted inside snapshots/
-    # has its own name as a legitimate-looking entry (it matches the glob and
-    # sorts into snapshots()), but its target can be anywhere on disk. Only the
-    # resolve-and-check step in MemoryStore.restore stops it.
+    # This is the security test: the allowlist alone can't catch a symlink
+    # planted inside snapshots/, because its own name is a legitimate-looking
+    # entry (it matches the glob and sorts into snapshots()), but its target
+    # can be anywhere on disk. Only the resolve-and-check step in
+    # MemoryStore.restore stops it — verified by re-running this exact
+    # request against a naive, unhardened restore() (no allowlist, no resolve
+    # check): it returned 200 and replaced the digest with the outside file's
+    # content. With the real, hardened restore() it 404s and the digest is
+    # untouched, as asserted below.
     #
     # Arrange
     project_folder = tmp_path / "projects" / project["id"]
