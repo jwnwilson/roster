@@ -111,7 +111,16 @@ class MemoryStore:
         # fed straight into MEMORY.md, which agents read as trusted context).
         if name not in {path.name for path in self.snapshots()}:
             raise FileNotFoundError(f"no snapshot named {name}")
+
+        # The allowlist alone isn't enough: a symlink planted inside snapshots_dir
+        # has its own name as a legitimate-looking entry but can point anywhere on
+        # disk. Resolve both sides — snapshots_dir itself may sit under a symlinked
+        # path (e.g. macOS /tmp -> /private/tmp) — and require the resolved target
+        # to still be inside the resolved directory.
         snapshot = self.snapshots_dir / name
+        if not snapshot.resolve().is_relative_to(self.snapshots_dir.resolve()):
+            raise FileNotFoundError(f"no snapshot named {name}")
+
         self.write_digest(snapshot.read_text())
 
     def _write_snapshot(self, digest_text: str, folded_entries: list[Path]) -> None:

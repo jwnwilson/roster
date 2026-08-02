@@ -226,3 +226,19 @@ def test_restore_round_trips_a_real_snapshot_back_onto_the_digest(store):
 
     # Assert
     assert store.read_digest() == "# pre-compaction memory"
+
+
+def test_restore_rejects_a_symlink_inside_snapshots_dir_pointing_outside_it(tmp_path):
+    # Arrange
+    scaffold(tmp_path)
+    store = MemoryStore(folder=tmp_path, settings=Settings(data_root=tmp_path))
+    store.write_digest("# real memory")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top secret, not memory")
+    link_name = "evil-MEMORY.md"
+    (store.snapshots_dir / link_name).symlink_to(secret)
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        store.restore(link_name)
+    assert store.read_digest() == "# real memory"
