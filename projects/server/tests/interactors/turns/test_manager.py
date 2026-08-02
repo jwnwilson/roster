@@ -1,0 +1,320 @@
+import asyncio
+
+import pytest
+
+from adapters.agents.runtime import FakeRuntime
+from adapters.db.uow import AsyncUnitOfWork
+from adapters.storage.local import LocalFileStore
+from config.settings import Settings
+from domain.agents import Agent
+from domain.ids import new_id
+from domain.memory import MemoryStore
+from domain.projects import Project, ProjectSource, memory_dir, scaffold
+from domain.threads import Thread
+from interactors.turns.manager import AgentTurnManager, build_summary
+
+
+@pytest.fixture
+def folder(tmp_path):
+    scaffold(tmp_path, LocalFileStore(tmp_path))
+    return tmp_path
+
+
+def _memory_store(folder, settings):
+    return MemoryStore(
+        folder=folder,
+        store=LocalFileStore(memory_dir(folder)),
+        snapshot_keep=settings.memory_snapshot_keep,
+    )
+
+
+class ScriptedRuntime:
+    """Yields exactly what a test needs, then optionally raises."""
+
+    def __init__(self, emissions, error=None, summary_error=None):
+        self._emissions = emissions
+        self._error = error
+        self._summary_error = summary_error
+
+    async def execute(self, agent, project_folder, task):
+        for kind, content in self._emissions:
+            yield (kind, content)
+        if self._error is not None:
+            raise self._error
+
+    async def summarise(self, agent, digest, entries, budget_bytes):
+        if self._summary_error is not None:
+            raise self._summary_error
+        return f"{digest}\n\n<!-- folded {len(entries)} entries -->"
+
+
+@pytest.fixture
+async def seeded(session_factory):
+    """A committed project and thread, plus a factory for manager UoWs."""
+    uow = AsyncUnitOfWork(session_factory)
+    async with uow.transaction() as tx:
+        project = await tx.projects.create(
+            Project(
+                id=new_id(), name="api",
+                source=ProjectSource(kind="none"), folder_path="/tmp/p",
+            )
+        )
+        thread = await tx.threads.create(
+            Thread(id=new_id(), project_id=project.id, title="Set up CI")
+        )
+    return thread, (lambda: AsyncUnitOfWork(session_factory))
+
+
+@pytest.fixture
+def make_manager(folder, seeded):
+    _thread, uow_factory = seeded
+
+    def build(runtime, **settings_kwargs):
+        return AgentTurnManager(
+            runtime=runtime,
+            settings=Settings(data_root=folder, **settings_kwargs),
+            uow_factory=uow_factory,
+        )
+
+    return build
+
+
+async def _messages(uow_factory, thread_id):
+    async with uow_factory().transaction() as tx:
+        page = await tx.messages.read_multi(
+            filters={"thread_id": thread_id}, page_size=0, order_by="created_at"
+        )
+    return page.results
+
+
+# --- turns -----------------------------------------------------------------
+
+
+async def test_a_turn_writes_the_runtime_output_as_messages(make_manager, seeded):
+    # Arrange
+    thread, uow_factory = seeded
+    manager = make_manager(
+        ScriptedRuntime([
+            ("event", "atlas starting"),
+            ("file_write", "README.md"),
+            ("text", "Read 42 lines."),
+            ("event", "done"),
+        ])
+    )
+
+    # Act
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+
+    # Assert
+    messages = await _messages(uow_factory, thread.id)
+    assert [m.kind for m in messages] == ["event", "file_write", "text", "event"]
+    assert all(m.author_kind == "agent" and m.author_name == "atlas" for m in messages)
+
+
+async def test_a_kind_roster_does_not_recognise_is_recorded_as_an_event(make_manager, seeded):
+    # A runtime is project-agnostic; an unknown kind must not crash the turn.
+    thread, uow_factory = seeded
+    manager = make_manager(ScriptedRuntime([("telemetry", "cpu 40%")]))
+
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+
+    messages = await _messages(uow_factory, thread.id)
+    assert [m.kind for m in messages] == ["event"]
+    assert messages[0].content == "cpu 40%"
+
+
+async def test_a_question_from_an_agent_moves_the_thread_to_action_needed(make_manager, seeded):
+    # Arrange
+    thread, uow_factory = seeded
+    manager = make_manager(ScriptedRuntime([("question", "Which database should I use?")]))
+
+    # Act
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+
+    # Assert
+    async with uow_factory().transaction() as tx:
+        found = await tx.threads.read(thread.id)
+    assert found.status == "action_needed"
+
+
+async def test_a_runtime_that_raises_records_the_failure_as_a_message(make_manager, seeded):
+    # A crash must be visible in the conversation, never silent (spec §7).
+    thread, uow_factory = seeded
+    manager = make_manager(ScriptedRuntime([("text", "starting")], error=RuntimeError("boom")))
+
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+
+    messages = await _messages(uow_factory, thread.id)
+    assert messages[-1].kind == "event"
+    assert "boom" in messages[-1].content
+
+
+async def test_a_failed_turn_leaves_the_thread_open_for_a_retry(make_manager, seeded):
+    thread, uow_factory = seeded
+    manager = make_manager(ScriptedRuntime([], error=RuntimeError("boom")))
+
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+
+    async with uow_factory().transaction() as tx:
+        found = await tx.threads.read(thread.id)
+    # Nothing to reconcile and nothing terminal: the operator posts again.
+    assert found.status == "info"
+    assert found.resolved_at is None
+
+
+async def test_an_agent_taking_a_turn_is_reported_as_busy(make_manager, seeded):
+    # Arrange
+    thread, _uow_factory = seeded
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockingRuntime(ScriptedRuntime):
+        async def execute(self, agent, project_folder, task):
+            started.set()
+            await release.wait()
+            yield ("text", "done")
+
+    manager = make_manager(BlockingRuntime([]))
+
+    # Act
+    task = manager.launch(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    await started.wait()
+
+    # Assert — spec §3: an in-flight turn is the only source of Working
+    assert manager.busy_agents() == ["atlas"]
+
+    release.set()
+    await task
+    assert manager.busy_agents() == []
+
+
+async def test_no_agent_is_busy_before_anything_starts(make_manager):
+    assert make_manager(FakeRuntime()).busy_agents() == []
+
+
+# --- memory ----------------------------------------------------------------
+
+
+async def test_a_resolved_thread_appends_exactly_one_journal_entry(folder):
+    # Arrange
+    settings = Settings(data_root=folder)
+    manager = AgentTurnManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
+
+    # Act
+    await manager.write_memory(
+        folder=folder, agent=Agent(name="atlas"), thread_id="t1",
+        timestamp="2026-08-01T10-00-00Z", summary="did the thing",
+    )
+
+    # Assert
+    assert len(_memory_store(folder, settings).read_journal()) == 1
+
+
+async def test_memory_is_written_for_failed_work_too(folder):
+    # Arrange
+    settings = Settings(data_root=folder)
+    manager = AgentTurnManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
+
+    # Act
+    await manager.write_memory(
+        folder=folder, agent=Agent(name="atlas"), thread_id="t1",
+        timestamp="2026-08-01T10-00-00Z", summary="failed: could not reach the API",
+    )
+
+    # Assert — spec §5: a dead end is as worth remembering as a success
+    entries = _memory_store(folder, settings).read_journal()
+    assert "failed" in entries[0].text
+
+
+async def test_compaction_fires_once_the_threshold_is_crossed(folder):
+    # Arrange
+    settings = Settings(data_root=folder, memory_compact_entries=3)
+    manager = AgentTurnManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
+
+    # Act
+    for index in range(3):
+        await manager.write_memory(
+            folder=folder, agent=Agent(name="atlas"), thread_id=f"t{index}",
+            timestamp=f"2026-08-01T10-00-0{index}Z", summary=f"entry {index}",
+        )
+
+    # Assert
+    store = _memory_store(folder, settings)
+    assert store.read_journal() == []
+    assert "project memory" in store.read_digest()
+
+
+async def test_compact_now_folds_a_journal_below_the_normal_threshold(folder):
+    # The default threshold is nowhere near crossed by a single entry; compact_now
+    # must fold it anyway since it is not threshold-gated at all.
+    settings = Settings(data_root=folder)
+    manager = AgentTurnManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
+    store = _memory_store(folder, settings)
+    store.append_entry("t1", "2026-08-01T10-00-00Z", "a small entry")
+
+    result = await manager.compact_now(folder, Agent(name="system"))
+
+    assert result.compacted is True
+    assert result.folded_entries == 1
+    assert store.read_journal() == []
+
+
+async def test_compact_now_on_an_empty_journal_is_a_clean_no_op(folder):
+    settings = Settings(data_root=folder)
+    manager = AgentTurnManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
+
+    result = await manager.compact_now(folder, Agent(name="system"))
+
+    # A legitimate no-op, not a failure: nothing to fold is not an error.
+    assert result.compacted is False
+    assert result.folded_entries == 0
+    assert result.error is None
+
+
+async def test_compact_now_reports_a_failed_summarise_without_touching_state(folder):
+    # Arrange
+    settings = Settings(data_root=folder)
+    manager = AgentTurnManager(
+        runtime=ScriptedRuntime([], summary_error=RuntimeError("model unavailable")),
+        settings=settings,
+        uow_factory=None,
+    )
+    store = _memory_store(folder, settings)
+    store.append_entry("t1", "2026-08-01T10-00-00Z", "an entry")
+
+    # Act
+    result = await manager.compact_now(folder, Agent(name="system"))
+
+    # Assert — spec §5: a failed compaction is a no-op, not a partial write
+    assert result.compacted is False
+    assert "model unavailable" in (result.error or "")
+    assert len(store.read_journal()) == 1
+
+
+async def test_a_compaction_failure_on_resolution_is_recorded_on_the_thread(
+    make_manager, seeded, folder
+):
+    # Arrange
+    thread, uow_factory = seeded
+    manager = make_manager(
+        ScriptedRuntime([], summary_error=RuntimeError("model unavailable")),
+        memory_compact_entries=1,
+    )
+
+    # Act
+    await manager.write_memory(
+        folder=folder, agent=Agent(name="atlas"), thread_id=thread.id,
+        timestamp="2026-08-01T10-00-00Z", summary="did the thing",
+    )
+
+    # Assert — never swallowed (spec §5), and never fatal to the resolution
+    messages = await _messages(uow_factory, thread.id)
+    assert any("memory compaction failed" in m.content for m in messages)
+
+
+def test_a_summary_names_the_thread_and_its_conversation():
+    thread = Thread(id="t1", project_id="p1", title="Set up CI")
+
+    summary = build_summary(thread, [])
+
+    assert "Set up CI" in summary

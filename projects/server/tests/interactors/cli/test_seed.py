@@ -83,3 +83,37 @@ async def test_seeding_a_database_that_already_has_a_project_changes_nothing(
     assert projects.results[0].id == before.id
     assert items.total == 3
     assert instructions.read_text() == "hand-edited by the operator"
+
+
+async def test_seeding_creates_threads_the_screens_can_render(uow, settings, store):
+    # Arrange / Act
+    await seed(uow, settings, store)
+
+    # Assert
+    async with uow.transaction() as tx:
+        threads = (await tx.threads.read_multi(page_size=0, order_by="title")).results
+
+    # One conversation with no work item (the chat panel's), and every state the
+    # Threads screen has a badge for.
+    assert len(threads) == 3
+    assert sum(1 for t in threads if t.work_item_id is None) == 1
+    assert {t.status for t in threads} == {"info", "action_needed", "resolved"}
+
+
+async def test_seeded_threads_carry_messages_of_more_than_one_kind(uow, settings, store):
+    await seed(uow, settings, store)
+
+    async with uow.transaction() as tx:
+        threads = (await tx.threads.read_multi(page_size=0, order_by="title")).results
+        messages = await tx.messages.list_for_threads([t.id for t in threads])
+
+    assert {m.kind for m in messages} >= {"text", "file_write", "question"}
+
+
+async def test_seeded_work_items_name_their_agent(uow, settings, store):
+    await seed(uow, settings, store)
+
+    async with uow.transaction() as tx:
+        items = (await tx.work_items.read_multi(page_size=0, order_by="sequence")).results
+
+    assert [i.agent_name for i in items if i.type == "task"] == ["atlas", "atlas"]

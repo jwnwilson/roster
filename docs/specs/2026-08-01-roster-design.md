@@ -67,7 +67,7 @@ roster/
         interactors/        # entry points and orchestration
           api/              #   app factory, routers, deps, SSE
           cli/              #   seed
-          runs/             #   RunManager
+          turns/            #   AgentTurnManager
         config/             # settings — neutral, importable by every layer
       tests/
     ui/                     # React + Vite + Tailwind SPA
@@ -104,7 +104,7 @@ updated via `model_copy(update={...})` and never mutated.
 **Repository + UnitOfWork** layer. A generic `AsyncSqlRepository[DTO]` base provides
 create/read/read_multi/update/delete against an ORM model and a Pydantic DTO; one thin subclass
 per entity binds the two. An `AsyncUnitOfWork` owns a single session and transaction boundary and
-exposes the repositories as properties, so a request or a run is one atomic scope. Interactors
+exposes the repositories as properties, so a request or an agent turn is one atomic scope. Interactors
 depend on the `UnitOfWork` protocol rather than on `AsyncSession` directly.
 
 **`adapters/agents/`** — the `AgentRuntime` protocol and its implementations: `SubprocessRuntime`
@@ -118,12 +118,12 @@ operation, not a check each caller repeats. All of §5 memory logic — journal,
 compaction — lives in `domain/memory.py` and reaches disk only through this port.
 
 **`interactors/`** — entry points and orchestration: the FastAPI app factory, one hand-written
-router per resource, the session dependency, SSE endpoints, the seed CLI, and the `RunManager`.
-This is the only layer that may import from everywhere; it constructs concrete adapters and drives
-domain logic with them.
+router per resource, the session dependency, SSE endpoints, the seed CLI, and the
+`AgentTurnManager`. This is the only layer that may import from everywhere; it constructs concrete
+adapters and drives domain logic with them.
 
 **`config/`** — `Settings` (env prefix `roster_`) and the data-root path helpers. Deliberately its
-own module rather than part of `api/`: adapters and the run manager need settings too, and an
+own module rather than part of `api/`: adapters and the turn manager need settings too, and an
 adapter importing from the API layer inverts the layering. Domain code takes plain values, never
 the `Settings` object.
 
@@ -136,7 +136,7 @@ config disables the agent" — is misplaced, and so is domain code that opens a 
 
 ### Why async-only
 
-SSE endpoints hold a connection open for the lifetime of a run. A synchronous database
+SSE endpoints hold a connection open for the lifetime of an agent turn. A synchronous database
 session on that path blocks the event loop and stalls every other request, and a codebase
 that offers both sync and async sessions will eventually take the wrong one on a streaming
 route. Roster uses one engine and one session style from the first commit, so that mistake
@@ -165,31 +165,38 @@ holds only the database, the agent folders, and managed project folders for sour
 Keeping data out of the repo means the repo stays clean, `git clean` is safe, and an
 Electron build has an obvious per-user location to target.
 
-### Run execution
+### Agent turns
 
-Agent runs execute as **subprocesses spawned from the API process**. A `RunManager` owns one
-asyncio task per run; the task spawns the agent subprocess with `cwd` set to the project's
-**project folder** (§4), streams its stdout into `RunEvent` rows, and pushes those events to the
-UI over SSE.
+**There is no run entity.** The unit of agent work is a **turn inside a thread** (§4), and the
+record of that work is the messages the turn writes. Nothing about a turn is persisted separately:
+no run row, no event table, no run id, and no run monitor in the UI.
+
+A turn executes as a **subprocess spawned from the API process**. An `AgentTurnManager` owns one
+asyncio task per in-flight turn; the task spawns the agent subprocess with `cwd` set to the
+project's **project folder** (§4), and streams its stdout into `Message` rows on the thread, which
+are pushed to the UI over SSE.
 
 ```
 uvicorn (FastAPI)
-  └─ RunManager (asyncio)
+  └─ AgentTurnManager (asyncio)
        ├─ subprocess: agent "atlas"   cwd=~/repos/api-service          (source.kind=git)
        ├─ subprocess: agent "beacon"  cwd=~/.roster/projects/<id>      (source.kind=none)
-       └─ events → SQLite → SSE → UI
+       └─ messages → SQLite → SSE → UI
 ```
 
-Lead-agent coordination uses the same mechanism: the lead agent spawns and messages
-sub-agent runs through the `RunManager`. There is no broker, no worker service, and no
-per-agent container.
+A turn starts when a message addressed to an agent is posted to a thread. Lead-agent coordination
+uses the same mechanism: the lead agent posts messages that start other agents' turns. There is no
+broker, no worker service, and no per-agent container.
 
-When a run reaches a terminal state the `RunManager` performs the project-memory write step
-described in §5 before marking the run finished.
+**In-flight turns are the only source of `Working` status.** The manager holds the set of agents
+currently taking a turn, and `GET /agents` reads it. This is consistent with §4's rule that agent
+status is transient runtime state and never persisted.
 
-Consequence, accepted: runs do not survive an API restart. In-flight runs are marked failed
-on startup and can be restarted from the UI. For a local single-user tool this is a fair
-trade for removing a whole process tier.
+Consequence, accepted: turns do not survive an API restart. An interrupted turn leaves its partial
+messages in the thread and the thread stays open; the operator posts again to retry. Because
+messages are the record, nothing needs reconciling on startup — there is no run row left in a
+non-terminal state. For a local single-user tool this is a fair trade for removing a whole process
+tier and an entire persisted entity.
 
 ### API contract
 
@@ -217,11 +224,9 @@ local single-user operation.
 | Entity | Storage | Notes |
 |---|---|---|
 | `Project` | DB | name, `source.kind` (`git`/`local`/`none`), source URL or path, resolved project-folder path, item count — see below |
-| `WorkItem` | DB | type `epic`/`feature`/`task`; status `backlog`/`todo`/`in_progress`/`in_review`/`done`; priority; parent epic/feature; spec markdown; token usage |
-| `Thread` | DB | conversation scope: global, project, or work-item |
-| `Message` | DB | role `user`/`agent`/`lead_agent`, content, attachments |
-| `Run` | DB | agent + work item, status, timing, token usage, cost |
-| `RunEvent` | DB | append-only stream: tool calls, results, status changes |
+| `WorkItem` | DB | type `epic`/`feature`/`task`; status `backlog`/`todo`/`in_progress`/`in_review`/`done`; priority; parent epic/feature; spec markdown; `agent_name` — the assigned agent, nullable |
+| `Thread` | DB | the unit of agent work — belongs to a project, optionally to a work item; status; read flag — see below |
+| `Message` | DB | append-only conversation and agent output: `author_kind`, `kind`, content, payload |
 | `McpServer` | DB | connection config, per-tool toggles, per-agent access |
 | `Secret` | DB | name + encrypted value, referenced by agents |
 | `Attachment` | DB + disk | uploads and agent-produced files |
@@ -244,7 +249,7 @@ matching the design's `PROJECT TYPE` control:
 | `none` | — | `~/.roster/projects/<project_id>/`, created by roster |
 
 Declaring beats detecting here for one reason: detection cannot tell "this project has no code"
-from "this project's folder happens to be empty", and those need different run behaviour.
+from "this project's folder happens to be empty", and those need different terminal behaviour.
 
 **Every project folder gets a `.roster/` directory.** Memory and artifacts live inside the
 project, not in a parallel tree keyed by ID:
@@ -254,7 +259,7 @@ project, not in a parallel tree keyed by ID:
   .roster/
     memory/
       MEMORY.md      # compacted digest — see §5
-      journal/       # append-only entries, one per finished run
+      journal/       # append-only entries, one per resolved thread
       snapshots/     # previous digests
     artifacts/       # specs, notes, reports, agent-generated files
   …the project's own files…
@@ -269,7 +274,7 @@ are tracked like any other file, so they travel with the repo and show up in rev
 never commits on its own: it writes files, and those changes ride along in whatever commit the
 agent makes. A compaction is not a commit.
 
-**The run lifecycle branches on source kind at the terminal step only:**
+**The thread lifecycle branches on source kind at the terminal step only:**
 
 | `source.kind` | Terminal step | Deliverable |
 |---|---|---|
@@ -291,6 +296,57 @@ What this forces on the rest of the design:
 - Agents get write access to `.roster/` in the project folder they are running in, and nowhere
   else under it that the task does not require.
 
+### Threads, messages, and the unit of work
+
+A **thread** is a conversation with agents and the record of the work they did in it. It replaces
+the run as roster's unit of agent work: an agent takes turns inside a thread (§3), everything it
+does is written to the thread as messages, and **resolving the thread is what writes project
+memory** (§5).
+
+```
+Thread                                        Message
+  id                                            id
+  project_id                                    thread_id
+  work_item_id: str | None                      author_kind: user | agent
+  title                                         author_name: str | None   # agent folder name
+  status: info | review_needed                  kind: text | file_write
+        | action_needed | resolved                  | question | event
+  read: bool                                    content: str
+  created_at, updated_at                        payload: dict | None
+  resolved_at: datetime | None                  created_at
+```
+
+**One entity, three surfaces.** `work_item_id` is nullable, and that single nullable field is what
+lets the design's three thread surfaces share one table, one endpoint set, and one resolution rule:
+
+| Surface | Query |
+|---|---|
+| Chat panel — the lead-agent conversation on every project screen | project's threads with no work item |
+| Work Item Detail → Thread tab | the thread for that work item |
+| Threads screen (global) | every thread, filtered by project and by All / Action Needed |
+
+`status` carries exactly the four badge types in the design handoff's Threads screen, so the UI
+renders a stored value rather than inferring one. Moves are validated by
+`domain/threads.validate_transition` and an illegal move returns 409, matching how work-item status
+already behaves. **The invariant that matters: a resolved thread cannot be resolved again** — that
+is what stops a double memory write. Reopening is an explicit move back to `info`.
+
+`participants`, `message_count`, `last_message`, and the list of files written are **derived from
+messages in the list query, never stored**, so they cannot drift from the conversation they
+describe.
+
+**API:**
+
+- `GET /threads` — filters `project_id`, `work_item_id`, `status`; `POST /threads` — create
+- `GET /threads/{id}`; `PATCH /threads/{id}` — status (validated, 409 on an illegal move) and `read`
+- `GET /threads/{id}/messages`; `POST /threads/{id}/messages` — posting a message addressed to an
+  agent starts that agent's turn (§3)
+- `POST /threads/mark-all-read`
+- `GET /threads/{id}/stream` — SSE, carrying new messages as the turn writes them
+
+The terminal step above is chosen by `domain/threads.terminal_step(source_kind)` — `pr` for a git
+project, `deliver` otherwise — and applies when the thread resolves.
+
 **Agents are folder-backed.** `AGENT.md`, `skills/`, and `config.yaml` on disk are the source
 of truth; roster reads them and never stores agent configuration itself. Renaming an agent in
 the UI renames its folder. Editing the model in the UI writes `config.yaml`. Agent status is
@@ -301,7 +357,7 @@ persisted. There are no subagents anywhere in the model or the UI.
 
 ## 5. Project memory
 
-Each project has a durable, compressed memory that survives individual runs and is shared by
+Each project has a durable, compressed memory that outlives any single thread and is shared by
 every agent working on that project. It is the project's accumulated context: how the codebase
 is arranged, what conventions hold, what was decided and why, and which sharp edges have
 already been discovered.
@@ -315,7 +371,7 @@ a project reads the same digest.
 <project folder>/.roster/memory/
   MEMORY.md                                   # compacted digest — what agents read
   journal/
-    2026-08-01T14-22-03Z-run-<run_id>.md      # append-only, one file per finished run
+    2026-08-01T14-22-03Z-thread-<thread_id>.md  # append-only, one file per resolved thread
   snapshots/
     2026-08-01T14-22-05Z-MEMORY.md            # digest as it was before a compaction
 ```
@@ -330,24 +386,27 @@ requires a query engine.
 
 ### Read path
 
-At run start the `RunManager` injects into the agent's context:
+At the start of every turn the `AgentTurnManager` injects into the agent's context:
 
 - the full contents of `MEMORY.md`, and
 - any journal entries not yet folded into the digest.
 
 It also exports `ROSTER_PROJECT_MEMORY` — the absolute path to the project's memory folder — so
-an agent can re-read memory mid-run. **Agents have read access to the whole memory folder;
+an agent can re-read memory mid-turn. **Agents have read access to the whole memory folder;
 only roster writes to it.** This keeps every write on one code path with one set of rules.
 
 ### Write path
 
-When a run reaches a terminal state — success *or* failure, since failures are exactly the
-context worth keeping:
+**A thread moving to `resolved` is the one and only trigger.** It fires whether the work succeeded
+or failed, since failures are exactly the context worth keeping — a thread resolved after a dead
+end is as worth remembering as one resolved after a merge. Because the move to `resolved` is
+rejected when the thread is already resolved (§4), the entry is written exactly once:
 
-1. **Append.** The agent produces a memory entry covering what it did, what it learned,
-   decisions it made, and gotchas it hit. Roster writes it as a **new** file in `journal/`.
-   Nothing existing is modified, so concurrent runs cannot conflict and no lock is needed on
-   this path.
+1. **Append.** Roster writes a **new** file in `journal/` covering what was done, what was
+   learned, decisions made, and gotchas hit. The content is the agent's own summary when a turn in
+   that thread produced one; otherwise it is derived from the thread — title, work item key,
+   participating agents, and the paths from its `file_write` messages. Nothing existing is
+   modified, so concurrent resolutions cannot conflict and no lock is needed on this path.
 2. **Evaluate the trigger.** Compaction fires when the journal holds ≥ `memory_compact_entries`
    entries (default 10) **or** ≥ `memory_compact_bytes` of raw text (default 32 KB).
 3. **Compact,** if triggered. The agent is invoked with the current digest plus every journal
@@ -357,7 +416,7 @@ context worth keeping:
    is written atomically (temp file + rename), and only the journal entries that were fed into
    that compaction are deleted.
 
-Compaction is serialized per project by an asyncio lock in the `RunManager`. Appends are not
+Compaction is serialized per project by an asyncio lock in the `AgentTurnManager`. Appends are not
 locked — they are append-only by construction.
 
 ### Digest structure
@@ -382,19 +441,20 @@ wrong:
 
 - **The journal is the source of truth until compaction succeeds.** Entries are deleted only
   after the new digest is written. A compaction that fails, times out, or returns an empty or
-  unparseable digest leaves `MEMORY.md` and the journal untouched; the next finished run
-  retries. The failure is recorded as a `RunEvent` and surfaced in the UI — never swallowed.
+  unparseable digest leaves `MEMORY.md` and the journal untouched; the next resolved thread
+  retries. The failure is posted to the thread as an `event` message and surfaced in the UI —
+  never swallowed, and never a reason to block the resolution.
 - **Snapshots make a bad digest reversible.** The previous digest is retained before every
   compaction, keeping the most recent `memory_snapshot_keep` versions (default 20).
 - **Writes are atomic.** Temp file plus rename, so a crash mid-write cannot leave a truncated
   digest.
-- **A missing or unreadable digest is treated as empty**, not as an error that blocks a run.
+- **A missing or unreadable digest is treated as empty**, not as an error that blocks a turn.
 
 ### API
 
 - `GET /projects/{id}/memory` — digest plus pending-journal count
 - `GET /projects/{id}/memory/journal` — uncompacted entries
-- `POST /projects/{id}/memory/compact` — force a compaction regardless of threshold, without appending a journal entry. Returns `{digest, compacted, folded_entries}`: 200 when it compacts or when the journal is empty (a legitimate no-op), 503 when the compaction itself fails, with digest and journal left untouched. Run-triggered compaction differs deliberately — there a failure is non-fatal and the run still finishes
+- `POST /projects/{id}/memory/compact` — force a compaction regardless of threshold, without appending a journal entry. Returns `{digest, compacted, folded_entries}`: 200 when it compacts or when the journal is empty (a legitimate no-op), 503 when the compaction itself fails, with digest and journal left untouched. Resolution-triggered compaction differs deliberately — there a failure is non-fatal and the thread still resolves. This endpoint lives with the other memory routes, not with thread routes
 - `GET /projects/{id}/memory/snapshots` and `POST /projects/{id}/memory/snapshots/{ts}/restore`
 
 A UI surface for reading, editing, and reverting memory is deferred (§12); the design bundle
@@ -428,6 +488,12 @@ Create Work Item modals.
 Sidebar navigation is Dashboard · Threads · Agents · MCP Servers, with the PROJECTS group
 below carrying a `+` button.
 
+**There is no run surface anywhere in the UI** — no run monitor, no log-stream tab, no step
+timeline, no start-run button, and no run vocabulary in routes, components, or hooks. Live agent
+output is read in the Thread tab (handoff §D3), which is the design's own decision and now the
+model's as well (§3). Threads is therefore the screen agent work is *observed* through, not a
+secondary view: it is backed by real endpoints, and project memory depends on it.
+
 **Deviation from the handoff.** The design's Create Project modal carries a required
 `ARTIFACT STORE` block (Artifact repo · Local folder · Same as project). Roster fixes that
 location at `<project folder>/.roster/artifacts` (§4), so:
@@ -446,10 +512,14 @@ backend. A live-API flag proxies `/api` to the local server.
 Design tokens, layout dimensions, component states, and per-screen specifications come from
 `docs/design/README.md`.
 
-> **Implementation provenance:** the shell, primitive set, API client, hooks, MSW layer, and
-> test configuration are copied from the existing SPA at `../naaf/projects/ui` as a starting
-> point, then renamed and reworked to the structure and screens above. This is a one-time code
-> transplant, not a shared dependency — nothing in roster's design derives from that project.
+> **Implementation provenance:** the SPA at `../naaf/projects/ui` is a **source to harvest from,
+> not a codebase to clone.** Structure, screens, and individual components are taken where they
+> earn their place — the design tokens (already an exact match for the handoff), the envelope
+> client, the primitive set, the thread components, the hooks, and the test configuration. Nothing
+> is copied merely because it exists: anything that does not serve roster's design is deleted
+> rather than stubbed, and code carrying removed concepts — runs, subagents, owner/auth, budget
+> enforcement — does not come across at all. This is a one-time transplant, not a shared
+> dependency, and nothing in roster's design derives from that project.
 
 ---
 
@@ -459,14 +529,15 @@ Design tokens, layout dimensions, component states, and per-screen specification
   appropriate status — invalid transition 409, not found 404, validation 422. No error is
   swallowed; unexpected exceptions are logged with context and returned as 500 with a generic
   message.
-- **Agent runs**: a subprocess that exits non-zero, times out, or cannot be spawned marks the
-  run failed and records a terminal `RunEvent` carrying the reason. The failure is visible in
-  the UI, never silent.
+- **Agent turns**: a subprocess that exits non-zero, times out, or cannot be spawned posts an
+  `event` message to the thread carrying the reason, and the agent stops being `Working`. The
+  thread stays open so the operator can retry by posting again. The failure is visible in the UI,
+  never silent.
 - **Agent folders**: a malformed `config.yaml` or missing `AGENT.md` surfaces the agent in the
   UI as Disabled with a readable reason, rather than crashing the listing.
 - **Project memory**: a failed compaction leaves the digest and journal intact and records the
-  reason as a `RunEvent`; a missing or unreadable digest is treated as empty rather than
-  failing the run. Memory problems never block a run from finishing.
+  reason as an `event` message on the thread; a missing or unreadable digest is treated as empty
+  rather than failing the turn. Memory problems never block a thread from resolving.
 - **UI**: an error boundary at the shell, per-query error states, and explicit SSE reconnect
   handling with backoff.
 
@@ -476,9 +547,10 @@ Design tokens, layout dimensions, component states, and per-screen specification
 
 - **Unit** — domain rules (transitions, hierarchy), agent-folder parsing, envelope helpers,
   and the compaction trigger rules in `domain/memory.py`.
-- **Integration** — API routers against a real SQLite database via httpx; run lifecycle driven
+- **Integration** — API routers against a real SQLite database via httpx; turn lifecycle driven
   through `FakeRuntime`; SSE streams asserted end to end. Memory gets its own cases: concurrent
-  runs appending without loss, compaction firing at the threshold, a failed compaction leaving
+  thread resolutions appending without loss, resolving an already-resolved thread returning 409
+  without a second journal entry, compaction firing at the threshold, a failed compaction leaving
   digest and journal untouched, and snapshot restore.
 - **Frontend** — vitest + testing-library for primitives, hooks, and screens against MSW.
 - 80% coverage gate on the backend, enforced by `make coverage` and CI.
@@ -511,8 +583,9 @@ future work does not reintroduce it by reflex:
 
 | Not building | Why |
 |---|---|
-| Task queue / scheduler tier (Celery, RQ, cron workers) | Runs are asyncio tasks in the API process |
-| Message broker or pub/sub bus | The `RunManager` talks to subprocesses directly |
+| Task queue / scheduler tier (Celery, RQ, cron workers) | Agent turns are asyncio tasks in the API process |
+| Message broker or pub/sub bus | The `AgentTurnManager` talks to subprocesses directly |
+| A persisted run / job / execution entity | The thread is the unit of work and its messages are the record |
 | Containerised agent execution | Agents are local subprocesses on a trusted machine |
 | Client/server database (Postgres, MySQL) | One user, one machine — a SQLite file |
 | Shared workspace libraries | Single package; extract only when a second consumer exists |
@@ -546,7 +619,7 @@ future work does not reintroduce it by reflex:
    reversible. Memory is project-scoped and shared by all agents; only roster writes it.
 10. **Projects are folders, not repositories** — every project is a folder agents work in.
     Source kind is declared at creation (`git` / `local` / `none`) because detection cannot
-    distinguish "no code" from "empty folder"; it swaps the run's terminal step between `pr`
+    distinguish "no code" from "empty folder"; it swaps the thread's terminal step between `pr`
     and `deliver`. No domain code assumes a repo.
 11. **Memory and artifacts consolidate into `<project folder>/.roster/`** — one place per
     project rather than a parallel tree keyed by ID, so context and output travel with the
@@ -557,15 +630,15 @@ future work does not reintroduce it by reflex:
     and orchestration live in `interactors/`. The layer test: would it make sense in a different
     product (adapter), does it encode how roster works (domain), or is it how the outside world
     gets in (interactor)?
-14. **Repository + UnitOfWork replaces bare query functions** (reversal of an earlier decision).
-    The original spec ruled these out as ceremony. Reversed on the operator.s call: a proven
-    pattern already in use elsewhere, giving one transaction boundary per request or run rather
-    than per-call commits, and a single place to change query behaviour. Adapted rather than
-    copied — async-only (no sync sibling), no `required_filters` owner-scoping since roster has
-    no auth, and the generic base lives in `adapters/db/` rather than a workspace library.
 13. **The `FileStore` port is rooted** — containment is enforced once, inside the store, on every
     operation, rather than re-checked by each caller. This is where the Task 9 traversal and
     symlink hardening ended up, and it now covers every file read rather than `restore()` alone.
+14. **Repository + UnitOfWork replaces bare query functions** (reversal of an earlier decision).
+    The original spec ruled these out as ceremony. Reversed on the operator's call: a proven
+    pattern already in use elsewhere, giving one transaction boundary per request rather
+    than per-call commits, and a single place to change query behaviour. Adapted rather than
+    copied — async-only (no sync sibling), no `required_filters` owner-scoping since roster has
+    no auth, and the generic base lives in `adapters/db/` rather than a workspace library.
 15. **The project-folder store is rooted at `/`, deliberately** — an accepted widening of (13),
     recorded here so it is a decision rather than an implementation detail. An operator declaring
     a `local` or `git` project is naming a folder on their own machine, and a repo at `/opt/src/x`
@@ -581,6 +654,21 @@ future work does not reintroduce it by reflex:
     stays contained: agent folders remain rooted at the data root, and each project's memory
     remains rooted at its own `.roster/memory`. If roster ever grows a remote listener or a second
     user, this decision is the first thing that has to be revisited.
+16. **The thread is the unit of agent work; there is no run entity** (2026-08-02, supersedes the
+    original run design). An agent takes *turns* inside a thread and the messages it writes are the
+    only record — no run row, no event table, no run monitor. This removes an entity, two tables,
+    and a whole UI surface, and it matches the design handoff, which had already deleted the agent
+    monitor tab in favour of the Thread tab. The cost is accepted deliberately: turn history does
+    not survive a restart, because the conversation does.
+17. **Resolving a thread is the single memory write trigger.** Memory previously hung off run
+    completion; with runs gone it hangs off the move to `resolved`, and that move is rejected when
+    the thread is already resolved — so the journal entry is written exactly once, enforced by a
+    domain rule rather than by care. Threads therefore stop being an optional screen: project
+    memory does not work without them.
+18. **`WorkItem` carries `agent_name`.** The design shows an assigned agent on every list row,
+    kanban card, and detail header. Assignment is a property of the work item rather than something
+    inferred from whichever agent last posted, so the board renders from stored data instead of
+    reconstructing intent from a conversation.
 
 ---
 
@@ -591,7 +679,7 @@ Deferred to follow-up plans, each with its own spec:
 - The screen-by-screen build-out (Threads, Agents, MCP, work-item detail tabs)
 - `SubprocessRuntime` — the real agent runtime and lead-agent coordination protocol
 - MCP server connection handling and per-tool permissions
-- An end-to-end test suite and its CI workflow. Deferred deliberately, not forgotten: the journey worth covering (create project → create work item → start a run → observe events → resolve the item) only becomes meaningful once the screens in the deferred UI build-out exist. Revisit when they do — it is the only check that would catch the UI and the API disagreeing.
+- An end-to-end test suite and its CI workflow. Deferred deliberately, not forgotten: the journey worth covering (create project → create work item → post a message that starts an agent turn → observe messages stream in → resolve the thread and see the journal entry) only becomes meaningful once the screens in the deferred UI build-out exist. Revisit when they do — it is the only check that would catch the UI and the API disagreeing.
 - Cloning a remote git source. Setup accepts and validates a `source.kind = "git"` remote URL and
   records it; the clone into the project folder lands with `SubprocessRuntime`, since that is the
   first thing that needs a working tree on disk. A `git` project pointed at an existing local

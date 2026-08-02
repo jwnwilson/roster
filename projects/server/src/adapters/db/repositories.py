@@ -3,10 +3,10 @@ from typing import Any, cast
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from adapters.db.orm import ProjectRow, RunEventRow, RunRow, WorkItemRow
+from adapters.db.orm import MessageRow, ProjectRow, ThreadRow, WorkItemRow
 from adapters.db.repository import AsyncSqlRepository
 from domain.projects import Project, ProjectSource, SourceKind
-from domain.runs import Run, RunEvent
+from domain.threads import Message, Thread
 from domain.work_items import WorkItem
 
 
@@ -53,11 +53,28 @@ class WorkItemRepository(AsyncSqlRepository[WorkItem]):
         return int((await self.session.execute(query)).scalar_one())
 
 
-class RunRepository(AsyncSqlRepository[Run]):
-    orm_model = RunRow
-    dto = Run
+class ThreadRepository(AsyncSqlRepository[Thread]):
+    orm_model = ThreadRow
+    dto = Thread
 
 
-class RunEventRepository(AsyncSqlRepository[RunEvent]):
-    orm_model = RunEventRow
-    dto = RunEvent
+class MessageRepository(AsyncSqlRepository[Message]):
+    orm_model = MessageRow
+    dto = Message
+
+    async def list_for_threads(self, thread_ids: list[str]) -> list[Message]:
+        """Every message across several threads, oldest first, in one query.
+
+        Exists so a thread listing can derive its per-thread summary without
+        issuing one query per row — see `domain.threads.summarise_threads`, which
+        depends on this ordering.
+        """
+        if not thread_ids:
+            return []
+        query = (
+            select(MessageRow)
+            .where(MessageRow.thread_id.in_(thread_ids))
+            .order_by(MessageRow.created_at)
+        )
+        rows = (await self.session.execute(query)).scalars().all()
+        return [self._to_dto(row) for row in rows]

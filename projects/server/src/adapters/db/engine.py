@@ -20,7 +20,7 @@ def _apply_sqlite_pragmas(dbapi_connection: Any, _record: Any) -> None:
 
     - `journal_mode=WAL` is persistent on the database file itself, but is re-asserted
       here so a fresh database gets it on first contact (spec §3). It is what lets an
-      SSE reader poll every 250 ms without blocking the RunManager writing events.
+      SSE reader poll every 250 ms without blocking the turn manager writing messages.
     - `foreign_keys=ON` is *not* persistent and defaults to OFF; without it every
       ForeignKey in orm.py is documentation rather than a constraint.
 

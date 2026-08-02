@@ -25,6 +25,7 @@ class WorkItemIn(BaseModel):
     epic_id: str | None = None
     feature_id: str | None = None
     spec: str | None = None
+    agent_name: str | None = None
 
 
 class WorkItemPatch(BaseModel):
@@ -32,6 +33,7 @@ class WorkItemPatch(BaseModel):
     status: Status | None = None
     priority: Priority | None = None
     spec: str | None = None
+    agent_name: str | None = None
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

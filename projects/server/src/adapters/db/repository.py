@@ -102,7 +102,7 @@ class AsyncSqlRepository(Generic[DTO]):  # noqa: UP046
         exclude-None write could never express.
 
         Every caller therefore reads the row first and `model_copy`s it (see the
-        work-item PATCH route and `RunManager._finish_run`). Callers that build a
+        work-item PATCH route and the thread PATCH route). Callers that build a
         sparse DTO instead will silently blank the fields they did not mention;
         `tests/adapters/test_repository.py` pins both halves of this so a change
         to it fails visibly rather than quietly.

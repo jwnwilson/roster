@@ -8,11 +8,6 @@ running (the same trap `lifespan`'s own docstring warns about).
 
 from sqlalchemy import text
 
-from adapters.db.uow import AsyncUnitOfWork
-from domain.ids import new_id
-from domain.projects import Project, ProjectSource
-from domain.runs import Run
-from domain.work_items import WorkItem
 from interactors.api.app import create_app
 
 
@@ -21,7 +16,7 @@ async def test_create_app_puts_the_session_factory_it_was_given_on_app_state(ses
     app = create_app(session_factory=session_factory)
 
     # Assert — one source of truth for how to reach the database: anything that
-    # needs a session (a request's UnitOfWork, RunManager's background writes,
+    # needs a session (a request's UnitOfWork, the turn manager's background writes,
     # the SSE stream) reads it from here rather than building its own.
     assert app.state.session_factory is session_factory
 
@@ -93,42 +88,3 @@ async def test_an_injected_session_factory_is_not_disposed_on_shutdown(session_f
 
     # Assert
     assert engine.pool is pool_before
-
-
-async def test_startup_reconciliation_runs_against_the_factory_on_app_state(
-    session_factory, uow
-):
-    # Arrange — a run the "previous process" left in flight, in the database the
-    # app was handed. If startup reconciliation built its own factory instead,
-    # this run would still be `running` afterwards.
-    project_id, item_id = new_id(), new_id()
-    async with uow.transaction() as tx:
-        await tx.projects.create(
-            Project(
-                id=project_id,
-                name="P",
-                source=ProjectSource(kind="none"),
-                folder_path="/tmp/p",
-            )
-        )
-        await tx.work_items.create(
-            WorkItem(
-                id=item_id, key="ROS-1", project_id=project_id, type="task",
-                title="Do it", sequence=1,
-            )
-        )
-        await tx.runs.create(
-            Run(
-                id="stranded", project_id=project_id, work_item_id=item_id,
-                agent_name="atlas", status="running",
-            )
-        )
-    app = create_app(session_factory=session_factory)
-
-    # Act
-    async with app.router.lifespan_context(app):
-        pass
-
-    # Assert
-    async with AsyncUnitOfWork(session_factory).transaction() as tx:
-        assert (await tx.runs.read("stranded")).status == "failed"

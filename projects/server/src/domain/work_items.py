@@ -24,6 +24,11 @@ class WorkItem(BaseModel):
     epic_id: str | None = None
     feature_id: str | None = None
     spec: str | None = None
+    # The assigned agent's folder name. Deliberately not a foreign key: agents are
+    # folder-backed and never stored in the database (spec §4), so this can stop
+    # resolving if the folder is renamed — the same way GET /agents can return a
+    # Disabled agent for a folder that has gone wrong.
+    agent_name: str | None = None
     sequence: int
     created_at: datetime | None = None
     updated_at: datetime | None = None

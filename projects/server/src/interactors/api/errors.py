@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from domain.agents import UnknownAgent
 from domain.errors import IntegrityConflict, RecordNotFound
 from domain.projects import FolderUnavailable, InvalidSource
+from domain.threads import InvalidThreadTransition
 from domain.transitions import InvalidTransition
 from domain.work_items import InvalidHierarchy
 from interactors.api.envelope import fail
@@ -49,6 +50,10 @@ def register_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(InvalidTransition)
     async def _transition(_: Request, exc: InvalidTransition) -> JSONResponse:
+        return JSONResponse(status_code=409, content=fail(str(exc)))
+
+    @app.exception_handler(InvalidThreadTransition)
+    async def _thread_transition(_: Request, exc: InvalidThreadTransition) -> JSONResponse:
         return JSONResponse(status_code=409, content=fail(str(exc)))
 
     @app.exception_handler(InvalidSource)

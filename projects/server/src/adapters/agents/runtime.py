@@ -14,7 +14,14 @@ class AgentRuntime(Protocol):
     def execute(
         self, agent: Agent, project_folder: str, task: str
     ) -> AsyncIterator[tuple[str, str]]:
-        """Yield (event_type, message) pairs as the agent works."""
+        """Yield (message_kind, content) pairs as the agent works.
+
+        The kind is one of roster's `MessageKind` values — text, file_write,
+        question, event — but is typed as a plain `str` because a runtime is
+        project-agnostic infrastructure. Anything unrecognised is recorded as an
+        `event` rather than rejected, so a runtime naming a kind roster has not
+        met cannot crash a turn.
+        """
         ...
 
     async def summarise(
@@ -39,10 +46,10 @@ class FakeRuntime:
     async def execute(
         self, agent: Agent, project_folder: str, task: str
     ) -> AsyncIterator[tuple[str, str]]:
-        yield ("status", f"{agent.name} starting: {task}")
-        yield ("tool_call", "read_file README.md")
-        yield ("result", "read 42 lines")
-        yield ("status", "done")
+        yield ("event", f"{agent.name} starting: {task}")
+        yield ("file_write", "README.md")
+        yield ("text", "Read 42 lines and updated the README.")
+        yield ("event", "done")
 
     async def summarise(
         self, agent: Agent, digest: str, entries: list[str], budget_bytes: int

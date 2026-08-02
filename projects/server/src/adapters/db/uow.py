@@ -5,9 +5,9 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from adapters.db.repositories import (
+    MessageRepository,
     ProjectRepository,
-    RunEventRepository,
-    RunRepository,
+    ThreadRepository,
     WorkItemRepository,
 )
 
@@ -61,9 +61,9 @@ class AsyncUnitOfWork:
         return self._repo("work_items", WorkItemRepository)
 
     @property
-    def runs(self) -> RunRepository:
-        return self._repo("runs", RunRepository)
+    def threads(self) -> ThreadRepository:
+        return self._repo("threads", ThreadRepository)
 
     @property
-    def run_events(self) -> RunEventRepository:
-        return self._repo("run_events", RunEventRepository)
+    def messages(self) -> MessageRepository:
+        return self._repo("messages", MessageRepository)

@@ -106,9 +106,9 @@ class MemoryStore:
             entries.append(JournalEntry(path=path, text=text))
         return entries
 
-    def append_entry(self, run_id: str, timestamp: str, text: str) -> Path:
-        # uuid suffix: two runs finishing in the same second must not collide.
-        path = self.journal_dir / f"{timestamp}-run-{run_id}-{uuid4().hex[:8]}.md"
+    def append_entry(self, thread_id: str, timestamp: str, text: str) -> Path:
+        # uuid suffix: two threads resolving in the same second must not collide.
+        path = self.journal_dir / f"{timestamp}-thread-{thread_id}-{uuid4().hex[:8]}.md"
         self._store.write_text_atomic(path, text)
         return path
 

@@ -6,7 +6,7 @@ from adapters.db.uow import AsyncUnitOfWork
 from config.settings import Settings
 from domain.errors import RecordNotFound
 from domain.projects import Project, ProjectSource
-from interactors.api.deps import get_run_manager, get_uow
+from interactors.api.deps import get_turn_manager, get_uow
 
 
 def _request(session_factory=None):
@@ -87,30 +87,31 @@ async def test_the_request_transaction_rolls_back_when_the_route_raises(session_
             await tx.projects.read("p2")
 
 
-async def test_get_run_manager_returns_the_same_instance_across_repeated_calls(
+async def test_get_turn_manager_returns_the_same_instance_across_repeated_calls(
     tmp_path, session_factory
 ):
     # Arrange — a fresh app.state, standing in for one FastAPI app instance. Two
-    # requests against the same app must observe the same RunManager: its per-folder
-    # compaction locks are only meaningful if every run for a given project routes
-    # through the same instance.
+    # requests against the same app must observe the same AgentTurnManager: its
+    # per-folder compaction locks are only meaningful if every turn for a given
+    # project routes through the same instance, and its in-flight set is the only
+    # source of Working status — a per-request instance would always be empty.
     request = _request(session_factory)
     settings = Settings(data_root=tmp_path)
 
     # Act
-    first = await get_run_manager(request, settings=settings)
-    second = await get_run_manager(request, settings=settings)
+    first = await get_turn_manager(request, settings=settings)
+    second = await get_turn_manager(request, settings=settings)
 
     # Assert
     assert first is second
 
 
-async def test_the_run_manager_writes_through_the_factory_on_app_state(tmp_path, session_factory):
-    # Arrange — RunManager's background task outlives the request that started it,
+async def test_the_turn_manager_writes_through_the_factory_on_app_state(tmp_path, session_factory):
+    # Arrange — the manager's background task outlives the request that started it,
     # so it cannot share the request's uow. It builds short-lived ones instead,
     # and they must reach the same database as every request: `app.state` is the
     # single source, not a second factory of its own.
-    manager = await get_run_manager(
+    manager = await get_turn_manager(
         _request(session_factory), settings=Settings(data_root=tmp_path)
     )
     async with AsyncUnitOfWork(session_factory).transaction() as tx:

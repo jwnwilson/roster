@@ -1,4 +1,3 @@
-import asyncio
 import shutil
 import tempfile
 from pathlib import Path
@@ -101,27 +100,30 @@ async def test_deleting_a_project_returns_204_and_leaves_files_on_disk(client, s
     assert folder.is_dir()  # roster never deletes a user's files
 
 
-async def test_deleting_a_project_cascades_to_its_work_items_runs_and_events(
+async def test_deleting_a_project_cascades_to_its_work_items_threads_and_messages(
     client, settings, engine
 ):
-    # Arrange — one project with a work item, a run, and the run's events. Spec §4
-    # says deleting a project means roster forgets it and the *files* stay; the
-    # database children are not part of that promise, and every FK is ON DELETE
-    # CASCADE so the delete cannot be refused by SQLite's default NO ACTION.
+    # Arrange — one project with a work item, a thread scoped to it, and a message
+    # in that thread. Spec §4 says deleting a project means roster forgets it and
+    # the *files* stay; the database children are not part of that promise, and
+    # every FK is ON DELETE CASCADE so the delete cannot be refused by SQLite's
+    # default NO ACTION.
     created = await client.post("/projects", json={"name": "Doomed", "source": {"kind": "none"}})
     project_id = created.json()["data"]["id"]
     item = await client.post(
         "/work-items", json={"project_id": project_id, "type": "task", "title": "Do it"}
     )
     item_id = item.json()["data"]["id"]
-    run = await client.post(f"/work-items/{item_id}/runs", json={"agent_name": "atlas"})
-    run_id = run.json()["data"]["id"]
-    for _ in range(100):
-        if (await client.get(f"/runs/{run_id}")).json()["data"]["status"] != "running":
-            break
-        await asyncio.sleep(0.01)
-    events_before = (await client.get(f"/runs/{run_id}/events")).json()["data"]
-    assert events_before  # the cascade to run_events is only proven if there were any
+    thread = await client.post(
+        "/threads",
+        json={"project_id": project_id, "work_item_id": item_id, "title": "Set up CI"},
+    )
+    thread_id = thread.json()["data"]["id"]
+    message = await client.post(
+        f"/threads/{thread_id}/messages",
+        json={"author_kind": "agent", "author_name": "atlas", "content": "starting"},
+    )
+    message_id = message.json()["data"]["id"]
 
     # Act
     response = await client.delete(f"/projects/{project_id}")
@@ -129,14 +131,15 @@ async def test_deleting_a_project_cascades_to_its_work_items_runs_and_events(
     # Assert
     assert response.status_code == 204
     assert (await client.get(f"/projects/{project_id}")).status_code == 404
-    assert (await client.get(f"/runs/{run_id}")).status_code == 404
-    # There is no GET /work-items/{id} route, and run_events has no route of its
-    # own once the run is gone — a cascade is precisely a thing no route can show
-    # you, so count the rows directly.
+    assert (await client.get(f"/threads/{thread_id}")).status_code == 404
+    # There is no GET /work-items/{id} route, and messages have no route of their
+    # own once the thread is gone — a cascade is precisely a thing no route can
+    # show you, so count the rows directly.
     async with engine.connect() as connection:
         for table, column, value in (
             ("work_items", "id", item_id),
-            ("run_events", "run_id", run_id),
+            ("threads", "id", thread_id),
+            ("messages", "id", message_id),
         ):
             remaining = (
                 await connection.exec_driver_sql(
