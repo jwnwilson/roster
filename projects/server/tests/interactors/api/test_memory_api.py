@@ -1,5 +1,10 @@
 import pytest
 
+from adapters.agents.runtime import FakeRuntime
+from config.settings import Settings
+from interactors.api.deps import get_turn_manager
+from interactors.turns.manager import AgentTurnManager
+
 
 @pytest.fixture
 async def project(client):
@@ -189,3 +194,37 @@ async def test_restoring_a_symlinked_snapshot_is_404_and_leaves_digest_unchanged
     # Assert
     assert response.status_code == 404
     assert (memory / "MEMORY.md").read_text() == "# current"
+
+
+async def test_a_failing_compaction_is_503_and_leaves_digest_and_journal_untouched(
+    client, project, tmp_path
+):
+    # Arrange — a journal entry exists, and the runtime's summarise() is wired
+    # to fail, standing in for e.g. the model being unreachable.
+    memory = tmp_path / "projects" / project["id"] / ".roster" / "memory"
+    (memory / "MEMORY.md").write_text("# untouched digest")
+    (memory / "journal" / "2026-08-01T10-00-00Z-thread-abc.md").write_text("an entry")
+
+    failing_manager = AgentTurnManager(
+        runtime=FakeRuntime(summary_error=RuntimeError("model unavailable")),
+        settings=Settings(data_root=tmp_path),
+        uow_factory=None,
+    )
+    client.app.dependency_overrides[get_turn_manager] = lambda: failing_manager
+
+    # Act
+    response = await client.post(f"/projects/{project['id']}/memory/compact")
+
+    # Assert — an explicit compaction request must not report success when it
+    # didn't happen; 503 (not 500) because nothing is broken server-side and
+    # the operation is retryable
+    assert response.status_code == 503
+    assert response.json()["success"] is False
+    assert (memory / "MEMORY.md").read_text() == "# untouched digest"
+    journal_after = await client.get(f"/projects/{project['id']}/memory/journal")
+    assert len(journal_after.json()["data"]) == 1
+
+
+async def test_forcing_a_compaction_for_an_unknown_project_is_404(client):
+    response = await client.post("/projects/nope/memory/compact")
+    assert response.status_code == 404

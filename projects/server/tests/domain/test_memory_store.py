@@ -262,4 +262,4 @@ def test_a_journal_timestamp_is_the_prefix_the_snapshot_stamp_is_read_from(tmp_p
 
     # Assert
     assert stamp == "2026-08-01T10-30-05Z"
-    assert path.name.split("-run-")[0] == stamp
+    assert path.name.split("-thread-")[0] == stamp

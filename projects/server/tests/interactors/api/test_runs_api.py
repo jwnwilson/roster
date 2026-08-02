@@ -2,12 +2,9 @@ import asyncio
 
 import pytest
 
-from adapters.agents.runtime import FakeRuntime
 from config.settings import Settings, get_settings
 from domain.runs import Run
-from interactors.api.deps import get_run_manager
 from interactors.api.routes import runs as runs_routes
-from interactors.runs.manager import RunManager
 
 
 async def _count(engine, sql: str) -> int:
@@ -247,41 +244,6 @@ async def test_compacting_an_empty_journal_reports_no_op_not_success(client, wor
     data = response.json()["data"]
     assert data["compacted"] is False
     assert data["folded_entries"] == 0
-
-
-async def test_a_failing_compaction_is_503_and_leaves_digest_and_journal_untouched(
-    client, work_item, tmp_path
-):
-    # Arrange — a journal entry exists, and the runtime's summarise() is wired
-    # to fail, standing in for e.g. the model being unreachable.
-    project_id = work_item["project_id"]
-    memory = tmp_path / "projects" / project_id / ".roster" / "memory"
-    (memory / "MEMORY.md").write_text("# untouched digest")
-    (memory / "journal" / "2026-08-01T10-00-00Z-run-abc.md").write_text("an entry")
-
-    failing_manager = RunManager(
-        runtime=FakeRuntime(summary_error=RuntimeError("model unavailable")),
-        settings=Settings(data_root=tmp_path),
-        uow_factory=None,
-    )
-    client.app.dependency_overrides[get_run_manager] = lambda: failing_manager
-
-    # Act
-    response = await client.post(f"/projects/{project_id}/memory/compact")
-
-    # Assert — an explicit compaction request must not report success when it
-    # didn't happen; 503 (not 500) because nothing is broken server-side and
-    # the operation is retryable
-    assert response.status_code == 503
-    assert response.json()["success"] is False
-    assert (memory / "MEMORY.md").read_text() == "# untouched digest"
-    journal_after = await client.get(f"/projects/{project_id}/memory/journal")
-    assert len(journal_after.json()["data"]) == 1
-
-
-async def test_forcing_a_compaction_for_an_unknown_project_is_404(client):
-    response = await client.post("/projects/nope/memory/compact")
-    assert response.status_code == 404
 
 
 async def test_streaming_a_run_that_never_existed_closes_immediately(client):

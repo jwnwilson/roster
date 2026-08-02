@@ -1,5 +1,7 @@
 import asyncio
+import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from time import monotonic
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
@@ -12,6 +14,7 @@ from config.settings import Settings, agents_dir, get_settings
 from domain.agents import Agent, agent_folder, read_agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
+from domain.memory import journal_timestamp
 from domain.threads import (
     AuthorKind,
     Message,
@@ -25,7 +28,9 @@ from domain.threads import (
 )
 from interactors.api.deps import get_file_store, get_turn_manager, get_uow
 from interactors.api.envelope import ok, ok_list
-from interactors.turns.manager import AgentTurnManager
+from interactors.turns.manager import AgentTurnManager, build_summary
+
+logger = logging.getLogger("roster.threads")
 
 router = APIRouter(prefix="/threads", tags=["threads"])
 
@@ -147,19 +152,88 @@ async def read_thread(thread_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -
 
 @router.patch("/{thread_id}")
 async def patch_thread(
-    thread_id: str, payload: ThreadPatch, uow: AsyncUnitOfWork = Depends(get_uow)
+    thread_id: str,
+    payload: ThreadPatch,
+    background: BackgroundTasks,
+    uow: AsyncUnitOfWork = Depends(get_uow),
+    settings: Settings = Depends(get_settings),
+    manager: AgentTurnManager = Depends(get_turn_manager),
+    store: FileStore = Depends(get_file_store),
 ) -> dict:
     thread = await uow.threads.read(thread_id)
     changes = payload.model_dump(exclude_none=True)
 
+    resolving = False
     if "status" in changes:
+        # The guard that makes the memory write happen exactly once: resolving an
+        # already-resolved thread raises here, so the scheduling below is
+        # unreachable for a repeat (spec §4, decision 17).
         validate_transition(thread.status, changes["status"])
         if changes["status"] == "resolved":
             changes["resolved_at"] = datetime.now(UTC)
+            resolving = True
 
     updated = await uow.threads.update(thread_id, thread.model_copy(update=changes))
+    messages = await uow.messages.list_for_threads([thread_id])
+
+    if resolving:
+        project = await uow.projects.read(updated.project_id)
+        # Summarise with the last agent that spoke; a thread only the operator
+        # posted in still resolves, and still writes its entry.
+        agent = _summarising_agent(messages, settings, store)
+        # Scheduled rather than awaited, and the ordering is load-bearing: this
+        # handler returns before get_uow commits, so a write started inline would
+        # read a thread no other connection can see yet.
+        background.add_task(
+            _write_memory_once_committed,
+            manager,
+            Path(project.folder_path),
+            agent,
+            updated,
+            messages,
+        )
+
     summaries = await _summarise(uow, [updated.id])
     return ok(_as_response(updated, summaries.get(updated.id)))
+
+
+def _summarising_agent(messages: list[Message], settings: Settings, store: FileStore) -> Agent:
+    """The last agent to speak in the thread, or a stand-in when none did.
+
+    Compaction needs an agent to reach `runtime.summarise`. A thread the operator
+    handled alone has none, and that must not stop its entry being written.
+    """
+    for message in reversed(messages):
+        if message.author_kind == "agent" and message.author_name:
+            return read_agent(agent_folder(agents_dir(settings), message.author_name), store)
+    return Agent(name="system")
+
+
+async def _write_memory_once_committed(
+    manager: AgentTurnManager,
+    folder: Path,
+    agent: Agent,
+    thread: Thread,
+    messages: list[Message],
+) -> None:
+    """Append the journal entry after the resolution has committed.
+
+    Swallows its own failures deliberately (spec §5: memory problems never block a
+    thread from resolving). write_memory handles a failed *compaction* internally,
+    but `append_entry` can still raise on a genuine disk error — and by the time
+    this runs the resolution is already committed, so there is nothing to undo and
+    nobody left to tell but the log.
+    """
+    try:
+        await manager.write_memory(
+            folder=folder,
+            agent=agent,
+            thread_id=thread.id,
+            timestamp=journal_timestamp(datetime.now(UTC)),
+            summary=build_summary(thread, messages),
+        )
+    except Exception:
+        logger.exception("memory write failed after resolving thread %s", thread.id)
 
 
 @router.get("/{thread_id}/messages")

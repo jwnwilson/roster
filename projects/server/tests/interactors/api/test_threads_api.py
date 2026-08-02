@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from adapters.agents.runtime import FakeRuntime
 from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from config.settings import get_settings
@@ -348,3 +349,90 @@ async def test_the_stream_on_a_missing_thread_ends_without_error(client):
 
     assert response.status_code == 200
     assert not any(line.startswith("event: text") for line in lines)
+
+
+def _journal(settings, project_id):
+    return sorted((settings.data_root / "projects" / project_id / ".roster" / "memory"
+                   / "journal").glob("*.md"))
+
+
+async def test_resolving_a_thread_appends_one_journal_entry(
+    client, project_id, thread_id, settings
+):
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    assert len(_journal(settings, project_id)) == 1
+
+
+async def test_a_rejected_second_resolve_appends_nothing(client, project_id, thread_id, settings):
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+    second = await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    # The 409 is what guarantees this: the entry is written once because the
+    # transition into resolved can only happen once.
+    assert second.status_code == 409
+    assert len(_journal(settings, project_id)) == 1
+
+
+async def test_the_journal_entry_names_the_thread_it_came_from(
+    client, project_id, thread_id, settings
+):
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    assert f"thread-{thread_id}" in _journal(settings, project_id)[0].name
+
+
+async def test_the_entry_carries_the_conversation(client, project_id, thread_id, settings):
+    await _post_message(client, thread_id, "read the config")
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    text = _journal(settings, project_id)[0].read_text()
+    assert "Set up CI" in text
+    assert "read the config" in text
+
+
+async def test_a_thread_only_the_operator_spoke_in_still_writes_its_entry(
+    client, project_id, thread_id, settings
+):
+    # No agent has posted, so there is no agent to summarise with — the fallback
+    # must not stop the entry being written.
+    await client.post(
+        f"/threads/{thread_id}/messages", json={"author_kind": "user", "content": "done by hand"}
+    )
+
+    response = await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    assert response.status_code == 200
+    assert len(_journal(settings, project_id)) == 1
+
+
+async def test_reopening_and_resolving_again_appends_a_second_entry(
+    client, project_id, thread_id, settings
+):
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+    await client.patch(f"/threads/{thread_id}", json={"status": "info"})
+    await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    # Deliberate: reopening is an explicit act, and the second stretch of work is
+    # worth remembering too.
+    assert len(_journal(settings, project_id)) == 2
+
+
+async def test_a_failing_memory_write_does_not_block_resolution(client, thread_id, settings):
+    # Arrange — a manager whose memory store cannot be opened at all.
+    class BrokenMemoryManager(AgentTurnManager):
+        def _memory_store(self, folder):
+            raise OSError("disk is on fire")
+
+    client.app.state.turn_manager = BrokenMemoryManager(
+        runtime=FakeRuntime(),
+        settings=settings,
+        uow_factory=lambda: AsyncUnitOfWork(client.app.state.session_factory),
+    )
+
+    # Act
+    response = await client.patch(f"/threads/{thread_id}", json={"status": "resolved"})
+
+    # Assert — spec §5: memory problems never block a thread from resolving
+    assert response.status_code == 200
+    assert response.json()["data"]["status"] == "resolved"

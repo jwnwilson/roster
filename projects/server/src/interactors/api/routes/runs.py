@@ -1,8 +1,7 @@
 import asyncio
-from pathlib import Path
 from time import monotonic
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -38,14 +37,6 @@ STREAM_TIMEOUT_MESSAGE = (
     f"{int(STREAM_IDLE_TIMEOUT_SECONDS)}s and the run is still open; "
     "closing the stream, reconnect to resume"
 )
-
-# A manual "compact now" call isn't tied to any run or any agent that actually
-# did work — this stands in for the agent so compact_now can still reach
-# runtime.summarise. FakeRuntime ignores it; a real runtime will need to get
-# its model from somewhere else for this path — noted as a follow-up, not
-# solved here.
-_MANUAL_COMPACTION_AGENT = Agent(name="system")
-
 
 class RunIn(BaseModel):
     agent_name: str
@@ -174,28 +165,3 @@ async def stream_run_events(run_id: str, request: Request) -> EventSourceRespons
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
 
     return EventSourceResponse(event_source())
-
-
-@router.post("/projects/{project_id}/memory/compact")
-async def compact_memory(
-    project_id: str,
-    uow: AsyncUnitOfWork = Depends(get_uow),
-    manager: RunManager = Depends(get_run_manager),
-) -> dict:
-    project = await uow.projects.read(project_id)
-
-    # Unlike write_memory's own (non-fatal) run-triggered compaction, an
-    # explicit "compact now" request must not silently claim success when
-    # nothing actually happened: a failure here is reported as 503, not 200
-    # with the stale digest, so the caller can't mistake it for a real no-op.
-    result = await manager.compact_now(Path(project.folder_path), _MANUAL_COMPACTION_AGENT)
-    if result.error is not None:
-        raise HTTPException(status_code=503, detail=result.error)
-
-    return ok(
-        {
-            "digest": result.digest,
-            "compacted": result.compacted,
-            "folded_entries": result.folded_entries,
-        }
-    )
