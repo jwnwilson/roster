@@ -4,7 +4,7 @@ import pytest
 
 from adapters.agents.runtime import FakeRuntime
 from api.deps import get_run_manager
-from config.settings import Settings
+from config.settings import Settings, get_settings
 from runs.manager import RunManager
 
 
@@ -38,10 +38,11 @@ async def test_run_events_accumulate_from_the_fake_runtime(client, work_item):
 
     # Act — the fake runtime completes immediately; poll until the run settles.
     # The tiny sleep between attempts is a reliability fix, not a behaviour
-    # change: without it, this flaked under coverage-tracing overhead (the
-    # background task got starved of event-loop turns relative to a tight
-    # polling loop) — observed directly, not theoretical.
-    for _ in range(50):
+    # change: without it, this flaked (twice, independently) under
+    # coverage-tracing overhead, where the background task got starved of
+    # event-loop turns relative to a tight polling loop — observed directly,
+    # not theoretical. Iteration count raised too, for extra margin.
+    for _ in range(100):
         run = await client.get(f"/runs/{run_id}")
         if run.json()["data"]["status"] != "running":
             break
@@ -121,6 +122,54 @@ async def test_compacting_below_the_normal_threshold_still_compacts(client, work
     assert data["compacted"] is True
     assert data["folded_entries"] == 1
     assert "project memory" in data["digest"]
+    journal_after = await client.get(f"/projects/{project_id}/memory/journal")
+    assert journal_after.json()["data"] == []
+
+
+async def test_compacting_a_journal_above_threshold_changes_the_digest(
+    client, work_item, tmp_path
+):
+    # Arrange — lower the threshold so a small, cheap journal already crosses
+    # it, distinct from the below-threshold test above: this is the "would
+    # have compacted anyway" case, not the "only compacts because forced" case.
+    project_id = work_item["project_id"]
+    client.app.dependency_overrides[get_settings] = lambda: Settings(
+        data_root=tmp_path, memory_compact_entries=2
+    )
+    journal = tmp_path / "projects" / project_id / ".roster" / "memory" / "journal"
+    (journal / "2026-08-01T10-00-00Z-run-abc.md").write_text("entry one")
+    (journal / "2026-08-01T10-00-01Z-run-def.md").write_text("entry two")
+
+    # Act
+    response = await client.post(f"/projects/{project_id}/memory/compact")
+
+    # Assert
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["compacted"] is True
+    assert data["folded_entries"] == 2
+    assert "project memory" in data["digest"]
+
+
+async def test_a_forced_compaction_adds_no_journal_entry(client, work_item, tmp_path):
+    # Arrange — the specific regression this guards: the endpoint must not
+    # inject its own entry before folding. Two pre-existing entries, well
+    # under the default threshold, so this only compacts because it's forced.
+    project_id = work_item["project_id"]
+    journal = tmp_path / "projects" / project_id / ".roster" / "memory" / "journal"
+    (journal / "2026-08-01T10-00-00Z-run-abc.md").write_text("entry one")
+    (journal / "2026-08-01T10-00-01Z-run-def.md").write_text("entry two")
+    before = await client.get(f"/projects/{project_id}/memory/journal")
+    entries_before = len(before.json()["data"])
+
+    # Act
+    response = await client.post(f"/projects/{project_id}/memory/compact")
+
+    # Assert — folded_entries matches exactly what was already there, proving
+    # the endpoint didn't append a new (e.g. empty-summary) entry of its own
+    # before folding
+    assert entries_before == 2
+    assert response.json()["data"]["folded_entries"] == entries_before
     journal_after = await client.get(f"/projects/{project_id}/memory/journal")
     assert journal_after.json()["data"] == []
 
