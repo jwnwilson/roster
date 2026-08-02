@@ -37,3 +37,30 @@ class WorkItemRow(Base):
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RunRow(Base):
+    __tablename__ = "runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(32), ForeignKey("projects.id"), nullable=False)
+    work_item_id: Mapped[str] = mapped_column(
+        String(32), ForeignKey("work_items.id"), nullable=False
+    )
+    agent_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="running")
+    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class RunEventRow(Base):
+    __tablename__ = "run_events"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(32), ForeignKey("runs.id"), nullable=False)
+    type: Mapped[str] = mapped_column(String(20), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    # Set explicitly by the caller (not server_default): SQLite's CURRENT_TIMESTAMP
+    # only has second resolution, which would tie-break events emitted within the
+    # same second and break the ordering the events endpoints rely on.
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

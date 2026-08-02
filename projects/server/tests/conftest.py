@@ -4,7 +4,7 @@ from httpx import ASGITransport, AsyncClient
 
 from adapters.db.engine import Base, make_engine, make_sessionmaker
 from api.app import create_app
-from api.deps import get_session
+from api.deps import get_session, get_session_factory
 from config.settings import Settings, get_settings
 
 
@@ -49,6 +49,11 @@ async def client(engine, settings):
             yield session
 
     app.dependency_overrides[get_session] = _session_override
+    # RunManager and the SSE stream open their own sessions independently of any
+    # single request's session (they outlive it), via this sessionmaker — it must
+    # point at the same fixture-backed in-memory engine or it silently talks to a
+    # different, schema-less database.
+    app.dependency_overrides[get_session_factory] = lambda: factory
     app.dependency_overrides[get_settings] = lambda: settings
 
     transport = ASGITransport(app=app)
