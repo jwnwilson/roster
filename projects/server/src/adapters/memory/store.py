@@ -103,9 +103,15 @@ class MemoryStore:
         return sorted(self.snapshots_dir.glob(f"*{DIGEST_NAME}"))
 
     def restore(self, name: str) -> None:
-        snapshot = self.snapshots_dir / name
-        if not snapshot.is_file():
+        # Allowlist against the snapshots that actually exist, not blocklist-style
+        # sanitisation of `name` — path separators, "..", or an absolute path all
+        # simply fail to match and are rejected before any path is constructed or
+        # any file is touched. This closes a path-traversal / arbitrary-file-read
+        # (name could otherwise walk out of snapshots_dir, and its contents get
+        # fed straight into MEMORY.md, which agents read as trusted context).
+        if name not in {path.name for path in self.snapshots()}:
             raise FileNotFoundError(f"no snapshot named {name}")
+        snapshot = self.snapshots_dir / name
         self.write_digest(snapshot.read_text())
 
     def _write_snapshot(self, digest_text: str, folded_entries: list[Path]) -> None:

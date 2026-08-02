@@ -184,3 +184,45 @@ def test_compaction_leaves_digest_and_journal_untouched_when_snapshot_write_fail
         store.compact("# new digest", [entry])
     assert store.read_digest() == "# real memory"
     assert len(store.read_journal()) == 1
+
+
+def test_restore_rejects_a_traversal_path_and_leaves_the_digest_untouched(tmp_path):
+    # Arrange
+    scaffold(tmp_path)
+    store = MemoryStore(folder=tmp_path, settings=Settings(data_root=tmp_path))
+    store.write_digest("# real memory")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top secret, not memory")
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        store.restore("../../../secret.txt")
+    assert store.read_digest() == "# real memory"
+
+
+def test_restore_rejects_an_absolute_path_and_leaves_the_digest_untouched(tmp_path):
+    # Arrange
+    scaffold(tmp_path)
+    store = MemoryStore(folder=tmp_path, settings=Settings(data_root=tmp_path))
+    store.write_digest("# real memory")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("top secret, not memory")
+
+    # Act / Assert
+    with pytest.raises(FileNotFoundError):
+        store.restore(str(secret))
+    assert store.read_digest() == "# real memory"
+
+
+def test_restore_round_trips_a_real_snapshot_back_onto_the_digest(store):
+    # Arrange
+    store.write_digest("# pre-compaction memory")
+    entry = store.append_entry("run1", "2026-08-01T10-00-00Z", "learned x")
+    store.compact("# post-compaction memory", [entry])
+    snapshot_name = store.snapshots()[0].name
+
+    # Act
+    store.restore(snapshot_name)
+
+    # Assert
+    assert store.read_digest() == "# pre-compaction memory"
