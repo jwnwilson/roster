@@ -41,7 +41,7 @@ no containers. It could be wrapped in Electron later.
 - Agent runs are asyncio-managed **subprocesses inside the API process** — no Celery, no Redis,
   no broker, no worker service, no Docker
 - React 18 + Vite + Tailwind 4 + React Query + React Router, MSW for mocks
-- pytest + pytest-asyncio + httpx, 80% coverage gate; vitest + testing-library; Playwright
+- pytest + pytest-asyncio + httpx, 80% coverage gate; vitest + testing-library (end-to-end testing deferred)
 
 ## Architecture
 
@@ -129,7 +129,6 @@ make test         # pytest
 make coverage     # 80% gate
 make lint         # ruff + mypy
 make db-upgrade   # alembic upgrade head
-make e2e          # Playwright
 
 cd projects/ui && pnpm dev    # UI alone, fully mocked (VITE_USE_MOCKS=true)
 ```

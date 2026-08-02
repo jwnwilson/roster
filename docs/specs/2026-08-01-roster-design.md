@@ -43,10 +43,10 @@ green; and `docs/architecture.md` and ADR-0001 are written (`AGENTS.md` and
 ```
 roster/
   AGENTS.md                 # stack, conventions, .roster contract, workflow
-  Makefile                  # install dev run test coverage lint db-upgrade e2e
+  Makefile                  # install dev run test coverage lint db-upgrade
   pyproject.toml            # uv workspace, single member: projects/server
   .env.example  .gitignore
-  .github/workflows/{ci,e2e}.yml
+  .github/workflows/ci.yml
   docs/
     project-history.md      # what ships, what is designed-only, what is next — read first
     design/                 # UI handoff bundle
@@ -378,7 +378,7 @@ wrong:
 
 - `GET /projects/{id}/memory` — digest plus pending-journal count
 - `GET /projects/{id}/memory/journal` — uncompacted entries
-- `POST /projects/{id}/memory/compact` — force a compaction
+- `POST /projects/{id}/memory/compact` — force a compaction regardless of threshold, without appending a journal entry. Returns `{digest, compacted, folded_entries}`: 200 when it compacts or when the journal is empty (a legitimate no-op), 503 when the compaction itself fails, with digest and journal left untouched. Run-triggered compaction differs deliberately — there a failure is non-fatal and the run still finishes
 - `GET /projects/{id}/memory/snapshots` and `POST /projects/{id}/memory/snapshots/{ts}/restore`
 
 A UI surface for reading, editing, and reverting memory is deferred (§12); the design bundle
@@ -389,7 +389,7 @@ has no memory screen yet.
 ## 6. Frontend
 
 React 18 + Vite + Tailwind 4, React Query for server state, React Router for routing, MSW for
-mocking, vitest + testing-library for unit tests, Playwright for E2E.
+mocking, and vitest + testing-library for unit tests. End-to-end testing is deferred (§12).
 
 Structure:
 
@@ -465,8 +465,6 @@ Design tokens, layout dimensions, component states, and per-screen specification
   runs appending without loss, compaction firing at the threshold, a failed compaction leaving
   digest and journal untouched, and snapshot restore.
 - **Frontend** — vitest + testing-library for primitives, hooks, and screens against MSW.
-- **E2E** — Playwright over a scripted journey: create project → create work item → start a
-  run against `FakeRuntime` → observe events → resolve the item.
 - 80% coverage gate on the backend, enforced by `make coverage` and CI.
 - TDD: the failing test is written first; AAA structure; descriptive behavior names.
 
@@ -482,7 +480,6 @@ make test         # pytest
 make coverage     # 80% gate
 make lint         # ruff + mypy + eslint + tsc
 make db-upgrade   # alembic upgrade head
-make e2e          # Playwright
 ```
 
 No Docker is required to run roster. Commits follow `<type>: <description>`
@@ -550,6 +547,7 @@ Deferred to follow-up plans, each with its own spec:
 - The screen-by-screen build-out (Threads, Agents, MCP, work-item detail tabs)
 - `SubprocessRuntime` — the real agent runtime and lead-agent coordination protocol
 - MCP server connection handling and per-tool permissions
+- An end-to-end test suite and its CI workflow. Deferred deliberately, not forgotten: the journey worth covering (create project → create work item → start a run → observe events → resolve the item) only becomes meaningful once the screens in the deferred UI build-out exist. Revisit when they do — it is the only check that would catch the UI and the API disagreeing.
 - Cloning a remote git source. Setup accepts and validates a `source.kind = "git"` remote URL and
   records it; the clone into the project folder lands with `SubprocessRuntime`, since that is the
   first thing that needs a working tree on disk. A `git` project pointed at an existing local

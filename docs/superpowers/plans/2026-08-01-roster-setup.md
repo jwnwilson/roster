@@ -6,7 +6,7 @@
 
 **Architecture:** Light hexagonal in one Python package — `domain/` holds pure entities and rules, `adapters/` holds SQLAlchemy, agent-folder, and memory I/O, `api/` holds FastAPI wiring. Runs execute as asyncio-managed subprocesses inside the API process; a fake runtime stands in until the real one lands. The UI is a React SPA transplanted from an existing codebase, then reworked.
 
-**Tech Stack:** Python 3.12, uv, FastAPI, Pydantic v2, SQLAlchemy 2.0 async, aiosqlite, Alembic, sse-starlette, pytest/pytest-asyncio/httpx, ruff, mypy · React 18, Vite, Tailwind 4, React Query, React Router, MSW, Vitest, Playwright, pnpm.
+**Tech Stack:** Python 3.12, uv, FastAPI, Pydantic v2, SQLAlchemy 2.0 async, aiosqlite, Alembic, sse-starlette, pytest/pytest-asyncio/httpx, ruff, mypy · React 18, Vite, Tailwind 4, React Query, React Router, MSW, Vitest, pnpm. (End-to-end testing is deferred — see Not in this plan.)
 
 **Spec:** [`docs/specs/2026-08-01-roster-design.md`](../../specs/2026-08-01-roster-design.md). Read it before Task 1. Where this plan and the spec disagree, the spec wins — stop and flag it.
 
@@ -38,7 +38,7 @@ Every task's requirements implicitly include this section.
 | Path | Responsibility |
 |---|---|
 | `pyproject.toml` | uv workspace (one member), pytest/coverage/ruff/mypy config |
-| `Makefile` | install, dev, run, test, coverage, lint, db-upgrade, e2e |
+| `Makefile` | install, dev, run, test, coverage, lint, db-upgrade |
 | `.gitignore`, `.env.example` | ignore rules; documented settings |
 | `.github/workflows/ci.yml` | backend job (ruff+mypy+pytest) and UI job (eslint+tsc+vitest) |
 | `AGENTS.md`, `docs/project-history.md` | **already written** — conventions and status; keep them current as tasks land |
@@ -82,7 +82,8 @@ Every task's requirements implicitly include this section.
 The spec's domain model (§4) names entities this plan deliberately does not build, because they
 belong to the screen build-out deferred in spec §12. Do not add them here:
 
-`Thread`, `Message`, `McpServer`, `Secret`, `Attachment` (the table and upload endpoints — the
+An end-to-end suite and its CI workflow (deferred: the journey only becomes meaningful once the
+deferred screens exist), `Thread`, `Message`, `McpServer`, `Secret`, `Attachment` (the table and upload endpoints — the
 `.roster/artifacts` folder they will index is created in Task 5), the board and dashboard
 screens, the real `SubprocessRuntime`, and cloning a remote git source.
 
@@ -265,7 +266,7 @@ Expected: PASS.
 `Makefile` (tabs, not spaces, for recipe lines):
 
 ```make
-.PHONY: install test coverage lint run db-upgrade dev e2e
+.PHONY: install test coverage lint run db-upgrade dev
 
 install:
 	uv sync
@@ -2932,8 +2933,14 @@ followed by a rename pass — the destination must not contain the source projec
 ```bash
 mkdir -p projects/ui
 rsync -a --exclude node_modules --exclude dist --exclude .env \
+  --exclude e2e --exclude playwright.config.ts \
   ../naaf/projects/ui/ projects/ui/
 ```
+
+End-to-end testing is deferred, so the `e2e/` directory and the Playwright config are
+deliberately **not** transplanted — they would bring in specs for screens roster does not have.
+Also remove the `test:e2e` script and the `@playwright/test` devDependency from `package.json`
+after the copy, so `pnpm install` doesn't pull a runner nothing uses.
 
 > The `sed -i ''` form in the next step is BSD/macOS syntax. On Linux use `sed -i` with no
 > argument.
@@ -2942,7 +2949,7 @@ rsync -a --exclude node_modules --exclude dist --exclude .env \
 
 ```bash
 cd projects/ui
-grep -rl -i naaf src e2e openapi package.json index.html *.ts *.js 2>/dev/null \
+grep -rl -i naaf src openapi package.json index.html *.ts *.js 2>/dev/null \
   | xargs sed -i '' -e 's/NAAF/Roster/g' -e 's/naaf/roster/g'
 git mv openapi/naaf-api.yaml openapi/roster-api.yaml 2>/dev/null || \
   mv openapi/naaf-api.yaml openapi/roster-api.yaml
@@ -3124,7 +3131,7 @@ folder with `AGENT.md`, `skills/`, and `config.yaml` under `agents_dir(settings)
 
 Run: `uv run pytest projects/server/tests/test_seed.py -v` → PASS.
 
-- [ ] **Step 3: Add the `dev` and `e2e` Make targets**
+- [ ] **Step 3: Add the `dev` Make target**
 
 ```make
 dev:
@@ -3133,9 +3140,6 @@ dev:
 	uv run uvicorn api.app:create_app --factory --reload --port 8000 & \
 	cd projects/ui && pnpm dev; \
 	kill %1
-
-e2e:
-	cd projects/ui && pnpm test:e2e
 ```
 
 - [ ] **Step 4: Verify the whole stack boots**
