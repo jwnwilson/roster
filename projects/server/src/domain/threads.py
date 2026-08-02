@@ -39,6 +39,39 @@ class Message(BaseModel):
     created_at: datetime | None = None
 
 
+class ThreadSummary(BaseModel):
+    """What a thread listing shows beyond the stored row.
+
+    Derived from the thread's messages at read time and never stored, so it cannot
+    drift from the conversation it describes (spec §4).
+    """
+
+    message_count: int = 0
+    last_message: str | None = None
+    participants: list[str] = []
+
+
+def summarise_threads(messages: list[Message]) -> dict[str, ThreadSummary]:
+    """Fold messages, **oldest first**, into one summary per thread.
+
+    Ordering is the caller's job and this relies on it: `last_message` is simply
+    the last one seen. Only agents count as participants — the operator is always
+    present and naming them would say nothing.
+    """
+    summaries: dict[str, ThreadSummary] = {}
+    for message in messages:
+        summary = summaries.setdefault(message.thread_id, ThreadSummary())
+        summary.message_count += 1
+        summary.last_message = message.content
+        if (
+            message.author_kind == "agent"
+            and message.author_name
+            and message.author_name not in summary.participants
+        ):
+            summary.participants.append(message.author_name)
+    return summaries
+
+
 class InvalidThreadTransition(Exception):
     def __init__(self, current: str, target: str) -> None:
         super().__init__(f"cannot move thread from {current} to {target}")

@@ -63,6 +63,23 @@ class MessageRepository(AsyncSqlRepository[Message]):
     orm_model = MessageRow
     dto = Message
 
+    async def list_for_threads(self, thread_ids: list[str]) -> list[Message]:
+        """Every message across several threads, oldest first, in one query.
+
+        Exists so a thread listing can derive its per-thread summary without
+        issuing one query per row — see `domain.threads.summarise_threads`, which
+        depends on this ordering.
+        """
+        if not thread_ids:
+            return []
+        query = (
+            select(MessageRow)
+            .where(MessageRow.thread_id.in_(thread_ids))
+            .order_by(MessageRow.created_at)
+        )
+        rows = (await self.session.execute(query)).scalars().all()
+        return [self._to_dto(row) for row in rows]
+
 
 class RunRepository(AsyncSqlRepository[Run]):
     orm_model = RunRow

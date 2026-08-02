@@ -11,7 +11,7 @@ from adapters.db.uow import AsyncUnitOfWork
 from config.settings import get_settings
 from interactors.api.envelope import ok
 from interactors.api.errors import register_error_handlers
-from interactors.api.routes import agents, memory, projects, runs, work_items
+from interactors.api.routes import agents, memory, projects, runs, threads, work_items
 from interactors.runs.reconcile import fail_interrupted_runs
 
 logger = logging.getLogger("roster")
@@ -68,6 +68,7 @@ def create_app(session_factory: async_sessionmaker[AsyncSession] | None = None) 
     app.include_router(projects.router)
     app.include_router(work_items.router)
     app.include_router(memory.router)
+    app.include_router(threads.router)
     app.include_router(runs.router)
     register_error_handlers(app)
     return app

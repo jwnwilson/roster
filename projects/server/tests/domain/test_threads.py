@@ -2,7 +2,9 @@ import pytest
 
 from domain.threads import (
     InvalidThreadTransition,
+    Message,
     status_after_message,
+    summarise_threads,
     terminal_step,
     validate_transition,
 )
@@ -73,3 +75,55 @@ def test_a_git_project_ends_a_thread_with_a_pull_request():
 @pytest.mark.parametrize("kind", ["local", "none"])
 def test_a_non_git_project_delivers_instead(kind):
     assert terminal_step(kind) == "deliver"
+
+
+def _message(thread_id, content, author_kind="agent", author_name="atlas"):
+    return Message(
+        id=f"m{content}",
+        thread_id=thread_id,
+        author_kind=author_kind,
+        author_name=author_name,
+        content=content,
+    )
+
+
+def test_a_summary_counts_messages_and_keeps_the_last_one():
+    summaries = summarise_threads(
+        [_message("t1", "first"), _message("t1", "second"), _message("t1", "third")]
+    )
+
+    assert summaries["t1"].message_count == 3
+    assert summaries["t1"].last_message == "third"
+
+
+def test_a_summary_names_each_agent_once_in_the_order_they_spoke():
+    summaries = summarise_threads(
+        [
+            _message("t1", "a", author_name="beacon"),
+            _message("t1", "b", author_name="atlas"),
+            _message("t1", "c", author_name="beacon"),
+        ]
+    )
+
+    assert summaries["t1"].participants == ["beacon", "atlas"]
+
+
+def test_the_operator_is_never_a_participant():
+    # Naming the operator would say nothing — they are always present.
+    summaries = summarise_threads(
+        [_message("t1", "start", author_kind="user", author_name=None)]
+    )
+
+    assert summaries["t1"].participants == []
+    assert summaries["t1"].message_count == 1
+
+
+def test_summaries_are_kept_separate_per_thread():
+    summaries = summarise_threads([_message("t1", "one"), _message("t2", "two")])
+
+    assert summaries["t1"].last_message == "one"
+    assert summaries["t2"].last_message == "two"
+
+
+def test_no_messages_yields_no_summaries():
+    assert summarise_threads([]) == {}
