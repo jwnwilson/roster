@@ -23,12 +23,9 @@ no containers.
 
 ## Current state (2026-08-02)
 
-**Backend complete and merged to main; no UI yet.** **267 tests, 95.45% coverage** (branch
-measurement on) against an 80% gate. UI work is on `feat/ui`.
-
-> **The run subsystem is scheduled for removal.** A design decision taken on 2026-08-02 replaced it
-> with threads — see the status entry below. Everything described here still ships and still passes;
-> the run code is simply on its way out, and no new work should build on it.
+**Backend complete; runs replaced by threads; no UI yet.** **310 tests, ~95% coverage** (branch
+measurement on) against an 80% gate. The threads work is on `feat/ui` alongside the UI plan and has
+not been merged.
 
 Architecture is four layers in one package:
 
@@ -36,7 +33,7 @@ Architecture is four layers in one package:
 |---|---|
 | `domain/` | roster's rules and entities. No I/O; imports adapter **port protocols** only |
 | `adapters/` | infrastructure and the ports it implements — `storage/`, `db/`, `agents/` |
-| `interactors/` | entry points and orchestration — `api/`, `cli/`, `runs/` (to become `turns/`) |
+| `interactors/` | entry points and orchestration — `api/`, `cli/`, `turns/` |
 | `config/` | settings, importable by any layer except domain |
 
 The layer test, written into `AGENTS.md`: *would this make sense in a different product?* → adapter.
@@ -45,9 +42,10 @@ The layer test, written into `AGENTS.md`: *would this make sense in a different 
 Shipping: projects with three declared source kinds each scaffolding `<project>/.roster/`; work
 items with hierarchy, `ROS-<n>` keys, and transition validation; agents read from disk with a
 broken folder degrading to Disabled-with-reason rather than breaking the listing; project memory as
-an append-only journal plus compacted digest with snapshots; runs as asyncio-managed subprocesses
-with SSE streaming and a post-run memory write; storage behind a rooted `FileStore` port; database
-behind a Repository + UnitOfWork.
+an append-only journal plus compacted digest with snapshots; threads as the unit of agent work,
+with agent turns as asyncio-managed subprocesses writing messages, SSE streaming, and a memory
+write on resolution; storage behind a rooted `FileStore` port; database behind a Repository +
+UnitOfWork.
 
 **Complete:** 13 tasks, a final whole-branch review, two fix waves closing all 13 of its findings,
 and a port of the API wiring to match the reference implementation exactly — `get_uow` owns the
@@ -57,13 +55,39 @@ tests inject through the constructor rather than overriding dependencies.
 Layering is now **mechanically enforced** by `tests/test_layering.py`, whose guards were each
 mutation-checked: the violation injected, the matching test confirmed failing, the tree restored.
 
+## Status (2026-08-02) — runs removed from the code
+
+The design decision below is now implemented, in eight tasks on `feat/ui`. `Run`, `RunEvent`,
+`RunManager`, the run routes and the two tables are gone; `Thread`, `Message`, `AgentTurnManager`
+and `WorkItem.agent_name` replace them. Migrations 0004–0006. Verified end to end against a running
+API: posting a message that names an agent produces its messages, resolving the thread writes a
+thread-keyed journal entry to disk, and both run endpoints 404.
+
+**What the implementation changed about the design.** Three things only became visible in the code:
+
+- **The memory step left `start()`.** The plan assumed the turn manager would keep `RunManager`'s
+  `finally` block. It could not: resolution is the trigger, and a thread may run many turns before
+  the operator resolves it. `write_memory` and `compact_now` stayed on the manager but are called
+  from the resolution path.
+- **The lifespan reconciliation was deleted rather than ported.** It existed only because a run
+  persisted a status a crash could leave non-terminal. A turn persists nothing, so there is no
+  orphaned row to find.
+- **`status_after_message` moved into the domain.** A question from an agent is what puts a thread
+  in the operator's queue; that is a rule, not orchestration.
+
+**Two defects the tests caught, both of the kind this project has recorded before.** Computing the
+derived thread fields in the route meant an interactor calling `session.execute` directly — caught
+by `test_layering.py`, and the same shape as a defect already in the Learnings below. And moving
+`POST /projects/{id}/memory/compact` out of `routes/runs.py` silently disarmed its own 503 test: the
+test overrode `get_run_manager` while the endpoint had moved to `get_turn_manager`, so a
+failing-compaction test began passing against a working runtime. Both were found because the guards
+existed, not because anyone was looking.
+
 ## Status (2026-08-02) — runs removed from the design; the thread becomes the unit of agent work
 
 Brainstorming the UI surfaced that half the design's "live" screens were not actually backed, and
 the decision taken in response was larger than the UI: **roster no longer has a run entity.**
-Recorded in spec §3, §4, §5, §6, §10 and decisions 16–18. **The code still has runs** — this is a
-design decision ahead of its implementation, and the backend change to carry it out is not yet
-planned.
+Recorded in spec §3, §4, §5, §6, §10 and decisions 16–18. Implemented in the entry above.
 
 **What changed.** The unit of agent work is now a *turn inside a thread*, and the messages that
 turn writes are the only record — no `Run` row, no `RunEvent` table, no run id, no run monitor. A
@@ -142,14 +166,17 @@ review could have seen it: every task correctly reported its own brief satisfied
 
 ## Outstanding
 
-**Backend:** merge PR #1.
+**Backend:** merge the threads work off `feat/ui`, ideally as its own PR — it currently shares a
+branch with the UI plan, which is a branch-hygiene accident rather than a decision.
 
-**UI:** all 14 tasks — transplant, tokens, shell, the live/mocked registry, then screens. Half the
-designed screens have no backend, so they will be built against mocks with a `DATA_SOURCES`
-registry, segregated handler directories, a test asserting the two agree, and a dev-only badge.
+**UI:** all 14 tasks — harvest, tokens, shell, the capability registry, then screens. Provenance is
+keyed by capability rather than screen, because the live/mocked boundary runs *through* screens: the
+board's work items are live while the assigned-agent avatar and token count on the same card are
+not. Threads, `workItems.assignedAgent` and `agents.workingStatus` are now backed and can come out
+of `src/mocks/unbacked/` as the screens are built.
 
-**Deferred, each needing its own spec:** `Thread`, `Message`, `McpServer`, `Secret`, `Attachment`
-persistence; agent write endpoints; `SubprocessRuntime` and lead-agent coordination; cloning a
+**Deferred, each needing its own spec:** `McpServer`, `Secret`, `Attachment` persistence; any token
+or spend figure, which no entity carries; agent write endpoints; `SubprocessRuntime` and lead-agent coordination; cloning a
 remote git source; the memory UI; an end-to-end suite and its CI workflow; secrets encryption at
 rest; Electron packaging.
 
