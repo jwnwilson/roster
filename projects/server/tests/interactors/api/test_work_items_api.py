@@ -113,6 +113,23 @@ async def test_invalid_priority_returns_422_with_the_envelope(client, project_id
     assert "priority" in body["error"]
 
 
+async def test_a_422_names_the_field_and_reason_without_leaking_internals(client, project_id):
+    # Act
+    response = await client.post(
+        "/work-items",
+        json={"project_id": project_id, "type": "nonsense", "title": "Bad", "priority": "bogus"},
+    )
+
+    # Assert — a captured 422 body once embedded
+    # `File ".../work_items.py", line 54, in patch_item`. A validation response
+    # tells the caller which field was wrong and why, and nothing about roster.
+    error = response.json()["error"]
+    assert "priority" in error
+    assert "type" in error
+    for leak in ('File "', ".py", "Traceback", "line 5", "/src/"):
+        assert leak not in error
+
+
 async def test_invalid_status_value_returns_422_not_409(client, project_id):
     # Arrange
     created = await client.post(
