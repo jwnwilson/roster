@@ -14,9 +14,9 @@ from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
 from config.settings import Settings, agents_dir, db_path, get_settings
-from domain.agents import DEFAULT_MODEL, DEFAULT_TOKEN_LIMIT
+from domain.agents import DEFAULT_MODEL, DEFAULT_TOKEN_LIMIT, create_agent_folder
 from domain.ids import new_id, work_item_key
-from domain.projects import Project, ProjectSource, resolve_folder, scaffold
+from domain.projects import Project, ProjectSource, create_project_folder
 from domain.work_items import WorkItem
 
 DEMO_PROJECT_NAME = "Demo project"
@@ -37,10 +37,7 @@ you produce in `.roster/artifacts/`.
 Roster is the only writer of `.roster/memory/` — never write there yourself.
 """
 
-_AGENT_CONFIG = f"""model: {DEFAULT_MODEL}
-token_limit: {DEFAULT_TOKEN_LIMIT}
-temperature: 0.2
-"""
+_AGENT_TEMPERATURE = 0.2
 
 
 async def seed(uow: AsyncUnitOfWork, settings: Settings, store: FileStore) -> bool:
@@ -71,9 +68,7 @@ async def seed(uow: AsyncUnitOfWork, settings: Settings, store: FileStore) -> bo
 def _demo_project(settings: Settings, store: FileStore) -> Project:
     source = ProjectSource(kind="none")
     project_id = new_id()
-    folder = resolve_folder(source, project_id, store, settings.data_root)
-    store.mkdir(folder)
-    scaffold(folder, store)
+    folder = create_project_folder(source, project_id, store, settings.data_root)
     return Project(
         id=project_id, name=DEMO_PROJECT_NAME, source=source, folder_path=str(folder)
     )
@@ -94,10 +89,16 @@ def _work_item(
 
 
 def _write_agent_folder(settings: Settings, store: FileStore) -> None:
-    folder = agents_dir(settings) / DEMO_AGENT_NAME
-    store.mkdir(folder / "skills")
-    store.write_text_atomic(folder / "AGENT.md", _AGENT_INSTRUCTIONS)
-    store.write_text_atomic(folder / "config.yaml", _AGENT_CONFIG)
+    create_agent_folder(
+        agents_dir(settings) / DEMO_AGENT_NAME,
+        store,
+        instructions=_AGENT_INSTRUCTIONS,
+        config={
+            "model": DEFAULT_MODEL,
+            "token_limit": DEFAULT_TOKEN_LIMIT,
+            "temperature": _AGENT_TEMPERATURE,
+        },
+    )
 
 
 async def _seed_the_configured_data_root() -> bool:

@@ -3,7 +3,8 @@ import os
 import pytest
 
 from adapters.storage.local import LocalFileStore
-from domain.agents import read_agents
+from adapters.storage.memory import InMemoryFileStore
+from domain.agents import create_agent_folder, read_agent, read_agents
 
 
 def _write_agent(root, name, config="model: claude-opus-5\ntoken_limit: 200000\n"):
@@ -17,6 +18,27 @@ def _write_agent(root, name, config="model: claude-opus-5\ntoken_limit: 200000\n
 @pytest.fixture
 def store(tmp_path):
     return LocalFileStore(tmp_path)
+
+
+def test_creating_an_agent_folder_produces_one_the_reader_accepts(tmp_path):
+    # Arrange — the shape of an agent folder is a roster rule, so writing one is
+    # reachable from domain alone, against any store.
+    memory_store = InMemoryFileStore(tmp_path)
+
+    # Act
+    folder = create_agent_folder(
+        tmp_path / "atlas",
+        memory_store,
+        instructions="# atlas\nYou are atlas.",
+        config={"model": "claude-opus-5", "token_limit": 1234},
+    )
+
+    # Assert
+    agent = read_agent(folder, memory_store)
+    assert agent.status == "active"
+    assert agent.model == "claude-opus-5"
+    assert agent.token_limit == 1234
+    assert memory_store.is_dir(folder / "skills")
 
 
 def test_reads_name_model_and_skills_from_disk(tmp_path, store):

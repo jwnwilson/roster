@@ -11,6 +11,11 @@ AgentStatus = Literal["working", "active", "disabled"]
 DEFAULT_MODEL = "claude-opus-5"
 DEFAULT_TOKEN_LIMIT = 200_000
 
+# The shape of an agent folder (spec §4) — read and written from these names alone.
+INSTRUCTIONS_FILE = "AGENT.md"
+CONFIG_FILE = "config.yaml"
+SKILLS_DIR = "skills"
+
 
 class Agent(BaseModel):
     name: str
@@ -31,14 +36,14 @@ def _is_file(store: FileStore, path: Path) -> bool:
 def read_agent(folder: Path, store: FileStore) -> Agent:
     """Read one agent folder. A broken folder becomes a disabled agent, never an exception."""
     try:
-        instructions_path = folder / "AGENT.md"
+        instructions_path = folder / INSTRUCTIONS_FILE
         if not _is_file(store, instructions_path):
             return Agent(
-                name=folder.name, status="disabled", problem="AGENT.md is missing"
+                name=folder.name, status="disabled", problem=f"{INSTRUCTIONS_FILE} is missing"
             )
 
         config: dict = {}
-        config_path = folder / "config.yaml"
+        config_path = folder / CONFIG_FILE
         if _is_file(store, config_path):
             try:
                 config = yaml.safe_load(store.read_text(config_path)) or {}
@@ -46,21 +51,21 @@ def read_agent(folder: Path, store: FileStore) -> Agent:
                 return Agent(
                     name=folder.name,
                     status="disabled",
-                    problem=f"config.yaml is invalid: {error}",
+                    problem=f"{CONFIG_FILE} is invalid: {error}",
                 )
             if not isinstance(config, dict):
                 return Agent(
                     name=folder.name,
                     status="disabled",
-                    problem="config.yaml is not a mapping",
+                    problem=f"{CONFIG_FILE} is not a mapping",
                 )
 
-        skills_root = folder / "skills"
+        skills_root = folder / SKILLS_DIR
         if store.exists(skills_root) and not store.is_dir(skills_root):
             return Agent(
                 name=folder.name,
                 status="disabled",
-                problem="skills exists but is not a directory",
+                problem=f"{SKILLS_DIR} exists but is not a directory",
             )
         skills = (
             sorted(child.name for child in store.list(skills_root, "*") if store.is_dir(child))
@@ -100,6 +105,21 @@ def read_agent(folder: Path, store: FileStore) -> Agent:
             status="disabled",
             problem=f"failed to read agent: {error}",
         )
+
+
+def create_agent_folder(
+    folder: Path, store: FileStore, instructions: str, config: dict
+) -> Path:
+    """Write an agent folder in the shape `read_agent` expects, and return it.
+
+    The counterpart of `read_agent`: which files an agent folder is made of is a
+    roster rule (spec §4), so the writing of it lives here rather than in whichever
+    interactor happens to need one.
+    """
+    store.mkdir(folder / SKILLS_DIR)
+    store.write_text_atomic(folder / INSTRUCTIONS_FILE, instructions)
+    store.write_text_atomic(folder / CONFIG_FILE, yaml.safe_dump(config, sort_keys=False))
+    return folder
 
 
 def read_agents(agents_root: Path, store: FileStore) -> list[Agent]:

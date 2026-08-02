@@ -95,10 +95,30 @@ def artifacts_dir(folder: Path) -> Path:
 
 
 def scaffold(folder: Path, store: FileStore) -> None:
-    """Create <folder>/.roster/{memory/{journal,snapshots},artifacts}. Never destructive."""
+    """Create <folder> and its .roster/{memory/{journal,snapshots},artifacts}. Never destructive.
+
+    `folder` itself is created here rather than by the caller: a project folder without
+    its `.roster` tree is not a state roster has any use for, so the two belong in one
+    step (see the `.roster` folder contract).
+    """
     for path in (
+        folder,
         memory_dir(folder) / "journal",
         memory_dir(folder) / "snapshots",
         artifacts_dir(folder),
     ):
         store.mkdir(path)
+
+
+def create_project_folder(
+    source: ProjectSource, project_id: str, store: FileStore, data_root: Path
+) -> Path:
+    """Resolve where this project lives, create it, scaffold it, and return the folder.
+
+    The single entry point for "what happens on disk when a project is created" — a
+    domain rule, not an orchestration detail. Callers hand over a store and get a ready
+    folder back; none of them sequences resolve/mkdir/scaffold itself.
+    """
+    folder = resolve_folder(source, project_id, store, data_root)
+    scaffold(folder, store)
+    return folder

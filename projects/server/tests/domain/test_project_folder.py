@@ -1,10 +1,12 @@
 import pytest
 
 from adapters.storage.local import LocalFileStore
+from adapters.storage.memory import InMemoryFileStore
 from domain.projects import (
     FolderUnavailable,
     ProjectSource,
     artifacts_dir,
+    create_project_folder,
     memory_dir,
     resolve_folder,
     scaffold,
@@ -69,6 +71,22 @@ def test_scaffold_is_idempotent(tmp_path, store):
 
     # Assert
     assert (artifacts_dir(tmp_path) / "report.md").read_text() == "keep me"
+
+
+def test_creating_a_project_folder_makes_the_folder_and_its_roster_tree(tmp_path):
+    # Arrange — no interactor and no filesystem: "what happens on disk when a
+    # project is created" is a domain rule, reachable with nothing but a store.
+    store = InMemoryFileStore(tmp_path)
+
+    # Act
+    folder = create_project_folder(ProjectSource(kind="none"), "p1", store, tmp_path)
+
+    # Assert
+    assert folder == tmp_path / "projects" / "p1"
+    assert store.is_dir(folder)
+    assert store.is_dir(memory_dir(folder) / "journal")
+    assert store.is_dir(memory_dir(folder) / "snapshots")
+    assert store.is_dir(artifacts_dir(folder))
 
 
 def test_git_source_with_local_repo_path_uses_the_existing_directory(tmp_path, store):

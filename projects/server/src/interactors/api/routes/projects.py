@@ -5,7 +5,7 @@ from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.ports import FileStore
 from config.settings import Settings, get_settings
 from domain.ids import new_id
-from domain.projects import Project, ProjectSource, resolve_folder, scaffold, validate_source
+from domain.projects import Project, ProjectSource, create_project_folder, validate_source
 from interactors.api.deps import get_project_folder_store, get_uow
 from interactors.api.envelope import ok, ok_list
 
@@ -39,9 +39,7 @@ async def create_project(
     validate_source(payload.source.kind, payload.source.url, payload.source.path)
     source = ProjectSource(**payload.source.model_dump())
     project_id = new_id()
-    folder = resolve_folder(source, project_id, store, settings.data_root)
-    store.mkdir(folder)
-    scaffold(folder, store)
+    folder = create_project_folder(source, project_id, store, settings.data_root)
     project = Project(id=project_id, name=payload.name, source=source, folder_path=str(folder))
     async with uow.transaction() as tx:
         created = await tx.projects.create(project)
