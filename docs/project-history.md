@@ -24,7 +24,7 @@ no containers.
 ## Current state (2026-08-02)
 
 **Backend complete and on PR #1; no UI yet.** Branches: `feat/setup` (backend), `feat/ui`
-(not started). **149 tests, 91.2% coverage** against an 80% gate.
+(not started). **267 tests, 95.45% coverage** (branch measurement on) against an 80% gate.
 
 Architecture is four layers in one package:
 
@@ -45,10 +45,13 @@ an append-only journal plus compacted digest with snapshots; runs as asyncio-man
 with SSE streaming and a post-run memory write; storage behind a rooted `FileStore` port; database
 behind a Repository + UnitOfWork.
 
-**In flight:** a fix wave closing the final whole-branch review's findings — three Critical (no seed
-CLI and a broken `make install`; startup run-reconciliation missing, which lets an orphaned run's
-SSE stream poll forever; project folders outside `$HOME` rejected with a false error), eight
-Important, plus two abstraction breaks the operator caught by reading the diff.
+**Complete:** 13 tasks, a final whole-branch review, two fix waves closing all 13 of its findings,
+and a port of the API wiring to match the reference implementation exactly — `get_uow` owns the
+request transaction, the session factory is built in `create_app` and published on `app.state`, and
+tests inject through the constructor rather than overriding dependencies.
+
+Layering is now **mechanically enforced** by `tests/test_layering.py`, whose guards were each
+mutation-checked: the violation injected, the matching test confirmed failing, the tree restored.
 
 ## Learnings
 
@@ -104,7 +107,7 @@ review could have seen it: every task correctly reported its own brief satisfied
 
 ## Outstanding
 
-**Backend:** the fix wave above, then merge.
+**Backend:** merge PR #1.
 
 **UI:** all 14 tasks — transplant, tokens, shell, the live/mocked registry, then screens. Half the
 designed screens have no backend, so they will be built against mocks with a `DATA_SOURCES`
