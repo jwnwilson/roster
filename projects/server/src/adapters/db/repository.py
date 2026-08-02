@@ -92,10 +92,22 @@ class AsyncSqlRepository(Generic[DTO]):  # noqa: UP046
         )
 
     async def update(self, id: str, dto: BaseModel) -> DTO:
+        """Overwrite every column of `id` from `dto`. **Pass a complete DTO.**
+
+        This is a whole-row write, not a partial patch: every column `_row_data`
+        produces is written, Nones included, so a field the DTO leaves at its
+        default overwrites whatever is stored rather than being skipped. Nones are
+        deliberately *not* filtered the way `create` filters them — clearing a
+        nullable column is a legitimate update, and that is the one thing an
+        exclude-None write could never express.
+
+        Every caller therefore reads the row first and `model_copy`s it (see the
+        work-item PATCH route and `RunManager._finish_run`). Callers that build a
+        sparse DTO instead will silently blank the fields they did not mention;
+        `tests/adapters/test_repository.py` pins both halves of this so a change
+        to it fails visibly rather than quietly.
+        """
         row = await self._get_one_row(id)
-        # Nones are written here, unlike create: clearing a nullable column is a
-        # legitimate update, and every caller passes a whole DTO read back through
-        # `_to_dto` rather than a sparse patch.
         for key, value in self._row_data(dto).items():
             if key in ("id", "created_at"):
                 continue
