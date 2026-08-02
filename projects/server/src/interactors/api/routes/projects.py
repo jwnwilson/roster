@@ -2,13 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters import project_folder
 from adapters.db import projects as db
-from api.deps import get_session
-from api.envelope import ok, ok_list
+from adapters.storage.ports import FileStore
 from config.settings import Settings, get_settings
 from domain.ids import new_id
-from domain.projects import Project, ProjectSource, validate_source
+from domain.projects import Project, ProjectSource, resolve_folder, scaffold, validate_source
+from interactors.api.deps import get_file_store, get_session
+from interactors.api.envelope import ok, ok_list
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -29,13 +29,14 @@ async def create_project(
     payload: ProjectIn,
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    store: FileStore = Depends(get_file_store),
 ) -> dict:
     validate_source(payload.source.kind, payload.source.url, payload.source.path)
     source = ProjectSource(**payload.source.model_dump())
     project_id = new_id()
-    folder = project_folder.resolve_folder(source, project_id, settings)
-    folder.mkdir(parents=True, exist_ok=True)
-    project_folder.scaffold(folder)
+    folder = resolve_folder(source, project_id, store, settings.data_root)
+    store.mkdir(folder)
+    scaffold(folder, store)
     project = Project(id=project_id, name=payload.name, source=source, folder_path=str(folder))
     await db.insert_project(session, project)
     return ok(project.model_dump(mode="json"))

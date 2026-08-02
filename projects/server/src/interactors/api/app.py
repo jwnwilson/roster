@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 
-from api.envelope import ok
-from api.errors import register_error_handlers
-from api.routes import agents, memory, projects, runs, work_items
+from interactors.api.envelope import ok
+from interactors.api.errors import register_error_handlers
+from interactors.api.routes import agents, memory, projects, runs, work_items
 
 
 def create_app() -> FastAPI:

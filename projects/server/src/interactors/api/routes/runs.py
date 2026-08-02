@@ -6,17 +6,17 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette.sse import EventSourceResponse
 
-from adapters.agents.folder import read_agent
 from adapters.db import projects as projects_db
 from adapters.db import runs as runs_db
 from adapters.db import work_items as work_items_db
-from api.deps import get_run_manager, get_session, get_session_factory
-from api.envelope import ok
+from adapters.storage.ports import FileStore
 from config.settings import Settings, agents_dir, get_settings
-from domain.agents import Agent
+from domain.agents import Agent, read_agent
 from domain.ids import new_id
 from domain.runs import Run
-from runs.manager import RunManager
+from interactors.api.deps import get_file_store, get_run_manager, get_session, get_session_factory
+from interactors.api.envelope import ok
+from interactors.runs.manager import RunManager
 
 # This router intentionally carries no shared `prefix`: it fronts three distinct
 # top-level resources (work items' runs, runs themselves, and a project's memory),
@@ -45,6 +45,7 @@ async def create_run(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
     manager: RunManager = Depends(get_run_manager),
+    store: FileStore = Depends(get_file_store),
 ) -> dict:
     work_item = await work_items_db.get_work_item(session, item_id)
     if work_item is None:
@@ -57,7 +58,7 @@ async def create_run(
     # A broken/missing agent folder never raises here — read_agent degrades to a
     # disabled Agent, and FakeRuntime doesn't care about status. A future runtime
     # that actually shells out is expected to refuse a disabled agent itself.
-    agent = read_agent(agents_dir(settings) / payload.agent_name)
+    agent = read_agent(agents_dir(settings) / payload.agent_name, store)
 
     run = Run(
         id=new_id(),

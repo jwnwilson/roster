@@ -9,12 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from adapters.agents.runtime import AgentRuntime
 from adapters.db import runs as runs_db
-from adapters.memory.store import MemoryStore
+from adapters.storage.local import LocalFileStore
 from config.settings import Settings
 from domain.agents import Agent
 from domain.ids import new_id
-from domain.memory import should_compact
-from domain.projects import Project
+from domain.memory import MemoryStore, should_compact
+from domain.projects import Project, memory_dir
 from domain.runs import RunEvent, RunStatus
 from domain.work_items import WorkItem
 
@@ -136,7 +136,7 @@ class RunManager:
         did, but an explicit "compact now" request must not silently claim
         success when it didn't happen.
         """
-        store = MemoryStore(folder=folder, settings=self._settings)
+        store = self._memory_store(folder)
         store.append_entry(run_id, timestamp, summary)
 
         entries = store.read_journal()
@@ -161,7 +161,7 @@ class RunManager:
         the locking and race-safety lives here, in one place, so both callers
         share it exactly:
         """
-        store = MemoryStore(folder=folder, settings=self._settings)
+        store = self._memory_store(folder)
         async with self._compaction_locks[str(folder)]:
             # Read inside the lock: another run may have compacted (or be
             # compacting) this same folder concurrently.
@@ -212,6 +212,16 @@ class RunManager:
             # Recording the failure is itself best-effort — never let *this* raise
             # and mask the original compaction failure.
             logger.exception("failed to record compaction-failure event for run %s", run_id)
+
+    def _memory_store(self, folder: Path) -> MemoryStore:
+        # Rooted at this project's own memory tree, not the wide app-level store — a
+        # symlink planted inside snapshots/ must not be able to reach a sibling file
+        # elsewhere in the project folder, let alone another project's memory. See
+        # domain.memory.MemoryStore.restore for the allowlist half of this guarantee.
+        file_store = LocalFileStore(memory_dir(folder))
+        return MemoryStore(
+            folder=folder, store=file_store, snapshot_keep=self._settings.memory_snapshot_keep
+        )
 
 
 def _build_summary(status: RunStatus, lines: list[str]) -> str:

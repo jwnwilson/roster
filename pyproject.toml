@@ -27,7 +27,7 @@ addopts = "-q --import-mode=importlib"
 asyncio_mode = "auto"
 
 [tool.coverage.run]
-source = ["config", "domain", "adapters", "api", "runs", "cli"]
+source = ["config", "domain", "adapters", "interactors"]
 omit = ["*/migrations/*", "*/tests/*"]
 
 [tool.ruff]

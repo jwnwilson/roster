@@ -5,20 +5,28 @@ from adapters.agents.runtime import FakeRuntime
 from adapters.db import projects as projects_db
 from adapters.db import runs as runs_db
 from adapters.db import work_items as work_items_db
-from adapters.memory.store import MemoryStore
-from adapters.project_folder import scaffold
+from adapters.storage.local import LocalFileStore
 from config.settings import Settings
 from domain.agents import Agent
-from domain.projects import Project, ProjectSource
+from domain.memory import MemoryStore
+from domain.projects import Project, ProjectSource, memory_dir, scaffold
 from domain.runs import Run
 from domain.work_items import WorkItem
-from runs.manager import RunManager
+from interactors.runs.manager import RunManager
 
 
 @pytest.fixture
 def folder(tmp_path):
-    scaffold(tmp_path)
+    scaffold(tmp_path, LocalFileStore(tmp_path))
     return tmp_path
+
+
+def _memory_store(folder, settings):
+    return MemoryStore(
+        folder=folder,
+        store=LocalFileStore(memory_dir(folder)),
+        snapshot_keep=settings.memory_snapshot_keep,
+    )
 
 
 async def test_a_finished_run_appends_exactly_one_journal_entry(folder):
@@ -33,7 +41,7 @@ async def test_a_finished_run_appends_exactly_one_journal_entry(folder):
     )
 
     # Assert
-    assert len(MemoryStore(folder=folder, settings=settings).read_journal()) == 1
+    assert len(_memory_store(folder, settings).read_journal()) == 1
 
 
 async def test_memory_is_written_for_failed_runs_too(folder):
@@ -48,7 +56,7 @@ async def test_memory_is_written_for_failed_runs_too(folder):
     )
 
     # Assert
-    entries = MemoryStore(folder=folder, settings=settings).read_journal()
+    entries = _memory_store(folder, settings).read_journal()
     assert "failed" in entries[0].text
 
 
@@ -65,7 +73,7 @@ async def test_compaction_fires_once_the_threshold_is_crossed(folder):
         )
 
     # Assert
-    store = MemoryStore(folder=folder, settings=settings)
+    store = _memory_store(folder, settings)
     assert store.read_journal() == []
     assert "project memory" in store.read_digest()
 
@@ -77,7 +85,7 @@ async def test_compact_now_folds_a_journal_below_the_normal_threshold(folder):
     # now" trigger).
     settings = Settings(data_root=folder)
     manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
-    store = MemoryStore(folder=folder, settings=settings)
+    store = _memory_store(folder, settings)
     store.append_entry("r1", "2026-08-01T10-00-00Z", "a small entry")
 
     # Act
@@ -95,7 +103,7 @@ async def test_compact_now_on_an_empty_journal_is_a_clean_no_op(folder):
     # caller must be able to tell "nothing happened" from "it failed".
     settings = Settings(data_root=folder)
     manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
-    store = MemoryStore(folder=folder, settings=settings)
+    store = _memory_store(folder, settings)
     store.write_digest("# existing digest")
 
     # Act
@@ -113,7 +121,7 @@ async def test_compact_now_reports_a_failed_summarise_without_touching_state(fol
     settings = Settings(data_root=folder)
     runtime = FakeRuntime(summary_error=RuntimeError("model unavailable"))
     manager = RunManager(runtime=runtime, settings=settings, session_factory=None)
-    store = MemoryStore(folder=folder, settings=settings)
+    store = _memory_store(folder, settings)
     store.write_digest("# untouched digest")
     store.append_entry("r1", "2026-08-01T10-00-00Z", "entry")
 
@@ -141,7 +149,7 @@ async def test_a_failing_compaction_leaves_the_journal_intact(folder):
     )
 
     # Assert — the entry survives so the next run can retry (spec §5 Safety)
-    assert len(MemoryStore(folder=folder, settings=settings).read_journal()) == 1
+    assert len(_memory_store(folder, settings).read_journal()) == 1
 
 
 async def test_a_run_triggered_compaction_failure_is_recorded_as_a_run_event(folder, engine):
@@ -180,7 +188,7 @@ async def test_a_run_triggered_compaction_failure_is_recorded_as_a_run_event(fol
     failure_events = [e for e in events if e.type == "error"]
     assert len(failure_events) == 1
     assert "compaction failed" in failure_events[0].message
-    assert len(MemoryStore(folder=folder, settings=settings).read_journal()) == 1
+    assert len(_memory_store(folder, settings).read_journal()) == 1
 
 
 async def test_a_journal_emptied_while_waiting_for_the_lock_skips_a_redundant_compaction(
@@ -282,6 +290,6 @@ async def test_a_runtime_that_raises_mid_stream_still_marks_the_run_failed_and_w
     assert run.finished_at is not None
     assert any(event.type == "error" for event in events)
 
-    entries = MemoryStore(folder=folder, settings=settings).read_journal()
+    entries = _memory_store(folder, settings).read_journal()
     assert len(entries) == 1
     assert "failed" in entries[0].text

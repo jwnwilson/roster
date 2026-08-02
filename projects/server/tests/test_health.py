@@ -1,6 +1,6 @@
 from httpx import ASGITransport, AsyncClient
 
-from api.app import create_app
+from interactors.api.app import create_app
 
 
 async def test_health_returns_ok_envelope():

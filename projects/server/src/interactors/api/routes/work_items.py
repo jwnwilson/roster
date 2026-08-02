@@ -3,11 +3,11 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from adapters.db import work_items as db
-from api.deps import get_session
-from api.envelope import ok, ok_list
 from domain.ids import new_id, work_item_key
 from domain.transitions import Status, validate_transition
 from domain.work_items import Priority, WorkItem, WorkItemType, validate_parent
+from interactors.api.deps import get_session
+from interactors.api.envelope import ok, ok_list
 
 router = APIRouter(prefix="/work-items", tags=["work-items"])
 

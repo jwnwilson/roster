@@ -3,9 +3,9 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 from adapters.db.engine import Base, make_engine, make_sessionmaker
-from api.app import create_app
-from api.deps import get_session, get_session_factory
 from config.settings import Settings, get_settings
+from interactors.api.app import create_app
+from interactors.api.deps import get_session, get_session_factory
 
 
 @pytest.fixture(autouse=True)

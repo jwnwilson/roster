@@ -5,11 +5,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from adapters.project_folder import FolderUnavailable
-from api.envelope import fail
-from domain.projects import InvalidSource
+from domain.projects import FolderUnavailable, InvalidSource
 from domain.transitions import InvalidTransition
 from domain.work_items import InvalidHierarchy
+from interactors.api.envelope import fail
 
 logger = logging.getLogger("roster")
 

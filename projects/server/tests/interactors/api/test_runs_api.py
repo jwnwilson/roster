@@ -3,9 +3,9 @@ import asyncio
 import pytest
 
 from adapters.agents.runtime import FakeRuntime
-from api.deps import get_run_manager
 from config.settings import Settings, get_settings
-from runs.manager import RunManager
+from interactors.api.deps import get_run_manager
+from interactors.runs.manager import RunManager
 
 
 @pytest.fixture

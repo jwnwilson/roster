@@ -15,7 +15,7 @@ lint:
 	uv run mypy projects/server/src
 
 run:
-	uv run uvicorn api.app:create_app --factory --reload --port 8000
+	uv run uvicorn interactors.api.app:create_app --factory --reload --port 8000
 
 db-upgrade:
 	cd projects/server && uv run alembic upgrade head
