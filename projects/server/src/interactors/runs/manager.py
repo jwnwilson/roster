@@ -83,8 +83,15 @@ class RunManager:
             await self._record_event(run_id, "error", str(error))
             logger.exception("run %s crashed", run_id)
         finally:
-            await self._finish_run(run_id, status)
+            # Memory first, terminal status second, and the order is load-bearing.
+            # The memory step can itself emit a RunEvent (a compaction failure),
+            # and the SSE stream stops the moment it sees a terminal status — an
+            # event written after that point is one the UI can never receive,
+            # which spec §5 forbids ("recorded as a RunEvent *and* surfaced in the
+            # UI — never swallowed"). _write_memory_safely swallows its own
+            # exceptions, so this still cannot stop the run from finishing.
             await self._write_memory_safely(agent, project, run_id, status, summary_lines)
+            await self._finish_run(run_id, status)
 
     async def _record_event(self, run_id: str, event_type: str, message: str) -> None:
         if self._uow_factory is None:

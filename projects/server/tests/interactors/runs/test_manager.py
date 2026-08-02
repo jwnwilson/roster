@@ -267,6 +267,65 @@ async def test_a_journal_emptied_while_waiting_for_the_lock_skips_a_redundant_co
     assert summarise_calls == []
 
 
+class StatusWatchingRuntime:
+    """Records the run's own status at the moment the post-run memory step runs."""
+
+    def __init__(self, uow_factory, run_id: str) -> None:
+        self._uow_factory = uow_factory
+        self._run_id = run_id
+        self.status_while_writing_memory: str | None = None
+
+    async def execute(self, agent, project_folder, task):
+        yield ("status", "starting")
+
+    async def summarise(self, agent, digest, entries, budget_bytes):
+        async with self._uow_factory().transaction() as tx:
+            self.status_while_writing_memory = (await tx.runs.read(self._run_id)).status
+        raise RuntimeError("model unavailable")
+
+
+async def test_the_memory_step_finishes_before_the_run_is_marked_terminal(folder, engine):
+    # Arrange — spec §5: a memory failure is recorded as a RunEvent *and* surfaced
+    # in the UI. The SSE stream closes as soon as it sees a terminal status, so an
+    # event written after that point is one the UI can never receive: every event
+    # a run will ever produce has to land before its status goes terminal.
+    settings = Settings(data_root=folder, memory_compact_entries=1)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    runtime = StatusWatchingRuntime(lambda: AsyncUnitOfWork(factory), "run1")
+    manager = RunManager(
+        runtime=runtime, settings=settings, uow_factory=lambda: AsyncUnitOfWork(factory)
+    )
+
+    project = Project(
+        id="proj1", name="P", source=ProjectSource(kind="none"), folder_path=str(folder)
+    )
+    work_item = WorkItem(
+        id="wi1", key="ROS-1", project_id="proj1", type="task", title="Do it", sequence=1
+    )
+    uow = AsyncUnitOfWork(factory)
+    async with uow.transaction() as tx:
+        await tx.projects.create(project)
+        await tx.work_items.create(work_item)
+        await tx.runs.create(
+            Run(id="run1", project_id="proj1", work_item_id="wi1", agent_name="atlas")
+        )
+
+    # Act
+    await manager.start("run1", Agent(name="atlas"), project, work_item)
+
+    # Assert
+    assert runtime.status_while_writing_memory == "running"
+    async with uow.transaction() as tx:
+        run = await tx.runs.read("run1")
+        events = (
+            await tx.run_events.read_multi(
+                filters={"run_id": "run1"}, page_size=0, order_by="created_at"
+            )
+        ).results
+    assert run.status in ("complete", "failed")
+    assert any("compaction failed" in event.message for event in events)
+
+
 class CrashingRuntime:
     """Dies partway through execute() — simulates an environment quirk (spec §5)."""
 
