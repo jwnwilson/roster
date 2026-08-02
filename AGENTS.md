@@ -56,7 +56,8 @@ projects/
       agents/      # agent-folder reader + AgentRuntime (FakeRuntime now, SubprocessRuntime later)
       memory/      # journal, digest, snapshots
       project_folder.py   # resolve the project folder, scaffold .roster/
-    api/           # app factory, routers, deps, SSE, settings
+    api/           # app factory, routers, deps, SSE
+    config/        # settings — neutral module, importable by every layer
     runs/          # RunManager — one asyncio task per run
     cli/           # seed
   ui/
@@ -67,9 +68,10 @@ projects/
     lib/hooks/     # useEventSource, useLocalStorage, …
 ```
 
-**Placement rules.** Business logic in `domain/` (no I/O, no adapter imports, each entity model
-co-located in the module that owns it — no central `models.py`); port implementations in
-`adapters/`; wiring and startup in `api/`. No `scripts/` folder. There are **no** `Repository` or
+**Placement rules.** Business logic in `domain/` — no I/O, no imports from any other layer (not
+even `config/`; thresholds and paths arrive as plain arguments), each entity model co-located in
+the module that owns it, no central `models.py`. Port implementations in `adapters/`; wiring and
+startup in `api/`; settings in `config/`. **No adapter imports from `api/`.** No `scripts/` folder. There are **no** `Repository` or
 `UnitOfWork` protocols and no generic CRUD router — query functions take an `AsyncSession`, and
 routers are written by hand.
 
