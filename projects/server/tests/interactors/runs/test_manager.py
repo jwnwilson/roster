@@ -2,9 +2,7 @@ import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from adapters.agents.runtime import FakeRuntime
-from adapters.db import projects as projects_db
-from adapters.db import runs as runs_db
-from adapters.db import work_items as work_items_db
+from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from config.settings import Settings
 from domain.agents import Agent
@@ -32,7 +30,7 @@ def _memory_store(folder, settings):
 async def test_a_finished_run_appends_exactly_one_journal_entry(folder):
     # Arrange
     settings = Settings(data_root=folder)
-    manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
+    manager = RunManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
 
     # Act
     await manager.write_memory(
@@ -47,7 +45,7 @@ async def test_a_finished_run_appends_exactly_one_journal_entry(folder):
 async def test_memory_is_written_for_failed_runs_too(folder):
     # Arrange
     settings = Settings(data_root=folder)
-    manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
+    manager = RunManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
 
     # Act
     await manager.write_memory(
@@ -63,7 +61,7 @@ async def test_memory_is_written_for_failed_runs_too(folder):
 async def test_compaction_fires_once_the_threshold_is_crossed(folder):
     # Arrange
     settings = Settings(data_root=folder, memory_compact_entries=3)
-    manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
+    manager = RunManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
 
     # Act
     for index in range(3):
@@ -84,7 +82,7 @@ async def test_compact_now_folds_a_journal_below_the_normal_threshold(folder):
     # threshold-gated at all (that's the whole point of a manual "compact
     # now" trigger).
     settings = Settings(data_root=folder)
-    manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
+    manager = RunManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
     store = _memory_store(folder, settings)
     store.append_entry("r1", "2026-08-01T10-00-00Z", "a small entry")
 
@@ -102,7 +100,7 @@ async def test_compact_now_on_an_empty_journal_is_a_clean_no_op(folder):
     # Arrange — nothing to fold is a legitimate outcome, not an error: the
     # caller must be able to tell "nothing happened" from "it failed".
     settings = Settings(data_root=folder)
-    manager = RunManager(runtime=FakeRuntime(), settings=settings, session_factory=None)
+    manager = RunManager(runtime=FakeRuntime(), settings=settings, uow_factory=None)
     store = _memory_store(folder, settings)
     store.write_digest("# existing digest")
 
@@ -120,7 +118,7 @@ async def test_compact_now_reports_a_failed_summarise_without_touching_state(fol
     # Arrange
     settings = Settings(data_root=folder)
     runtime = FakeRuntime(summary_error=RuntimeError("model unavailable"))
-    manager = RunManager(runtime=runtime, settings=settings, session_factory=None)
+    manager = RunManager(runtime=runtime, settings=settings, uow_factory=None)
     store = _memory_store(folder, settings)
     store.write_digest("# untouched digest")
     store.append_entry("r1", "2026-08-01T10-00-00Z", "entry")
@@ -140,7 +138,7 @@ async def test_a_failing_compaction_leaves_the_journal_intact(folder):
     # Arrange
     settings = Settings(data_root=folder, memory_compact_entries=1)
     runtime = FakeRuntime(summary_error=RuntimeError("model unavailable"))
-    manager = RunManager(runtime=runtime, settings=settings, session_factory=None)
+    manager = RunManager(runtime=runtime, settings=settings, uow_factory=None)
 
     # Act
     await manager.write_memory(
@@ -160,7 +158,9 @@ async def test_a_run_triggered_compaction_failure_is_recorded_as_a_run_event(fol
     settings = Settings(data_root=folder, memory_compact_entries=1)
     runtime = FakeRuntime(summary_error=RuntimeError("model unavailable"))
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    manager = RunManager(runtime=runtime, settings=settings, session_factory=factory)
+    manager = RunManager(
+        runtime=runtime, settings=settings, uow_factory=lambda: AsyncUnitOfWork(factory)
+    )
 
     project = Project(
         id="proj1", name="P", source=ProjectSource(kind="none"), folder_path=str(folder)
@@ -168,12 +168,12 @@ async def test_a_run_triggered_compaction_failure_is_recorded_as_a_run_event(fol
     work_item = WorkItem(
         id="wi1", key="ROS-1", project_id="proj1", type="task", title="Do it", sequence=1
     )
-    async with factory() as session:
-        await projects_db.insert_project(session, project)
-        await work_items_db.insert_work_item(session, work_item)
-        await runs_db.insert_run(
-            session,
-            Run(id="run1", project_id="proj1", work_item_id="wi1", agent_name="atlas"),
+    uow = AsyncUnitOfWork(factory)
+    async with uow.transaction() as tx:
+        await tx.projects.create(project)
+        await tx.work_items.create(work_item)
+        await tx.runs.create(
+            Run(id="run1", project_id="proj1", work_item_id="wi1", agent_name="atlas")
         )
 
     # Act
@@ -183,8 +183,12 @@ async def test_a_run_triggered_compaction_failure_is_recorded_as_a_run_event(fol
     )
 
     # Assert
-    async with factory() as session:
-        events = await runs_db.list_events(session, "run1")
+    async with uow.transaction() as tx:
+        events = (
+            await tx.run_events.read_multi(
+                filters={"run_id": "run1"}, page_size=0, order_by="created_at"
+            )
+        ).results
     failure_events = [e for e in events if e.type == "error"]
     assert len(failure_events) == 1
     assert "compaction failed" in failure_events[0].message
@@ -220,7 +224,7 @@ async def test_a_journal_emptied_while_waiting_for_the_lock_skips_a_redundant_co
         return await original_summarise(*args, **kwargs)
 
     runtime.summarise = counting_summarise
-    manager = RunManager(runtime=runtime, settings=settings, session_factory=None)
+    manager = RunManager(runtime=runtime, settings=settings, uow_factory=None)
 
     read_journal_calls = []
     original_read_journal = MemoryStore.read_journal
@@ -263,7 +267,9 @@ async def test_a_runtime_that_raises_mid_stream_still_marks_the_run_failed_and_w
     # forever with nothing to show for the failure.
     settings = Settings(data_root=folder)
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    manager = RunManager(runtime=CrashingRuntime(), settings=settings, session_factory=factory)
+    manager = RunManager(
+        runtime=CrashingRuntime(), settings=settings, uow_factory=lambda: AsyncUnitOfWork(factory)
+    )
 
     project = Project(
         id="proj1", name="P", source=ProjectSource(kind="none"), folder_path=str(folder)
@@ -271,21 +277,25 @@ async def test_a_runtime_that_raises_mid_stream_still_marks_the_run_failed_and_w
     work_item = WorkItem(
         id="wi1", key="ROS-1", project_id="proj1", type="task", title="Do it", sequence=1
     )
-    async with factory() as session:
-        await projects_db.insert_project(session, project)
-        await work_items_db.insert_work_item(session, work_item)
-        await runs_db.insert_run(
-            session,
-            Run(id="run1", project_id="proj1", work_item_id="wi1", agent_name="atlas"),
+    uow = AsyncUnitOfWork(factory)
+    async with uow.transaction() as tx:
+        await tx.projects.create(project)
+        await tx.work_items.create(work_item)
+        await tx.runs.create(
+            Run(id="run1", project_id="proj1", work_item_id="wi1", agent_name="atlas")
         )
 
     # Act
     await manager.start("run1", Agent(name="atlas"), project, work_item)
 
     # Assert
-    async with factory() as session:
-        run = await runs_db.get_run(session, "run1")
-        events = await runs_db.list_events(session, "run1")
+    async with uow.transaction() as tx:
+        run = await tx.runs.read("run1")
+        events = (
+            await tx.run_events.read_multi(
+                filters={"run_id": "run1"}, page_size=0, order_by="created_at"
+            )
+        ).results
     assert run.status == "failed"
     assert run.finished_at is not None
     assert any(event.type == "error" for event in events)

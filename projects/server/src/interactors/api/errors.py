@@ -5,6 +5,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from domain.errors import IntegrityConflict, RecordNotFound
 from domain.projects import FolderUnavailable, InvalidSource
 from domain.transitions import InvalidTransition
 from domain.work_items import InvalidHierarchy
@@ -37,6 +38,14 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(FolderUnavailable)
     async def _folder(_: Request, exc: FolderUnavailable) -> JSONResponse:
         return JSONResponse(status_code=400, content=fail(str(exc)))
+
+    @app.exception_handler(RecordNotFound)
+    async def _record_not_found(_: Request, exc: RecordNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content=fail(str(exc)))
+
+    @app.exception_handler(IntegrityConflict)
+    async def _integrity_conflict(_: Request, exc: IntegrityConflict) -> JSONResponse:
+        return JSONResponse(status_code=409, content=fail(str(exc)))
 
     @app.exception_handler(HTTPException)
     async def _http(_: Request, exc: HTTPException) -> JSONResponse:

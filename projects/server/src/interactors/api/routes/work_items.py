@@ -1,15 +1,20 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from adapters.db import work_items as db
+from adapters.db.uow import AsyncUnitOfWork
 from domain.ids import new_id, work_item_key
 from domain.transitions import Status, validate_transition
 from domain.work_items import Priority, WorkItem, WorkItemType, validate_parent
-from interactors.api.deps import get_session
+from interactors.api.deps import get_uow
 from interactors.api.envelope import ok, ok_list
 
 router = APIRouter(prefix="/work-items", tags=["work-items"])
+
+# Listings are unpaginated today (page_size=0 fetches every row); the envelope
+# still reports these fixed page numbers so the response shape already matches
+# what real pagination will look like once a caller asks for it.
+_LIST_PAGE_SIZE = 50
+_LIST_PAGE_NUMBER = 1
 
 
 class WorkItemIn(BaseModel):
@@ -30,39 +35,44 @@ class WorkItemPatch(BaseModel):
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def create_work_item(
-    payload: WorkItemIn, session: AsyncSession = Depends(get_session)
-) -> dict:
+async def create_work_item(payload: WorkItemIn, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
     validate_parent(payload.type, payload.epic_id, payload.feature_id)
-    sequence = await db.next_sequence(session)
-    item = WorkItem(
-        id=new_id(),
-        key=work_item_key(sequence),
-        sequence=sequence,
-        **payload.model_dump(),
-    )
-    await db.insert_work_item(session, item)
-    return ok(item.model_dump(mode="json"))
+    async with uow.transaction() as tx:
+        sequence = await tx.work_items.next_sequence()
+        item = WorkItem(
+            id=new_id(),
+            key=work_item_key(sequence),
+            sequence=sequence,
+            **payload.model_dump(),
+        )
+        created = await tx.work_items.create(item)
+    return ok(created.model_dump(mode="json"))
 
 
 @router.get("")
-async def list_items(project_id: str, session: AsyncSession = Depends(get_session)) -> dict:
-    items = await db.list_work_items(session, project_id)
-    return ok_list([item.model_dump(mode="json") for item in items], len(items), 50, 1)
+async def list_items(project_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
+    async with uow.transaction() as tx:
+        page = await tx.work_items.read_multi(
+            filters={"project_id": project_id}, page_size=0, order_by="sequence"
+        )
+    return ok_list(
+        [item.model_dump(mode="json") for item in page.results],
+        page.total,
+        _LIST_PAGE_SIZE,
+        _LIST_PAGE_NUMBER,
+    )
 
 
 @router.patch("/{item_id}")
 async def patch_item(
-    item_id: str, payload: WorkItemPatch, session: AsyncSession = Depends(get_session)
+    item_id: str, payload: WorkItemPatch, uow: AsyncUnitOfWork = Depends(get_uow)
 ) -> dict:
-    item = await db.get_work_item(session, item_id)
-    if item is None:
-        raise HTTPException(status_code=404, detail="work item not found")
+    async with uow.transaction() as tx:
+        item = await tx.work_items.read(item_id)
 
-    changes = payload.model_dump(exclude_none=True)
-    if "status" in changes:
-        validate_transition(item.status, changes["status"])
+        changes = payload.model_dump(exclude_none=True)
+        if "status" in changes:
+            validate_transition(item.status, changes["status"])
 
-    updated = item.model_copy(update=changes)
-    await db.update_work_item(session, updated)
+        updated = await tx.work_items.update(item_id, item.model_copy(update=changes))
     return ok(updated.model_dump(mode="json"))

@@ -13,8 +13,8 @@ async def test_get_run_manager_returns_the_same_instance_across_repeated_calls(t
     settings = Settings(data_root=tmp_path)
 
     # Act
-    first = await get_run_manager(request, settings=settings, session_factory=None)
-    second = await get_run_manager(request, settings=settings, session_factory=None)
+    first = await get_run_manager(request, settings=settings, uow_factory=None)
+    second = await get_run_manager(request, settings=settings, uow_factory=None)
 
     # Assert
     assert first is second

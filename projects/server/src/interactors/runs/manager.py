@@ -1,17 +1,17 @@
 import asyncio
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
 from adapters.agents.runtime import AgentRuntime
-from adapters.db import runs as runs_db
+from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from config.settings import Settings
 from domain.agents import Agent
+from domain.errors import RecordNotFound
 from domain.ids import new_id
 from domain.memory import MemoryStore, should_compact
 from domain.projects import Project, memory_dir
@@ -40,17 +40,23 @@ class RunManager:
     A single instance must be shared across every run for a given project folder —
     the compaction lock below is keyed per-folder but scoped to *this instance*, so
     two RunManager objects racing to compact the same folder would defeat it entirely.
+
+    Writes a run's events and status from a background asyncio task while an SSE
+    request reads them independently — those are separate transactions. Each write
+    below opens its own short-lived UnitOfWork and commits immediately, rather than
+    holding one transaction open for the run's whole lifetime, so a concurrent
+    reader's own transaction can see each event as soon as it lands.
     """
 
     def __init__(
         self,
         runtime: AgentRuntime,
         settings: Settings,
-        session_factory: async_sessionmaker[AsyncSession] | None,
+        uow_factory: Callable[[], AsyncUnitOfWork] | None,
     ) -> None:
         self._runtime = runtime
         self._settings = settings
-        self._session_factory = session_factory
+        self._uow_factory = uow_factory
         self._compaction_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
     async def start(self, run_id: str, agent: Agent, project: Project, work_item: WorkItem) -> None:
@@ -81,26 +87,32 @@ class RunManager:
             await self._write_memory_safely(agent, project, run_id, status, summary_lines)
 
     async def _record_event(self, run_id: str, event_type: str, message: str) -> None:
-        if self._session_factory is None:
+        if self._uow_factory is None:
             return
-        async with self._session_factory() as session:
-            await runs_db.insert_event(
-                session,
+        async with self._uow_factory().transaction() as tx:
+            await tx.run_events.create(
                 RunEvent(
                     id=new_id(),
                     run_id=run_id,
                     type=event_type,
                     message=message,
                     created_at=datetime.now(UTC),
-                ),
+                )
             )
 
     async def _finish_run(self, run_id: str, status: RunStatus) -> None:
-        if self._session_factory is None:
+        if self._uow_factory is None:
             return
-        async with self._session_factory() as session:
-            await runs_db.update_run_status(
-                session, run_id, status, finished_at=datetime.now(UTC)
+        async with self._uow_factory().transaction() as tx:
+            try:
+                run = await tx.runs.read(run_id)
+            except RecordNotFound:
+                # The run row has vanished (e.g. the project/run was deleted
+                # mid-flight) — must not take the whole asyncio task down with
+                # an unhandled exception.
+                return
+            await tx.runs.update(
+                run_id, run.model_copy(update={"status": status, "finished_at": datetime.now(UTC)})
             )
 
     async def _write_memory_safely(
@@ -194,19 +206,18 @@ class RunManager:
                 )
 
     async def _record_compaction_failure(self, run_id: str, message: str) -> None:
-        if self._session_factory is None:
+        if self._uow_factory is None:
             return
         try:
-            async with self._session_factory() as session:
-                await runs_db.insert_event(
-                    session,
+            async with self._uow_factory().transaction() as tx:
+                await tx.run_events.create(
                     RunEvent(
                         id=new_id(),
                         run_id=run_id,
                         type="error",
                         message=f"memory compaction failed: {message}",
                         created_at=datetime.now(UTC),
-                    ),
+                    )
                 )
         except Exception:
             # Recording the failure is itself best-effort — never let *this* raise

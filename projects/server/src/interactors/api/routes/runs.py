@@ -1,20 +1,19 @@
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette.sse import EventSourceResponse
 
-from adapters.db import projects as projects_db
-from adapters.db import runs as runs_db
-from adapters.db import work_items as work_items_db
+from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.ports import FileStore
 from config.settings import Settings, agents_dir, get_settings
 from domain.agents import Agent, read_agent
+from domain.errors import RecordNotFound
 from domain.ids import new_id
 from domain.runs import Run
-from interactors.api.deps import get_file_store, get_run_manager, get_session, get_session_factory
+from interactors.api.deps import get_file_store, get_run_manager, get_uow, get_uow_factory
 from interactors.api.envelope import ok
 from interactors.runs.manager import RunManager
 
@@ -42,64 +41,61 @@ class RunIn(BaseModel):
 async def create_run(
     item_id: str,
     payload: RunIn,
-    session: AsyncSession = Depends(get_session),
+    uow: AsyncUnitOfWork = Depends(get_uow),
     settings: Settings = Depends(get_settings),
     manager: RunManager = Depends(get_run_manager),
     store: FileStore = Depends(get_file_store),
 ) -> dict:
-    work_item = await work_items_db.get_work_item(session, item_id)
-    if work_item is None:
-        raise HTTPException(status_code=404, detail="work item not found")
+    async with uow.transaction() as tx:
+        work_item = await tx.work_items.read(item_id)
+        project = await tx.projects.read(work_item.project_id)
 
-    project = await projects_db.get_project(session, work_item.project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
+        # A broken/missing agent folder never raises here — read_agent degrades
+        # to a disabled Agent, and FakeRuntime doesn't care about status. A
+        # future runtime that actually shells out is expected to refuse a
+        # disabled agent itself.
+        agent = read_agent(agents_dir(settings) / payload.agent_name, store)
 
-    # A broken/missing agent folder never raises here — read_agent degrades to a
-    # disabled Agent, and FakeRuntime doesn't care about status. A future runtime
-    # that actually shells out is expected to refuse a disabled agent itself.
-    agent = read_agent(agents_dir(settings) / payload.agent_name, store)
-
-    run = Run(
-        id=new_id(),
-        project_id=project.id,
-        work_item_id=work_item.id,
-        agent_name=agent.name,
-        status="running",
-    )
-    await runs_db.insert_run(session, run)
+        run = Run(
+            id=new_id(),
+            project_id=project.id,
+            work_item_id=work_item.id,
+            agent_name=agent.name,
+            status="running",
+        )
+        created_run = await tx.runs.create(run)
 
     # Fire-and-track: the run executes for as long as it takes, well past this
-    # request's response. RunManager.start opens its own sessions via the shared
-    # session_factory rather than reusing `session`, which closes when this
+    # request's response. RunManager.start opens its own short transactions via
+    # its own UoW factory rather than reusing `uow`, which closes when this
     # handler returns.
-    asyncio.create_task(manager.start(run.id, agent, project, work_item))
+    asyncio.create_task(manager.start(created_run.id, agent, project, work_item))
 
-    return ok(run.model_dump(mode="json"))
+    return ok(created_run.model_dump(mode="json"))
 
 
 @router.get("/runs/{run_id}")
-async def read_run(run_id: str, session: AsyncSession = Depends(get_session)) -> dict:
-    run = await runs_db.get_run(session, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="run not found")
+async def read_run(run_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
+    async with uow.transaction() as tx:
+        run = await tx.runs.read(run_id)
     return ok(run.model_dump(mode="json"))
 
 
 @router.get("/runs/{run_id}/events")
-async def list_run_events(run_id: str, session: AsyncSession = Depends(get_session)) -> dict:
-    run = await runs_db.get_run(session, run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="run not found")
-    events = await runs_db.list_events(session, run_id)
-    return ok([event.model_dump(mode="json") for event in events])
+async def list_run_events(run_id: str, uow: AsyncUnitOfWork = Depends(get_uow)) -> dict:
+    async with uow.transaction() as tx:
+        await tx.runs.read(run_id)
+        page = await tx.run_events.read_multi(
+            filters={"run_id": run_id}, page_size=0, order_by="created_at"
+        )
+    return ok([event.model_dump(mode="json") for event in page.results])
 
 
 @router.get("/runs/{run_id}/events/stream")
 async def stream_run_events(
     run_id: str,
     request: Request,
-    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
+    uow_factory: Callable[[], AsyncUnitOfWork] = Depends(get_uow_factory),
 ) -> EventSourceResponse:
     async def event_source():
         seen = 0
@@ -110,15 +106,22 @@ async def stream_run_events(
             if await request.is_disconnected():
                 return
 
-            async with session_factory() as session:
-                run = await runs_db.get_run(session, run_id)
-                if run is None:
+            # A short transaction per poll, not one held open for the stream's
+            # lifetime: RunManager writes each event from its own short
+            # transaction in a background task, and only a committed write is
+            # visible to a fresh transaction here.
+            async with uow_factory().transaction() as tx:
+                try:
+                    run = await tx.runs.read(run_id)
+                except RecordNotFound:
                     return
-                events = await runs_db.list_events(session, run_id)
+                page = await tx.run_events.read_multi(
+                    filters={"run_id": run_id}, page_size=0, order_by="created_at"
+                )
 
-            for event in events[seen:]:
+            for event in page.results[seen:]:
                 yield {"event": event.type, "id": event.id, "data": event.message}
-            seen = len(events)
+            seen = len(page.results)
 
             if run.status in TERMINAL_STATUSES:
                 return
@@ -130,12 +133,11 @@ async def stream_run_events(
 @router.post("/projects/{project_id}/memory/compact")
 async def compact_memory(
     project_id: str,
-    session: AsyncSession = Depends(get_session),
+    uow: AsyncUnitOfWork = Depends(get_uow),
     manager: RunManager = Depends(get_run_manager),
 ) -> dict:
-    project = await projects_db.get_project(session, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="project not found")
+    async with uow.transaction() as tx:
+        project = await tx.projects.read(project_id)
 
     # Unlike write_memory's own (non-fatal) run-triggered compaction, an
     # explicit "compact now" request must not silently claim success when

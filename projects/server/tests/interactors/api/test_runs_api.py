@@ -202,7 +202,7 @@ async def test_a_failing_compaction_is_503_and_leaves_digest_and_journal_untouch
     failing_manager = RunManager(
         runtime=FakeRuntime(summary_error=RuntimeError("model unavailable")),
         settings=Settings(data_root=tmp_path),
-        session_factory=None,
+        uow_factory=None,
     )
     client.app.dependency_overrides[get_run_manager] = lambda: failing_manager
 

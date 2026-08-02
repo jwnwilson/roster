@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import Callable
 from functools import lru_cache
 
 from fastapi import Depends, Request
@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from adapters.agents.runtime import AgentRuntime, FakeRuntime
 from adapters.db.engine import make_engine, make_sessionmaker
+from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
 from config.settings import Settings, db_path, get_settings
@@ -22,17 +23,31 @@ def _url(settings: Settings) -> str:
     return f"sqlite+aiosqlite:///{db_path(settings)}"
 
 
-async def get_session() -> AsyncIterator[AsyncSession]:
-    factory = _sessionmaker(_url(get_settings()))
-    async with factory() as session:
-        yield session
-
-
 def get_session_factory(
     settings: Settings = Depends(get_settings),
 ) -> async_sessionmaker[AsyncSession]:
-    """The sessionmaker itself (not a bound session) for tasks that outlive a request."""
+    """The sessionmaker itself (not a bound session) for anything that outlives a
+    request: the UnitOfWork factory below and RunManager's background task."""
     return _sessionmaker(_url(settings))
+
+
+async def get_uow(
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
+) -> AsyncUnitOfWork:
+    """One UnitOfWork per request. Cheap to construct — no session is opened until
+    a route enters `uow.transaction()` — so this stays a plain dependency rather
+    than a generator: the transaction itself owns opening and closing the session.
+    """
+    return AsyncUnitOfWork(session_factory)
+
+
+def get_uow_factory(
+    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
+) -> Callable[[], AsyncUnitOfWork]:
+    """A UnitOfWork *factory*, not a bound instance, for callers that outlive a
+    request and must open a fresh, short transaction per write rather than
+    holding one open for their whole lifetime (see RunManager)."""
+    return lambda: AsyncUnitOfWork(session_factory)
 
 
 def get_file_store(settings: Settings = Depends(get_settings)) -> FileStore:
@@ -54,7 +69,7 @@ def _build_runtime(settings: Settings) -> AgentRuntime:
 async def get_run_manager(
     request: Request,
     settings: Settings = Depends(get_settings),
-    session_factory: async_sessionmaker[AsyncSession] = Depends(get_session_factory),
+    uow_factory: Callable[[], AsyncUnitOfWork] | None = Depends(get_uow_factory),
 ) -> RunManager:
     """One RunManager per app instance, not per request.
 
@@ -81,7 +96,7 @@ async def get_run_manager(
         manager = RunManager(
             runtime=_build_runtime(settings),
             settings=settings,
-            session_factory=session_factory,
+            uow_factory=uow_factory,
         )
         request.app.state.run_manager = manager
     return manager
