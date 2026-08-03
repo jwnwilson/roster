@@ -5,6 +5,7 @@ import { StatusBadge } from "../../components/ui/StatusBadge";
 import { useThreadMessages, useThreads } from "../../lib/api/hooks";
 import { queryKeys } from "../../lib/api/queryKeys";
 import { patchThread } from "../../lib/api/threads";
+import { useThreadStream } from "../../lib/hooks/useThreadStream";
 import type { ThreadListItem, ThreadStatus } from "../../lib/api/types";
 import { MessageList } from "./MessageList";
 
@@ -28,6 +29,20 @@ export function ThreadsScreen() {
   const { data, isPending, isError } = useThreads();
   const { data: messageData } = useThreadMessages(selectedId ?? undefined);
 
+  const selectedThread = data?.results.find((thread) => thread.id === selectedId) ?? null;
+
+  // Live messages as the agent writes them. A resolved thread is not subscribed
+  // to: the backend closes that stream on purpose, and retrying it forever would
+  // turn a normal end into a reconnect loop.
+  useThreadStream(selectedId ?? undefined, {
+    enabled: selectedThread !== null && selectedThread.status !== "resolved",
+    onFrame: () => {
+      if (selectedId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.threadMessages(selectedId) });
+      }
+    },
+  });
+
   const mutate = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: { status?: ThreadStatus; read?: boolean } }) =>
       patchThread(id, patch),
@@ -49,7 +64,7 @@ export function ThreadsScreen() {
   const threads = data.results.filter(
     (thread) => tab === "all" || thread.status === "action_needed",
   );
-  const selected = data.results.find((thread) => thread.id === selectedId) ?? null;
+  const selected = selectedThread;
 
   const open = (thread: ThreadListItem) => {
     setSelectedId(thread.id);

@@ -1,4 +1,4 @@
-# Session brief: roster UI — resuming at Task 9 Step 4
+# Session brief: roster UI — resuming at Task 10
 
 Paste this into a fresh session to continue the UI build. It replaces the original brief, which
 predated the threads work and is no longer accurate.
@@ -7,8 +7,8 @@ predated the threads work and is no longer accurate.
 
 I want to continue building roster's frontend.
 
-**Done:** Tasks 1–8 and Task 9 (Threads, less its SSE step), plus CI.
-**Next:** Task 9 Step 4 (the SSE stream), then 10, 11, 12, 13, and the rest of 14.
+**Done:** Tasks 1–9 (Threads including SSE), plus CI.
+**Next:** Task 10 (MCP), then 11, 12, 13, and the rest of 14.
 
 ## Read these first, in this order
 
@@ -38,7 +38,7 @@ threads (spec decisions 16–18, PR #2). Live endpoints:
   `POST /threads/mark-all-read`, `GET /threads/{id}/stream` (SSE)
 - `GET /projects/{id}/memory` and friends
 
-**UI: 138 tests green, CI running on every push.** What exists:
+**UI: 145 tests green, CI running on every push.** What exists:
 
 | Built | Notes |
 |---|---|
@@ -46,7 +46,7 @@ threads (spec decisions 16–18, PR #2). Live endpoints:
 | Capability registry | keyed by capability, not screen; `mocks/live-parity/` vs `mocks/unbacked/`, enforced by test |
 | App shell | Sidebar (live projects, git vs folder glyph), ChatPanel (lead-agent threads, collapse persisted), error boundary |
 | Board | live work items and assigned agent; five columns always present; loading/empty/error |
-| Threads | **fully live** — two tabs, badges from stored status, 409-on-repeat-resolve surfaced, read marked server-side |
+| Threads | **fully live** — two tabs, badges from stored status, 409-on-repeat-resolve surfaced, read marked server-side, live SSE with capped backoff |
 | Work item detail | Spec (markdown) and Activity tabs; 409 vs 422 distinguished; reads from the project listing since there is no GET /work-items/{id} |
 | Agents | list and detail; reads live including `working` from an in-flight turn; every write disabled with its reason |
 | Create modals | both live; project type without the artifact-store block (spec §6); the work-item hierarchy is unreachable-by-construction rather than left to the API's 400 |
@@ -94,9 +94,11 @@ run: it caught a real defect in the merged threads work — two tests started ba
 outlived them, so teardown closed the event loop mid-write. Passed locally every time, failed on
 CI's slower machine. Fixed with `AgentTurnManager.drain()`.
 
-**Not yet done on Threads:** the SSE stream. `GET /threads/{id}/stream` is live and
-`useEventSource` is harvested, but nothing consumes it yet, so spec §7's reconnect-with-backoff is
-still outstanding. Plan Task 9 Step 4 has the tests.
+**The SSE stream is a signal, not a payload.** The backend names each frame by message kind and
+sends the message *content* as `data` — no author, no timestamp — so `useThreadStream` refetches on
+a frame rather than reconstructing a Message the server already knows how to build. The harvested
+`useEventSource` could not be used directly: it parses `data` as JSON and listens only for unnamed
+events, so neither would ever fire against this stream. Its `reconnectDelay` helper is reused.
 
 ## What is still genuinely unbacked
 
