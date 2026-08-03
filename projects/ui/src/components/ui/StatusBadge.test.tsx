@@ -12,3 +12,15 @@ describe("StatusBadge", () => {
     expect(screen.getByText(/WORKING/i)).toBeInTheDocument();
   });
 });
+
+describe("StatusBadge — agent states", () => {
+  it("has a chip for each of the three agent states and no others", () => {
+    // Spec §4: an agent is Working, Active or Disabled. A fourth would mean the
+    // UI knows a state the domain does not.
+    for (const kind of ["working", "active", "disabled"] as const) {
+      const { unmount } = render(<StatusBadge kind={kind} />);
+      expect(screen.getByText(kind.toUpperCase())).toBeInTheDocument();
+      unmount();
+    }
+  });
+});

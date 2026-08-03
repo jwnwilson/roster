@@ -96,6 +96,11 @@
   --dot-muted: #3a3d44;
   --fill-secondary: #44474f;
   --error-text: #e5686b;
+  /* Agent status chips — handoff §Screen C. Only three exist, matching the
+     three states an agent can be in (spec §4). */
+  --agent-working: #4a8c68;
+  --agent-active: #4d7fd4;
+  --agent-disabled: #4a4d56;
 }
 
 /* Map tokens into the Tailwind v4 theme so utilities like bg-bg-base,
@@ -187,6 +192,9 @@
   --color-dot-muted: var(--dot-muted);
   --color-fill-secondary: var(--fill-secondary);
   --color-error-text: var(--error-text);
+  --color-agent-working: var(--agent-working);
+  --color-agent-active: var(--agent-active);
+  --color-agent-disabled: var(--agent-disabled);
 }
 
 @keyframes pulse {

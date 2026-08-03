@@ -1,11 +1,14 @@
-export type BadgeKind = "action_needed" | "review_needed" | "info" | "resolved" | "working" | "idle";
+export type BadgeKind = "action_needed" | "review_needed" | "info" | "resolved" | "working" | "active" | "disabled" | "idle";
 
 const BADGES: Record<BadgeKind, { label: string; bg: string; border: string; color: string }> = {
   action_needed: { label: "ACTION NEEDED", bg: "var(--badge-action-bg)", border: "var(--badge-action-border)", color: "var(--badge-action-text)" },
   review_needed: { label: "REVIEW NEEDED", bg: "var(--badge-review-bg)", border: "var(--badge-review-border)", color: "var(--badge-review-text)" },
   info:          { label: "INFO",          bg: "var(--badge-info-bg)",  border: "var(--badge-info-border)",  color: "var(--badge-info-text)" },
   resolved:      { label: "RESOLVED",      bg: "var(--badge-resolved-bg)",  border: "var(--badge-resolved-border)",  color: "var(--badge-resolved-text)" },
-  working:       { label: "WORKING",       bg: "rgba(124,108,240,0.12)", border: "rgba(124,108,240,0.25)", color: "var(--accent-text)" },
+  // The three agent states, and only three (spec §4, handoff §Screen C).
+  working:       { label: "WORKING",       bg: "rgba(74,140,104,0.10)",  border: "rgba(74,140,104,0.20)",  color: "var(--agent-working)" },
+  active:        { label: "ACTIVE",        bg: "rgba(77,127,212,0.10)",  border: "rgba(77,127,212,0.20)",  color: "var(--agent-active)" },
+  disabled:      { label: "DISABLED",      bg: "rgba(74,77,86,0.10)",    border: "rgba(74,77,86,0.20)",    color: "var(--agent-disabled)" },
   idle:          { label: "IDLE",          bg: "transparent",            border: "rgba(255,255,255,0.05)", color: "var(--text-7)" },
 };
 
