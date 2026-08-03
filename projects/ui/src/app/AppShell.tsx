@@ -1,6 +1,7 @@
 import { Outlet, useSearchParams } from "react-router-dom";
 import type { ReactNode } from "react";
 
+import { CreateModalProvider } from "../modules/create/CreateModalProvider";
 import { ChatPanel } from "./ChatPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Sidebar } from "./Sidebar";
@@ -17,12 +18,14 @@ export function AppShell({ children }: AppShellProps) {
   const projectId = searchParams.get("project") ?? undefined;
 
   return (
-    <div className="flex h-full bg-bg-base text-text-1">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <ErrorBoundary>{children ?? <Outlet />}</ErrorBoundary>
-      </main>
-      <ChatPanel projectId={projectId} />
-    </div>
+    <CreateModalProvider>
+      <div className="flex h-full bg-bg-base text-text-1">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col">
+          <ErrorBoundary>{children ?? <Outlet />}</ErrorBoundary>
+        </main>
+        <ChatPanel projectId={projectId} />
+      </div>
+    </CreateModalProvider>
   );
 }

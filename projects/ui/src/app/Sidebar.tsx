@@ -13,6 +13,7 @@ import {
   ThreadsIcon,
 } from "../components/ui/icons";
 import { useProjects } from "../lib/api/hooks";
+import { useCreateModal } from "../modules/create/useCreateModal";
 import { tokenUsage } from "../mocks/unbacked/tokens.usage";
 
 const NAV = [
@@ -28,11 +29,8 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? "bg-accent-bg font-medium text-accent-text" : "text-[#4a4d56]",
   ].join(" ");
 
-export interface SidebarProps {
-  onNewProject?: () => void;
-}
-
-export function Sidebar({ onNewProject }: SidebarProps) {
+export function Sidebar() {
+  const { openProject } = useCreateModal();
   const { data } = useProjects();
   const projects = data?.results ?? [];
   const pct = Math.round((tokenUsage.budget_used / tokenUsage.budget_limit) * 100);
@@ -71,7 +69,7 @@ export function Sidebar({ onNewProject }: SidebarProps) {
           <button
             type="button"
             aria-label="New project"
-            onClick={onNewProject}
+            onClick={openProject}
             className="ml-auto flex size-[17px] items-center justify-center rounded-4 border border-border-strong bg-[rgba(255,255,255,0.05)] text-[#9a9da6]"
           >
             <PlusIcon size={9} />
