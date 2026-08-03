@@ -3,6 +3,7 @@ import type { RouteObject } from "react-router-dom";
 
 import { AppShell } from "./AppShell";
 import { BoardRoute } from "../modules/board/BoardRoute";
+import { DetailRoute } from "../modules/detail/DetailRoute";
 import { ThreadsScreen } from "../modules/threads/ThreadsScreen";
 
 /** Placeholder until the task that owns this screen builds it.
@@ -29,10 +30,7 @@ export const routes: RouteObject[] = [
       { path: "mcp", element: <NotBuiltYet screen="MCP servers" /> },
       { path: "mcp/:name", element: <NotBuiltYet screen="MCP server detail" /> },
       { path: "projects", element: <BoardRoute /> },
-      {
-        path: "projects/:projectId/items/:itemId",
-        element: <NotBuiltYet screen="Work item detail" />,
-      },
+      { path: "projects/:projectId/items/:itemId", element: <DetailRoute /> },
       { path: "settings/secrets", element: <NotBuiltYet screen="Settings" /> },
     ],
   },

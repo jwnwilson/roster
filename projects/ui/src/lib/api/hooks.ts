@@ -37,3 +37,15 @@ export function useThreadMessages(threadId: string | undefined) {
     enabled: Boolean(threadId),
   });
 }
+
+/** There is no `GET /work-items/{id}` — the detail screen selects out of the
+ *  project's listing. Registered as `workItems.readOne` (unbacked) so the
+ *  compromise is visible rather than folklore. */
+export function useWorkItem(projectId: string | undefined, itemId: string | undefined) {
+  const query = useWorkItems(projectId);
+  return {
+    ...query,
+    data: query.data?.results.find((item) => item.id === itemId),
+    missing: query.isSuccess && !query.data.results.some((item) => item.id === itemId),
+  };
+}
