@@ -23,9 +23,9 @@ no containers.
 
 ## Current state (2026-08-02)
 
-**Backend complete; runs replaced by threads; no UI yet.** **310 tests, 95.14% coverage** (branch
-measurement on) against an 80% gate. The threads work is on `feat/threads` and has not been merged
-— `main` still has the run subsystem until it does.
+**Backend and UI both complete.** Backend: **312 tests, ~95% coverage** against an 80% gate,
+merged as PR #2. UI: **182 tests**, every screen in the design built, on `feat/ui` as PR #3.
+`make dev` boots both; CI runs a job for each on every pull request.
 
 Architecture is four layers in one package:
 
@@ -111,6 +111,35 @@ the turn manager's in-memory set — the folder reader only ever emitted `active
 the Agents screen, Board ribbon and Dashboard panel had no source. And `WorkItem` gains
 `agent_name`, without which the assigned-agent avatar on every row, card and detail header
 rendered from nothing.
+
+## Status (2026-08-09) — the UI, built
+
+Fourteen tasks on `feat/ui`. Every screen in the design handoff exists and `make dev` boots the
+whole stack.
+
+**The finding that reshaped the work: the transplant was 12% reuse, not the two-thirds the plan
+estimated.** The source SPA was welded to a generated schema for a different API — deleting it
+broke 42 files and deleting the hooks it typed cascaded to 60. What genuinely transferred was the
+primitive set, the icons, the design tokens (already an exact colour match), the envelope client
+and three hooks. Every screen was rebuilt. The plan was corrected in place rather than left to
+mislead whoever read it next.
+
+**Provenance is keyed by capability, not by screen**, because the boundary runs through screens:
+the board's work items and assigned agent are live while the token count on the same card is not.
+Six capabilities flipped from unbacked to live when threads merged, which changed task shapes
+rather than a table cell — Threads went from the largest fixture to the screen that proves the
+stack.
+
+**CI earned its place on its first run.** There was no workflow at all until this branch; PR #2 had
+merged on the strength of a local run. The first CI run caught a real defect in the merged threads
+code — two tests started background turns that outlived them, so teardown closed the event loop
+mid-write. It passed locally every time and failed on CI's slower machine, which is the worst shape
+a defect can have. Fixed with `AgentTurnManager.drain()`.
+
+**What is deliberately not claimed:** nothing has been compared against the hi-fi canvas. The polish
+pass fixed focus (invisible on 30 of 33 primitives) and reduced-motion, but pixel fidelity against
+`Roster Hi-Fi.dc.html` is untouched and recorded under "Needs a human eye" in
+`superpowers/plans/ui-polish-findings.md`.
 
 ## Learnings
 

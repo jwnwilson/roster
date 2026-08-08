@@ -1,4 +1,4 @@
-# Session brief: roster UI — resuming at Task 14
+# Session brief: roster UI — complete
 
 Paste this into a fresh session to continue the UI build. It replaces the original brief, which
 predated the threads work and is no longer accurate.
@@ -7,8 +7,8 @@ predated the threads work and is no longer accurate.
 
 I want to continue building roster's frontend.
 
-**Done:** Tasks 1–13. Every screen exists; focus and reduced-motion are fixed.
-**Next:** Task 14 — wire the UI into `make dev`, then docs.
+**All 14 tasks are done.** `make dev` boots API and UI together; CI runs both.
+**Next:** review and merge PR #3, then the fidelity pass that needs a human eye.
 
 **Still open from Task 13:** nothing has been compared against the hi-fi canvas.
 See `plans/ui-polish-findings.md` §"Needs a human eye".
