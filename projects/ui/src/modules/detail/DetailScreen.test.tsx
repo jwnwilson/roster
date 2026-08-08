@@ -88,3 +88,26 @@ describe("DetailScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not load/i);
   });
 });
+
+describe("DetailScreen — Thread tab", () => {
+  it("shows this item's conversation, which is where agent output is read", async () => {
+    show();
+    await screen.findByText(workItem.key);
+
+    await userEvent.click(screen.getByRole("tab", { name: "Thread" }));
+
+    // Handoff §D3: the same thread, scoped to this item. There is no separate
+    // agent-monitor tab (spec §6).
+    expect(await screen.findByText(/read the config|go ahead and start/i)).toBeInTheDocument();
+  });
+
+  it("says so when the item has no conversation yet", async () => {
+    server.use(http.get("/api/threads", () => okList([])));
+    show();
+    await screen.findByText(workItem.key);
+
+    await userEvent.click(screen.getByRole("tab", { name: "Thread" }));
+
+    expect(await screen.findByText(/no conversation on this work item yet/i)).toBeInTheDocument();
+  });
+});

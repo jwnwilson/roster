@@ -1,4 +1,4 @@
-# Session brief: roster UI — resuming at Task 12
+# Session brief: roster UI — resuming at Task 13
 
 Paste this into a fresh session to continue the UI build. It replaces the original brief, which
 predated the threads work and is no longer accurate.
@@ -7,8 +7,8 @@ predated the threads work and is no longer accurate.
 
 I want to continue building roster's frontend.
 
-**Done:** Tasks 1–11, plus CI.
-**Next:** Task 12 (Attachments and Secrets), then 13 (polish) and the rest of 14.
+**Done:** Tasks 1–12 — **every screen in the design now exists**. Plus CI.
+**Next:** Task 13 (the polish pass), then the rest of 14 (`make dev` and docs).
 
 ## Read these first, in this order
 
@@ -38,7 +38,7 @@ threads (spec decisions 16–18, PR #2). Live endpoints:
   `POST /threads/mark-all-read`, `GET /threads/{id}/stream` (SSE)
 - `GET /projects/{id}/memory` and friends
 
-**UI: 162 tests green, CI running on every push.** What exists:
+**UI: 175 tests green, CI running on every push.** What exists:
 
 | Built | Notes |
 |---|---|
@@ -49,12 +49,14 @@ threads (spec decisions 16–18, PR #2). Live endpoints:
 | Threads | **fully live** — two tabs, badges from stored status, 409-on-repeat-resolve surfaced, read marked server-side, live SSE with capped backoff |
 | Work item detail | Spec (markdown) and Activity tabs; 409 vs 422 distinguished; reads from the project listing since there is no GET /work-items/{id} |
 | Agents | list and detail; reads live including `working` from an in-flight turn; every write disabled with its reason |
+| Attachments · Secrets | fixtures; upload says it keeps nothing; **secrets have no value field at all**, so there is nothing to leak |
+| Work item Thread tab | live, same conversation scoped to the item (handoff §D3) |
 | Dashboard | agents panel live; metric cards, token chart and activity are fixtures and badged; panels fail independently |
 | MCP | list and detail; **entirely fixtures** — no McpServer persistence — with tool toggles that say plainly they are not saved |
 | Create modals | both live; project type without the artifact-store block (spec §6); the work-item hierarchy is unreachable-by-construction rather than left to the API's 400 |
 
-**Still placeholders in `src/app/routes.tsx`:** Settings. Plus the detail screen's Attachments
-and Thread tabs.
+**No placeholder routes remain.** The only unbuilt surfaces are Settings' General / Billing /
+Integrations panes, which the handoff specifies as nav items without content.
 
 Run it: `cd projects/ui && pnpm test`. Backend: `make dev` (API only, port 8000).
 

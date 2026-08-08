@@ -9,19 +9,8 @@ import { DashboardScreen } from "../modules/dashboard/DashboardScreen";
 import { DetailRoute } from "../modules/detail/DetailRoute";
 import { McpDetailRoute } from "../modules/mcp/McpDetailRoute";
 import { McpServersScreen } from "../modules/mcp/McpServersScreen";
+import { SettingsScreen } from "../modules/settings/SettingsScreen";
 import { ThreadsScreen } from "../modules/threads/ThreadsScreen";
-
-/** Placeholder until the task that owns this screen builds it.
- *
- * Deliberately visible rather than a blank div: a route that renders nothing is
- * indistinguishable from a route that is broken. */
-function NotBuiltYet({ screen }: { screen: string }) {
-  return (
-    <div role="status" className="p-6 text-text-3 text-[12px]">
-      {screen} is not built yet.
-    </div>
-  );
-}
 
 export const routes: RouteObject[] = [
   {
@@ -36,7 +25,7 @@ export const routes: RouteObject[] = [
       { path: "mcp/:name", element: <McpDetailRoute /> },
       { path: "projects", element: <BoardRoute /> },
       { path: "projects/:projectId/items/:itemId", element: <DetailRoute /> },
-      { path: "settings/secrets", element: <NotBuiltYet screen="Settings" /> },
+      { path: "settings/secrets", element: <SettingsScreen /> },
     ],
   },
 ];

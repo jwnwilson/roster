@@ -10,7 +10,9 @@ import type { WorkItemStatus } from "../../lib/api/types";
 import { updateWorkItem } from "../../lib/api/workItems";
 import { STATUSES, STATUS_LABELS } from "../board/groupByStatus";
 import { ActivityTab } from "./ActivityTab";
+import { AttachmentsTab } from "./AttachmentsTab";
 import { SpecTab } from "./SpecTab";
+import { ThreadTab } from "./ThreadTab";
 
 /** Spec · Attachments · Activity · Thread. There is no Agent tab and no run
  *  monitor — the design removed it and agent output is read in Thread (spec §6). */
@@ -120,12 +122,8 @@ export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
 
       {tab === "Spec" && <SpecTab spec={item.spec} />}
       {tab === "Activity" && <ActivityTab />}
-      {tab === "Attachments" && (
-        <p className="p-6 text-12 text-text-3">Attachments are not built yet.</p>
-      )}
-      {tab === "Thread" && (
-        <p className="p-6 text-12 text-text-3">The thread tab is not built yet.</p>
-      )}
+      {tab === "Attachments" && <AttachmentsTab />}
+      {tab === "Thread" && <ThreadTab workItemId={item.id} />}
     </div>
   );
 }
