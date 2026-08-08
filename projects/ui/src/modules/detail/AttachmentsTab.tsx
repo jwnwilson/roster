@@ -1,7 +1,8 @@
 import { useState } from "react";
 
 import { DataSourceBadge } from "../../components/DataSourceBadge";
-import { attachments, formatBytes } from "../../mocks/unbacked/attachments.list";
+import { attachments as fixtureAttachments, formatBytes } from "../../mocks/unbacked/attachments.list";
+import type { Attachment } from "../../mocks/unbacked/attachments.list";
 
 type Filter = "all" | "uploaded" | "agent_output";
 
@@ -13,7 +14,13 @@ const LABEL: Record<Filter, string> = {
 
 /** Attachments — fixtures. There is no `Attachment` persistence, so upload is
  *  present to settle its shape and says plainly that it does not keep anything. */
-export function AttachmentsTab() {
+export interface AttachmentsTabProps {
+  /** Defaults to the fixtures. A prop so the empty state is reachable in a test
+   *  — otherwise that branch is unreachable and its test proves nothing. */
+  attachments?: Attachment[];
+}
+
+export function AttachmentsTab({ attachments = fixtureAttachments }: AttachmentsTabProps = {}) {
   const [filter, setFilter] = useState<Filter>("all");
   const shown = attachments.filter((file) => filter === "all" || file.origin === filter);
   const total = attachments.reduce((sum, file) => sum + file.bytes, 0);
@@ -54,6 +61,10 @@ export function AttachmentsTab() {
           </button>
         ))}
       </div>
+
+      {shown.length === 0 && (
+        <p className="text-11-5 text-text-4">Nothing matches that filter.</p>
+      )}
 
       <ul className="flex flex-col gap-2">
         {shown.map((file) => (

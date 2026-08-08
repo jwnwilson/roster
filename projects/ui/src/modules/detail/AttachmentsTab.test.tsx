@@ -44,3 +44,12 @@ describe("AttachmentsTab", () => {
     expect(screen.getByTestId("data-source-badge")).toBeInTheDocument();
   });
 });
+
+it("says there is nothing rather than showing an empty list", () => {
+  // Reachable because the list is a prop: asserting on a branch the fixtures
+  // cannot produce would be a test that passes for the wrong reason.
+  renderWithProviders(<AttachmentsTab attachments={[]} />);
+
+  expect(screen.getByText(/nothing matches that filter/i)).toBeInTheDocument();
+  expect(screen.queryByRole("list")).toBeEmptyDOMElement();
+});

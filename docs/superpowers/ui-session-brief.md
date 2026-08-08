@@ -1,4 +1,4 @@
-# Session brief: roster UI — resuming at Task 13
+# Session brief: roster UI — resuming at Task 14
 
 Paste this into a fresh session to continue the UI build. It replaces the original brief, which
 predated the threads work and is no longer accurate.
@@ -7,8 +7,11 @@ predated the threads work and is no longer accurate.
 
 I want to continue building roster's frontend.
 
-**Done:** Tasks 1–12 — **every screen in the design now exists**. Plus CI.
-**Next:** Task 13 (the polish pass), then the rest of 14 (`make dev` and docs).
+**Done:** Tasks 1–13. Every screen exists; focus and reduced-motion are fixed.
+**Next:** Task 14 — wire the UI into `make dev`, then docs.
+
+**Still open from Task 13:** nothing has been compared against the hi-fi canvas.
+See `plans/ui-polish-findings.md` §"Needs a human eye".
 
 ## Read these first, in this order
 
@@ -38,7 +41,7 @@ threads (spec decisions 16–18, PR #2). Live endpoints:
   `POST /threads/mark-all-read`, `GET /threads/{id}/stream` (SSE)
 - `GET /projects/{id}/memory` and friends
 
-**UI: 175 tests green, CI running on every push.** What exists:
+**UI: 182 tests green, CI running on every push.** What exists:
 
 | Built | Notes |
 |---|---|

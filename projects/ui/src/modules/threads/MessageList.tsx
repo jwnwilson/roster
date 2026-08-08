@@ -12,6 +12,11 @@ const KIND_LABEL: Record<Message["kind"], string | null> = {
  *  a question read differently from prose, and flattening them would lose the
  *  only record of what an agent actually did. */
 export function MessageList({ messages }: { messages: Message[] }) {
+  if (messages.length === 0) {
+    // An empty <ol> is indistinguishable from a list that failed to load.
+    return <p className="p-[13px] text-11-5 text-text-4">Nothing has been said yet.</p>;
+  }
+
   return (
     <ol className="flex flex-col gap-3 p-[13px]">
       {messages.map((message) => {

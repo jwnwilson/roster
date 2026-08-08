@@ -62,3 +62,23 @@ describe("design tokens — scales from the handoff", () => {
     }
   });
 });
+
+describe("accessibility rules", () => {
+  it("gives every interactive element a visible focus ring", () => {
+    // F1: 30 of 33 primitives had none, which is the whole keyboard path.
+    expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:/);
+    for (const role of ['role="tab"', 'role="switch"', "button", "select"]) {
+      expect(css, `${role} is not covered by the focus rule`).toContain(role);
+    }
+  });
+
+  it("uses focus-visible rather than focus", () => {
+    // A mouse click should not leave a ring behind.
+    expect(css).not.toMatch(/[^-]:focus\s*\{/);
+  });
+
+  it("stands down animation when the operating system asks it to", () => {
+    expect(css).toContain("prefers-reduced-motion: reduce");
+    expect(css).toMatch(/animation-iteration-count:\s*1\s*!important/);
+  });
+});

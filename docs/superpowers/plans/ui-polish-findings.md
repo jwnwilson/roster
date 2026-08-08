@@ -1,5 +1,9 @@
 # UI polish audit — 2026-08-09
 
+> **Status:** F1, F2 and F4 fixed. F3 and F5 were false positives, recorded so a
+> later audit does not re-raise them. The fidelity half remains open — see
+> "Needs a human eye".
+
 Written **before** any fixing, per plan Task 13 Step 1: an audit done while fixing
 turns into a fixing session that skips half the screens.
 
