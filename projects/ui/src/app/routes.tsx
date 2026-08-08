@@ -6,6 +6,8 @@ import { BoardRoute } from "../modules/board/BoardRoute";
 import { AgentDetailRoute } from "../modules/agents/AgentDetailRoute";
 import { AgentsScreen } from "../modules/agents/AgentsScreen";
 import { DetailRoute } from "../modules/detail/DetailRoute";
+import { McpDetailRoute } from "../modules/mcp/McpDetailRoute";
+import { McpServersScreen } from "../modules/mcp/McpServersScreen";
 import { ThreadsScreen } from "../modules/threads/ThreadsScreen";
 
 /** Placeholder until the task that owns this screen builds it.
@@ -29,8 +31,8 @@ export const routes: RouteObject[] = [
       { path: "threads", element: <ThreadsScreen /> },
       { path: "agents", element: <AgentsScreen /> },
       { path: "agents/:name", element: <AgentDetailRoute /> },
-      { path: "mcp", element: <NotBuiltYet screen="MCP servers" /> },
-      { path: "mcp/:name", element: <NotBuiltYet screen="MCP server detail" /> },
+      { path: "mcp", element: <McpServersScreen /> },
+      { path: "mcp/:name", element: <McpDetailRoute /> },
       { path: "projects", element: <BoardRoute /> },
       { path: "projects/:projectId/items/:itemId", element: <DetailRoute /> },
       { path: "settings/secrets", element: <NotBuiltYet screen="Settings" /> },
