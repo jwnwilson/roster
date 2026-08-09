@@ -120,6 +120,85 @@
   --knob-on: #ffffff;
   /* The running-agent dot's halo — handoff §Animation. */
   --accent-halo: 0 0 0 2.5px rgba(124, 108, 240, 0.20);
+
+  /* ---------------------------------------------------------------------
+     Values the hi-fi canvas uses that docs/design/README.md never documented.
+
+     The README lists 28 colours and a 9-17px type scale; the canvas actually
+     uses 75 colours, 9 further font sizes and 4 further radii. The plan names
+     the canvas as the visual authority, so building strictly from the README's
+     tokens could not reach it. Named for the role each plays in the canvas
+     rather than for its hue.
+     --------------------------------------------------------------------- */
+
+  /* Text, lightest to darkest — extends --text-1..7 */
+  --text-bright: #d8d9de;
+  --text-strong: #d0d2d8;
+  --text-card: #c8c9ce;
+  --text-read: #c0c2c8;
+  --text-body-soft: #b8b9bf;
+  --text-message: #b0b2b8;
+  --text-muted-1: #a0a3ac;
+  --text-muted-2: #9a9da8;
+  --text-muted-3: #9a9da6;
+  --text-secondary-1: #8f929b;
+  --text-secondary-2: #7a7d86;
+  --text-secondary-3: #72757e;
+  --text-label-1: #6b6e76;
+  --text-label-2: #6a6d78;
+  --text-label-3: #66696f;
+  --text-label-4: #64676f;
+  --text-dim-1: #40434c;
+  --text-dim-2: #3a3d45;
+  --text-dim-3: #36393f;
+  --text-dim-4: #363840;
+  --text-dim-5: #35383f;
+  --text-dim-6: #33363d;
+  --text-faint-1: #2a2d34;
+  --text-faint-2: #28292e;
+  --text-faint-3: #25272e;
+  --text-faint-4: #20222a;
+  --text-faint-5: #1e2028;
+
+  /* Surfaces — extends --bg-* */
+  --bg-panel: #141618;
+  --bg-chip: #131519;
+  --bg-row: #101214;
+  --bg-column-active: #0c0d10;
+  --bg-strip: #0b0d10;
+  --bg-chat: #09090c;
+  --bg-toggle-off: #1c1e24;
+  --bg-chart-bar: #2a2d36;
+
+  /* Semantic, from the canvas */
+  --attention: #c78b3f;
+  --denied: #c25b5b;
+  --accent-muted: #8a86d0;
+  --accent-light: #a9a6e6;
+  --accent-lightest: #e9e8ff;
+  --success-dim-1: #4a5a4a;
+  --success-dim-2: #3a5a3a;
+  --warn-orange: #c96442;
+  /* #2563eb appears once in the canvas and nowhere in the README. It looks like
+     a stray browser default rather than a roster colour, so it is deliberately
+     not tokenised — see ui-design-gaps.md. */
+
+  /* Type sizes beyond the README's 9-17 scale */
+  --text-size-7: 7px;
+  --text-size-7-5: 7.5px;
+  --text-size-8: 8px;
+  --text-size-8-5: 8.5px;
+  --text-size-14: 14px;
+  --text-size-15-5: 15.5px;
+  --text-size-18: 18px;
+  --text-size-20: 20px;
+  --text-size-30: 30px;
+
+  /* Radii beyond 3-9 */
+  --radius-1: 1px;
+  --radius-1-5: 1.5px;
+  --radius-2: 2px;
+  --radius-10: 10px;
 }
 
 /* Map tokens into the Tailwind v4 theme so utilities like bg-bg-base,
@@ -229,6 +308,63 @@
   --color-accent-bg-card: var(--accent-bg-card);
   --color-overlay-12: var(--overlay-12);
   --color-knob-on: var(--knob-on);
+  /* Canvas values, mapped so utilities generate. */
+  --color-text-bright: var(--text-bright);
+  --color-text-strong: var(--text-strong);
+  --color-text-card: var(--text-card);
+  --color-text-read: var(--text-read);
+  --color-text-body-soft: var(--text-body-soft);
+  --color-text-message: var(--text-message);
+  --color-text-muted-1: var(--text-muted-1);
+  --color-text-muted-2: var(--text-muted-2);
+  --color-text-muted-3: var(--text-muted-3);
+  --color-text-secondary-1: var(--text-secondary-1);
+  --color-text-secondary-2: var(--text-secondary-2);
+  --color-text-secondary-3: var(--text-secondary-3);
+  --color-text-label-1: var(--text-label-1);
+  --color-text-label-2: var(--text-label-2);
+  --color-text-label-3: var(--text-label-3);
+  --color-text-label-4: var(--text-label-4);
+  --color-text-dim-1: var(--text-dim-1);
+  --color-text-dim-2: var(--text-dim-2);
+  --color-text-dim-3: var(--text-dim-3);
+  --color-text-dim-5: var(--text-dim-5);
+  --color-text-dim-6: var(--text-dim-6);
+  --color-text-dim-4: var(--text-dim-4);
+  --color-text-faint-1: var(--text-faint-1);
+  --color-text-faint-2: var(--text-faint-2);
+  --color-text-faint-3: var(--text-faint-3);
+  --color-text-faint-4: var(--text-faint-4);
+  --color-text-faint-5: var(--text-faint-5);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-chip: var(--bg-chip);
+  --color-bg-row: var(--bg-row);
+  --color-bg-column-active: var(--bg-column-active);
+  --color-bg-strip: var(--bg-strip);
+  --color-bg-chat: var(--bg-chat);
+  --color-bg-toggle-off: var(--bg-toggle-off);
+  --color-bg-chart-bar: var(--bg-chart-bar);
+  --color-attention: var(--attention);
+  --color-denied: var(--denied);
+  --color-accent-muted: var(--accent-muted);
+  --color-accent-light: var(--accent-light);
+  --color-accent-lightest: var(--accent-lightest);
+  --color-success-dim-1: var(--success-dim-1);
+  --color-success-dim-2: var(--success-dim-2);
+  --color-warn-orange: var(--warn-orange);
+  --text-7: var(--text-size-7);
+  --text-7-5: var(--text-size-7-5);
+  --text-8: var(--text-size-8);
+  --text-8-5: var(--text-size-8-5);
+  --text-14: var(--text-size-14);
+  --text-15-5: var(--text-size-15-5);
+  --text-18: var(--text-size-18);
+  --text-20: var(--text-size-20);
+  --text-30: var(--text-size-30);
+  --radius-1: var(--radius-1);
+  --radius-1-5: var(--radius-1-5);
+  --radius-2: var(--radius-2);
+  --radius-10: var(--radius-10);
 }
 
 @keyframes pulse {

@@ -37,7 +37,7 @@ The board and agent screens read as complete because their *main* column is
 complete. The ribbon and rails were never in any task's failing test, so nothing
 ever failed for their absence.
 
-## G2 — The README's token block is not the canvas's palette (HIGH)
+## G2 — The README's token block is not the canvas's palette (HIGH) — **FIXED**
 
 The tokens are an exact match for `docs/design/README.md` §Design Tokens — that
 much every earlier pass confirmed and it is still true. But the README documents
@@ -51,9 +51,19 @@ So "the tokens are exact" was true against the README and false against the
 canvas — and the plan names the canvas as the visual authority. Anything built
 strictly from tokens cannot currently reach the canvas's values.
 
-Note `#2563eb` appears in the canvas and nowhere in the README; it looks like a
-stray default rather than a roster colour, and is worth confirming before it is
-tokenised.
+All 75 canvas colours, 21 font sizes and 11 radii now have tokens, named for the
+role each plays rather than for its hue. A test diffs the token file against the
+canvas directly, so the gap cannot silently reopen — mutation-checked by changing
+one colour and by deleting one size, both caught.
+
+`#2563eb` is deliberately **not** tokenised: it appears once in the canvas and
+nowhere in the README, and looks like a stray browser default rather than a
+roster colour. The test excludes it by name, so the exclusion is visible rather
+than an accident. Worth confirming with whoever produced the canvas.
+
+**The README is still wrong**, and that is now the open item rather than the
+tokens: it documents 28 colours and a 9–17px scale for a canvas that uses 75 and
+7–30px. Fixing the source document is a separate change from fixing the code.
 
 ## G3 — Dimensions that are correct
 

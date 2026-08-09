@@ -144,3 +144,35 @@ describe("no colour literals outside the theme", () => {
     expect(offenders).toEqual([]);
   });
 });
+
+describe("the canvas is the visual authority", () => {
+  it("has a token for every colour, size and radius the hi-fi canvas uses", () => {
+    // The README documents a subset of what the canvas actually uses, and
+    // building from the README alone could not reach the design. This diffs
+    // against the canvas itself so the gap cannot silently reopen.
+    const canvas = readFileSync(
+      resolve(__dirname, "../../../../../docs/design/Roster Hi-Fi.dc.html"),
+      "utf8",
+    );
+    const nums = (source: string, pattern: RegExp) =>
+      new Set([...source.matchAll(pattern)].map((m) => m[1].replace("-", ".")));
+
+    const canvasColours = new Set(
+      [...canvas.matchAll(/#([0-9a-fA-F]{6})\b/g)].map((m) => m[1].toLowerCase()),
+    );
+    const mine = new Set([...css.matchAll(/#([0-9a-fA-F]{6})\b/g)].map((m) => m[1].toLowerCase()));
+    // #2563eb is a stray browser default, deliberately untokenised.
+    const missingColours = [...canvasColours].filter((c) => !mine.has(c) && c !== "2563eb");
+
+    const missingSizes = [...nums(canvas, /font-size:\s*([\d.]+)px/g)].filter(
+      (s) => !nums(css, /--text-size-([\d-]+):/g).has(s),
+    );
+    const missingRadii = [...nums(canvas, /border-radius:\s*([\d.]+)px/g)].filter(
+      (r) => !nums(css, /--radius-([\d-]+):/g).has(r),
+    );
+
+    expect({ missingColours, missingSizes, missingRadii }).toEqual({
+      missingColours: [], missingSizes: [], missingRadii: [],
+    });
+  });
+});
