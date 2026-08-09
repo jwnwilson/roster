@@ -11,11 +11,11 @@ export function ActivityTab() {
         <span className="font-mono text-9-5 tracking-[0.07em] text-text-7">ACTIVITY HISTORY</span>
         <DataSourceBadge screen="workItemActivity" />
       </div>
-      <ol className="flex flex-col gap-3 border-l border-[#1e2028] pl-4">
+      <ol className="flex flex-col gap-3 border-l border-text-7 pl-4">
         {workItemActivity.map((event) => (
           <li key={event.id} className="text-12">
-            <span className="font-semibold text-[#d0d2d8]">{event.actor}</span>{" "}
-            <span className="text-[#8f929b]">{event.summary}</span>
+            <span className="font-semibold text-text-2">{event.actor}</span>{" "}
+            <span className="text-text-3">{event.summary}</span>
             <div className="font-mono text-9 text-text-7">{event.created_at}</div>
           </li>
         ))}

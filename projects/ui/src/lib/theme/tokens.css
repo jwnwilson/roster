@@ -101,6 +101,23 @@
   --agent-working: #4a8c68;
   --agent-active: #4d7fd4;
   --agent-disabled: #4a4d56;
+  --agent-working-bg: rgba(74, 140, 104, 0.10);
+  --agent-working-border: rgba(74, 140, 104, 0.20);
+  --agent-active-bg: rgba(77, 127, 212, 0.10);
+  --agent-active-border: rgba(77, 127, 212, 0.20);
+  --agent-disabled-bg: rgba(74, 77, 86, 0.10);
+  --agent-disabled-border: rgba(74, 77, 86, 0.20);
+  /* Neutral overlays the handoff specifies per component. */
+  --overlay-05: rgba(255, 255, 255, 0.05);
+  --overlay-07: rgba(255, 255, 255, 0.07);
+  --overlay-10: rgba(255, 255, 255, 0.10);
+  --overlay-13: rgba(255, 255, 255, 0.13);
+  --accent-dropzone: rgba(124, 108, 240, 0.045);
+  --accent-bg-soft: rgba(124, 108, 240, 0.06);
+  --accent-bg-card: rgba(124, 108, 240, 0.08);
+  --overlay-12: rgba(255, 255, 255, 0.12);
+  /* The running-agent dot's halo — handoff §Animation. */
+  --accent-halo: 0 0 0 2.5px rgba(124, 108, 240, 0.20);
 }
 
 /* Map tokens into the Tailwind v4 theme so utilities like bg-bg-base,
@@ -195,6 +212,20 @@
   --color-agent-working: var(--agent-working);
   --color-agent-active: var(--agent-active);
   --color-agent-disabled: var(--agent-disabled);
+  --color-agent-working-bg: var(--agent-working-bg);
+  --color-agent-working-border: var(--agent-working-border);
+  --color-agent-active-bg: var(--agent-active-bg);
+  --color-agent-active-border: var(--agent-active-border);
+  --color-agent-disabled-bg: var(--agent-disabled-bg);
+  --color-agent-disabled-border: var(--agent-disabled-border);
+  --color-overlay-05: var(--overlay-05);
+  --color-overlay-07: var(--overlay-07);
+  --color-overlay-10: var(--overlay-10);
+  --color-overlay-13: var(--overlay-13);
+  --color-accent-dropzone: var(--accent-dropzone);
+  --color-accent-bg-soft: var(--accent-bg-soft);
+  --color-accent-bg-card: var(--accent-bg-card);
+  --color-overlay-12: var(--overlay-12);
 }
 
 @keyframes pulse {

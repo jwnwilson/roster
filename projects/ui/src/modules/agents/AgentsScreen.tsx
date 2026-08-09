@@ -57,13 +57,17 @@ export function AgentsScreen() {
         </span>
       </div>
 
-      <p className="bg-[#0b0d10] px-6 py-2 text-11 text-text-4">
+      <p className="bg-bg-column-header px-6 py-2 text-11 text-text-4">
         <span className="mr-2 font-mono text-9-5 tracking-[0.07em] text-text-6">AGENT FOLDER</span>
         Instructions, skills and model are read from disk — roster never stores agent config itself.
       </p>
 
-      {data.results.length === 0 ? (
-        <p className="p-6 text-12 text-text-3">No agent folders found.</p>
+      {agents.length === 0 ? (
+        <p className="p-6 text-12 text-text-3">
+          {data.results.length === 0
+            ? "No agent folders found."
+            : `No agents are ${LABEL[filter].toLowerCase()}.`}
+        </p>
       ) : (
         <table className="w-full text-left">
           <thead>
@@ -76,7 +80,7 @@ export function AgentsScreen() {
           </thead>
           <tbody>
             {agents.map((item) => (
-              <tr key={item.name} className="border-t border-[rgba(255,255,255,0.03)]">
+              <tr key={item.name} className="border-t border-overlay-05">
                 <td className="px-6 py-3">
                   <Link to={`/agents/${item.name}`} className="flex items-center gap-2">
                     <Avatar

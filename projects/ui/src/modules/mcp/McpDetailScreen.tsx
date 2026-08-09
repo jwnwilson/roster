@@ -121,7 +121,7 @@ export function McpDetailScreen({ name }: { name: string | undefined }) {
             <li
               key={call.id}
               data-testid={`call-${call.id}`}
-              className={`flex gap-3 ${call.denied ? "text-[#c25b5b]" : "text-text-4"}`}
+              className={`flex gap-3 ${call.denied ? "text-badge-action-text" : "text-text-4"}`}
             >
               <span>{call.at}</span>
               <span>{call.agent_name}</span>

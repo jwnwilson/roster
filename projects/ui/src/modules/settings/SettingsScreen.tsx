@@ -22,7 +22,7 @@ export function SettingsScreen() {
 
   return (
     <div className="flex min-h-0 flex-1">
-      <nav className="w-[176px] shrink-0 bg-[#0a0b0d] px-[10px] py-4">
+      <nav className="w-[176px] shrink-0 bg-bg-surface-2 px-[10px] py-4">
         {SECTIONS.map((section) => (
           <div key={section.group} className="mb-3">
             <span className="font-mono text-9-5 tracking-[0.08em] text-text-7">
@@ -69,7 +69,7 @@ export function SettingsScreen() {
               </thead>
               <tbody>
                 {secrets.map((secret) => (
-                  <tr key={secret.name} className="border-t border-[rgba(255,255,255,0.03)]">
+                  <tr key={secret.name} className="border-t border-overlay-05">
                     <td className="py-2 font-mono text-11-5 text-text-2">{secret.name}</td>
                     <td className="py-2 text-11-5 text-text-4">{secret.scope}</td>
                     <td className="py-2 font-mono text-10-5 text-text-5">

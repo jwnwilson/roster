@@ -64,21 +64,69 @@ describe("design tokens — scales from the handoff", () => {
 });
 
 describe("accessibility rules", () => {
-  it("gives every interactive element a visible focus ring", () => {
-    // F1: 30 of 33 primitives had none, which is the whole keyboard path.
-    expect(css).toMatch(/:focus-visible\s*\{[^}]*outline:/);
-    for (const role of ['role="tab"', 'role="switch"', "button", "select"]) {
-      expect(css, `${role} is not covered by the focus rule`).toContain(role);
+  /** The selector list of the :focus-visible rule, comments stripped.
+   *
+   *  Extracted rather than substring-matched against the whole file. The first
+   *  version of this test asserted `css.toContain("button")`, which kept passing
+   *  after `button` was deleted from the rule — the word survived in the comment
+   *  above it. A test that cannot detect the regression it names is worse than no
+   *  test, so this one is mutation-checked both ways.
+   */
+  const focusRule = (): { selector: string; body: string } => {
+    const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const match = withoutComments.match(/([^;{}]*):focus-visible\s*\{([^}]*)\}/);
+    if (!match) throw new Error("there is no :focus-visible rule at all");
+    return { selector: match[1], body: match[2] };
+  };
+
+  it("covers every interactive element with the focus rule", () => {
+    // F1: 30 of 33 primitives had no focus style — the whole keyboard path.
+    const { selector } = focusRule();
+
+    for (const element of [
+      "button", "a", 'role="tab"', 'role="switch"', "select", "input", "textarea",
+    ]) {
+      expect(selector, `${element} is not in the :focus-visible selector`).toContain(element);
     }
+  });
+
+  it("draws something visible, not merely a rule that exists", () => {
+    const { body } = focusRule();
+
+    expect(body).toMatch(/outline:\s*\d/);
+    expect(body).toMatch(/outline-offset:/);
   });
 
   it("uses focus-visible rather than focus", () => {
     // A mouse click should not leave a ring behind.
-    expect(css).not.toMatch(/[^-]:focus\s*\{/);
+    const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
+
+    expect(withoutComments).not.toMatch(/[^-]:focus\s*\{/);
   });
 
   it("stands down animation when the operating system asks it to", () => {
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(css).toMatch(/animation-iteration-count:\s*1\s*!important/);
+  });
+});
+
+describe("no colour literals outside the theme", () => {
+  it("keeps every hex and rgba value in tokens.css", async () => {
+    // Spec §6: "a hardcoded hex in a component is a defect". A literal cannot be
+    // changed by changing a token, so the theme silently stops being the source
+    // of truth. This asserts it rather than trusting review to catch each one.
+    const { globSync } = await import("node:fs");
+    const files = globSync("src/**/*.tsx", { cwd: resolve(__dirname, "../../..") });
+    const offenders: string[] = [];
+
+    for (const file of files) {
+      if (file.includes("theme/")) continue;
+      const source = readFileSync(resolve(__dirname, "../../..", file), "utf8");
+      for (const [index, line] of source.split("\n").entries()) {
+        if (/#[0-9a-fA-F]{6}\b|rgba?\(/.test(line)) offenders.push(`${file}:${index + 1}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 });

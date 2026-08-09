@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { reconnectDelay } from "./useEventSource";
+import { reconnectDelay } from "./reconnect";
 
 /** Message kinds the backend names its frames with, plus its idle-timeout frame. */
 const FRAMES = ["text", "file_write", "question", "event", "stream_timeout"] as const;
@@ -31,6 +31,12 @@ export function useThreadStream(
   useEffect(() => {
     if (!threadId || !enabled) return;
     if (typeof EventSource === "undefined") return;
+    // MSW cannot intercept EventSource, so in mock-first mode there is nothing
+    // to connect to: the request reaches the always-on Vite proxy, gets
+    // ECONNREFUSED, and the backoff loop retries forever per open thread. Spec
+    // §6 requires the app to run with no backend, so the subscription is simply
+    // not opened there.
+    if (import.meta.env.VITE_USE_MOCKS === "true") return;
 
     let source: EventSource | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;

@@ -8,7 +8,7 @@ const SHAPE: Record<AvatarVariant, string> = {
   // Violet agent avatar.
   agent: "rounded-[5px] bg-accent",
   // Circular user avatar.
-  user: "rounded-full bg-bg-avatar border-[1.5px] border-[rgba(255,255,255,0.13)] text-text-3",
+  user: "rounded-full bg-bg-avatar border-[1.5px] border-overlay-13 text-text-3",
 };
 
 export interface AvatarProps extends HTMLAttributes<HTMLSpanElement> {

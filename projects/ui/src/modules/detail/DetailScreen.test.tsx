@@ -111,3 +111,17 @@ describe("DetailScreen — Thread tab", () => {
     expect(await screen.findByText(/no conversation on this work item yet/i)).toBeInTheDocument();
   });
 });
+
+describe("DetailScreen — Thread tab scoping", () => {
+  it("shows this item's thread, not the lead-agent conversation", async () => {
+    // The mock handler now honours work_item_id. Before it did not, so the tab
+    // rendered results[0] — the lead thread — and no test could tell.
+    show();
+    await screen.findByText(workItem.key);
+
+    await userEvent.click(screen.getByRole("tab", { name: "Thread" }));
+
+    expect(await screen.findByText(/go ahead and start on this/i)).toBeInTheDocument();
+    expect(screen.queryByText(/what should we pick up first/i)).not.toBeInTheDocument();
+  });
+});

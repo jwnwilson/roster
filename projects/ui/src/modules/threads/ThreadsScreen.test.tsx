@@ -96,3 +96,101 @@ describe("ThreadsScreen", () => {
     expect(patched).toEqual({ read: true });
   });
 });
+
+describe("ThreadsScreen — replying", () => {
+  it("can answer an agent's question", async () => {
+    // Without this the core loop is broken: an agent asks, the badge appears,
+    // and there is no way to respond.
+    const sent: Record<string, unknown>[] = [];
+    server.use(http.post("/api/threads/:id/messages", async ({ request }) => {
+      sent.push((await request.json()) as Record<string, unknown>);
+      return ok(messages[0]);
+    }));
+    renderWithProviders(<ThreadsScreen />);
+    await userEvent.click(await screen.findByRole("button", { name: new RegExp(thread.title, "i") }));
+
+    await userEvent.type(await screen.findByRole("textbox"), "Yes, cover the tests too");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(sent[0]).toMatchObject({ author_kind: "user", content: "Yes, cover the tests too" });
+  });
+
+  it("names the agent so the reply starts its turn", async () => {
+    const sent: Record<string, unknown>[] = [];
+    server.use(http.post("/api/threads/:id/messages", async ({ request }) => {
+      sent.push((await request.json()) as Record<string, unknown>);
+      return ok(messages[0]);
+    }));
+    renderWithProviders(<ThreadsScreen />);
+    await userEvent.click(await screen.findByRole("button", { name: new RegExp(thread.title, "i") }));
+
+    await userEvent.type(await screen.findByRole("textbox"), "go on");
+    await userEvent.click(screen.getByRole("button", { name: /send/i }));
+
+    expect(sent[0].agent_name).toBe("atlas");
+  });
+
+  it("will not send an empty reply", async () => {
+    renderWithProviders(<ThreadsScreen />);
+    await userEvent.click(await screen.findByRole("button", { name: new RegExp(thread.title, "i") }));
+
+    expect(await screen.findByRole("button", { name: /send/i })).toBeDisabled();
+  });
+
+  it("says why a resolved thread cannot be replied to", async () => {
+    server.use(http.get("/api/threads", () => okList([{ ...thread, status: "resolved" }])));
+    renderWithProviders(<ThreadsScreen />);
+
+    await userEvent.click(await screen.findByRole("button", { name: new RegExp(thread.title, "i") }));
+
+    expect(await screen.findByText(/reopen it to reply/i)).toBeInTheDocument();
+  });
+
+  it("says the filter is empty rather than rendering a blank pane", async () => {
+    server.use(http.get("/api/threads", () => okList([leadThread])));
+    renderWithProviders(<ThreadsScreen />);
+    await screen.findByText(leadThread.title);
+
+    await userEvent.click(screen.getByRole("tab", { name: /action needed/i }));
+
+    expect(screen.getByText(/no threads need action/i)).toBeInTheDocument();
+  });
+});
+
+describe("ThreadsScreen — header controls spec §6 names", () => {
+  it("offers a project filter", async () => {
+    renderWithProviders(<ThreadsScreen />);
+
+    const filter = await screen.findByLabelText(/filter by project/i);
+    expect(within(filter).getByRole("option", { name: "api-service" })).toBeInTheDocument();
+  });
+
+  it("narrows the list to one project", async () => {
+    renderWithProviders(<ThreadsScreen />);
+    await screen.findByText(leadThread.title);
+
+    await userEvent.selectOptions(screen.getByLabelText(/filter by project/i), "p2");
+
+    // p2 is the infra project; neither seeded thread belongs to it.
+    expect(await screen.findByText(/no threads yet/i)).toBeInTheDocument();
+  });
+
+  it("shows how many threads are unread", async () => {
+    renderWithProviders(<ThreadsScreen />);
+
+    expect(await screen.findByTestId("unread-count")).toHaveTextContent("2");
+  });
+
+  it("marks every thread read at once", async () => {
+    let called = false;
+    server.use(http.post("/api/threads/mark-all-read", () => {
+      called = true;
+      return ok({ marked: 2 });
+    }));
+    renderWithProviders(<ThreadsScreen />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /mark all read/i }));
+
+    expect(called).toBe(true);
+  });
+});

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { DataSourceBadge } from "../../components/DataSourceBadge";
 import { attachments as fixtureAttachments, formatBytes } from "../../mocks/unbacked/attachments.list";
@@ -22,6 +22,8 @@ export interface AttachmentsTabProps {
 
 export function AttachmentsTab({ attachments = fixtureAttachments }: AttachmentsTabProps = {}) {
   const [filter, setFilter] = useState<Filter>("all");
+  const [picked, setPicked] = useState<string[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
   const shown = attachments.filter((file) => filter === "all" || file.origin === filter);
   const total = attachments.reduce((sum, file) => sum + file.bytes, 0);
 
@@ -35,11 +37,40 @@ export function AttachmentsTab({ attachments = fixtureAttachments }: Attachments
         <DataSourceBadge screen="workItemAttachments" />
       </div>
 
-      <div className="rounded-8 border border-dashed border-accent-border bg-[rgba(124,108,240,0.045)] p-5 text-center">
-        <p className="text-12 text-text-2">Drop files here, or browse</p>
+      <div
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          setPicked([...event.dataTransfer.files].map((file) => file.name));
+        }}
+        className="rounded-8 border border-dashed border-accent-border bg-accent-dropzone p-5 text-center"
+      >
+        <p className="text-12 text-text-2">
+          Drop files here, or{" "}
+          <button
+            type="button"
+            onClick={() => fileInput.current?.click()}
+            className="text-accent-text underline"
+          >
+            browse
+          </button>
+        </p>
+        <input
+          ref={fileInput}
+          type="file"
+          multiple
+          aria-label="Choose files to attach"
+          className="sr-only"
+          onChange={(event) => setPicked([...(event.target.files ?? [])].map((f) => f.name))}
+        />
         <p className="mt-1 text-11 text-text-5">
           Agents can read every attachment · 25 MB per file
         </p>
+        {picked.length > 0 && (
+          <p className="mt-2 text-11-5 text-text-2">
+            Chosen: {picked.join(", ")}
+          </p>
+        )}
         <p className="mt-2 text-11 text-badge-review-text">
           Uploads are not kept — attachments have no backend yet.
         </p>
@@ -70,9 +101,9 @@ export function AttachmentsTab({ attachments = fixtureAttachments }: Attachments
         {shown.map((file) => (
           <li
             key={file.id}
-            className="flex items-center gap-3 rounded-8 bg-[#101214] px-3 py-2"
+            className="flex items-center gap-3 rounded-8 bg-bg-inset px-3 py-2"
           >
-            <span className="text-12-5 text-[#d0d2d8]">{file.filename}</span>
+            <span className="text-12-5 text-text-2">{file.filename}</span>
             <span className="font-mono text-10-5 text-text-5">
               {formatBytes(file.bytes)} · {file.author}
             </span>

@@ -23,7 +23,7 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
           type="button"
           aria-label="Expand chat"
           onClick={() => setOpen(true)}
-          className="flex size-[14px] items-center justify-center rounded-[3px] border border-[rgba(255,255,255,0.10)] text-text-7"
+          className="flex size-[14px] items-center justify-center rounded-[3px] border border-overlay-10 text-text-7"
         >
           ▸
         </button>
@@ -35,7 +35,7 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
   }
 
   return (
-    <aside className="flex w-[292px] shrink-0 flex-col border-l border-border-subtle bg-[#09090c]">
+    <aside className="flex w-[292px] shrink-0 flex-col border-l border-border-subtle bg-bg-surface-2">
       <div className="flex h-[44px] items-center border-b border-border-subtle px-[13px]">
         <span className="text-11-5 font-medium text-accent-text">Chat</span>
         <button

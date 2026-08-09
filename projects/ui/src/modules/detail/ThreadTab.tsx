@@ -4,6 +4,7 @@ import { useThreadMessages, useThreads } from "../../lib/api/hooks";
 import { queryKeys } from "../../lib/api/queryKeys";
 import { useThreadStream } from "../../lib/hooks/useThreadStream";
 import { MessageList } from "../threads/MessageList";
+import { ThreadComposer } from "../threads/ThreadComposer";
 
 /** The work item's conversation — handoff §D3.
  *
@@ -36,5 +37,16 @@ export function ThreadTab({ workItemId }: { workItemId: string }) {
     return <p className="p-6 text-12 text-text-3">No conversation on this work item yet.</p>;
   }
 
-  return <MessageList messages={messageData?.results ?? []} />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <MessageList messages={messageData?.results ?? []} />
+      </div>
+      <ThreadComposer
+        threadId={thread.id}
+        agentName={thread.participants[0] ?? null}
+        disabled={thread.status === "resolved"}
+      />
+    </div>
+  );
 }

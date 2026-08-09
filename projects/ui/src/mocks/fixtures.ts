@@ -98,3 +98,19 @@ export const messages: Message[] = [
     payload: null, created_at: "2026-08-02T09:10:00Z",
   },
 ];
+
+/** The lead-agent conversation's messages — deliberately different text from
+ *  `messages`, so a screen showing the wrong thread fails a test instead of
+ *  rendering something plausible. */
+export const leadMessages: Message[] = [
+  {
+    id: "lm1", thread_id: "t2", author_kind: "user", author_name: null,
+    kind: "text", content: "What should we pick up first?", payload: null,
+    created_at: "2026-08-02T08:00:00Z",
+  },
+  {
+    id: "lm2", thread_id: "t2", author_kind: "agent", author_name: "atlas",
+    kind: "text", content: "The memory summary is the cheapest place to start.",
+    payload: null, created_at: "2026-08-02T08:05:00Z",
+  },
+];

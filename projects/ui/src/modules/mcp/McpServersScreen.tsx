@@ -67,6 +67,10 @@ export function McpServersScreen() {
         </div>
       )}
 
+      {servers.length === 0 && (
+        <p className="px-6 py-4 text-12 text-text-3">No servers match that filter.</p>
+      )}
+
       <table className="w-full text-left">
         <thead>
           <tr className="font-mono text-9-5 tracking-[0.07em] text-text-7">
@@ -79,7 +83,7 @@ export function McpServersScreen() {
         </thead>
         <tbody>
           {servers.map((server) => (
-            <tr key={server.name} className="border-t border-[rgba(255,255,255,0.03)]">
+            <tr key={server.name} className="border-t border-overlay-05">
               <td className="px-6 py-3">
                 <Link to={`/mcp/${server.name}`}>
                   <span className="block text-12-5 font-semibold text-text-1">{server.name}</span>

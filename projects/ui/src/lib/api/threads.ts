@@ -38,4 +38,3 @@ export const postMessage = (threadId: string, message: NewMessage) =>
 
 export const markAllThreadsRead = () => apiPost<{ marked: number }>("/threads/mark-all-read", {});
 
-export const threadStreamUrl = (id: string) => `/api/threads/${id}/stream`;

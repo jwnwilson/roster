@@ -89,3 +89,38 @@ Not fixable from here, and not claimed as done:
   `stroke-dasharray` values for each state).
 - Kanban card, list row, and sidebar dimensions against the handoff's pixel
   specifications.
+
+---
+
+# External review — 2026-08-09
+
+A second reviewer went over the branch and found 17 issues. All were verified
+against the code before acting; **every one held**. All 17 are now fixed.
+
+The three that mattered were gaps in my own completion claim, not nitpicks:
+
+- **There was no topbar on any screen.** `Topbar` existed, was fully tested, and
+  had no importer but its own test. That meant **Screen A (Issues List), required
+  by spec §6, did not exist** — along with the view switcher and the primary New
+  button. I had verified "no placeholder routes remain" and treated that as
+  equivalent to "every screen exists". It is not.
+- **Two finished features were unreachable.** `CreateWorkItemModal` and
+  `postMessage` were both built and tested by rendering them directly, so the
+  suite was green while no user could reach either. An agent could ask a question
+  and there was no way to answer — the core loop, broken.
+- **My focus test was hollow.** I mutation-checked it by deleting the whole rule,
+  which it caught. The reviewer deleted one selector from *inside* the rule and it
+  still passed, because it substring-matched the file and the word survived in a
+  comment. Coarse mutation testing gives false confidence.
+
+Also fixed: sidebar showing every project active at once (NavLink ignores the
+query string), filtered lists rendering blank panes, mock handlers ignoring their
+own filters (which is why the Thread tab showed the lead conversation and no test
+could tell), the missing project filter / unread count / mark-all-read, the
+artifact chip spec §6 keeps, modal focus trap and restore, tab panel wiring and
+arrow keys, 38 colour literals, naaf residue in `threadScope.ts` and
+`.env.example`, mock-mode SSE reconnecting forever, and a dropzone whose "browse"
+did nothing.
+
+**Lesson worth keeping:** the suite was green at every point above. Tests that
+render a component directly cannot tell you whether anything reaches it.

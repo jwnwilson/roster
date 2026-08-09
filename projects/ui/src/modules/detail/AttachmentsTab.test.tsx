@@ -53,3 +53,14 @@ it("says there is nothing rather than showing an empty list", () => {
   expect(screen.getByText(/nothing matches that filter/i)).toBeInTheDocument();
   expect(screen.queryByRole("list")).toBeEmptyDOMElement();
 });
+
+it("opens a file picker rather than offering a button that does nothing", async () => {
+  renderWithProviders(<AttachmentsTab />);
+
+  // Previously "browse" was static text: the test asserted the string rendered,
+  // so it passed on a control that did not exist.
+  const input = screen.getByLabelText(/choose files to attach/i);
+  await userEvent.upload(input, new File(["x"], "notes.md", { type: "text/markdown" }));
+
+  expect(screen.getByText(/chosen: notes\.md/i)).toBeInTheDocument();
+});

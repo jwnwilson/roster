@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import type { RouteObject } from "react-router-dom";
 
 import { AppShell } from "./AppShell";
-import { BoardRoute } from "../modules/board/BoardRoute";
+import { BoardScreen } from "../modules/board/BoardScreen";
 import { AgentDetailRoute } from "../modules/agents/AgentDetailRoute";
 import { AgentsScreen } from "../modules/agents/AgentsScreen";
 import { DashboardScreen } from "../modules/dashboard/DashboardScreen";
@@ -23,7 +23,7 @@ export const routes: RouteObject[] = [
       { path: "agents/:name", element: <AgentDetailRoute /> },
       { path: "mcp", element: <McpServersScreen /> },
       { path: "mcp/:name", element: <McpDetailRoute /> },
-      { path: "projects", element: <BoardRoute /> },
+      { path: "projects", element: <BoardScreen /> },
       { path: "projects/:projectId/items/:itemId", element: <DetailRoute /> },
       { path: "settings/secrets", element: <SettingsScreen /> },
     ],

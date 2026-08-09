@@ -56,7 +56,7 @@ export function DashboardScreen() {
                 <div
                   key={index}
                   className={`flex-1 rounded-t-[2px] ${
-                    index === tokenUsage.today.length - 1 ? "bg-accent" : "bg-[#2a2d36]"
+                    index === tokenUsage.today.length - 1 ? "bg-accent" : "bg-text-7"
                   }`}
                   style={{ height: `${(value / peak) * 100}%` }}
                 />

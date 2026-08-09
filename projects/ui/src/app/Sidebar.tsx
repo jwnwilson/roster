@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { Link, NavLink, useSearchParams } from "react-router-dom";
 
 import { DataSourceBadge } from "../components/DataSourceBadge";
 import {
@@ -26,11 +26,13 @@ const NAV = [
 const navClass = ({ isActive }: { isActive: boolean }) =>
   [
     "flex items-center gap-[7px] rounded-5 px-[7px] py-[5px] text-11",
-    isActive ? "bg-accent-bg font-medium text-accent-text" : "text-[#4a4d56]",
+    isActive ? "bg-accent-bg font-medium text-accent-text" : "text-text-4",
   ].join(" ");
 
 export function Sidebar() {
   const { openProject } = useCreateModal();
+  const [searchParams] = useSearchParams();
+  const selectedProject = searchParams.get("project");
   const { data } = useProjects();
   const projects = data?.results ?? [];
   const pct = Math.round((tokenUsage.budget_used / tokenUsage.budget_limit) * 100);
@@ -38,7 +40,7 @@ export function Sidebar() {
   return (
     <nav className="flex w-[214px] shrink-0 flex-col border-r border-border-subtle bg-bg-sidebar">
       <div className="flex h-[48px] items-center gap-2 px-[9px]">
-        <span className="flex size-[24px] items-center justify-center rounded-full border-[1.5px] border-[rgba(255,255,255,0.13)] bg-bg-avatar font-mono text-9-5 font-bold text-text-2">
+        <span className="flex size-[24px] items-center justify-center rounded-full border-[1.5px] border-overlay-13 bg-bg-avatar font-mono text-9-5 font-bold text-text-2">
           JW
         </span>
         <span className="text-12-5 font-semibold text-text-1">Roster</span>
@@ -65,12 +67,12 @@ export function Sidebar() {
 
       <div className="pt-[14px]">
         <div className="flex items-center px-[9px] pb-1">
-          <span className="font-mono text-9-5 tracking-[0.08em] text-[#6a6d78]">PROJECTS</span>
+          <span className="font-mono text-9-5 tracking-[0.08em] text-text-3">PROJECTS</span>
           <button
             type="button"
             aria-label="New project"
             onClick={openProject}
-            className="ml-auto flex size-[17px] items-center justify-center rounded-4 border border-border-strong bg-[rgba(255,255,255,0.05)] text-[#9a9da6]"
+            className="ml-auto flex size-[17px] items-center justify-center rounded-4 border border-border-strong bg-overlay-05 text-text-3"
           >
             <PlusIcon size={9} />
           </button>
@@ -78,10 +80,15 @@ export function Sidebar() {
         <ul className="flex flex-col px-[9px]">
           {projects.map((project) => (
             <li key={project.id}>
-              <NavLink
+              {/* Not NavLink: it computes isActive from the pathname alone and
+                  ignores the query, so every project rendered as active at once
+                  — and several aria-current="page" in one nav is a defect in its
+                  own right. */}
+              <Link
                 to={`/projects?project=${project.id}`}
-                className={navClass}
                 aria-label={project.name}
+                aria-current={selectedProject === project.id ? "page" : undefined}
+                className={navClass({ isActive: selectedProject === project.id })}
               >
                 {project.source.kind === "git" ? (
                   <GitRepoIcon size={11} data-glyph="git" />
@@ -89,13 +96,13 @@ export function Sidebar() {
                   <FolderIcon size={11} data-glyph="folder" />
                 )}
                 <span className="truncate text-11-5">{project.name}</span>
-              </NavLink>
+              </Link>
             </li>
           ))}
         </ul>
       </div>
 
-      <div className="mt-auto border-t border-[rgba(255,255,255,0.05)] px-[9px] py-2">
+      <div className="mt-auto border-t border-overlay-05 px-[9px] py-2">
         <NavLink to="/settings/secrets" className={navClass}>
           <SettingsIcon size={13} />
           Settings
@@ -103,7 +110,7 @@ export function Sidebar() {
         <div data-testid="token-budget" data-source="unbacked" className="mt-2">
           <div className="flex items-center justify-between font-mono text-9-5">
             <span className="text-text-6">TOKEN BUDGET</span>
-            <span className="text-[#72757e]">{pct}%</span>
+            <span className="text-text-3">{pct}%</span>
           </div>
           <div className="mt-1 h-[3px] rounded-[1px] bg-bg-track">
             <div className="h-full rounded-[1px] bg-accent" style={{ width: `${pct}%` }} />

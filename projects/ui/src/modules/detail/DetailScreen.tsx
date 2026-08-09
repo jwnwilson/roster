@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { DataSourceBadge } from "../../components/DataSourceBadge";
 import { StatusCircle } from "../../components/ui/StatusCircle";
+import { useTabs } from "../../components/ui/useTabs";
 import { useWorkItem } from "../../lib/api/hooks";
 import { ApiError } from "../../lib/api/client";
 import { queryKeys } from "../../lib/api/queryKeys";
@@ -26,6 +27,9 @@ export interface DetailScreenProps {
 
 export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
   const [tab, setTab] = useState<Tab>("Spec");
+  const { tablistProps, tabProps, panelProps } = useTabs<Tab>({
+    tabs: TABS, active: tab, onChange: setTab, label: "Work item sections",
+  });
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { data: item, isPending, isError, missing } = useWorkItem(projectId, itemId);
@@ -101,14 +105,12 @@ export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
         </p>
       )}
 
-      <div className="flex gap-4 border-b border-border-subtle px-4" role="tablist">
+      <div className="flex gap-4 border-b border-border-subtle px-4" {...tablistProps}>
         {TABS.map((name) => (
           <button
             key={name}
             type="button"
-            role="tab"
-            aria-selected={tab === name}
-            onClick={() => setTab(name)}
+            {...tabProps(name)}
             className={`border-b-2 pb-2 text-11-5 ${
               tab === name
                 ? "border-accent font-medium text-accent-text"
@@ -120,10 +122,12 @@ export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
         ))}
       </div>
 
-      {tab === "Spec" && <SpecTab spec={item.spec} />}
-      {tab === "Activity" && <ActivityTab />}
-      {tab === "Attachments" && <AttachmentsTab />}
-      {tab === "Thread" && <ThreadTab workItemId={item.id} />}
+      <div {...panelProps(tab)} className="flex min-h-0 flex-1 flex-col">
+        {tab === "Spec" && <SpecTab spec={item.spec} />}
+        {tab === "Activity" && <ActivityTab />}
+        {tab === "Attachments" && <AttachmentsTab />}
+        {tab === "Thread" && <ThreadTab workItemId={item.id} />}
+      </div>
     </div>
   );
 }

@@ -9,7 +9,7 @@ export function SpecTab({ spec }: { spec: string | null }) {
   }
 
   return (
-    <div className="max-w-[70ch] px-6 py-5 text-13 leading-[1.72] text-text-3 [&_h1]:text-[15.5px] [&_h1]:font-semibold [&_h1]:text-[#d8d9de] [&_h2]:text-13-5 [&_h2]:font-semibold [&_h2]:text-[#d8d9de] [&_code]:font-mono [&_code]:text-11">
+    <div className="max-w-[70ch] px-6 py-5 text-13 leading-[1.72] text-text-3 [&_h1]:text-[15.5px] [&_h1]:font-semibold [&_h1]:text-text-1 [&_h2]:text-13-5 [&_h2]:font-semibold [&_h2]:text-text-1 [&_code]:font-mono [&_code]:text-11">
       <Markdown>{spec}</Markdown>
     </div>
   );

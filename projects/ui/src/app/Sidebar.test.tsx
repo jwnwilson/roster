@@ -73,3 +73,36 @@ describe("Sidebar", () => {
     expect(screen.getByTestId("token-budget")).toHaveAttribute("data-source", "unbacked");
   });
 });
+
+describe("Sidebar — project selection", () => {
+  it("marks only the selected project as current", async () => {
+    // NavLink ignores the query string, so every project used to render active
+    // at once — and several aria-current="page" in one nav is its own defect.
+    renderWithProviders(
+      <CreateModalProvider>
+        <Sidebar />
+      </CreateModalProvider>,
+      { route: "/projects?project=p1" },
+    );
+
+    const selected = await screen.findByRole("link", { name: /api-service/i });
+    const other = await screen.findByRole("link", { name: /infra/i });
+
+    expect(selected).toHaveAttribute("aria-current", "page");
+    expect(other).not.toHaveAttribute("aria-current");
+  });
+
+  it("marks none as current when no project is chosen", async () => {
+    renderWithProviders(
+      <CreateModalProvider>
+        <Sidebar />
+      </CreateModalProvider>,
+      { route: "/threads" },
+    );
+
+    const projects = await screen.findAllByRole("link", { name: /api-service|infra/i });
+    for (const link of projects) {
+      expect(link).not.toHaveAttribute("aria-current");
+    }
+  });
+});
