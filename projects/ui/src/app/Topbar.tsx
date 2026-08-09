@@ -3,7 +3,6 @@ import { Chip } from "../components/ui/Chip";
 import { GridIcon } from "../components/ui/icons/GridIcon";
 import { ListIcon } from "../components/ui/icons/ListIcon";
 import { PlusIcon } from "../components/ui/icons/PlusIcon";
-import { ChevronDownIcon } from "../components/ui/icons/ChevronDownIcon";
 
 type View = "board" | "list";
 
@@ -35,11 +34,9 @@ export function Topbar({
       {/* Vertical divider */}
       <div className="mx-1 h-[14px] w-px bg-border-strong" />
 
-      {/* Filter chip */}
-      <button className="inline-flex h-[26px] items-center gap-1 rounded-5 border border-border-strong px-[9px] text-11 text-text-3">
-        All
-        <ChevronDownIcon className="h-3 w-3" />
-      </button>
+      {/* #10: the handoff's filter chip is not built. Rendering a control that
+          does nothing is worse than leaving the space empty, so it is omitted
+          until there is something to filter by. */}
 
       {artifactPath && (
         <span
@@ -47,7 +44,7 @@ export function Topbar({
           title={artifactPath}
           className="inline-flex h-[26px] items-center gap-1 rounded-5 border border-border-strong px-[9px] font-mono text-10-5 text-text-4"
         >
-          artifacts · {artifactPath.split("/").slice(-3, -1).join("/")}
+          artifacts · {artifactPath.split("/").filter(Boolean).at(-3) ?? "project"}
         </span>
       )}
 

@@ -19,11 +19,6 @@ export type CapabilityEntry =
 export const CAPABILITIES = {
   "projects.list": { status: "live", endpoint: "GET /projects" },
   "projects.create": { status: "live", endpoint: "POST /projects" },
-  "projects.delete": { status: "live", endpoint: "DELETE /projects/{id}" },
-  "projects.itemCount": {
-    status: "unbacked",
-    reason: "Project has no item_count; derived client-side from work items",
-  },
 
   "workItems.listByProject": { status: "live", endpoint: "GET /work-items?project_id=" },
   "workItems.create": { status: "live", endpoint: "POST /work-items" },
@@ -48,7 +43,6 @@ export const CAPABILITIES = {
   "threads.resolve": { status: "live", endpoint: "PATCH /threads/{id}" },
   "threads.stream": { status: "live", endpoint: "GET /threads/{id}/stream" },
 
-  "memory.read": { status: "live", endpoint: "GET /projects/{id}/memory" },
 
   "tokens.usage": {
     status: "unbacked",

@@ -93,7 +93,13 @@ describe("accessibility rules", () => {
   it("draws something visible, not merely a rule that exists", () => {
     const { body } = focusRule();
 
-    expect(body).toMatch(/outline:\s*\d/);
+    // `outline: 0px` and `outline: 2px solid transparent` both remove the ring
+    // while matching a naive /outline:\s*\d/ — the first version of this test
+    // admitted exactly the case its name forbids.
+    const width = body.match(/outline:\s*(\d+(?:\.\d+)?)px/);
+    expect(width, "no pixel outline width").not.toBeNull();
+    expect(Number(width![1])).toBeGreaterThan(0);
+    expect(body).not.toMatch(/outline:[^;]*transparent/);
     expect(body).toMatch(/outline-offset:/);
   });
 
@@ -116,14 +122,22 @@ describe("no colour literals outside the theme", () => {
     // changed by changing a token, so the theme silently stops being the source
     // of truth. This asserts it rather than trusting review to catch each one.
     const { globSync } = await import("node:fs");
-    const files = globSync("src/**/*.tsx", { cwd: resolve(__dirname, "../../..") });
+    // .ts as well as .tsx: a literal in an API module or a fixture is the same
+    // defect, and the first version of this test scanned only components.
+    const files = globSync("src/**/*.{ts,tsx}", { cwd: resolve(__dirname, "../../..") });
     const offenders: string[] = [];
 
+    // Any hex length — #fff and #0e0f11ff both slipped past a {6} match, and
+    // #fff is the form someone reaches for first.
+    const literal = /#[0-9a-fA-F]{3,8}\b|rgba?\(/;
+
     for (const file of files) {
-      if (file.includes("theme/")) continue;
+      // Tests may legitimately name a colour (this file's own regex does).
+      // Only shipped UI is in scope.
+      if (file.includes("theme/") || /\.test\.tsx?$/.test(file)) continue;
       const source = readFileSync(resolve(__dirname, "../../..", file), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
-        if (/#[0-9a-fA-F]{6}\b|rgba?\(/.test(line)) offenders.push(`${file}:${index + 1}`);
+        if (literal.test(line)) offenders.push(`${file}:${index + 1}`);
       }
     }
 

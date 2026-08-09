@@ -30,6 +30,7 @@ class FakeEventSource {
 }
 
 beforeEach(() => {
+  vi.stubEnv("VITE_USE_MOCKS", "false");
   FakeEventSource.opened = [];
   FakeEventSource.live = [];
   vi.stubGlobal("EventSource", FakeEventSource);
@@ -120,5 +121,27 @@ describe("useThreadStream", () => {
     await vi.advanceTimersByTimeAsync(30_000);
 
     expect(FakeEventSource.opened).toHaveLength(1);
+  });
+});
+
+describe("useThreadStream — mock mode", () => {
+  it("does not subscribe when mocks are on, because MSW cannot intercept EventSource", () => {
+    // Without this the request reaches the Vite proxy, ECONNREFUSEs, and the
+    // backoff loop retries forever per open thread.
+    vi.stubEnv("VITE_USE_MOCKS", "true");
+
+    renderHook(() => useThreadStream("t1", { onFrame: vi.fn() }));
+
+    expect(FakeEventSource.opened).toEqual([]);
+    vi.unstubAllEnvs();
+  });
+
+  it("does not subscribe when the flag is unset either, since that is also mocked", () => {
+    vi.stubEnv("VITE_USE_MOCKS", undefined as unknown as string);
+
+    renderHook(() => useThreadStream("t1", { onFrame: vi.fn() }));
+
+    expect(FakeEventSource.opened).toEqual([]);
+    vi.unstubAllEnvs();
   });
 });

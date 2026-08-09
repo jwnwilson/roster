@@ -1,4 +1,4 @@
-import { apiFetch, apiList, apiPatch, apiPost } from "./client";
+import { apiList, apiPatch, apiPost } from "./client";
 import type { Message, MessageKind, Thread, ThreadListItem, ThreadStatus } from "./types";
 
 export type ThreadFilters = {
@@ -18,11 +18,6 @@ export type NewMessage = {
 
 export const listThreads = (filters: ThreadFilters = {}) =>
   apiList<ThreadListItem>("/threads", filters);
-
-export const readThread = (id: string) => apiFetch<ThreadListItem>(`/threads/${id}`);
-
-export const createThread = (thread: { project_id: string; work_item_id?: string; title: string }) =>
-  apiPost<Thread>("/threads", thread);
 
 /** Moving to `resolved` writes the project's memory journal entry. Resolving an
  *  already-resolved thread returns 409 — that is the guarantee it happens once,

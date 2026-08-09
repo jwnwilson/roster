@@ -31,12 +31,12 @@ export function useThreadStream(
   useEffect(() => {
     if (!threadId || !enabled) return;
     if (typeof EventSource === "undefined") return;
-    // MSW cannot intercept EventSource, so in mock-first mode there is nothing
-    // to connect to: the request reaches the always-on Vite proxy, gets
-    // ECONNREFUSED, and the backoff loop retries forever per open thread. Spec
-    // §6 requires the app to run with no backend, so the subscription is simply
-    // not opened there.
-    if (import.meta.env.VITE_USE_MOCKS === "true") return;
+    // MSW cannot intercept EventSource, so under mocks there is nothing to
+    // connect to: the request reaches the always-on Vite proxy, gets
+    // ECONNREFUSED, and the backoff loop retries forever per open thread. The
+    // condition is the exact complement of main.tsx's, so streaming is off
+    // precisely when MSW is on and never otherwise.
+    if (import.meta.env.VITE_USE_MOCKS !== "false") return;
 
     let source: EventSource | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;

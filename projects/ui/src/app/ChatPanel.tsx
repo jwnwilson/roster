@@ -1,5 +1,7 @@
-import { useThreads } from "../lib/api/hooks";
+import { useThreadMessages, useThreads } from "../lib/api/hooks";
 import { useLocalStorage } from "../lib/hooks/useLocalStorage";
+import { MessageList } from "../modules/threads/MessageList";
+import { ThreadComposer } from "../modules/threads/ThreadComposer";
 
 export interface ChatPanelProps {
   projectId?: string;
@@ -15,6 +17,8 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
   const [open, setOpen] = useLocalStorage("roster.chat.open", true);
   const { data } = useThreads(projectId ? { project_id: projectId } : {});
   const leadThreads = (data?.results ?? []).filter((thread) => thread.work_item_id === null);
+  const conversation = leadThreads[0];
+  const { data: messageData } = useThreadMessages(conversation?.id);
 
   if (!open) {
     return (
@@ -47,13 +51,22 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
           ◂
         </button>
       </div>
-      <ul className="flex flex-col gap-1 p-[13px]">
-        {leadThreads.map((thread) => (
-          <li key={thread.id} className="text-11-5 text-text-2">
-            {thread.title}
-          </li>
-        ))}
-      </ul>
+      {conversation === undefined ? (
+        <p className="p-[13px] text-11-5 text-text-4">
+          No lead-agent conversation on this project yet.
+        </p>
+      ) : (
+        <>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <MessageList messages={messageData?.results ?? []} />
+          </div>
+          <ThreadComposer
+            threadId={conversation.id}
+            agentName={conversation.participants[0] ?? null}
+            disabled={conversation.status === "resolved"}
+          />
+        </>
+      )}
     </aside>
   );
 }

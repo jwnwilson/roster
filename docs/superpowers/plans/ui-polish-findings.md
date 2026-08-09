@@ -124,3 +124,51 @@ did nothing.
 
 **Lesson worth keeping:** the suite was green at every point above. Tests that
 render a component directly cannot tell you whether anything reaches it.
+
+---
+
+# Second review pass — 2026-08-09
+
+15 of the 17 fixes held under adversarial re-testing, including every one I
+asked to be attacked. Ten residual findings; all verified, all now fixed.
+
+**The two that mattered were the same error twice: a fix whose test was narrower
+than the behaviour its name promised.**
+
+- `useTabs` arrow keys changed *selection* but never moved *focus*, so a user was
+  left on a `tabindex="-1"` element that was no longer selected — nothing
+  announced, and the next Tab exited the group with no way back. Its test
+  asserted `aria-selected` only, never `document.activeElement`.
+- The Threads screen destructured `tablistProps` and `tabProps` and dropped
+  `panelProps`, so both tabs carried `aria-controls` pointing at ids that did not
+  exist. That is worse than the pre-fix state, which at least made no promise.
+
+**The one that would have bitten a new contributor:** `.env.example` and
+`AGENTS.md` both claimed the UI runs fully mocked by default. Vite never loads
+`.env.example`, and `.env` is gitignored — so on a fresh clone `VITE_USE_MOCKS`
+was undefined and the app ran *unmocked*, contradicting spec §6. Mock-first is
+now the true default: only an explicit `VITE_USE_MOCKS=false` turns it off.
+
+**Both new guards were weak in the same way as the bug they replaced.** The
+colour-literal test matched only 6-digit hex in `.tsx` files — `#fff`,
+`#0e0f11ff` and anything in a `.ts` module passed. Hardening it immediately
+found a real `#fff` in `Toggle.tsx`. And "draws something visible" passed for
+`outline: 0px` and `outline: 2px solid transparent`, both of which remove the
+ring the test exists to protect.
+
+Also fixed: the chat panel now has the composer its capability list already
+claimed; the artifact chip's label matches the handoff; the dead filter chip is
+gone rather than rendering a control that does nothing; orphan registry entries
+and their unused clients removed.
+
+**Reviewer's own near-miss, worth recording:** its first harness used
+`createMemoryRouter` and reported three phantom CRITICALs — a broken view
+switcher, a dead index redirect, wrong nav URLs. A sanity check ("does *any*
+navigation work here?") showed the harness itself was broken. The same failure
+mode we keep finding in the code exists in the tools used to review it.
+
+## Still open
+
+Pixel fidelity against `Roster Hi-Fi.dc.html` — unchanged, and now larger:
+`ListView` (Screen A) is new and was built from the written spec alone. Nobody
+has seen it rendered against the canvas.

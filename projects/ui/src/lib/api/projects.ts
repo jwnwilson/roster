@@ -1,4 +1,4 @@
-import { apiDelete, apiFetch, apiList, apiPost } from "./client";
+import { apiList, apiPost } from "./client";
 import type { Project, SourceKind } from "./types";
 
 export type NewProject = {
@@ -7,6 +7,4 @@ export type NewProject = {
 };
 
 export const listProjects = () => apiList<Project>("/projects");
-export const readProject = (id: string) => apiFetch<Project>(`/projects/${id}`);
 export const createProject = (project: NewProject) => apiPost<Project>("/projects", project);
-export const deleteProject = (id: string) => apiDelete(`/projects/${id}`);

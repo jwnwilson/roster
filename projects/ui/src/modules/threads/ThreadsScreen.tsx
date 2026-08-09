@@ -27,7 +27,7 @@ const BADGE_KIND: Record<ThreadStatus, "info" | "review_needed" | "action_needed
 export function ThreadsScreen() {
   const [tab, setTab] = useState<Tab>("all");
   const [projectFilter, setProjectFilter] = useState<string>("");
-  const { tablistProps, tabProps } = useTabs<Tab>({
+  const { tablistProps, tabProps, panelProps } = useTabs<Tab>({
     tabs: TABS, active: tab, onChange: setTab, label: "Thread filters",
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -138,6 +138,7 @@ export function ThreadsScreen() {
             </select>
           </label>
         </div>
+        <div {...panelProps(tab)} className="min-h-0 flex-1 overflow-auto">
         {threads.length === 0 ? (
           <p className="p-6 text-12 text-text-3">
             {data.results.length === 0 ? "No threads yet." : "No threads need action."}
@@ -166,6 +167,7 @@ export function ThreadsScreen() {
             ))}
           </ul>
         )}
+        </div>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">

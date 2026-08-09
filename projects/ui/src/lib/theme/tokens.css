@@ -116,6 +116,8 @@
   --accent-bg-soft: rgba(124, 108, 240, 0.06);
   --accent-bg-card: rgba(124, 108, 240, 0.08);
   --overlay-12: rgba(255, 255, 255, 0.12);
+  /* Toggle knob when on — handoff §Settings: white knob on the accent track. */
+  --knob-on: #ffffff;
   /* The running-agent dot's halo — handoff §Animation. */
   --accent-halo: 0 0 0 2.5px rgba(124, 108, 240, 0.20);
 }
@@ -226,6 +228,7 @@
   --color-accent-bg-soft: var(--accent-bg-soft);
   --color-accent-bg-card: var(--accent-bg-card);
   --color-overlay-12: var(--overlay-12);
+  --color-knob-on: var(--knob-on);
 }
 
 @keyframes pulse {

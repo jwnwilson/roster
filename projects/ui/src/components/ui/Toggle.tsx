@@ -20,7 +20,7 @@ export function Toggle({ checked, onChange, label }: ToggleProps) {
     >
       <span
         className="absolute top-[2px] rounded-full transition-all"
-        style={{ width: 10, height: 10, left: checked ? 14 : 2, background: checked ? "#fff" : "var(--dot-muted)" }}
+        style={{ width: 10, height: 10, left: checked ? 14 : 2, background: checked ? "var(--knob-on)" : "var(--dot-muted)" }}
       />
     </button>
   );
