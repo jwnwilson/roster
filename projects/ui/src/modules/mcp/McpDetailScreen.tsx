@@ -30,11 +30,14 @@ export function McpDetailScreen({ name }: { name: string | undefined }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-      <div className="flex items-center gap-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
         <h1 className="text-[17px] font-semibold text-text-1">{server.name}</h1>
         <DataSourceBadge screen="mcpServerDetail" />
       </div>
+
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-auto p-6">
 
       <div className="flex gap-6 font-mono text-10 text-text-5">
         <span>
@@ -81,6 +84,13 @@ export function McpDetailScreen({ name }: { name: string | undefined }) {
         </dl>
       </section>
 
+        </div>
+
+        {/* Handoff §K2 — the 392px rail. */}
+        <aside
+          data-testid="mcp-detail-rail"
+          className="w-[392px] shrink-0 overflow-auto border-l border-border-subtle p-4"
+        >
       <section>
         <h2 className="font-mono text-9-5 tracking-[0.07em] text-text-6">TOOLS</h2>
         {touched && (
@@ -133,6 +143,8 @@ export function McpDetailScreen({ name }: { name: string | undefined }) {
           ))}
         </ul>
       </section>
+        </aside>
+      </div>
     </div>
   );
 }

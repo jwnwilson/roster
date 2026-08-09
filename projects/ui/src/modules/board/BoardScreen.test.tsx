@@ -78,3 +78,21 @@ describe("BoardScreen", () => {
     expect(within(group).getByText(workItem.key)).toBeInTheDocument();
   });
 });
+
+describe("BoardScreen — the Live Agents ribbon reaches the screen", () => {
+  it("renders the ribbon on the board view", async () => {
+    // LiveAgentsRibbon's own tests render it directly, so they stay green even
+    // if nothing mounts it — which is exactly how this region went missing in
+    // the first place. This asserts it is actually on the board.
+    show();
+
+    expect(await screen.findByTestId("live-agents-ribbon")).toBeInTheDocument();
+  });
+
+  it("does not show the ribbon on the issues list, per the handoff", async () => {
+    show("/projects?project=p1&view=list");
+    await screen.findByTestId(`group-${workItem.status}`);
+
+    expect(screen.queryByTestId("live-agents-ribbon")).not.toBeInTheDocument();
+  });
+});

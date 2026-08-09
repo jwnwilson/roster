@@ -15,7 +15,7 @@ budget — returned a page painted with the correct background and no DOM. So
 layout, alignment and overflow are still unverified by eye. Everything below is
 a value-level comparison, which is narrower but exact.
 
-## G1 — Whole regions of four screens were never built (HIGH)
+## G1 — Whole regions of four screens were never built (HIGH) — **FIXED**
 
 Specified in the handoff, absent from the code. These are not polish items; they
 are missing thirds of screens.
@@ -26,6 +26,12 @@ are missing thirds of screens.
 | **Work item right rail**, 252px — PROPERTIES · TOKEN USAGE · RECENT ACTIVITY · ATTACHMENTS | §Screen D | **absent** |
 | **Agent detail right rail**, 372px — CONFIG.YAML card, SKILLS, MCP SERVERS | §C2 | partial: fields exist, not as the rail |
 | **MCP detail right rail**, 392px — TOOLS, AGENT ACCESS | §K2 | partial: sections exist, not as the rail |
+
+All four are now built, each with a test naming the region. The mutation check
+that mattered: removing the ribbon from `BoardScreen` did **not** fail its own
+tests, because those render `<LiveAgentsRibbon />` directly — the same blind spot
+that let these regions go missing. A separate test now asserts it is mounted on
+the board, and fails when it is not.
 
 The board and agent screens read as complete because their *main* column is
 complete. The ribbon and rails were never in any task's failing test, so nothing

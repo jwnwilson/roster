@@ -1,5 +1,9 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import { http } from "msw";
 import { describe, expect, it } from "vitest";
+
+import { okList } from "../../mocks/envelope";
+import { server } from "../../mocks/server";
 
 import { AgentDetailScreen } from "./AgentDetailScreen";
 import { agent } from "../../mocks/fixtures";
@@ -31,5 +35,38 @@ describe("AgentDetailScreen", () => {
     renderWithProviders(<AgentDetailScreen name="nobody" />);
 
     expect(await screen.findByText(/no agent folder called/i)).toBeInTheDocument();
+  });
+});
+
+describe("AgentDetailScreen — the right rail (handoff §C2, 372px)", () => {
+  it("exists beside the AGENT.md editor", async () => {
+    renderWithProviders(<AgentDetailScreen name={agent.name} />);
+
+    expect(await screen.findByTestId("agent-detail-rail")).toBeInTheDocument();
+  });
+
+  it("carries the three sections the handoff specifies", async () => {
+    renderWithProviders(<AgentDetailScreen name={agent.name} />);
+
+    const rail = await screen.findByTestId("agent-detail-rail");
+    for (const title of ["CONFIG.YAML", "SKILLS", "MCP SERVERS"]) {
+      expect(within(rail).getByText(title)).toBeInTheDocument();
+    }
+  });
+
+  it("shows the config.yaml values, not just the model", async () => {
+    renderWithProviders(<AgentDetailScreen name={agent.name} />);
+
+    const rail = await screen.findByTestId("agent-detail-rail");
+    expect(within(rail).getByText(agent.token_limit.toLocaleString())).toBeInTheDocument();
+    expect(within(rail).getByText(String(agent.temperature))).toBeInTheDocument();
+  });
+
+  it("says so when an agent folder has no skills", async () => {
+    server.use(http.get("/api/agents", () => okList([{ ...agent, skills: [] }])));
+    renderWithProviders(<AgentDetailScreen name={agent.name} />);
+
+    const rail = await screen.findByTestId("agent-detail-rail");
+    expect(within(rail).getByText(/no skills folder/i)).toBeInTheDocument();
   });
 });

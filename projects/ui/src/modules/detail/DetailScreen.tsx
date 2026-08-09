@@ -11,6 +11,7 @@ import type { WorkItemStatus } from "../../lib/api/types";
 import { updateWorkItem } from "../../lib/api/workItems";
 import { STATUSES, STATUS_LABELS } from "../board/groupByStatus";
 import { ActivityTab } from "./ActivityTab";
+import { DetailRail } from "./DetailRail";
 import { AttachmentsTab } from "./AttachmentsTab";
 import { SpecTab } from "./SpecTab";
 import { ThreadTab } from "./ThreadTab";
@@ -122,11 +123,14 @@ export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
         ))}
       </div>
 
-      <div {...panelProps(tab)} className="flex min-h-0 flex-1 flex-col">
-        {tab === "Spec" && <SpecTab spec={item.spec} />}
-        {tab === "Activity" && <ActivityTab />}
-        {tab === "Attachments" && <AttachmentsTab />}
-        {tab === "Thread" && <ThreadTab workItemId={item.id} />}
+      <div className="flex min-h-0 flex-1">
+        <div {...panelProps(tab)} className="flex min-h-0 flex-1 flex-col overflow-auto">
+          {tab === "Spec" && <SpecTab spec={item.spec} />}
+          {tab === "Activity" && <ActivityTab />}
+          {tab === "Attachments" && <AttachmentsTab />}
+          {tab === "Thread" && <ThreadTab workItemId={item.id} />}
+        </div>
+        <DetailRail item={item} />
       </div>
     </div>
   );

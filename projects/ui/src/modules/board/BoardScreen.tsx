@@ -4,6 +4,7 @@ import { Topbar } from "../../app/Topbar";
 import { useProjects, useWorkItems } from "../../lib/api/hooks";
 import { useCreateModal } from "../create/useCreateModal";
 import { BoardView } from "./BoardView";
+import { LiveAgentsRibbon } from "./LiveAgentsRibbon";
 import { ListView } from "./ListView";
 
 /** Screens A and B share a topbar and differ only in how they lay the same work
@@ -36,6 +37,7 @@ export function BoardScreen() {
         newDisabled={!projectId}
         artifactPath={project ? `${project.folder_path}/.roster/artifacts` : undefined}
       />
+      {view === "board" && <LiveAgentsRibbon />}
       {view === "list" ? <ListView projectId={projectId} /> : <BoardView projectId={projectId} />}
     </>
   );

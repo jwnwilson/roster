@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { describe, expect, it } from "vitest";
@@ -123,5 +123,49 @@ describe("DetailScreen — Thread tab scoping", () => {
 
     expect(await screen.findByText(/go ahead and start on this/i)).toBeInTheDocument();
     expect(screen.queryByText(/what should we pick up first/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("DetailScreen — the right rail (handoff §Screen D, 252px)", () => {
+  it("exists beside the tab body", async () => {
+    show();
+
+    expect(await screen.findByTestId("detail-rail")).toBeInTheDocument();
+  });
+
+  it("shows the item's real properties", async () => {
+    show();
+
+    // Scoped to the properties list: "atlas" is also an activity actor further
+    // down the same rail, and matching that would prove nothing.
+    await screen.findByTestId("detail-rail");
+    const properties = screen.getByTestId("rail-properties");
+    expect(within(properties).getByText("In Progress")).toBeInTheDocument();
+    expect(within(properties).getByText(workItem.agent_name!)).toBeInTheDocument();
+  });
+
+  it("says Unassigned rather than blank when no agent is assigned", async () => {
+    server.use(http.get("/api/work-items", () => okList([{ ...workItem, agent_name: null }])));
+    show();
+
+    await screen.findByTestId("detail-rail");
+    expect(within(screen.getByTestId("rail-properties")).getByText(/unassigned/i))
+      .toBeInTheDocument();
+  });
+
+  it("badges token usage, which no entity carries, but not the properties", async () => {
+    show();
+
+    const rail = await screen.findByTestId("detail-rail");
+    expect(within(rail).getAllByTestId("data-source-badge").length).toBe(1);
+  });
+
+  it("carries all four sections the handoff specifies", async () => {
+    show();
+
+    const rail = await screen.findByTestId("detail-rail");
+    for (const title of ["PROPERTIES", "TOKEN USAGE", "RECENT ACTIVITY", "ATTACHMENTS"]) {
+      expect(within(rail).getByText(title)).toBeInTheDocument();
+    }
   });
 });

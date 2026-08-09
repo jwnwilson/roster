@@ -98,3 +98,20 @@ describe("McpDetailScreen", () => {
     }
   });
 });
+
+describe("McpDetailScreen — the right rail (handoff §K2, 392px)", () => {
+  it("exists beside the connection column", () => {
+    renderWithProviders(<McpDetailScreen name="github" />);
+
+    expect(screen.getByTestId("mcp-detail-rail")).toBeInTheDocument();
+  });
+
+  it("carries the tools and per-agent access the handoff puts there", () => {
+    renderWithProviders(<McpDetailScreen name="github" />);
+
+    const rail = screen.getByTestId("mcp-detail-rail");
+    expect(within(rail).getByText("TOOLS")).toBeInTheDocument();
+    expect(within(rail).getByText("AGENT ACCESS")).toBeInTheDocument();
+    expect(within(rail).getByRole("switch", { name: "search_code" })).toBeInTheDocument();
+  });
+});

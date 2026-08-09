@@ -28,8 +28,8 @@ export function AgentDetailScreen({ name }: { name: string | undefined }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
-      <div className="flex items-center gap-3">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
         <h1 className="text-[17px] font-semibold text-text-1">{agent.name}</h1>
         <DataSourceBadge screen="agentDetail" />
         <span className="ml-auto flex items-center gap-2">
@@ -40,36 +40,73 @@ export function AgentDetailScreen({ name }: { name: string | undefined }) {
         </span>
       </div>
 
-      <label className="flex flex-col gap-1">
-        <span className="font-mono text-9-5 tracking-[0.07em] text-text-6">AGENT.md</span>
-        <textarea
-          readOnly
-          value={agent.instructions}
-          rows={12}
-          className="rounded-6 border border-border bg-bg-inset p-3 font-mono text-12 leading-[1.55] text-text-2"
-        />
-      </label>
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-auto p-6">
+          <span className="font-mono text-9-5 tracking-[0.07em] text-text-6">
+            AGENT.md · ~/.roster/agents/{agent.name}/AGENT.md
+          </span>
+          <textarea
+            readOnly
+            aria-label="AGENT.md"
+            value={agent.instructions}
+            rows={16}
+            className="rounded-6 border border-border bg-bg-inset p-3 font-mono text-12 leading-[1.55] text-text-2"
+          />
+          <span className="text-11 text-text-5">
+            Changes would write straight to the file on disk — once there is an endpoint.
+          </span>
+        </div>
 
-      <label className="flex max-w-[280px] flex-col gap-1">
-        <span className="font-mono text-9-5 tracking-[0.07em] text-text-6">
-          MODEL · config.yaml
-        </span>
-        <input
-          readOnly
-          value={agent.model}
-          className="h-8 rounded-5 border border-border bg-bg-input px-2 font-mono text-12 text-text-2"
-        />
-      </label>
+        {/* Handoff §C2 — the 372px rail. */}
+        <aside
+          data-testid="agent-detail-rail"
+          className="w-[372px] shrink-0 overflow-auto border-l border-border-subtle"
+        >
+          <section className="border-b border-border-subtle px-4 py-3">
+            <h2 className="font-mono text-9-5 tracking-[0.07em] text-text-7">CONFIG.YAML</h2>
+            <label className="mt-2 flex flex-col gap-1">
+              <span className="text-11 text-text-5">MODEL</span>
+              <input
+                readOnly
+                aria-label="Model"
+                value={agent.model}
+                className="h-8 rounded-5 border border-border bg-bg-input px-2 font-mono text-12 text-text-2"
+              />
+            </label>
+            <dl className="mt-2 flex flex-col gap-1 text-11">
+              <div className="flex gap-2">
+                <dt className="w-[110px] text-text-5">MAX TOKENS / RUN</dt>
+                <dd className="font-mono text-text-3">{agent.token_limit.toLocaleString()}</dd>
+              </div>
+              <div className="flex gap-2">
+                <dt className="w-[110px] text-text-5">TEMPERATURE</dt>
+                <dd className="font-mono text-text-3">{agent.temperature ?? "—"}</dd>
+              </div>
+            </dl>
+          </section>
 
-      <div>
-        <span className="font-mono text-9-5 tracking-[0.07em] text-text-6">SKILLS</span>
-        <ul className="mt-1 flex flex-col gap-1">
-          {agent.skills.map((skill) => (
-            <li key={skill} className="text-11-5 text-text-3">
-              {skill}/SKILL.md
-            </li>
-          ))}
-        </ul>
+          <section className="border-b border-border-subtle px-4 py-3">
+            <h2 className="font-mono text-9-5 tracking-[0.07em] text-text-7">SKILLS</h2>
+            {agent.skills.length === 0 ? (
+              <p className="mt-2 text-11 text-text-5">No skills folder.</p>
+            ) : (
+              <ul className="mt-2 flex flex-col gap-1">
+                {agent.skills.map((skill) => (
+                  <li key={skill} className="font-mono text-11 text-text-3">
+                    {skill}/SKILL.md
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="px-4 py-3">
+            <h2 className="font-mono text-9-5 tracking-[0.07em] text-text-7">MCP SERVERS</h2>
+            <p className="mt-2 text-11 text-text-5">
+              Per-agent MCP access has no backend yet — see the MCP screens.
+            </p>
+          </section>
+        </aside>
       </div>
     </div>
   );
