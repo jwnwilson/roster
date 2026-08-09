@@ -1,0 +1,7 @@
+node_modules
+dist
+*.tsbuildinfo
+
+# tsc -b emitted artifacts (build is type-check only; output comes from Vite)
+vite.config.js
+vite.config.d.ts

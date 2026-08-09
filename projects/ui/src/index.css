@@ -1,0 +1,14 @@
+@import "./lib/theme/tokens.css";
+@import "tailwindcss";
+
+/* Document-level dark base so there is never white bleed-through behind the
+   app shell / main content area (design token --bg-base = page background). */
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    background-color: var(--bg-base);
+    color: var(--text-1);
+  }
+}

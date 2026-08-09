@@ -165,6 +165,11 @@ Every project folder contains one:
   `event` messages on the thread and never block it from resolving.
 - **There is no run entity.** The unit of agent work is a *turn* inside a thread, and the messages
   it writes are the record. No run row, no event table, no run vocabulary — see spec §3 and §4.
+- **The UI says what is real.** Provenance lives in `projects/ui/src/lib/api/capabilities.ts`,
+  keyed by capability rather than by screen, because the live/mocked boundary runs *through*
+  screens. An unbacked capability needs a reason, a live one an endpoint, and every fixture handler
+  under `src/mocks/unbacked/` must name a capability the registry agrees is unbacked — enforced by
+  test. Un-mocking is one deletion plus one flip, and the test fails until both happen.
 - **No `naaf`** anywhere under `projects/`. The UI was transplanted from that codebase once; the
   name should not survive it.
 
@@ -172,7 +177,7 @@ Every project folder contains one:
 
 ```bash
 make install      # uv sync + pnpm install
-make dev          # migrate + seed + API (:8000) + UI (:5173)
+make dev          # migrate + seed + API (:8000) + UI (:5173); Ctrl-C stops both
 make run          # API only
 make test         # pytest
 make coverage     # 80% gate

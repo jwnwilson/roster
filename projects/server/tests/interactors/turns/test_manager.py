@@ -318,3 +318,31 @@ def test_a_summary_names_the_thread_and_its_conversation():
     summary = build_summary(thread, [])
 
     assert "Set up CI" in summary
+
+
+async def test_drain_waits_for_an_in_flight_turn(make_manager, seeded):
+    # Arrange — a turn that is still writing when the caller wants to stop.
+    thread, uow_factory = seeded
+    release = asyncio.Event()
+
+    class BlockingRuntime(ScriptedRuntime):
+        async def execute(self, agent, project_folder, task):
+            await release.wait()
+            yield ("text", "landed after the wait")
+
+    manager = make_manager(BlockingRuntime([]))
+    manager.launch(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    release.set()
+
+    # Act
+    await manager.drain()
+
+    # Assert — the write completed before drain returned, which is the whole
+    # point: without it the event loop is torn down mid-write.
+    assert manager.busy_agents() == []
+    messages = await _messages(uow_factory, thread.id)
+    assert messages[-1].content == "landed after the wait"
+
+
+async def test_drain_is_a_no_op_when_nothing_is_running(make_manager):
+    await make_manager(FakeRuntime()).drain()

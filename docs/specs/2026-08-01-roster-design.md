@@ -488,6 +488,12 @@ Create Work Item modals.
 Sidebar navigation is Dashboard · Threads · Agents · MCP Servers, with the PROJECTS group
 below carrying a `+` button.
 
+**Frame I (User Profile) is deliberately not built.** It is on the design canvas, but roster is a
+single-user local tool with no authentication, no tenancy, and no owner scoping (§3, §10) — there
+is no account to view and nothing a profile screen would hold that Settings does not. Recorded here
+so its absence reads as a decision rather than an oversight. If roster ever grows more than one
+user, that is a new design decision and this comes back with it.
+
 **There is no run surface anywhere in the UI** — no run monitor, no log-stream tab, no step
 timeline, no start-run button, and no run vocabulary in routes, components, or hooks. Live agent
 output is read in the Thread tab (handoff §D3), which is the design's own decision and now the

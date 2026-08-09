@@ -1,0 +1,395 @@
+:root {
+  /* Backgrounds */
+  --bg-base: #0e0f11;
+  --bg-sidebar: #080a0d;
+  --bg-surface: #131618;
+  --bg-surface-2: #0a0b0d;
+  --bg-input: #101316;
+  --bg-overlay: #1a1c22;
+  --bg-inset: #07080a;
+  /* Text */
+  --text-1: #e2e3e8;
+  --text-2: #c4c5cb;
+  --text-3: #8a8d96;
+  --text-4: #52555e;
+  --text-5: #42454e;
+  --text-6: #30333c;
+  --text-7: #22252c;
+  /* Borders */
+  --border-subtle: rgba(255,255,255,0.055);
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.09);
+  /* Accent */
+  --accent: #7c6cf0;
+  --accent-bg: rgba(124,108,240,0.10);
+  --accent-bg-hover: rgba(124,108,240,0.14);
+  --accent-border: rgba(124,108,240,0.25);
+  --accent-text: #bab7f6;
+  /* Semantic */
+  --green: #4a8c68;
+  --green-bg: rgba(74,140,104,0.10);
+  --red-text: #b05848;
+  --red-border: rgba(180,60,60,0.20);
+  --yellow-text: #907030;
+  --blue-text: #4868a0;
+  /* Type scale — handoff §Typography. Sizes are exact; the design is dense
+     and half-pixel steps are load-bearing, so they are not rounded. */
+  --text-size-9: 9px;
+  --text-size-9-5: 9.5px;
+  --text-size-10: 10px;
+  --text-size-10-5: 10.5px;
+  --text-size-11: 11px;
+  --text-size-11-5: 11.5px;
+  --text-size-12: 12px;
+  --text-size-12-5: 12.5px;
+  --text-size-13: 13px;
+  --text-size-13-5: 13.5px;
+  --text-size-15: 15px;
+  --text-size-17: 17px;
+  /* Spacing — handoff §Spacing, base unit 4px */
+  --space-4: 4px;
+  --space-5: 5px;
+  --space-6: 6px;
+  --space-7: 7px;
+  --space-8: 8px;
+  --space-9: 9px;
+  --space-10: 10px;
+  --space-11: 11px;
+  --space-12: 12px;
+  --space-13: 13px;
+  --space-14: 14px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  /* Radii — handoff §Border Radius */
+  --radius-3: 3px;
+  --radius-4: 4px;
+  --radius-5: 5px;
+  --radius-6: 6px;
+  --radius-7: 7px;
+  --radius-8: 8px;
+  --radius-9: 9px;
+  /* Shadows — handoff §Shadows. Cards and panels are border-only. */
+  --shadow-frame: 0 8px 32px rgba(0, 0, 0, 0.60);
+  /* Badge colours — handoff §Screen G "Badge types". These are the four states
+     a thread can be in, so they are named for the state rather than the hue. */
+  --badge-action-bg: rgba(190, 65, 50, 0.12);
+  --badge-action-border: rgba(190, 65, 50, 0.20);
+  --badge-action-text: #b05848;
+  --badge-review-bg: rgba(170, 130, 30, 0.10);
+  --badge-review-border: rgba(170, 130, 30, 0.18);
+  --badge-review-text: #907030;
+  --badge-info-bg: rgba(50, 80, 160, 0.10);
+  --badge-info-border: rgba(50, 80, 160, 0.18);
+  --badge-info-text: #4868a0;
+  --badge-resolved-bg: rgba(50, 110, 60, 0.08);
+  --badge-resolved-border: rgba(50, 110, 60, 0.14);
+  --badge-resolved-text: #3d6a48;
+  /* Surfaces and strokes the handoff names per-component rather than in its
+     token block — collected here so no component carries a literal. */
+  --bg-column-header: #0b0c0f;
+  --bg-track: #181a20;
+  --bg-avatar: #1c1e26;
+  --bg-badge: #181a22;
+  --stroke-idle: #2e3038;
+  --stroke-todo: #3a3d46;
+  --dot-muted: #3a3d44;
+  --fill-secondary: #44474f;
+  --error-text: #e5686b;
+  /* Agent status chips — handoff §Screen C. Only three exist, matching the
+     three states an agent can be in (spec §4). */
+  --agent-working: #4a8c68;
+  --agent-active: #4d7fd4;
+  --agent-disabled: #4a4d56;
+  --agent-working-bg: rgba(74, 140, 104, 0.10);
+  --agent-working-border: rgba(74, 140, 104, 0.20);
+  --agent-active-bg: rgba(77, 127, 212, 0.10);
+  --agent-active-border: rgba(77, 127, 212, 0.20);
+  --agent-disabled-bg: rgba(74, 77, 86, 0.10);
+  --agent-disabled-border: rgba(74, 77, 86, 0.20);
+  /* Neutral overlays the handoff specifies per component. */
+  --overlay-05: rgba(255, 255, 255, 0.05);
+  --overlay-07: rgba(255, 255, 255, 0.07);
+  --overlay-10: rgba(255, 255, 255, 0.10);
+  --overlay-13: rgba(255, 255, 255, 0.13);
+  --accent-dropzone: rgba(124, 108, 240, 0.045);
+  --accent-bg-soft: rgba(124, 108, 240, 0.06);
+  --accent-bg-card: rgba(124, 108, 240, 0.08);
+  --overlay-12: rgba(255, 255, 255, 0.12);
+  /* Toggle knob when on — handoff §Settings: white knob on the accent track. */
+  --knob-on: #ffffff;
+  /* The running-agent dot's halo — handoff §Animation. */
+  --accent-halo: 0 0 0 2.5px rgba(124, 108, 240, 0.20);
+
+  /* ---------------------------------------------------------------------
+     Values the hi-fi canvas uses that docs/design/README.md never documented.
+
+     The README lists 28 colours and a 9-17px type scale; the canvas actually
+     uses 75 colours, 9 further font sizes and 4 further radii. The plan names
+     the canvas as the visual authority, so building strictly from the README's
+     tokens could not reach it. Named for the role each plays in the canvas
+     rather than for its hue.
+     --------------------------------------------------------------------- */
+
+  /* Text, lightest to darkest — extends --text-1..7 */
+  --text-bright: #d8d9de;
+  --text-strong: #d0d2d8;
+  --text-card: #c8c9ce;
+  --text-read: #c0c2c8;
+  --text-body-soft: #b8b9bf;
+  --text-message: #b0b2b8;
+  --text-muted-1: #a0a3ac;
+  --text-muted-2: #9a9da8;
+  --text-muted-3: #9a9da6;
+  --text-secondary-1: #8f929b;
+  --text-secondary-2: #7a7d86;
+  --text-secondary-3: #72757e;
+  --text-label-1: #6b6e76;
+  --text-label-2: #6a6d78;
+  --text-label-3: #66696f;
+  --text-label-4: #64676f;
+  --text-dim-1: #40434c;
+  --text-dim-2: #3a3d45;
+  --text-dim-3: #36393f;
+  --text-dim-4: #363840;
+  --text-dim-5: #35383f;
+  --text-dim-6: #33363d;
+  --text-faint-1: #2a2d34;
+  --text-faint-2: #28292e;
+  --text-faint-3: #25272e;
+  --text-faint-4: #20222a;
+  --text-faint-5: #1e2028;
+
+  /* Surfaces — extends --bg-* */
+  --bg-panel: #141618;
+  --bg-chip: #131519;
+  --bg-row: #101214;
+  --bg-column-active: #0c0d10;
+  --bg-strip: #0b0d10;
+  --bg-chat: #09090c;
+  --bg-toggle-off: #1c1e24;
+  --bg-chart-bar: #2a2d36;
+
+  /* Semantic, from the canvas */
+  --attention: #c78b3f;
+  --denied: #c25b5b;
+  --accent-muted: #8a86d0;
+  --accent-light: #a9a6e6;
+  --accent-lightest: #e9e8ff;
+  --success-dim-1: #4a5a4a;
+  --success-dim-2: #3a5a3a;
+  --warn-orange: #c96442;
+  /* #2563eb appears once in the canvas and nowhere in the README. It looks like
+     a stray browser default rather than a roster colour, so it is deliberately
+     not tokenised — see ui-design-gaps.md. */
+
+  /* Type sizes beyond the README's 9-17 scale */
+  --text-size-7: 7px;
+  --text-size-7-5: 7.5px;
+  --text-size-8: 8px;
+  --text-size-8-5: 8.5px;
+  --text-size-14: 14px;
+  --text-size-15-5: 15.5px;
+  --text-size-18: 18px;
+  --text-size-20: 20px;
+  --text-size-30: 30px;
+
+  /* Radii beyond 3-9 */
+  --radius-1: 1px;
+  --radius-1-5: 1.5px;
+  --radius-2: 2px;
+  --radius-10: 10px;
+}
+
+/* Map tokens into the Tailwind v4 theme so utilities like bg-bg-base,
+   text-text-2, border-border, text-accent, bg-accent-bg are generated. */
+@theme inline {
+  --color-bg-base: var(--bg-base);
+  --color-bg-sidebar: var(--bg-sidebar);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-surface-2: var(--bg-surface-2);
+  --color-bg-input: var(--bg-input);
+  --color-bg-overlay: var(--bg-overlay);
+  --color-bg-inset: var(--bg-inset);
+  --color-text-1: var(--text-1);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-text-4: var(--text-4);
+  --color-text-5: var(--text-5);
+  --color-text-6: var(--text-6);
+  --color-text-7: var(--text-7);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --color-accent-bg-hover: var(--accent-bg-hover);
+  --color-accent-border: var(--accent-border);
+  --color-accent-text: var(--accent-text);
+  --color-green: var(--green);
+  --color-green-bg: var(--green-bg);
+  --color-red-text: var(--red-text);
+  --color-red-border: var(--red-border);
+  --color-yellow-text: var(--yellow-text);
+  --color-blue-text: var(--blue-text);
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  /* Scales — mapped so utilities generate: text-11-5, rounded-7, p-13,
+     shadow-frame. A token under :root that is not mapped here is inert. */
+  --text-9: var(--text-size-9);
+  --text-9-5: var(--text-size-9-5);
+  --text-10: var(--text-size-10);
+  --text-10-5: var(--text-size-10-5);
+  --text-11: var(--text-size-11);
+  --text-11-5: var(--text-size-11-5);
+  --text-12: var(--text-size-12);
+  --text-12-5: var(--text-size-12-5);
+  --text-13: var(--text-size-13);
+  --text-13-5: var(--text-size-13-5);
+  --text-15: var(--text-size-15);
+  --text-17: var(--text-size-17);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-7: var(--space-7);
+  --spacing-8: var(--space-8);
+  --spacing-9: var(--space-9);
+  --spacing-10: var(--space-10);
+  --spacing-11: var(--space-11);
+  --spacing-12: var(--space-12);
+  --spacing-13: var(--space-13);
+  --spacing-14: var(--space-14);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+  --spacing-24: var(--space-24);
+  --radius-3: var(--radius-3);
+  --radius-4: var(--radius-4);
+  --radius-5: var(--radius-5);
+  --radius-6: var(--radius-6);
+  --radius-7: var(--radius-7);
+  --radius-8: var(--radius-8);
+  --radius-9: var(--radius-9);
+  --shadow-frame: var(--shadow-frame);
+  --color-badge-action-bg: var(--badge-action-bg);
+  --color-badge-action-border: var(--badge-action-border);
+  --color-badge-action-text: var(--badge-action-text);
+  --color-badge-review-bg: var(--badge-review-bg);
+  --color-badge-review-border: var(--badge-review-border);
+  --color-badge-review-text: var(--badge-review-text);
+  --color-badge-info-bg: var(--badge-info-bg);
+  --color-badge-info-border: var(--badge-info-border);
+  --color-badge-info-text: var(--badge-info-text);
+  --color-badge-resolved-bg: var(--badge-resolved-bg);
+  --color-badge-resolved-border: var(--badge-resolved-border);
+  --color-badge-resolved-text: var(--badge-resolved-text);
+  --color-bg-column-header: var(--bg-column-header);
+  --color-bg-track: var(--bg-track);
+  --color-bg-avatar: var(--bg-avatar);
+  --color-bg-badge: var(--bg-badge);
+  --color-stroke-idle: var(--stroke-idle);
+  --color-stroke-todo: var(--stroke-todo);
+  --color-dot-muted: var(--dot-muted);
+  --color-fill-secondary: var(--fill-secondary);
+  --color-error-text: var(--error-text);
+  --color-agent-working: var(--agent-working);
+  --color-agent-active: var(--agent-active);
+  --color-agent-disabled: var(--agent-disabled);
+  --color-agent-working-bg: var(--agent-working-bg);
+  --color-agent-working-border: var(--agent-working-border);
+  --color-agent-active-bg: var(--agent-active-bg);
+  --color-agent-active-border: var(--agent-active-border);
+  --color-agent-disabled-bg: var(--agent-disabled-bg);
+  --color-agent-disabled-border: var(--agent-disabled-border);
+  --color-overlay-05: var(--overlay-05);
+  --color-overlay-07: var(--overlay-07);
+  --color-overlay-10: var(--overlay-10);
+  --color-overlay-13: var(--overlay-13);
+  --color-accent-dropzone: var(--accent-dropzone);
+  --color-accent-bg-soft: var(--accent-bg-soft);
+  --color-accent-bg-card: var(--accent-bg-card);
+  --color-overlay-12: var(--overlay-12);
+  --color-knob-on: var(--knob-on);
+  /* Canvas values, mapped so utilities generate. */
+  --color-text-bright: var(--text-bright);
+  --color-text-strong: var(--text-strong);
+  --color-text-card: var(--text-card);
+  --color-text-read: var(--text-read);
+  --color-text-body-soft: var(--text-body-soft);
+  --color-text-message: var(--text-message);
+  --color-text-muted-1: var(--text-muted-1);
+  --color-text-muted-2: var(--text-muted-2);
+  --color-text-muted-3: var(--text-muted-3);
+  --color-text-secondary-1: var(--text-secondary-1);
+  --color-text-secondary-2: var(--text-secondary-2);
+  --color-text-secondary-3: var(--text-secondary-3);
+  --color-text-label-1: var(--text-label-1);
+  --color-text-label-2: var(--text-label-2);
+  --color-text-label-3: var(--text-label-3);
+  --color-text-label-4: var(--text-label-4);
+  --color-text-dim-1: var(--text-dim-1);
+  --color-text-dim-2: var(--text-dim-2);
+  --color-text-dim-3: var(--text-dim-3);
+  --color-text-dim-5: var(--text-dim-5);
+  --color-text-dim-6: var(--text-dim-6);
+  --color-text-dim-4: var(--text-dim-4);
+  --color-text-faint-1: var(--text-faint-1);
+  --color-text-faint-2: var(--text-faint-2);
+  --color-text-faint-3: var(--text-faint-3);
+  --color-text-faint-4: var(--text-faint-4);
+  --color-text-faint-5: var(--text-faint-5);
+  --color-bg-panel: var(--bg-panel);
+  --color-bg-chip: var(--bg-chip);
+  --color-bg-row: var(--bg-row);
+  --color-bg-column-active: var(--bg-column-active);
+  --color-bg-strip: var(--bg-strip);
+  --color-bg-chat: var(--bg-chat);
+  --color-bg-toggle-off: var(--bg-toggle-off);
+  --color-bg-chart-bar: var(--bg-chart-bar);
+  --color-attention: var(--attention);
+  --color-denied: var(--denied);
+  --color-accent-muted: var(--accent-muted);
+  --color-accent-light: var(--accent-light);
+  --color-accent-lightest: var(--accent-lightest);
+  --color-success-dim-1: var(--success-dim-1);
+  --color-success-dim-2: var(--success-dim-2);
+  --color-warn-orange: var(--warn-orange);
+  --text-7: var(--text-size-7);
+  --text-7-5: var(--text-size-7-5);
+  --text-8: var(--text-size-8);
+  --text-8-5: var(--text-size-8-5);
+  --text-14: var(--text-size-14);
+  --text-15-5: var(--text-size-15-5);
+  --text-18: var(--text-size-18);
+  --text-20: var(--text-size-20);
+  --text-30: var(--text-size-30);
+  --radius-1: var(--radius-1);
+  --radius-1-5: var(--radius-1-5);
+  --radius-2: var(--radius-2);
+  --radius-10: var(--radius-10);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* Focus. One rule for every interactive element rather than each component
+   remembering: a new button inherits a visible ring instead of needing someone
+   to notice it does not have one. focus-visible, not focus, so a mouse click
+   does not leave a ring behind. */
+:where(button, a, [role="tab"], [role="switch"], select, input, textarea):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-4);
+}
+
+/* The handoff specifies the pulse; it does not specify overriding an operating
+   system accessibility setting. Anything animated later is covered too. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
