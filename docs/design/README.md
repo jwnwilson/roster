@@ -30,6 +30,17 @@ Open the HTML files in a browser and pan/zoom to see all screens side by side.
 
 These are the exact values used consistently across all screens.
 
+> **Correction, 2026-08-09 (roster).** This section as delivered documented 28
+> colours and a 9–17px type scale. The hi-fi canvas beside it actually uses **75
+> colours, 21 font sizes and 11 radii** — so a build following this section alone
+> could not reach the design it is meant to describe. The additional values are
+> listed below under **Also used by the canvas**, extracted from
+> `Roster Hi-Fi.dc.html` itself.
+>
+> The canvas remains the visual authority where the two disagree. A test in
+> `projects/ui/src/lib/theme/tokens.test.ts` diffs the implementation's tokens
+> against the canvas directly, so this gap cannot reopen silently.
+
 ### Colours
 
 ```
@@ -72,6 +83,34 @@ Status / semantic
   --blue-text:   #4868a0   (info badge)
 ```
 
+### Also used by the canvas, undocumented above
+
+```
+Text, lightest to darkest — extends the --text-1..7 scale
+  #d8d9de #d0d2d8 #c8c9ce #c0c2c8 #b8b9bf #b0b2b8 #a0a3ac #9a9da8 #9a9da6
+  #8f929b #7a7d86 #72757e #6b6e76 #6a6d78 #66696f #64676f #40434c #3a3d45
+  #36393f #363840 #35383f #33363d #2a2d34 #28292e #25272e #20222a #1e2028
+
+Surfaces — extends the --bg-* scale
+  #141618  panel        #131519  chip          #101214  row
+  #0c0d10  active column #0b0d10  contract strip #09090c  chat panel
+  #1c1e24  toggle (off) #2a2d36  chart bar
+
+Semantic
+  #c78b3f  attention — an MCP server whose auth has expired (K, K2)
+  #c25b5b  denied — a refused MCP call in the recent-calls log (K2)
+  #8a86d0  epic tag text (D)
+  #a9a6e6  accent, light
+  #e9e8ff  accent, lightest
+  #4a5a4a  #3a5a3a  dimmed greens
+  #c96442  warning orange
+
+Not tokenised
+  #2563eb  appears once in the canvas and nowhere in this document. It reads as
+           a stray browser default rather than a roster colour; confirm before
+           using it.
+```
+
 ### Typography
 
 ```
@@ -91,6 +130,14 @@ Scale (use font-size in px):
   13.5px — topbar title (large views)
   15px  — settings/dashboard section headers
   17px  — work item detail title
+
+Also used by the canvas, undocumented above:
+  7px, 7.5px, 8px  — the smallest mono labels
+  8.5px  — badge text (ACTION NEEDED, REVIEW NEEDED, INFO, RESOLVED)
+  14px   — body text in wider panels
+  15.5px — H1 inside the markdown spec body (D)
+  18px, 20px — larger headings
+  30px   — dashboard metric card values (E)
 
 Font weights:
   400 — body, metadata
@@ -132,6 +179,12 @@ Common values:
 8px  — metric cards, settings cards, activity feed containers
 9px  — main frame/panel containers
 50%  — circular avatars (JW, agent avatars)
+
+Also used by the canvas, undocumented above:
+1px    — progress-bar fills
+1.5px  — priority bars
+2px    — token chart bars
+10px   — toggle track
 ```
 
 ### Shadows
