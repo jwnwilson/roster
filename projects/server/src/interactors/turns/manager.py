@@ -14,7 +14,14 @@ from domain.agents import Agent
 from domain.errors import RecordNotFound
 from domain.ids import new_id
 from domain.memory import MemoryStore, empty_digest, should_compact
-from domain.threads import Message, MessageKind, Thread, status_after_message
+from domain.threads import (
+    Message,
+    MessageKind,
+    Thread,
+    ThreadStatus,
+    status_after_message,
+    status_after_turn,
+)
 from interactors.memory_stores import open_project_memory
 
 logger = logging.getLogger("roster.turns")
@@ -147,7 +154,7 @@ class AgentTurnManager:
                 )
             )
 
-    async def _move_thread(self, thread_id: str, status: str) -> None:
+    async def _move_thread(self, thread_id: str, status: ThreadStatus) -> None:
         if self._uow_factory is None:
             return
         async with self._uow_factory().transaction() as tx:
@@ -157,7 +164,12 @@ class AgentTurnManager:
                 # The thread has vanished (its project was deleted mid-turn) — must
                 # not take the whole asyncio task down with an unhandled exception.
                 return
-            await tx.threads.update(thread_id, thread.model_copy(update={"status": status}))
+            # Against the stored status, not the snapshot the turn started with:
+            # the operator may have resolved it while the agent was working.
+            target = status_after_turn(thread.status, status)
+            if target == thread.status:
+                return
+            await tx.threads.update(thread_id, thread.model_copy(update={"status": target}))
 
     async def write_memory(
         self, folder: Path, agent: Agent, thread_id: str, timestamp: str, summary: str

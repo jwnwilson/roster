@@ -151,10 +151,22 @@ def test_the_whole_chain_from_a_project_to_a_journal_entry_on_disk(api):
     assert item["title"] in entries[0].read_text()
 
     # The listing's derived fields are computed, not stored — a place two
-    # independent code paths could disagree.
-    listed = next(t for t in _data(client.get("/threads")) if t["id"] == thread["id"])
-    assert listed["message_count"] == len(messages)
-    assert listed["last_message"] == messages[-1]["content"]
+    # independent code paths could disagree. Both are re-read here and polled
+    # until they settle: comparing a listing against a snapshot taken earlier
+    # tests the clock, not the code.
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        current = _data(client.get(f"/threads/{thread['id']}/messages"))
+        listed = next(t for t in _data(client.get("/threads")) if t["id"] == thread["id"])
+        if listed["message_count"] == len(current):
+            break
+        time.sleep(0.5)
+    else:
+        pytest.fail(
+            f"listing says {listed['message_count']} messages, the thread has {len(current)}"
+        )
+
+    assert listed["last_message"] == current[-1]["content"]
 
 
 def test_deleting_the_project_leaves_the_operators_files_alone(api):
