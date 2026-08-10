@@ -63,7 +63,9 @@ class AgentTurnManager:
         self._compaction_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._in_flight: dict[tuple[str, str], asyncio.Task[None]] = {}
 
-    def launch(self, thread: Thread, agent: Agent, project_folder: str) -> asyncio.Task[None]:
+    def launch(
+        self, thread: Thread, agent: Agent, project_folder: str, task: str
+    ) -> asyncio.Task[None]:
         """Start a turn in the background and keep the task reachable while it runs.
 
         The event loop holds only a *weak* reference to a running task, so a caller
@@ -73,12 +75,12 @@ class AgentTurnManager:
         and enumerable is what gives `busy_agents` an answer.
         """
         key = (thread.id, agent.name)
-        task = asyncio.create_task(self.start(thread, agent, project_folder))
-        self._in_flight[key] = task
+        job = asyncio.create_task(self.start(thread, agent, project_folder, task))
+        self._in_flight[key] = job
         # Discarded on completion (success, failure, or cancellation) so a
         # long-lived process doesn't accumulate finished tasks forever.
-        task.add_done_callback(lambda _: self._in_flight.pop(key, None))
-        return task
+        job.add_done_callback(lambda _: self._in_flight.pop(key, None))
+        return job
 
     async def drain(self) -> None:
         """Wait for every in-flight turn to finish.
@@ -103,7 +105,9 @@ class AgentTurnManager:
         """
         return sorted({agent_name for _thread_id, agent_name in self._in_flight})
 
-    async def start(self, thread: Thread, agent: Agent, project_folder: str) -> None:
+    async def start(
+        self, thread: Thread, agent: Agent, project_folder: str, task: str
+    ) -> None:
         """Stream the runtime's output into the thread as messages.
 
         A crash is recorded as an `event` message rather than swallowed (spec §7):
@@ -112,7 +116,10 @@ class AgentTurnManager:
         """
         status = thread.status
         try:
-            async for kind, content in self._runtime.execute(agent, project_folder, thread.title):
+            # The message that summoned the agent, not the thread title. Passing
+            # the title meant a real agent answered the wrong question entirely —
+            # invisible under FakeRuntime, which ignores the task string.
+            async for kind, content in self._runtime.execute(agent, project_folder, task):
                 await self._record_message(thread.id, kind, content, agent.name)
                 status = status_after_message(status, _as_kind(kind))
         except Exception as error:

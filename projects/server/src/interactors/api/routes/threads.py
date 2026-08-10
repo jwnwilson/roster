@@ -292,14 +292,14 @@ async def create_message(
         # connection can see yet. Starlette runs background tasks after the
         # response, which is after the dependency teardown that commits.
         background.add_task(
-            _launch_once_committed, manager, thread, agent, project.folder_path
+            _launch_once_committed, manager, thread, agent, project.folder_path, created.content
         )
 
     return ok(created.model_dump(mode="json"))
 
 
 async def _launch_once_committed(
-    manager: AgentTurnManager, thread: Thread, agent: Agent, project_folder: str
+    manager: AgentTurnManager, thread: Thread, agent: Agent, project_folder: str, task: str
 ) -> None:
     """Start the turn on the event loop, from a background task.
 
@@ -307,7 +307,7 @@ async def _launch_once_committed(
     background function to a worker thread, and `launch` calls
     `asyncio.create_task`, which needs the running loop.
     """
-    manager.launch(thread, agent, project_folder)
+    manager.launch(thread, agent, project_folder, task)
 
 
 @router.get("/{thread_id}/stream")

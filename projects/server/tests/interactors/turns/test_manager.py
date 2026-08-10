@@ -103,7 +103,7 @@ async def test_a_turn_writes_the_runtime_output_as_messages(make_manager, seeded
     )
 
     # Act
-    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p", task="do the thing")
 
     # Assert
     messages = await _messages(uow_factory, thread.id)
@@ -116,7 +116,7 @@ async def test_a_kind_roster_does_not_recognise_is_recorded_as_an_event(make_man
     thread, uow_factory = seeded
     manager = make_manager(ScriptedRuntime([("telemetry", "cpu 40%")]))
 
-    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p", task="do the thing")
 
     messages = await _messages(uow_factory, thread.id)
     assert [m.kind for m in messages] == ["event"]
@@ -129,7 +129,7 @@ async def test_a_question_from_an_agent_moves_the_thread_to_action_needed(make_m
     manager = make_manager(ScriptedRuntime([("question", "Which database should I use?")]))
 
     # Act
-    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p", task="do the thing")
 
     # Assert
     async with uow_factory().transaction() as tx:
@@ -142,7 +142,7 @@ async def test_a_runtime_that_raises_records_the_failure_as_a_message(make_manag
     thread, uow_factory = seeded
     manager = make_manager(ScriptedRuntime([("text", "starting")], error=RuntimeError("boom")))
 
-    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p", task="do the thing")
 
     messages = await _messages(uow_factory, thread.id)
     assert messages[-1].kind == "event"
@@ -153,7 +153,7 @@ async def test_a_failed_turn_leaves_the_thread_open_for_a_retry(make_manager, se
     thread, uow_factory = seeded
     manager = make_manager(ScriptedRuntime([], error=RuntimeError("boom")))
 
-    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    await manager.start(thread, Agent(name="atlas"), project_folder="/tmp/p", task="do the thing")
 
     async with uow_factory().transaction() as tx:
         found = await tx.threads.read(thread.id)
@@ -177,7 +177,7 @@ async def test_an_agent_taking_a_turn_is_reported_as_busy(make_manager, seeded):
     manager = make_manager(BlockingRuntime([]))
 
     # Act
-    task = manager.launch(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    task = manager.launch(thread, Agent(name="atlas"), project_folder="/tmp/p", task="do the thing")
     await started.wait()
 
     # Assert — spec §3: an in-flight turn is the only source of Working
@@ -331,7 +331,7 @@ async def test_drain_waits_for_an_in_flight_turn(make_manager, seeded):
             yield ("text", "landed after the wait")
 
     manager = make_manager(BlockingRuntime([]))
-    manager.launch(thread, Agent(name="atlas"), project_folder="/tmp/p")
+    manager.launch(thread, Agent(name="atlas"), project_folder="/tmp/p", task="do the thing")
     release.set()
 
     # Act
@@ -346,3 +346,26 @@ async def test_drain_waits_for_an_in_flight_turn(make_manager, seeded):
 
 async def test_drain_is_a_no_op_when_nothing_is_running(make_manager):
     await make_manager(FakeRuntime()).drain()
+
+
+async def test_the_agent_is_given_the_message_that_summoned_it(make_manager, seeded):
+    """Regression: the manager passed thread.title as the task, so a real agent
+    answered the thread's subject instead of what the operator actually wrote.
+    FakeRuntime ignores the task string, so nothing caught it until a real CLI
+    replied to the wrong question."""
+    thread, _uow_factory = seeded
+    seen: list[str] = []
+
+    class RecordingRuntime(ScriptedRuntime):
+        async def execute(self, agent, project_folder, task):
+            seen.append(task)
+            yield ("text", "ack")
+
+    manager = make_manager(RecordingRuntime([]))
+
+    await manager.start(
+        thread, Agent(name="atlas"), project_folder="/tmp/p", task="Reply with pong"
+    )
+
+    assert seen == ["Reply with pong"]
+    assert thread.title not in seen
