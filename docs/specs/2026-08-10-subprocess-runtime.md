@@ -204,3 +204,21 @@ refusing makes that loss impossible rather than merely unlikely.
 - A malformed JSON line, a `kind`-less line, and stderr each have a test.
 - Cancelling a turn kills the process group — asserted, not assumed.
 - A disabled agent is never spawned — asserted.
+
+### Status, 2026-08-10
+
+Everything above holds except the adapters, which are one of three.
+
+- **`claude`: done**, against the installed binary — a full turn answered in a thread, resolving
+  wrote the journal entry, and a real compaction folded an entry into the digest.
+- **`codex` and `gemini`: blocked, not deferred.** Neither binary is installed on this machine, so
+  there is nothing to verify an adapter against. §4 records why writing them anyway is the specific
+  mistake this spec already made once: the `claude` mapping was invented, and every field of it was
+  wrong. They need someone with the CLIs installed to run the probes in §4 first.
+- **Termination is asserted against a process that ignores `SIGTERM`**, in both the turn and
+  compaction paths. Compaction previously signalled its child and raised without waiting, so only
+  the turn path escalated to `SIGKILL` — a CLI that traps `SIGTERM` survived a compaction timeout
+  outright, and the unwaited transport surfaced as an intermittent "Event loop is closed".
+- **An end-to-end journey exists** (`tests/e2e/test_journey.py`), booting a real uvicorn against a
+  temporary data root and walking design spec §12 over HTTP. A browser-level journey is still
+  blocked on a Playwright bridge, so the screens remain covered only by component tests.
