@@ -195,22 +195,41 @@ review could have seen it: every task correctly reported its own brief satisfied
 
 ## Outstanding
 
-**Backend:** review and merge the `feat/threads` PR. It carries the spec revision, both plans, and
-the eight implementation commits. The UI plan rides along because it was written on the same branch before the
-split and belongs on `main` regardless — but no UI *code* is on it.
+**Backend and UI are both merged.** `main` carries 312 backend tests and 232 UI tests, with CI
+running a job for each on every pull request. What follows is what has never been built.
 
-**UI:** Task 1 done on `feat/ui` (60 tests green). Tasks 2–14 outstanding — The harvest turned out to be **12% of the source SPA, not two-thirds**:
-the rest was welded to a generated schema for a different API, so Tasks 4–12 are builds rather than
-reworks. Resume with `superpowers/ui-session-brief.md`. Provenance is
-keyed by capability rather than screen, because the live/mocked boundary runs *through* screens: the
-board's work items are live while the assigned-agent avatar and token count on the same card are
-not. Threads, `workItems.assignedAgent` and `agents.workingStatus` are now backed and can come out
-of `src/mocks/unbacked/` as the screens are built.
+**1. `SubprocessRuntime` — the real agent runtime.** The largest and the one that matters most:
+`FakeRuntime` is still the only implementation, so no agent has ever actually run. Everything
+downstream of it is proven against a scripted fake. This is what turns roster from a shell into the
+thing it is for, and it brings the lead-agent coordination protocol and remote-git cloning with it.
 
-**Deferred, each needing its own spec:** `McpServer`, `Secret`, `Attachment` persistence; any token
-or spend figure, which no entity carries; agent write endpoints; `SubprocessRuntime` and lead-agent coordination; cloning a
-remote git source; the memory UI; an end-to-end suite and its CI workflow; secrets encryption at
-rest; Electron packaging.
+**2. An end-to-end suite.** Spec §12 deferred this with an explicit trigger: "revisit once the
+screens exist". They now do. The journey worth covering is create project → create work item → post
+a message that starts a turn → watch messages stream in → resolve the thread and see the journal
+entry. It is the only check that would catch the UI and the API disagreeing, and this session
+produced several defects of exactly that shape.
+
+**3. The rendered design comparison.** Every canvas value is now tokenised and the four missing
+regions are built, but no screen has been seen rendered against `Roster Hi-Fi.dc.html`. Which token
+each component reaches for is unverified. Needs the Playwright MCP browser bridge installed, or a
+person with the canvas open. See `superpowers/plans/ui-design-gaps.md`.
+
+**4. Un-mocking the fixture screens.** `McpServer`, `Secret` and `Attachment` persistence, plus any
+token or spend figure — no entity carries one, so most of the Dashboard is invented. Each is a
+backend slice paired with deleting one file from `projects/ui/src/mocks/unbacked/`; the capability
+registry test then forces the registry to follow.
+
+**5. Agent write endpoints** — rename, edit `AGENT.md`, change the model. The controls exist and are
+deliberately disabled with their reason on screen.
+
+**6. The memory UI** — reading, hand-editing and reverting a digest. No screen exists in the design
+bundle yet, so this needs design before code.
+
+**Further out:** secrets encryption at rest; Electron packaging; tuning compaction prompt quality
+against real project history.
+
+**Confirm with the designer:** `#2563eb` appears once in the hi-fi canvas and nowhere in its README.
+It is treated as a stray browser default and deliberately left untokenised.
 
 **Optional, not planned:** the UnitOfWork could be split into a generic base plus a thin app subclass holding only the repository properties, mirroring the reference's `naaf_db` / `adapters/database` layering. Roster collapsed the two into one class because it has no `libs/` workspace package — the split is still possible without one (a base module beside it), but with a single consumer it buys structure rather than reuse. Worth doing if the generic half is ever shared.
 
