@@ -32,6 +32,12 @@ class ClaudeAdapter:
             agent.model,
         ]
 
+    def summarise_argv(self, agent: Agent, executable: str) -> list[str]:
+        # No --output-format: compaction wants the digest itself, not frames to
+        # unwrap. The prompt arrives on stdin because a digest plus its journal
+        # runs to kilobytes, which does not belong in an argument list.
+        return [executable, "-p", "--model", agent.model]
+
     def parse(self, line: str) -> Parsed:
         stripped = line.strip()
         if not stripped:

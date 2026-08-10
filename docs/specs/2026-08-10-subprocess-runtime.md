@@ -164,6 +164,22 @@ using the agent's configured model. It returns the replacement digest as plain t
 exit raises, which `compact_now` already turns into a failed compaction that leaves digest and
 journal untouched — the existing contract needs no change.
 
+An **empty** result is refused rather than written. `compact()` deletes the journal entries it
+folded in, so accepting an empty digest would erase a project's accumulated context irrecoverably;
+refusing makes that loss impossible rather than merely unlikely.
+
+> **Open, found by running it (2026-08-10).** Compacting a digest through the real CLI produced a
+> line that was in no input given to it — "Python/FastAPI server at `projects/server`" — because
+> the compaction subprocess inherits the server's working directory and the CLI can read files
+> there. For a *project's* memory that is at best the wrong project's context and at worst another
+> project's contents folded into this one's digest.
+>
+> `summarise` never receives the project folder: `compact_now(folder, agent)` has it and does not
+> pass it on. Fixing this means either widening the `AgentRuntime.summarise` signature or running
+> compaction with a neutral cwd and no tool access. **Deliberately not fixed in this pass** — it
+> changes a port that `FakeRuntime` also implements, and it deserves its own change rather than
+> being smuggled in beside the feature that revealed it.
+
 ## 7. Out of scope, deliberately
 
 - **Lead-agent coordination.** Spec §3 says the lead spawns and messages other agents through the

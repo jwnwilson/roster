@@ -165,7 +165,63 @@ class SubprocessRuntime:
     async def summarise(
         self, agent: Agent, digest: str, entries: list[str], budget_bytes: int
     ) -> str:
-        raise NotImplementedError(
-            "compaction through a real CLI is not built yet; compact_now turns this into a "
-            "failed compaction that leaves digest and journal untouched"
+        """Fold the journal into the digest by asking the agent's own CLI.
+
+        Raising is safe by design: `compact_now` turns any exception into a
+        failed compaction that leaves the digest and journal untouched, and the
+        next resolved thread retries. So this never returns a half-made digest —
+        it returns a whole one or nothing.
+        """
+        if agent.status == "disabled":
+            raise AgentUnavailable(f"{agent.name} is disabled: {agent.problem}")
+
+        adapter = ADAPTERS.get(agent.tool)
+        if adapter is None:
+            raise AgentUnavailable(f"no adapter for tool {agent.tool!r}")
+
+        executable = self._executable(agent.tool)
+        prompt = _compaction_prompt(digest, entries, budget_bytes)
+
+        process = await asyncio.create_subprocess_exec(
+            *adapter.summarise_argv(agent, executable),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,
         )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(prompt.encode()), timeout=self._timeout
+            )
+        except TimeoutError:
+            self._terminate(process)
+            raise TimeoutError(f"compaction timed out after {int(self._timeout)}s") from None
+
+        if process.returncode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            raise RuntimeError(f"compaction exited with status {process.returncode}: {detail}")
+
+        replacement = stdout.decode(errors="replace").strip()
+        if not replacement:
+            # An empty digest would silently erase a project's accumulated
+            # context, and compact() deletes the journal entries it folded in —
+            # so refusing here is what makes the loss impossible rather than
+            # unlikely.
+            raise ValueError("compaction returned an empty digest")
+        return replacement
+
+
+def _compaction_prompt(digest: str, entries: list[str], budget_bytes: int) -> str:
+    """What the agent is asked. Roster owns this, not the adapter: what a digest
+    should contain is a roster rule (design spec §5), while how a CLI is invoked
+    is the adapter's business."""
+    journal = "\n\n---\n\n".join(entries)
+    return (
+        "You are compacting a project's memory digest.\n\n"
+        "Return ONLY the replacement digest as markdown — no preamble, no code fence.\n"
+        f"Keep it under {budget_bytes} bytes and preserve the existing section headings.\n\n"
+        "=== CURRENT DIGEST ===\n"
+        f"{digest}\n\n"
+        "=== JOURNAL ENTRIES TO FOLD IN ===\n"
+        f"{journal}\n"
+    )

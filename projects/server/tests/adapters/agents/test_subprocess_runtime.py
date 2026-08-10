@@ -154,3 +154,77 @@ async def test_cancelling_a_turn_kills_the_process(run, monkeypatch):
     # A subprocess outliving its turn is the same defect drain() exists for,
     # with a heavier object.
     assert task.cancelled()
+
+
+class _SummariseAdapter(_ScriptedAdapter):
+    """Runs a python snippet for compaction instead of a real CLI."""
+
+    def summarise_argv(self, agent, executable):
+        return [executable, "-c", self._script]
+
+
+@pytest.fixture
+def summarise(monkeypatch):
+    from adapters.agents import subprocess_runtime as module
+    from adapters.agents.tools import ClaudeAdapter
+
+    async def _run(script: str, *, timeout: float = 30.0, entries=None):
+        monkeypatch.setitem(
+            module.ADAPTERS, "claude", _SummariseAdapter(script, ClaudeAdapter().parse)
+        )
+        runtime = SubprocessRuntime(executables={"claude": sys.executable}, timeout_seconds=timeout)
+        return await runtime.summarise(
+            Agent(name="atlas"), "# old digest", entries or ["did a thing"], 8000
+        )
+
+    return _run
+
+
+async def test_compaction_returns_what_the_agent_wrote(summarise):
+    script = 'import sys; sys.stdin.read(); print("# new digest\\n\\n## Overview\\nrewritten")'
+
+    assert "rewritten" in await summarise(script)
+
+
+async def test_the_prompt_carries_the_digest_and_the_journal(summarise):
+    # Round-trips stdin so the test sees exactly what the agent would.
+    script = 'import sys; print(sys.stdin.read())'
+
+    seen = await summarise(script, entries=["entry one", "entry two"])
+
+    assert "# old digest" in seen
+    assert "entry one" in seen and "entry two" in seen
+    assert "8000 bytes" in seen
+
+
+async def test_an_empty_digest_is_refused_rather_than_written(summarise):
+    # compact() deletes the journal entries it folded in, so accepting an empty
+    # digest would erase a project's accumulated context irrecoverably.
+    script = 'import sys; sys.stdin.read(); print("")'
+
+    with pytest.raises(ValueError, match="empty digest"):
+        await summarise(script)
+
+
+async def test_a_failed_compaction_raises_so_the_journal_survives(summarise):
+    # compact_now turns any raise into a no-op that leaves digest and journal
+    # untouched; returning junk instead would destroy both.
+    script = 'import sys; sys.stdin.read(); sys.stderr.write("model unavailable\\n"); sys.exit(2)'
+
+    with pytest.raises(RuntimeError, match="status 2"):
+        await summarise(script)
+
+
+async def test_a_hanging_compaction_times_out(summarise):
+    script = "import time; time.sleep(30)"
+
+    with pytest.raises(TimeoutError):
+        await summarise(script, timeout=1.0)
+
+
+async def test_a_disabled_agent_never_compacts(summarise):
+    runtime = SubprocessRuntime()
+    disabled = Agent(name="cinder", status="disabled", problem="AGENT.md is missing")
+
+    with pytest.raises(AgentUnavailable):
+        await runtime.summarise(disabled, "# d", ["e"], 8000)

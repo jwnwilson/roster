@@ -27,3 +27,12 @@ class ToolAdapter(Protocol):
     def parse(self, line: str) -> Parsed:
         """Map one line of the tool's stdout onto a roster message."""
         ...
+
+    def summarise_argv(self, agent: Agent, executable: str) -> list[str]:
+        """The command line for a one-shot, plain-text answer read from stdin.
+
+        Compaction is not a turn: it wants one string back, not a stream of
+        messages, so it gets its own argv rather than reusing `argv` and
+        discarding most of the output.
+        """
+        ...
