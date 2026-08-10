@@ -13,3 +13,6 @@ dist/
 # UI
 projects/ui/node_modules/
 projects/ui/dist/
+
+# Claude Code session state and worktrees — never part of the repo.
+.claude/
