@@ -262,3 +262,37 @@ def test_marking_leaves_the_originals_untouched():
     mark_working(agents, {"atlas"})
 
     assert agents[0].status == "active"
+
+
+def test_the_tool_is_inferred_from_the_model_when_config_omits_it(tmp_path):
+    # Existing agent folders have no `tool` key and must keep working.
+    for model, expected in [
+        ("claude-opus-5", "claude"),
+        ("gpt-5-codex", "codex"),
+        ("o3-mini", "codex"),
+        ("gemini-2.5-pro", "gemini"),
+    ]:
+        root = tmp_path / model
+        root.mkdir()
+        _write_agent(root, "atlas", config=f"model: {model}\n")
+        agent = read_agent(root / "atlas", LocalFileStore(root))
+        assert agent.tool == expected, model
+
+
+def test_an_explicit_tool_beats_the_inference(tmp_path):
+    _write_agent(tmp_path, "atlas", config="model: claude-opus-5\ntool: codex\n")
+
+    agent = read_agent(tmp_path / "atlas", LocalFileStore(tmp_path))
+
+    assert agent.tool == "codex"
+
+
+def test_an_unknown_tool_disables_the_agent_rather_than_becoming_an_exec(tmp_path):
+    # A folder that could name an arbitrary command would let a malformed
+    # config.yaml execute anything. An unrecognised name is a Disabled agent.
+    _write_agent(tmp_path, "atlas", config="model: claude-opus-5\ntool: rm -rf /\n")
+
+    agent = read_agent(tmp_path / "atlas", LocalFileStore(tmp_path))
+
+    assert agent.status == "disabled"
+    assert "tool must be one of" in (agent.problem or "")

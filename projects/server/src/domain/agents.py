@@ -9,6 +9,36 @@ from adapters.storage.ports import FileStore
 AgentStatus = Literal["working", "active", "disabled"]
 
 DEFAULT_MODEL = "claude-opus-5"
+
+# The CLI tools roster knows how to spawn. A *closed enum*, never a command
+# string: an agent folder is operator content, and a folder that could name an
+# arbitrary command would let a malformed config.yaml execute anything — turning
+# "a broken folder degrades to Disabled" into a security boundary it was never
+# designed to be (subprocess-runtime spec §3).
+AgentTool = Literal["claude", "codex", "gemini"]
+
+TOOLS: tuple[AgentTool, ...] = ("claude", "codex", "gemini")
+
+# Which tool a model belongs to, when config.yaml does not say. Prefix-matched so
+# existing agent folders keep working untouched.
+_TOOL_BY_MODEL_PREFIX: tuple[tuple[str, AgentTool], ...] = (
+    ("claude", "claude"),
+    ("gemini", "gemini"),
+    ("gpt", "codex"),
+    ("o1", "codex"),
+    ("o3", "codex"),
+    ("o4", "codex"),
+)
+
+
+def tool_for_model(model: str) -> AgentTool:
+    """The CLI that can run this model. Defaults to claude for an unknown prefix
+    rather than raising: an unrecognised *model* is the operator's business, and
+    guessing wrong here is recoverable where refusing to load the agent is not."""
+    for prefix, tool in _TOOL_BY_MODEL_PREFIX:
+        if model.lower().startswith(prefix):
+            return tool
+    return "claude"
 DEFAULT_TOKEN_LIMIT = 200_000
 
 # The shape of an agent folder (spec §4) — read and written from these names alone.
@@ -26,6 +56,9 @@ class Agent(BaseModel):
     model: str = DEFAULT_MODEL
     token_limit: int = DEFAULT_TOKEN_LIMIT
     temperature: float | None = None
+    # Which CLI runs this agent. Inferred from the model when config.yaml omits
+    # it; an explicit value always wins.
+    tool: AgentTool = "claude"
     instructions: str = ""
     skills: list[str] = []
     status: AgentStatus = "active"
@@ -99,6 +132,16 @@ def read_agent(folder: Path, store: FileStore) -> Agent:
                 problem=f"model must be a string, got {type(model).__name__}",
             )
 
+        tool = config.get("tool", tool_for_model(model))
+        if tool not in TOOLS:
+            # An unrecognised name disables the agent with a reason, exactly as a
+            # malformed token_limit does — it never becomes an exec attempt.
+            return Agent(
+                name=folder.name,
+                status="disabled",
+                problem=f"tool must be one of {', '.join(TOOLS)}, got {tool!r}",
+            )
+
         token_limit = config.get("token_limit", DEFAULT_TOKEN_LIMIT)
         try:
             token_limit = int(token_limit)
@@ -114,6 +157,7 @@ def read_agent(folder: Path, store: FileStore) -> Agent:
             model=model,
             token_limit=token_limit,
             temperature=config.get("temperature"),
+            tool=tool,
             instructions=store.read_text(instructions_path),
             skills=skills,
         )
