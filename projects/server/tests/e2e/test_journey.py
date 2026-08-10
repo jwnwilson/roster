@@ -111,15 +111,23 @@ def test_the_whole_chain_from_a_project_to_a_journal_entry_on_disk(api):
     }))
     assert posted["content"] == "Please summarise it."
 
-    # The turn runs in a background task, so poll rather than assume.
+    # The turn runs in a background task, so poll rather than assume — and wait
+    # for it to *finish*, not merely to start. Breaking on the first agent
+    # message samples the thread mid-stream, which reads as a product bug later
+    # when the listing's derived count disagrees with a stale snapshot.
     deadline = time.monotonic() + 30
+    messages: list[dict] = []
+    settled = 0
     while time.monotonic() < deadline:
-        messages = _data(client.get(f"/threads/{thread['id']}/messages"))
-        if any(m["author_kind"] == "agent" for m in messages):
+        current = _data(client.get(f"/threads/{thread['id']}/messages"))
+        has_agent = any(m["author_kind"] == "agent" for m in current)
+        settled = settled + 1 if has_agent and len(current) == len(messages) else 0
+        messages = current
+        if settled >= 2:
             break
         time.sleep(0.5)
     else:
-        pytest.fail("the agent never wrote anything to the thread")
+        pytest.fail(f"the agent's turn never settled; saw {len(messages)} messages")
 
     assert [m["kind"] for m in messages if m["author_kind"] == "agent"], messages
 
