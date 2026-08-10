@@ -1,5 +1,7 @@
 import asyncio
+import os
 import sys
+import time
 
 import pytest
 
@@ -131,29 +133,36 @@ async def test_an_unbuilt_tool_refuses_rather_than_guessing(run):
         [m async for m in runtime.execute(agent, "/tmp", "do it")]
 
 
-async def test_cancelling_a_turn_kills_the_process(run, monkeypatch):
+async def test_cancelling_a_turn_kills_the_process(run, monkeypatch, tmp_path):
     from adapters.agents import subprocess_runtime as module
     from adapters.agents.tools import ClaudeAdapter
 
-    script = "import time; time.sleep(30)"
-    monkeypatch.setitem(
-        module.ADAPTERS, "claude", _ScriptedAdapter(script, ClaudeAdapter().parse)
+    pid_file = tmp_path / "cancelled.pid"
+    script = (
+        "import sys, time, os; "
+        "open(sys.argv[-1], 'w').write(str(os.getpid())); "
+        "time.sleep(120)"
     )
-    runtime = SubprocessRuntime(executables={"claude": sys.executable}, timeout_seconds=30)
+    monkeypatch.setitem(
+        module.ADAPTERS, "claude", _PidAdapter(script, ClaudeAdapter().parse, pid_file)
+    )
+    runtime = SubprocessRuntime(executables={"claude": sys.executable}, timeout_seconds=120)
 
     async def consume():
         async for _ in runtime.execute(Agent(name="atlas"), "/tmp", "do it"):
             pass
 
     task = asyncio.create_task(consume())
-    await asyncio.sleep(0.5)
+    pid = await _pid_from(pid_file)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
 
     # A subprocess outliving its turn is the same defect drain() exists for,
-    # with a heavier object.
-    assert task.cancelled()
+    # with a heavier object. The earlier version of this test asserted
+    # `task.cancelled()`, which is true of any cancelled task and says nothing
+    # about the process — the thing the name promises to check.
+    assert await _wait_until_dead(pid), "the turn was cancelled but its process survived"
 
 
 class _SummariseAdapter(_ScriptedAdapter):
@@ -228,3 +237,93 @@ async def test_a_disabled_agent_never_compacts(summarise):
 
     with pytest.raises(AgentUnavailable):
         await runtime.summarise(disabled, "# d", ["e"], 8000)
+
+
+# A CLI that ignores SIGTERM is not hypothetical — a tool that traps it to flush
+# state and then hangs on a network call behaves exactly like this. The scripts
+# below record their pid so the test can ask the operating system whether the
+# process really died, rather than trusting that a signal was sent.
+_IGNORES_SIGTERM = (
+    "import signal, sys, time; "
+    "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+    "open(sys.argv[-1], 'w').write(str(__import__('os').getpid())); "
+    "time.sleep(120)"
+)
+
+
+def _is_alive(pid: int) -> bool:
+    """True while the pid exists. A reaped child is gone; a zombie is not."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+async def _pid_from(path, timeout: float = 10.0) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists() and path.read_text().strip():
+            return int(path.read_text().strip())
+        await asyncio.sleep(0.05)
+    raise AssertionError("the child never reported its pid")
+
+
+async def _wait_until_dead(pid: int, timeout: float = 15.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _is_alive(pid):
+            return True
+        await asyncio.sleep(0.1)
+    return False
+
+
+class _PidAdapter(_ScriptedAdapter):
+    """Passes a scratch path to the script so it can report its own pid."""
+
+    def __init__(self, script, parse, pid_file):
+        super().__init__(script, parse)
+        self._pid_file = str(pid_file)
+
+    def argv(self, agent, task, executable):
+        return [executable, "-c", self._script, self._pid_file]
+
+    def summarise_argv(self, agent, executable):
+        return [executable, "-c", self._script, self._pid_file]
+
+
+async def test_a_turn_that_ignores_sigterm_is_killed_anyway(monkeypatch, tmp_path):
+    from adapters.agents import subprocess_runtime as module
+    from adapters.agents.tools import ClaudeAdapter
+
+    pid_file = tmp_path / "turn.pid"
+    monkeypatch.setitem(
+        module.ADAPTERS, "claude", _PidAdapter(_IGNORES_SIGTERM, ClaudeAdapter().parse, pid_file)
+    )
+    runtime = SubprocessRuntime(executables={"claude": sys.executable}, timeout_seconds=1.0)
+
+    [_ async for _ in runtime.execute(Agent(name="atlas"), "/tmp", "do it")]
+
+    pid = await _pid_from(pid_file)
+    assert await _wait_until_dead(pid), "the turn timed out but its process is still running"
+
+
+async def test_a_compaction_that_ignores_sigterm_is_killed_anyway(monkeypatch, tmp_path):
+    # The same hang, the other path. `execute` escalates to SIGKILL and
+    # `summarise` did not: it signalled the child and raised without ever
+    # reaping it, leaving a live process and an unclosed transport behind
+    # (surfacing later as an "Event loop is closed" unraisable warning).
+    from adapters.agents import subprocess_runtime as module
+    from adapters.agents.tools import ClaudeAdapter
+
+    pid_file = tmp_path / "compact.pid"
+    monkeypatch.setitem(
+        module.ADAPTERS, "claude", _PidAdapter(_IGNORES_SIGTERM, ClaudeAdapter().parse, pid_file)
+    )
+    runtime = SubprocessRuntime(executables={"claude": sys.executable}, timeout_seconds=1.0)
+
+    with pytest.raises(TimeoutError):
+        await runtime.summarise(Agent(name="atlas"), "# d", ["e"], 8000)
+
+    pid = await _pid_from(pid_file)
+    assert await _wait_until_dead(pid), "compaction timed out but its process is still running"

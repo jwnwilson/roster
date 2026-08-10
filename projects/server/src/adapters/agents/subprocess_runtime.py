@@ -17,6 +17,11 @@ logger = logging.getLogger("roster.runtime")
 # agent roster spawns is not the operator sitting at a terminal.
 _STRIPPED_ENV_PREFIXES = ("CLAUDE_", "ANTHROPIC_CONFIG", "CODEX_", "GEMINI_")
 
+# How long a CLI gets to exit on SIGTERM before it is killed outright. Long
+# enough for a tool that flushes state on the way out, short enough that a stuck
+# process cannot hold a turn open.
+_SIGTERM_GRACE_SECONDS = 5.0
+
 
 class AgentUnavailable(Exception):
     """The agent cannot be spawned at all — disabled, or no adapter for its tool."""
@@ -151,16 +156,24 @@ class SubprocessRuntime:
             process.terminate()
 
     async def _reap(self, process) -> None:
+        """Leave nothing running, whatever the CLI does about being asked nicely.
+
+        Every exit from a spawned process goes through here. Waiting after the
+        kill is the part that is easy to skip and wrong to: an unwaited child
+        stays a live pid, and its transport is finalised later — after the loop
+        has closed — which is where "Event loop is closed" comes from.
+        """
         if process.returncode is not None:
             return
         self._terminate(process)
         try:
-            await asyncio.wait_for(process.wait(), timeout=5)
+            await asyncio.wait_for(process.wait(), timeout=_SIGTERM_GRACE_SECONDS)
         except TimeoutError:
             try:
                 os.killpg(os.getpgid(process.pid), signal.SIGKILL)
             except (ProcessLookupError, PermissionError):
                 process.kill()
+            await process.wait()
 
     async def summarise(
         self, agent: Agent, digest: str, entries: list[str], budget_bytes: int
@@ -190,12 +203,17 @@ class SubprocessRuntime:
             start_new_session=True,
         )
         try:
-            stdout, stderr = await asyncio.wait_for(
-                process.communicate(prompt.encode()), timeout=self._timeout
-            )
-        except TimeoutError:
-            self._terminate(process)
-            raise TimeoutError(f"compaction timed out after {int(self._timeout)}s") from None
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    process.communicate(prompt.encode()), timeout=self._timeout
+                )
+            except TimeoutError:
+                raise TimeoutError(f"compaction timed out after {int(self._timeout)}s") from None
+        finally:
+            # Same reaping as a turn. Signalling and raising is not enough: a CLI
+            # that traps SIGTERM survived compaction's timeout entirely, because
+            # only that path escalated to SIGKILL.
+            await self._reap(process)
 
         if process.returncode != 0:
             detail = stderr.decode(errors="replace").strip()
