@@ -73,15 +73,45 @@ entry — not a change to the runtime.
 The runtime itself knows only: spawn, read lines, hand each to the adapter, yield what comes back.
 That split is what stops per-tool quirks leaking into the turn manager.
 
-**Preferred wire format, where a tool offers one: newline-delimited JSON.** All three can emit
-structured streaming output, and where a tool supports it the adapter requests it and parses it.
-One object per line:
+**Preferred wire format, where a tool offers one: newline-delimited JSON.**
 
-```json
-{"kind": "text", "content": "Read 42 lines of src/auth/token.py"}
-{"kind": "file_write", "content": "src/auth/token.py", "payload": {"lines_added": 12}}
-{"kind": "question", "content": "Should the summary cover the tests as well?"}
-```
+### `claude` — verified 2026-08-10 against the installed binary
+
+`claude -p "<task>" --output-format stream-json --verbose` emits NDJSON. **The earlier draft of
+this section invented a `{"kind", "content"}` shape. That shape does not exist.** The real one:
+
+| Line | Maps to |
+|---|---|
+| `{"type":"assistant","message":{"content":[{"type":"text","text":…}]}}` | `("text", text)` |
+| same, content block `{"type":"tool_use","name":"Write"\|"Edit","input":{"file_path":…}}` | `("file_write", file_path)` |
+| same, any other `tool_use` | `("event", "used <name>")` |
+| `{"type":"result","subtype":"success","result":…}` | terminal; nothing yielded |
+| `{"type":"result","is_error":true,…}` | `("event", <the error>)` |
+| `{"type":"system",…}`, `{"type":"rate_limit_event"}` | **understood and deliberately ignored** |
+
+That last row is why `parse` returns `(kind, content) | None`: `None` means *recognised and not
+worth a message*, which is different from unparseable. Session/hook chatter flooding a thread would
+bury the agent's actual work.
+
+**Two things the probe turned up that change other plans.**
+
+1. **The runtime can report tokens and cost.** `message.usage` carries token counts and the
+   terminal `result` carries `total_cost_usd` — one trivial call reported `$0.319`. Elsewhere it is
+   recorded that "no entity carries a token or spend figure", which is why most of the Dashboard is
+   fixtures. That is true of roster's *model*, but the data exists at this boundary. Capturing it
+   stays out of scope here, but it is now a known-possible follow-up rather than a missing input.
+2. **The spawned CLI inherited this machine's Claude Code hooks**, so the stream opened with four
+   `SessionStart` hook lines carrying unrelated content. A spawned agent must not inherit the
+   operator's interactive configuration — the subprocess environment needs deciding rather than
+   defaulting.
+
+### `codex` and `gemini` — unverified, neither is installed
+
+`command -v` finds neither on this machine, so their argv and output shapes remain unknown. **They
+must not be written from guesses**; that is the mistake this section just corrected for `claude`.
+Either install them and probe, or ship `claude` alone and add the others when a binary exists. A
+`tool` naming an uninstalled binary already disables the agent with a readable reason (§5), so
+shipping one adapter is a coherent state rather than a half-built one.
 
 - **A line the adapter cannot parse is yielded as `("event", <the raw line>)`,** never dropped. An
   agent that prints a stack trace to stdout must not vanish; spec §7 says a failure is visible in
