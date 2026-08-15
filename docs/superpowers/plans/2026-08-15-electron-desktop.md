@@ -334,14 +334,23 @@ async def test_an_unknown_api_path_returns_the_json_envelope_not_the_app(ui_dir,
     assert response.json()["data"] is None
 
 
-def test_the_containment_guard_refuses_a_path_outside_the_root(ui_dir):
-    # The guard tested directly, because an HTTP client normalises `..` out of
-    # the path before the app ever sees it — a route-level test alone would pass
-    # without the guard existing at all.
-    # Arrange / Act / Assert
-    assert _resolve_within(ui_dir, "../../etc/passwd") is None
-    assert _resolve_within(ui_dir, "../../../etc/passwd") is None
-    assert _resolve_within(ui_dir, "index.html") is not None
+def test_the_containment_guard_refuses_a_path_outside_the_root(tmp_path):
+    # Probed against a file that REALLY EXISTS just outside the root, and tested
+    # directly because an HTTP client normalises `..` out of the path before the
+    # app sees it. Do not probe "../../etc/passwd": under pytest's deep tmp dirs
+    # that resolves to something non-existent, so it returns None via is_file()
+    # whether or not the guard is there — a vacuous test that passes with the
+    # guard deleted.
+    # Arrange
+    root = tmp_path / "ui"
+    root.mkdir()
+    (root / "index.html").write_text("<title>roster</title>")
+    outside = tmp_path / "secret.txt"
+    outside.write_text("do not serve me")
+
+    # Act / Assert
+    assert _resolve_within(root, "../secret.txt") is None
+    assert _resolve_within(root, "index.html") is not None
 
 
 async def test_a_traversal_over_http_serves_the_app_and_never_the_escaped_file(
