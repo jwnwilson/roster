@@ -264,15 +264,16 @@ was true of any cancelled task and said nothing about the subprocess its name pr
 
 ## Outstanding
 
-**Backend, UI and the real runtime are all merged.** `main` carries 344 backend tests and 232 UI
+**Backend, UI and the real runtime are all merged.** `main` carries 382 backend tests and 232 UI
 tests, with CI running a job for each on every pull request. What follows is what has never been
 built.
 
-**1. The `codex` and `gemini` adapters — blocked, not merely unstarted.** `claude` runs; the other
-two are named in the enum and have no adapter. Neither binary is installed on this machine, so
-there is nothing to verify against, and the one thing that must not happen is writing them from a
-guessed output format — that is exactly the mistake the `claude` mapping already made and had to
-correct. Needs the CLIs installed so the probes in the runtime spec §4 can be run first.
+**1. The `gemini` adapter — blocked, not merely unstarted.** `claude` and `codex` both run, each
+verified against its real binary. `gemini` is named in the enum and has no adapter. The binary is
+not installed on this machine, so there is nothing to verify against, and the one thing that must
+not happen is writing it from a guessed output format — that is exactly the mistake the `claude`
+mapping already made and had to correct. Needs the CLI installed so the probes in the runtime spec
+§4 can be run first.
 
 **2. Compaction inherits the server's working directory.** Found by running it: the CLI read files
 in whatever directory the server was started from and folded a fact into the digest that appeared
@@ -307,8 +308,30 @@ deliberately disabled with their reason on screen.
 **8. The memory UI** — reading, hand-editing and reverting a digest. No screen exists in the design
 bundle yet, so this needs design before code.
 
-**Further out:** secrets encryption at rest; Electron packaging; tuning compaction prompt quality
-against real project history.
+**9. Electron packaging — one of three PRs merged.** The desktop app has a design spec
+([2026-08-15](specs/2026-08-15-electron-desktop-design.md)) and a plan
+([2026-08-15](superpowers/plans/2026-08-15-electron-desktop.md)) covering all three. What landed is
+the server-side precondition: the API now lives under `/api` in dev and packaged alike, because the
+UI's own router claims the same root paths it used to serve; and the server can serve the built UI
+at `/` when given `ui_dir`, through the `create_desktop_app` entry point. What has not been built is
+the Electron shell itself (PR 2 — process supervision, login-shell `PATH` resolution, the graceful
+shutdown that keeps agent CLIs from being orphaned) and the `.dmg` build (PR 3 — a relocatable `uv`
+venv over python-build-standalone, electron-builder, `make desktop-smoke`, CI).
+
+Three things about the merged half a reader should know before building on it:
+
+- With `ui_dir` set, a non-GET request to an unmatched path returns **405 rather than 404**. The
+  single-page-app catch-all registers a GET route at every path, so the method mismatch preempts the
+  404. The body is still roster's JSON envelope, so an `/api` miss never returns HTML — the property
+  that matters is intact.
+- `mount_ui` **must stay registered last** in `create_app`. Its catch-all otherwise shadows every
+  real API route, and the whole test suite passed while it did. A test now covers it, verified by
+  deleting the ordering and watching that test fail.
+- **No browser has rendered the UI from the server.** Every manual check was `curl`. This is the same
+  gap as items 4 and 5, and a browser smoke test is scoped into PR 3.
+
+**Further out:** secrets encryption at rest; tuning compaction prompt quality against real project
+history.
 
 **Confirm with the designer:** `#2563eb` appears once in the hi-fi canvas and nowhere in its README.
 It is treated as a stray browser default and deliberately left untokenised.

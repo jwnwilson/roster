@@ -15,6 +15,7 @@ no containers. It could be wrapped in Electron later.
 - Backend plan: [docs/superpowers/plans/2026-08-01-roster-setup.md](docs/superpowers/plans/2026-08-01-roster-setup.md)
 - Threads plan: [docs/superpowers/plans/2026-08-02-roster-threads.md](docs/superpowers/plans/2026-08-02-roster-threads.md)
 - UI plan: [docs/superpowers/plans/2026-08-02-roster-ui.md](docs/superpowers/plans/2026-08-02-roster-ui.md)
+- Desktop plan: [docs/superpowers/plans/2026-08-15-electron-desktop.md](docs/superpowers/plans/2026-08-15-electron-desktop.md)
 - UI design handoff: [docs/design/README.md](docs/design/README.md)
 
 ## Workflow (read first)
