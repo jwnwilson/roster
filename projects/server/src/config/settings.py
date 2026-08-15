@@ -25,6 +25,17 @@ class Settings(BaseSettings):
 
     agent_runtime: str = "fake"
 
+    # Agent execution. FakeRuntime stays the default so `make dev` and the whole
+    # test suite are unchanged; setting this opts into spawning real CLIs.
+    use_subprocess_runtime: bool = False
+    agent_timeout_seconds: float = 900.0
+    # Where each CLI lives, for operators whose binaries are not on PATH under
+    # the obvious name. Overriding the *path* to a known tool is not the same as
+    # letting agent content name an arbitrary command.
+    tool_claude: str = "claude"
+    tool_codex: str = "codex"
+    tool_gemini: str = "gemini"
+
     memory_compact_entries: int = 10
     memory_compact_bytes: int = 32_768
     memory_digest_budget_bytes: int = 8_192

@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import Depends, Request
 
 from adapters.agents.runtime import AgentRuntime, FakeRuntime
+from adapters.agents.subprocess_runtime import SubprocessRuntime
 from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from adapters.storage.ports import FileStore
@@ -60,8 +61,22 @@ def get_project_folder_store(settings: Settings = Depends(get_settings)) -> File
 
 
 def _build_runtime(settings: Settings) -> AgentRuntime:
-    # Only FakeRuntime exists today; a real subprocess runtime is a later task.
-    return FakeRuntime()
+    """FakeRuntime unless the operator opts in.
+
+    Spawning real CLIs costs money and touches the operator's machine, so it is
+    never the default: `make dev` and the test suite keep the scripted runtime
+    and behave identically to before.
+    """
+    if not settings.use_subprocess_runtime:
+        return FakeRuntime()
+    return SubprocessRuntime(
+        executables={
+            "claude": settings.tool_claude,
+            "codex": settings.tool_codex,
+            "gemini": settings.tool_gemini,
+        },
+        timeout_seconds=settings.agent_timeout_seconds,
+    )
 
 
 async def get_turn_manager(

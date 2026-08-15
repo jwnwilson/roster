@@ -94,6 +94,24 @@ def validate_transition(current: ThreadStatus, target: ThreadStatus) -> None:
         raise InvalidThreadTransition(current, target)
 
 
+def status_after_turn(current: ThreadStatus, proposed: ThreadStatus) -> ThreadStatus:
+    """What a finishing turn is allowed to set, given where the thread is *now*.
+
+    A turn computes its status from the thread as it was when it started, and
+    the operator can resolve a thread while the agent is still working — the UI
+    offers the button throughout. Writing the computed status blindly overwrote
+    that resolution, which reopened the thread and let a second journal entry be
+    written for the same work.
+
+    So resolution wins. This is the same rule as `status_after_message`, applied
+    where the comparison is against current stored state rather than a snapshot
+    the turn has been carrying around.
+    """
+    if current == "resolved":
+        return current
+    return proposed
+
+
 def status_after_message(current: ThreadStatus, kind: MessageKind) -> ThreadStatus:
     """An agent asking a question is what puts a thread in the operator's queue.
 

@@ -57,8 +57,12 @@ dev: db-upgrade seed
 
 dev-server: run
 
+# Installing first, because the failure otherwise is `vite: command not found`
+# from inside a backgrounded sub-make — which reads as a broken toolchain rather
+# than "this checkout has no node_modules yet". A fresh worktree hits it every
+# time. pnpm exits quickly when everything is already present.
 dev-ui:
-	cd projects/ui && pnpm dev
+	cd projects/ui && pnpm install --prefer-offline && pnpm dev
 
 run:
 	uv run uvicorn interactors.api.app:create_app --factory --reload --port 8000

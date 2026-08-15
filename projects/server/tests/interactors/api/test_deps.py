@@ -123,3 +123,24 @@ async def test_the_turn_manager_writes_through_the_factory_on_app_state(tmp_path
 
     # Assert
     assert found.id == "p3"
+
+
+def test_the_fake_runtime_is_the_default(tmp_path):
+    # Spawning real CLIs costs money and touches the operator's machine, so it
+    # is opt-in: make dev and the suite must behave exactly as before.
+    from adapters.agents.runtime import FakeRuntime
+    from interactors.api.deps import _build_runtime
+
+    assert isinstance(_build_runtime(Settings(data_root=tmp_path)), FakeRuntime)
+
+
+def test_opting_in_builds_the_subprocess_runtime_with_the_configured_binaries(tmp_path):
+    from adapters.agents.subprocess_runtime import SubprocessRuntime
+    from interactors.api.deps import _build_runtime
+
+    runtime = _build_runtime(
+        Settings(data_root=tmp_path, use_subprocess_runtime=True, tool_claude="/opt/claude")
+    )
+
+    assert isinstance(runtime, SubprocessRuntime)
+    assert runtime._executable("claude") == "/opt/claude"
