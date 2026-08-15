@@ -11,6 +11,7 @@ no containers. It could be wrapped in Electron later.
 
 - **Where we are (read first): [docs/project-history.md](docs/project-history.md)**
 - Design spec: [docs/specs/2026-08-01-roster-design.md](docs/specs/2026-08-01-roster-design.md)
+- Desktop packaging spec: [docs/specs/2026-08-15-electron-desktop-design.md](docs/specs/2026-08-15-electron-desktop-design.md)
 - Backend plan: [docs/superpowers/plans/2026-08-01-roster-setup.md](docs/superpowers/plans/2026-08-01-roster-setup.md)
 - Threads plan: [docs/superpowers/plans/2026-08-02-roster-threads.md](docs/superpowers/plans/2026-08-02-roster-threads.md)
 - UI plan: [docs/superpowers/plans/2026-08-02-roster-ui.md](docs/superpowers/plans/2026-08-02-roster-ui.md)
