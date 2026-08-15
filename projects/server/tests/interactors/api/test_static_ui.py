@@ -78,6 +78,32 @@ async def test_an_unknown_api_path_returns_the_json_envelope_not_the_app(ui_dir,
     assert response.json()["data"] is None
 
 
+async def test_real_api_routes_still_win_over_the_single_page_app_fallback(
+    ui_dir, session_factory
+):
+    # mount_ui's catch-all is registered last on purpose: register it before the
+    # routers and every /api/... request that matches a real route would still
+    # come back as 200 with the HTML shell instead of reaching the router at
+    # all. The /api/nope test above cannot catch that regression — an unmatched
+    # path returns the same 404 envelope whichever order wins. This test only
+    # passes if the real routers handled the request, by asserting on the
+    # actual response bodies of one directly-registered route (`/api/health`)
+    # and one router-registered route (`/api/projects`).
+    # Arrange / Act
+    async with await client_for(ui_dir, session_factory) as client:
+        health = await client.get("/api/health")
+        projects = await client.get("/api/projects")
+
+    # Assert
+    assert health.status_code == 200
+    assert health.json() == {"success": True, "data": {"status": "ok"}, "error": None}
+
+    assert projects.status_code == 200
+    projects_body = projects.json()
+    assert projects_body["success"] is True
+    assert projects_body["data"] == []
+
+
 def test_the_containment_guard_refuses_a_path_outside_the_root(ui_dir):
     # The guard tested directly, because an HTTP client normalises `..` out of
     # the path before the app ever sees it — a route-level test alone would pass
