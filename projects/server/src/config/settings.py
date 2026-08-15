@@ -10,6 +10,12 @@ class Settings(BaseSettings):
 
     data_root: Path = Path("~/.roster")
 
+    # Where the built UI lives, for the packaged desktop app. Blank in dev, where
+    # Vite serves the UI on :5173 and proxies /api here. A setting because it is
+    # the operator's answer to "which build of the UI", and the desktop shell is
+    # the only thing that knows.
+    ui_dir: Path | None = None
+
     # Where roster's database is, as a SQLAlchemy URL. A setting, because that is
     # what it is: the operator's answer to "which database", overridable as
     # `roster_db_url`.

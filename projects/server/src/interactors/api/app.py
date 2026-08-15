@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -11,11 +12,15 @@ from config.settings import get_settings
 from interactors.api.envelope import ok
 from interactors.api.errors import register_error_handlers
 from interactors.api.routes import agents, memory, projects, threads, work_items
+from interactors.api.static_ui import mount_ui
 
 logger = logging.getLogger("roster")
 
 
-def create_app(session_factory: async_sessionmaker[AsyncSession] | None = None) -> FastAPI:
+def create_app(
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+    ui_dir: Path | None = None,
+) -> FastAPI:
     """Build the app, and with it the one way anything reaches the database.
 
     `session_factory` is a constructor parameter rather than something a caller
@@ -70,4 +75,7 @@ def create_app(session_factory: async_sessionmaker[AsyncSession] | None = None) 
     app.include_router(memory.compact_router, prefix="/api")
     app.include_router(threads.router, prefix="/api")
     register_error_handlers(app)
+    # Last, deliberately: the catch-all route must not shadow a real API route.
+    if ui_dir is not None:
+        mount_ui(app, ui_dir)
     return app
