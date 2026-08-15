@@ -1,6 +1,6 @@
 import json
 
-from domain.agents import Agent
+from domain.agents import DEFAULT_MODEL, Agent
 
 from .ports import Parsed
 
@@ -29,14 +29,14 @@ class ClaudeAdapter:
             "stream-json",
             "--verbose",
             "--model",
-            agent.model,
+            agent.model or DEFAULT_MODEL,
         ]
 
     def summarise_argv(self, agent: Agent, executable: str) -> list[str]:
         # No --output-format: compaction wants the digest itself, not frames to
         # unwrap. The prompt arrives on stdin because a digest plus its journal
         # runs to kilobytes, which does not belong in an argument list.
-        return [executable, "-p", "--model", agent.model]
+        return [executable, "-p", "--model", agent.model or DEFAULT_MODEL]
 
     def parse(self, line: str) -> Parsed:
         stripped = line.strip()

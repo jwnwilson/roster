@@ -296,3 +296,37 @@ def test_an_unknown_tool_disables_the_agent_rather_than_becoming_an_exec(tmp_pat
 
     assert agent.status == "disabled"
     assert "tool must be one of" in (agent.problem or "")
+
+
+def test_a_model_the_operator_never_chose_is_not_invented(tmp_path, store):
+    """`model` reported nothing when config.yaml says nothing.
+
+    It used to fall back to roster's default, which is a *claude* model. An agent
+    with `tool: codex` and no `model:` therefore reported `claude-opus-5` — a
+    vendor it does not use, from a file that does not say it. The Agents screen
+    printed that under a column headed "MODEL · config.yaml".
+    """
+    _write_agent(tmp_path, "scout", config="tool: codex\n")
+
+    agent = read_agent(tmp_path / "scout", store)
+
+    assert agent.model is None
+    assert agent.tool == "codex"
+
+
+def test_a_model_the_operator_did_choose_is_reported_verbatim(tmp_path, store):
+    _write_agent(tmp_path, "atlas", config="model: claude-opus-5\n")
+
+    assert read_agent(tmp_path / "atlas", store).model == "claude-opus-5"
+
+
+def test_an_agent_with_no_config_at_all_still_defaults_to_claude(tmp_path, store):
+    # The tool cannot be inferred from a model that was never named, and claude
+    # is the tool roster shipped first. This keeps every existing agent folder
+    # working untouched.
+    _write_agent(tmp_path, "plain", config="")
+
+    agent = read_agent(tmp_path / "plain", store)
+
+    assert agent.tool == "claude"
+    assert agent.model is None

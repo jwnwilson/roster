@@ -1,6 +1,6 @@
 import json
 
-from domain.agents import DEFAULT_MODEL, Agent
+from domain.agents import Agent
 
 from .ports import Parsed
 
@@ -111,14 +111,13 @@ class CodexAdapter:
 def _model(agent: Agent) -> list[str]:
     """`--model`, but only when the operator actually chose one.
 
-    `Agent.model` falls back to roster's default, which is a *claude* model — and
-    handing codex a model from another vendor is nonsense. Omitting the flag lets
-    codex use the model the account supports, which is also the more forgiving
+    `Agent.model` is None when config.yaml never named one, and omitting the flag
+    then lets codex use the model the account supports — the more forgiving
     default: verified on 2026-08-15, forcing `--model gpt-5-codex` failed with
     "not supported when using Codex with a ChatGPT account" on an account where
     omitting it worked.
     """
-    if agent.model == DEFAULT_MODEL:
+    if agent.model is None:
         return []
     return ["--model", agent.model]
 
