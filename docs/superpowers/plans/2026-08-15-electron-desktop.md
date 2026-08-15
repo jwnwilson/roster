@@ -260,6 +260,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from interactors.api.app import create_app
+from interactors.api.static_ui import _resolve_within
 
 
 @pytest.fixture
@@ -333,16 +334,52 @@ async def test_an_unknown_api_path_returns_the_json_envelope_not_the_app(ui_dir,
     assert response.json()["data"] is None
 
 
-async def test_a_path_escaping_the_ui_directory_is_refused(ui_dir, session_factory):
-    # Containment, the same rule the FileStore port enforces: a path resolving
-    # outside the root is not served.
+def test_the_containment_guard_refuses_a_path_outside_the_root(ui_dir):
+    # The guard tested directly, because an HTTP client normalises `..` out of
+    # the path before the app ever sees it — a route-level test alone would pass
+    # without the guard existing at all.
+    # Arrange / Act / Assert
+    assert _resolve_within(ui_dir, "../../etc/passwd") is None
+    assert _resolve_within(ui_dir, "../../../etc/passwd") is None
+    assert _resolve_within(ui_dir, "index.html") is not None
+
+
+async def test_a_traversal_over_http_serves_the_app_and_never_the_escaped_file(
+    ui_dir, session_factory
+):
+    # Containment, the same rule the FileStore port enforces. Note what is NOT
+    # asserted: a 404. A traversal attempt is indistinguishable from a
+    # client-side route by the time it arrives, so it is answered the same way —
+    # with the app. What matters is that the escaped file's contents never come
+    # back.
     # Arrange / Act
     async with await client_for(ui_dir, session_factory) as client:
         response = await client.get("/../../etc/passwd")
 
     # Assert
-    assert response.status_code in (404, 400)
     assert "root:" not in response.text
+    assert "<title>roster</title>" in response.text
+
+
+async def test_real_api_routes_still_win_over_the_single_page_app_fallback(
+    ui_dir, session_factory
+):
+    # The invariant `mount_ui` is registered last to preserve. Without this test
+    # the whole file passes with mount_ui registered FIRST, because the only
+    # API-shaped assertion hits an unmatched path -- and mount_ui's own 404
+    # envelope is byte-identical to the router's. Both registration mechanisms
+    # are covered: /api/health is a bare @app.get, /api/projects comes from an
+    # include_router.
+    # Arrange / Act
+    async with await client_for(ui_dir, session_factory) as client:
+        health = await client.get("/api/health")
+        projects = await client.get("/api/projects")
+
+    # Assert
+    assert health.json() == {"success": True, "data": {"status": "ok"}, "error": None}
+    assert projects.status_code == 200
+    assert projects.json()["success"] is True
+    assert projects.json()["data"] == []
 
 
 async def test_without_a_ui_dir_the_root_path_is_still_a_404(session_factory):
@@ -504,7 +541,7 @@ async def test_the_desktop_entry_point_serves_the_ui_named_by_settings(ui_dir, m
 uv run pytest projects/server/tests/interactors/api/test_static_ui.py -v
 ```
 
-Expected: PASS, 8 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 8: Run the full suite and the gates**
 
