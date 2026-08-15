@@ -142,19 +142,44 @@ to:
     async with AsyncClient(transport=transport, base_url="http://test/api") as http_client:
 ```
 
-- [ ] **Step 5: Run the whole suite**
+- [ ] **Step 5: Re-point the two clients that are not the shared fixture**
+
+Two test files build their own client instead of using the `client` fixture, so the `base_url` join
+in Step 4 does not reach them. `test_health.py` is already handled in Step 1. The other is
+`projects/server/tests/e2e/test_journey.py`, which boots a real uvicorn subprocess and talks to it
+over a real socket.
+
+Change exactly three lines there — never an individual call site:
+
+```python
+# line ~69, the readiness probe
+_wait_for(f"{base}/api/health")
+
+# lines ~88 and ~174, every httpx.Client construction
+client = httpx.Client(base_url=f"{base}/api", timeout=30)
+```
+
+The sync `httpx.Client` merges relative paths onto `base_url` exactly as the async one does, so
+every `client.post("/projects")` and `client.get("/threads")` in that file stays **unedited** and
+follows automatically. Leave its uvicorn target as `interactors.api.app:create_app` — the journey
+does not serve the UI, and the desktop entry point arrives in Task 2.
+
+- [ ] **Step 6: Run the whole suite**
 
 ```bash
 uv run pytest
 ```
 
-Expected: PASS, all 346+ tests. The 43 call sites across `test_agents_api.py`,
+Expected: PASS, all 366+ tests. The 43 call sites across `test_agents_api.py`,
 `test_memory_api.py`, `test_projects_api.py`, `test_threads_api.py`, `test_work_items_api.py` and
-`e2e/test_journey.py` are untouched — their passing **is** the proof the move is correct.
+`e2e/test_journey.py` are untouched — their passing **is** the proof the move is correct. After
+this task, the only edited test lines in the entire suite are `test_health.py` (rewritten in
+Step 1), `conftest.py`'s one `base_url`, and the three lines in Step 5.
 
-If any test fails on a URL, do not edit the test. Find out why the fixture join did not apply to it.
+If an individual call site fails on a URL, do not edit it. Find out why the `base_url` join did not
+apply — editing call sites destroys the evidence this task depends on.
 
-- [ ] **Step 6: Drop the Vite rewrite**
+- [ ] **Step 7: Drop the Vite rewrite**
 
 In `projects/ui/vite.config.ts`, replace the proxy block:
 
@@ -173,7 +198,7 @@ In `projects/ui/vite.config.ts`, replace the proxy block:
   },
 ```
 
-- [ ] **Step 7: Verify the UI suite is unaffected**
+- [ ] **Step 8: Verify the UI suite is unaffected**
 
 ```bash
 cd projects/ui && pnpm test && pnpm lint
@@ -182,7 +207,7 @@ cd projects/ui && pnpm test && pnpm lint
 Expected: PASS. MSW handlers already mock `/api/*` (`mocks/live-parity/handlers.ts`) and
 `useThreadStream.ts:48` already opens `/api/threads/{id}/stream`, so no UI source changes.
 
-- [ ] **Step 8: Run the gates**
+- [ ] **Step 9: Run the gates**
 
 ```bash
 cd /Users/noel/projects/roster/.claude/worktrees/roster-desktop
@@ -191,11 +216,12 @@ make lint && make coverage
 
 Expected: both green, coverage ≥ 80%.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add projects/server/src/interactors/api/app.py projects/server/tests/conftest.py \
-        projects/server/tests/test_health.py projects/ui/vite.config.ts
+        projects/server/tests/test_health.py projects/server/tests/e2e/test_journey.py \
+        projects/ui/vite.config.ts
 git commit -m "feat: serve the API under /api in dev and packaged alike"
 ```
 

@@ -89,6 +89,10 @@ path — verified against httpx 0.28.1, `_merge_url("/projects")` on `base_url="
 yields `http://test/api/projects` — so all **43 call sites across 7 test files** move without being
 edited. Their continued passing is the proof the move is correct.
 
+Two test files build their own client rather than using that fixture and so must be re-pointed by
+hand: `test_health.py`, and `e2e/test_journey.py`, which boots a real uvicorn and talks to it over a
+socket. Both take the same one-line `base_url` change, so their call sites move untouched too.
+
 > An earlier draft of this design deferred the symmetry on an estimate of "~300 tests". The real
 > figure is 43, behind one fixture. The estimate was wrong and it was the only argument for keeping
 > the asymmetry.
