@@ -40,6 +40,7 @@ export const workItem: WorkItem = {
 
 export const agent: Agent = {
   name: "atlas",
+  tool: "claude",
   model: "claude-opus-5",
   token_limit: 200000,
   temperature: 0.2,
@@ -54,6 +55,20 @@ export const brokenAgent: Agent = {
   name: "cinder",
   status: "disabled",
   problem: "AGENT.md is missing",
+};
+
+/** An agent whose config.yaml is only `tool: codex`.
+ *
+ *  The shape that exposed the bug: the screen showed `claude-opus-5` under a
+ *  column headed "MODEL · config.yaml", for an agent that runs codex and whose
+ *  config.yaml never mentions a model. */
+export const codexAgent: Agent = {
+  ...agent,
+  name: "scout",
+  tool: "codex",
+  model: null,
+  status: "active",
+  skills: [],
 };
 
 export const thread: ThreadListItem = {

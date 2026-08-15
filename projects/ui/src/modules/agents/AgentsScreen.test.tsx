@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { AgentsScreen } from "./AgentsScreen";
 import { failure, okList } from "../../mocks/envelope";
-import { agent, brokenAgent } from "../../mocks/fixtures";
+import { agent, brokenAgent, codexAgent } from "../../mocks/fixtures";
 import { server } from "../../mocks/server";
 import { renderWithProviders } from "../../test/renderWithProviders";
 
@@ -14,7 +14,7 @@ describe("AgentsScreen", () => {
     renderWithProviders(<AgentsScreen />);
 
     const row = await screen.findByRole("row", { name: new RegExp(agent.name, "i") });
-    expect(within(row).getByText(agent.model)).toBeInTheDocument();
+    expect(within(row).getByText(agent.model!)).toBeInTheDocument();
     expect(within(row).getByText(String(agent.skills.length))).toBeInTheDocument();
   });
 
@@ -54,5 +54,36 @@ describe("AgentsScreen", () => {
     renderWithProviders(<AgentsScreen />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/could not load/i);
+  });
+});
+
+describe("AgentsScreen — which CLI an agent actually runs", () => {
+  it("names the tool for every agent", async () => {
+    // Verified against the running app on 2026-08-15: an agent with
+    // `tool: codex` was indistinguishable from a Claude one, because the screen
+    // rendered `model` and nothing else.
+    server.use(
+      http.get("/api/agents", () => okList([agent, codexAgent])),
+    );
+    renderWithProviders(<AgentsScreen />);
+
+    const codexRow = await screen.findByRole("row", { name: new RegExp(codexAgent.name, "i") });
+    expect(within(codexRow).getByText("codex")).toBeInTheDocument();
+
+    const claudeRow = screen.getByRole("row", { name: new RegExp(agent.name, "i") });
+    expect(within(claudeRow).getByText("claude")).toBeInTheDocument();
+  });
+
+  it("does not invent a model the operator never chose", async () => {
+    // The bug in one assertion: `claude-opus-5` must not appear on a row for an
+    // agent that runs codex and whose config.yaml names no model at all.
+    server.use(
+      http.get("/api/agents", () => okList([codexAgent])),
+    );
+    renderWithProviders(<AgentsScreen />);
+
+    const row = await screen.findByRole("row", { name: new RegExp(codexAgent.name, "i") });
+    expect(within(row).queryByText(/claude-opus-5/)).not.toBeInTheDocument();
+    expect(within(row).getByText(/chosen by codex/i)).toBeInTheDocument();
   });
 });

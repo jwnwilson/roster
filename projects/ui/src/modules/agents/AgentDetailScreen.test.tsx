@@ -6,7 +6,7 @@ import { okList } from "../../mocks/envelope";
 import { server } from "../../mocks/server";
 
 import { AgentDetailScreen } from "./AgentDetailScreen";
-import { agent } from "../../mocks/fixtures";
+import { agent, codexAgent } from "../../mocks/fixtures";
 import { renderWithProviders } from "../../test/renderWithProviders";
 
 describe("AgentDetailScreen", () => {
@@ -28,7 +28,7 @@ describe("AgentDetailScreen", () => {
   it("shows the model from the agent's config.yaml", async () => {
     renderWithProviders(<AgentDetailScreen name={agent.name} />);
 
-    expect(await screen.findByDisplayValue(agent.model)).toBeInTheDocument();
+    expect(await screen.findByDisplayValue(agent.model!)).toBeInTheDocument();
   });
 
   it("says so when there is no folder by that name", async () => {
@@ -68,5 +68,26 @@ describe("AgentDetailScreen — the right rail (handoff §C2, 372px)", () => {
 
     const rail = await screen.findByTestId("agent-detail-rail");
     expect(within(rail).getByText(/no skills folder/i)).toBeInTheDocument();
+  });
+});
+
+describe("AgentDetailScreen — which CLI an agent runs", () => {
+  it("names the tool under CONFIG.YAML", async () => {
+    server.use(http.get("/api/agents", () => okList([codexAgent])));
+    renderWithProviders(<AgentDetailScreen name={codexAgent.name} />);
+
+    expect(await screen.findByText("codex")).toBeInTheDocument();
+  });
+
+  it("leaves the model field empty rather than filling it with a default", async () => {
+    // A readOnly input pre-filled with `claude-opus-5` reads as a value the
+    // operator set. For an agent whose config.yaml says only `tool: codex`,
+    // nothing set it.
+    server.use(http.get("/api/agents", () => okList([codexAgent])));
+    renderWithProviders(<AgentDetailScreen name={codexAgent.name} />);
+
+    const field = await screen.findByLabelText("Model");
+    expect(field).toHaveValue("");
+    expect(field).toHaveAttribute("placeholder", expect.stringMatching(/chosen by codex/i));
   });
 });
