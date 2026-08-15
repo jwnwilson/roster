@@ -17,15 +17,20 @@ no containers.
 
 - Conventions and layering: [../AGENTS.md](../AGENTS.md)
 - Design spec (the authority): [specs/2026-08-01-roster-design.md](specs/2026-08-01-roster-design.md)
+- Runtime spec: [specs/2026-08-10-subprocess-runtime.md](specs/2026-08-10-subprocess-runtime.md)
 - Backend plan: [superpowers/plans/2026-08-01-roster-setup.md](superpowers/plans/2026-08-01-roster-setup.md)
 - UI plan: [superpowers/plans/2026-08-02-roster-ui.md](superpowers/plans/2026-08-02-roster-ui.md)
 - UI design handoff: [design/README.md](design/README.md)
 
-## Current state (2026-08-02)
+## Current state (2026-08-15)
 
-**Backend and UI both complete.** Backend: **312 tests, ~95% coverage** against an 80% gate,
-merged as PR #2. UI: **182 tests**, every screen in the design built, on `feat/ui` as PR #3.
+**Backend, UI and the real agent runtime are all merged.** Backend: **344 tests, ~94% coverage**
+against an 80% gate (PR #2, then #4). UI: **232 tests**, every screen in the design built (PR #3).
 `make dev` boots both; CI runs a job for each on every pull request.
+
+Agents now genuinely run: `SubprocessRuntime` spawns a real CLI, and a full turn has been carried
+out end to end against the installed `claude` binary. `FakeRuntime` remains the default so tests and
+`make dev` are unchanged.
 
 Architecture is four layers in one package:
 
@@ -43,9 +48,9 @@ Shipping: projects with three declared source kinds each scaffolding `<project>/
 items with hierarchy, `ROS-<n>` keys, and transition validation; agents read from disk with a
 broken folder degrading to Disabled-with-reason rather than breaking the listing; project memory as
 an append-only journal plus compacted digest with snapshots; threads as the unit of agent work,
-with agent turns as asyncio-managed subprocesses writing messages, SSE streaming, and a memory
-write on resolution; storage behind a rooted `FileStore` port; database behind a Repository +
-UnitOfWork.
+with agent turns as asyncio-managed tasks writing messages, SSE streaming, and a memory write on
+resolution; a runtime that spawns the agent's own CLI as a real process group; storage behind a
+rooted `FileStore` port; database behind a Repository + UnitOfWork.
 
 **Complete:** 13 tasks, a final whole-branch review, two fix waves closing all 13 of its findings,
 and a port of the API wiring to match the reference implementation exactly — `get_uow` owns the
@@ -141,6 +146,44 @@ pass fixed focus (invisible on 30 of 33 primitives) and reduced-motion, but pixe
 `Roster Hi-Fi.dc.html` is untouched and recorded under "Needs a human eye" in
 `superpowers/plans/ui-polish-findings.md`.
 
+## Status (2026-08-15) — the real runtime, and the end-to-end suite
+
+Eleven commits on `feat/subprocess-runtime`. **An agent has now actually run.** A turn through the
+installed `claude` binary answered in a thread, resolving it wrote the journal entry, and a real
+compaction folded that entry into the digest. `FakeRuntime` stays the default; `SubprocessRuntime`
+is selected by `roster_use_subprocess_runtime`, so tests and `make dev` are unchanged.
+
+**`config.yaml` names a *tool*, roster owns the *command*.** The new `tool` key is a closed enum
+(`claude | codex | gemini`), never a command string. An agent folder is operator content, and a
+folder that could name an arbitrary command would turn "a broken folder degrades to Disabled" from
+a robustness feature into a security boundary it was never designed to be. An unrecognised name
+disables the agent with a reason, exactly as a malformed `token_limit` does.
+
+**The spec's wire format was invented, and every field of it was wrong.** It said so — the JSON was
+marked as a placeholder — and probing the real binary replaced `{"kind","content"}` with the actual
+`{"type":"assistant","message":{"content":[…]}}`. That correction is why `codex` and `gemini` are
+recorded as *blocked* rather than deferred: neither binary is installed, so there is nothing to
+verify an adapter against, and writing them from guessed formats is the same mistake a second time.
+
+**Two defects that only running it could find.** The turn manager passed the *thread title* to the
+agent instead of the message that summoned it, so a real agent asked to reply `pong` answered the
+thread's subject — and all ~330 tests passed, because `FakeRuntime` ignores the task string
+entirely. Separately, a turn snapshots the thread's status at start and writes it back at the end,
+so an operator resolving mid-turn (the UI offers the button throughout) had the thread silently
+reopened, which let a **second journal entry** be written for the same work. The rule now lives in
+`domain.status_after_turn` and is applied to stored state rather than the snapshot.
+
+**The end-to-end suite exists** and is the first test to boot a real `uvicorn` against real
+migrations and a temporary data root, walking spec §12 over HTTP. Everything else in the suite uses
+`ASGITransport`, which starts no server and touches no filesystem. It found its own class of bug
+immediately: a documentation-only commit failed CI, which cannot be the docs, and was the
+resolution race above.
+
+**What is deliberately not claimed:** a browser-level journey still does not exist, so the screens
+remain covered by component tests only. And compaction inherits the server's working directory —
+the CLI read files there and volunteered a fact present in none of its inputs. Both are recorded in
+the spec rather than quietly carried.
+
 ## Learnings
 
 Things this project has already paid for. They are here because each cost real time.
@@ -193,36 +236,75 @@ to hide work.
 deliverables — the seed CLI and `make dev` — were never implemented by anyone, and no task-scoped
 review could have seen it: every task correctly reported its own brief satisfied.
 
+**A fake absorbs wrong arguments silently.** `FakeRuntime` ignores the task string, so passing the
+thread title instead of the summoning message changed nothing any test could see — ~330 of them
+passed while a real agent answered the wrong question entirely. *A test double that ignores an
+argument cannot testify about that argument.* The same shape as the security test that passed
+against an unhardened implementation, one layer further out.
+
+**Verify the tool, do not describe it.** The spec's stream format was written from plausibility and
+was wrong in every field. Ten minutes probing the installed binary replaced it with fact. *When a
+spec must describe something external, mark the unverified parts as unverified* — that marking is
+what stopped the implementation inheriting the invention as truth.
+
+**Mutation-check the guard, and check that the mutation applied.** A mutation that appeared uncaught
+turned out to be masked by a second, redundant guard; another "restore" silently failed and left the
+source mutated, and a `git checkout --` meant to revert a mutation reverted the fix beside it.
+*Assert the file actually changed before trusting a green run, and never restore with a command that
+can take more than it was aimed at.*
+
+**A docs-only commit failing CI is information, not noise.** Documentation cannot break code, so a
+red run on a docs commit is proof of a pre-existing race rather than a bad edit. Chasing it that way
+round found a product bug — a finishing turn undoing an operator's resolution — where a rerun would
+have hidden it.
+
+**Green tests prove values move, not that they are the right values.** Said three ways this project
+now: the traversal test, the fake that ignored its argument, and an `assert task.cancelled()` that
+was true of any cancelled task and said nothing about the subprocess its name promised to check.
+
 ## Outstanding
 
-**Backend and UI are both merged.** `main` carries 312 backend tests and 232 UI tests, with CI
-running a job for each on every pull request. What follows is what has never been built.
+**Backend, UI and the real runtime are all merged.** `main` carries 344 backend tests and 232 UI
+tests, with CI running a job for each on every pull request. What follows is what has never been
+built.
 
-**1. `SubprocessRuntime` — the real agent runtime.** The largest and the one that matters most:
-`FakeRuntime` is still the only implementation, so no agent has ever actually run. Everything
-downstream of it is proven against a scripted fake. This is what turns roster from a shell into the
-thing it is for, and it brings the lead-agent coordination protocol and remote-git cloning with it.
+**1. The `codex` and `gemini` adapters — blocked, not merely unstarted.** `claude` runs; the other
+two are named in the enum and have no adapter. Neither binary is installed on this machine, so
+there is nothing to verify against, and the one thing that must not happen is writing them from a
+guessed output format — that is exactly the mistake the `claude` mapping already made and had to
+correct. Needs the CLIs installed so the probes in the runtime spec §4 can be run first.
 
-**2. An end-to-end suite.** Spec §12 deferred this with an explicit trigger: "revisit once the
-screens exist". They now do. The journey worth covering is create project → create work item → post
-a message that starts a turn → watch messages stream in → resolve the thread and see the journal
-entry. It is the only check that would catch the UI and the API disagreeing, and this session
-produced several defects of exactly that shape.
+**2. Compaction inherits the server's working directory.** Found by running it: the CLI read files
+in whatever directory the server was started from and folded a fact into the digest that appeared
+in none of its inputs. For a *project's* memory that is at best the wrong project's context.
+`summarise` never receives the project folder — `compact_now(folder, agent)` has it and does not
+pass it on. Fixing it means widening `AgentRuntime.summarise` or running compaction with a neutral
+cwd and no tool access; it changes a port `FakeRuntime` also implements, so it wants its own change.
 
-**3. The rendered design comparison.** Every canvas value is now tokenised and the four missing
+**3. Lead-agent coordination and remote-git cloning.** Both were carried by the runtime item and
+neither shipped with it. Spec §3 says the lead spawns and messages other agents through the turn
+manager; what it *sends*, and how a sub-agent's output returns to the lead's thread, is undesigned
+and must not be inferred from the runtime spec.
+
+**4. A browser-level end-to-end journey.** The API-level journey now boots a real server against
+real migrations and walks spec §12 over HTTP, so the API, database and filesystem are proven to
+agree. The browser half is not: the screens are still covered by component tests only, which cannot
+see whether anything mounts them. Blocked on the same Playwright bridge as the design comparison.
+
+**5. The rendered design comparison.** Every canvas value is now tokenised and the four missing
 regions are built, but no screen has been seen rendered against `Roster Hi-Fi.dc.html`. Which token
 each component reaches for is unverified. Needs the Playwright MCP browser bridge installed, or a
 person with the canvas open. See `superpowers/plans/ui-design-gaps.md`.
 
-**4. Un-mocking the fixture screens.** `McpServer`, `Secret` and `Attachment` persistence, plus any
+**6. Un-mocking the fixture screens.** `McpServer`, `Secret` and `Attachment` persistence, plus any
 token or spend figure — no entity carries one, so most of the Dashboard is invented. Each is a
 backend slice paired with deleting one file from `projects/ui/src/mocks/unbacked/`; the capability
 registry test then forces the registry to follow.
 
-**5. Agent write endpoints** — rename, edit `AGENT.md`, change the model. The controls exist and are
+**7. Agent write endpoints** — rename, edit `AGENT.md`, change the model. The controls exist and are
 deliberately disabled with their reason on screen.
 
-**6. The memory UI** — reading, hand-editing and reverting a digest. No screen exists in the design
+**8. The memory UI** — reading, hand-editing and reverting a digest. No screen exists in the design
 bundle yet, so this needs design before code.
 
 **Further out:** secrets encryption at rest; Electron packaging; tuning compaction prompt quality
