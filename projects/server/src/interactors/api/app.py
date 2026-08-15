@@ -56,15 +56,18 @@ def create_app(session_factory: async_sessionmaker[AsyncSession] | None = None) 
     app = FastAPI(title="roster", version="0.1.0", lifespan=lifespan)
     app.state.session_factory = session_factory
 
-    @app.get("/health")
+    # Spec §2.2: the API lives under /api in dev and in the bundle alike. The UI's
+    # own router claims /projects, /agents and /threads, so root belongs to the
+    # screens — there is exactly one answer to "where does the API live".
+    @app.get("/api/health")
     async def health() -> dict:
         return ok({"status": "ok"})
 
-    app.include_router(agents.router)
-    app.include_router(projects.router)
-    app.include_router(work_items.router)
-    app.include_router(memory.router)
-    app.include_router(memory.compact_router)
-    app.include_router(threads.router)
+    app.include_router(agents.router, prefix="/api")
+    app.include_router(projects.router, prefix="/api")
+    app.include_router(work_items.router, prefix="/api")
+    app.include_router(memory.router, prefix="/api")
+    app.include_router(memory.compact_router, prefix="/api")
+    app.include_router(threads.router, prefix="/api")
     register_error_handlers(app)
     return app

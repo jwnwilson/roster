@@ -68,7 +68,7 @@ def api(tmp_path_factory):
     )
     base = f"http://127.0.0.1:{port}"
     try:
-        _wait_for(f"{base}/health")
+        _wait_for(f"{base}/api/health")
         yield base, data_root
     finally:
         process.terminate()
@@ -85,7 +85,7 @@ def _data(response: httpx.Response) -> dict:
 
 def test_the_whole_chain_from_a_project_to_a_journal_entry_on_disk(api):
     base, data_root = api
-    client = httpx.Client(base_url=base, timeout=30)
+    client = httpx.Client(base_url=f"{base}/api", timeout=30)
 
     # A project with no code: roster owns the folder, so the .roster tree is
     # roster's to create.
@@ -171,7 +171,7 @@ def test_the_whole_chain_from_a_project_to_a_journal_entry_on_disk(api):
 
 def test_deleting_the_project_leaves_the_operators_files_alone(api):
     base, _ = api
-    client = httpx.Client(base_url=base, timeout=30)
+    client = httpx.Client(base_url=f"{base}/api", timeout=30)
 
     project = _data(client.post("/projects", json={"name": "doomed", "source": {"kind": "none"}}))
     folder = Path(project["folder_path"])
@@ -188,7 +188,7 @@ def test_the_api_speaks_the_envelope_the_ui_client_unwraps(api):
     base, _ = api
     # The UI's client assumes {success, data, error} with meta on collections and
     # an empty body on 204. A disagreement here is invisible to both suites.
-    raw = httpx.get(f"{base}/projects", timeout=10)
+    raw = httpx.get(f"{base}/api/projects", timeout=10)
     body = json.loads(raw.text)
 
     assert set(body) >= {"success", "data", "error"}
