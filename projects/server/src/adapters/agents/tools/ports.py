@@ -2,12 +2,19 @@ from typing import Protocol
 
 from domain.agents import Agent
 
-# What `parse` returns: a (kind, content) pair to yield, or None meaning
-# "recognised and deliberately not worth a message". None is not the same as
-# unparseable — the runtime turns an unparseable line into an `event` so nothing
-# is silently dropped, while a tool's own session chatter would only bury the
-# agent's actual work.
-Parsed = tuple[str, str] | None
+# What `parse` returns: the (kind, content) messages one line of output turns
+# into — usually one, sometimes none, occasionally several.
+#
+# **Empty means "recognised and deliberately not worth a message"**, which is not
+# the same as unparseable: the runtime turns an unparseable line into an `event`
+# so nothing is silently dropped, while a tool's own session chatter would only
+# bury the agent's actual work.
+#
+# It is a list rather than a single pair because one event can genuinely be
+# several messages — codex reports an `apply_patch` touching three files as one
+# `file_change` carrying three paths, and returning only the first would drop two
+# file writes on the floor.
+Parsed = list[tuple[str, str]]
 
 
 class ToolAdapter(Protocol):
@@ -25,7 +32,7 @@ class ToolAdapter(Protocol):
         ...
 
     def parse(self, line: str) -> Parsed:
-        """Map one line of the tool's stdout onto a roster message."""
+        """Map one line of the tool's stdout onto zero or more roster messages."""
         ...
 
     def summarise_argv(self, agent: Agent, executable: str) -> list[str]:

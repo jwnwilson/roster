@@ -84,6 +84,11 @@ class SubprocessRuntime:
                 *argv,
                 cwd=project_folder,
                 env=self._env(project_folder),
+                # A turn has no interactive input, and the server's stdin is not
+                # a harmless thing to inherit: codex reads stdin when it is
+                # there, so a live turn died with "Reading additional input from
+                # stdin..." before the agent ever saw the task.
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 # Its own process group, so cancellation reaches the CLI's own
@@ -128,8 +133,11 @@ class SubprocessRuntime:
                     # typed-but-invented.
                     yield ("event", text)
                     continue
-                if parsed is not None:
-                    yield parsed
+                # Zero, one, or several — one event can be several messages, and
+                # an empty list is the adapter saying "recognised, not worth
+                # repeating" rather than "nothing happened".
+                for message in parsed:
+                    yield message
         except TimeoutError:
             self._terminate(process)
             yield (
