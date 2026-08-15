@@ -29,8 +29,6 @@ class Settings(BaseSettings):
     # adapter fill in the one it derives.
     db_url: str = ""
 
-    agent_runtime: str = "fake"
-
     # Agent execution. FakeRuntime stays the default so `make dev` and the whole
     # test suite are unchanged; setting this opts into spawning real CLIs.
     use_subprocess_runtime: bool = False
