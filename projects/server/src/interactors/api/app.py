@@ -1,6 +1,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -11,11 +12,15 @@ from config.settings import get_settings
 from interactors.api.envelope import ok
 from interactors.api.errors import register_error_handlers
 from interactors.api.routes import agents, memory, projects, threads, work_items
+from interactors.api.static_ui import mount_ui
 
 logger = logging.getLogger("roster")
 
 
-def create_app(session_factory: async_sessionmaker[AsyncSession] | None = None) -> FastAPI:
+def create_app(
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+    ui_dir: Path | None = None,
+) -> FastAPI:
     """Build the app, and with it the one way anything reaches the database.
 
     `session_factory` is a constructor parameter rather than something a caller
@@ -56,15 +61,21 @@ def create_app(session_factory: async_sessionmaker[AsyncSession] | None = None) 
     app = FastAPI(title="roster", version="0.1.0", lifespan=lifespan)
     app.state.session_factory = session_factory
 
-    @app.get("/health")
+    # Spec §2.2: the API lives under /api in dev and in the bundle alike. The UI's
+    # own router claims /projects, /agents and /threads, so root belongs to the
+    # screens — there is exactly one answer to "where does the API live".
+    @app.get("/api/health")
     async def health() -> dict:
         return ok({"status": "ok"})
 
-    app.include_router(agents.router)
-    app.include_router(projects.router)
-    app.include_router(work_items.router)
-    app.include_router(memory.router)
-    app.include_router(memory.compact_router)
-    app.include_router(threads.router)
+    app.include_router(agents.router, prefix="/api")
+    app.include_router(projects.router, prefix="/api")
+    app.include_router(work_items.router, prefix="/api")
+    app.include_router(memory.router, prefix="/api")
+    app.include_router(memory.compact_router, prefix="/api")
+    app.include_router(threads.router, prefix="/api")
     register_error_handlers(app)
+    # Last, deliberately: the catch-all route must not shadow a real API route.
+    if ui_dir is not None:
+        mount_ui(app, ui_dir)
     return app

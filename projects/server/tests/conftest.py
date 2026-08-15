@@ -94,7 +94,10 @@ async def client(session_factory, settings):
     app.dependency_overrides[get_settings] = lambda: settings
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as http_client:
+    # httpx joins a relative request path onto base_url's path, so every test's
+    # `client.get("/projects")` becomes `/api/projects` without being edited.
+    # Verified against httpx 0.28.1.
+    async with AsyncClient(transport=transport, base_url="http://test/api") as http_client:
         # Exposed so individual tests can add their own dependency_overrides
         # (e.g. swapping in a turn manager wired to a failing runtime) without
         # every test needing its own bespoke client fixture.
