@@ -125,11 +125,13 @@ async def test_a_disabled_agent_is_never_spawned(run):
 
 
 async def test_an_unbuilt_tool_refuses_rather_than_guessing(run):
-    # codex and gemini are named in the spec but have no adapter yet.
+    # gemini is named in the enum and has no adapter: the binary is installed but
+    # unauthenticated, so its real output has never been seen. Refusing beats
+    # inventing a parser — the mistake the claude mapping had to correct.
     runtime = SubprocessRuntime()
-    agent = Agent(name="atlas", tool="codex")
+    agent = Agent(name="atlas", tool="gemini")
 
-    with pytest.raises(AgentUnavailable, match="codex"):
+    with pytest.raises(AgentUnavailable, match="gemini"):
         [m async for m in runtime.execute(agent, "/tmp", "do it")]
 
 
@@ -327,3 +329,33 @@ async def test_a_compaction_that_ignores_sigterm_is_killed_anyway(monkeypatch, t
 
     pid = await _pid_from(pid_file)
     assert await _wait_until_dead(pid), "compaction timed out but its process is still running"
+
+
+async def test_a_turn_is_never_handed_the_servers_stdin(monkeypatch):
+    """A turn has no interactive input, and inheriting uvicorn's stdin is not
+    harmless: codex reads stdin when it is available, so a live turn died with
+    "Reading additional input from stdin..." and exit status 1 before the agent
+    ever saw the task. claude ignores stdin, which is the only reason this
+    survived the first adapter.
+    """
+    from adapters.agents import subprocess_runtime as module
+    from adapters.agents.tools import ClaudeAdapter
+
+    seen: dict = {}
+    real = module.asyncio.create_subprocess_exec
+
+    async def spy(*argv, **kwargs):
+        seen.update(kwargs)
+        return await real(*argv, **kwargs)
+
+    monkeypatch.setattr(module.asyncio, "create_subprocess_exec", spy)
+    monkeypatch.setitem(
+        module.ADAPTERS, "claude", _ScriptedAdapter('print("")', ClaudeAdapter().parse)
+    )
+    runtime = SubprocessRuntime(executables={"claude": sys.executable})
+
+    [_ async for _ in runtime.execute(Agent(name="atlas"), "/tmp", "do it")]
+
+    assert seen.get("stdin") is asyncio.subprocess.DEVNULL, (
+        "the turn inherited the server's stdin"
+    )
