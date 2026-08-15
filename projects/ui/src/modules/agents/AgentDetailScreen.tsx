@@ -69,11 +69,20 @@ export function AgentDetailScreen({ name }: { name: string | undefined }) {
               <input
                 readOnly
                 aria-label="Model"
-                value={agent.model}
+                // Empty with a placeholder, not pre-filled with roster's
+                // fallback: a readOnly field showing `claude-opus-5` reads as a
+                // value the operator set, and for a `tool: codex` agent whose
+                // config.yaml names no model, nothing set it.
+                value={agent.model ?? ""}
+                placeholder={`chosen by ${agent.tool}`}
                 className="h-8 rounded-5 border border-border bg-bg-input px-2 font-mono text-12 text-text-2"
               />
             </label>
             <dl className="mt-2 flex flex-col gap-1 text-11">
+              <div className="flex gap-2">
+                <dt className="w-[110px] text-text-5">TOOL</dt>
+                <dd className="font-mono text-text-3">{agent.tool}</dd>
+              </div>
               <div className="flex gap-2">
                 <dt className="w-[110px] text-text-5">MAX TOKENS / RUN</dt>
                 <dd className="font-mono text-text-3">{agent.token_limit.toLocaleString()}</dd>

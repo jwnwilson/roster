@@ -31,10 +31,14 @@ _TOOL_BY_MODEL_PREFIX: tuple[tuple[str, AgentTool], ...] = (
 )
 
 
-def tool_for_model(model: str) -> AgentTool:
+def tool_for_model(model: str | None) -> AgentTool:
     """The CLI that can run this model. Defaults to claude for an unknown prefix
     rather than raising: an unrecognised *model* is the operator's business, and
     guessing wrong here is recoverable where refusing to load the agent is not."""
+    if not model:
+        # Nothing to infer from. claude is the tool roster shipped first, so an
+        # agent folder that names neither keeps working exactly as it did.
+        return "claude"
     for prefix, tool in _TOOL_BY_MODEL_PREFIX:
         if model.lower().startswith(prefix):
             return tool
@@ -53,7 +57,12 @@ class UnknownAgent(Exception):
 
 class Agent(BaseModel):
     name: str
-    model: str = DEFAULT_MODEL
+    # None means the operator never chose one, and the tool's own default
+    # applies. It is deliberately not `DEFAULT_MODEL`: that is a *claude* model,
+    # so reporting it for a codex agent named a vendor the agent does not use —
+    # under a UI column headed "MODEL · config.yaml", from a file that never
+    # said it.
+    model: str | None = None
     token_limit: int = DEFAULT_TOKEN_LIMIT
     temperature: float | None = None
     # Which CLI runs this agent. Inferred from the model when config.yaml omits
@@ -124,8 +133,8 @@ def read_agent(folder: Path, store: FileStore) -> Agent:
             else []
         )
 
-        model = config.get("model", DEFAULT_MODEL)
-        if not isinstance(model, str):
+        model = config.get("model")
+        if model is not None and not isinstance(model, str):
             return Agent(
                 name=folder.name,
                 status="disabled",

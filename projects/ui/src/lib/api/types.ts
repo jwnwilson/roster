@@ -41,9 +41,17 @@ export type WorkItem = {
  *  runtime state — an agent taking a turn — and is never persisted. */
 export type AgentStatus = "working" | "active" | "disabled";
 
+/** Which CLI roster spawns for this agent. A closed enum on the backend too: an
+ *  agent folder is operator content, so it names a *tool*, never a command. */
+export type AgentTool = "claude" | "codex" | "gemini";
+
 export type Agent = {
   name: string;
-  model: string;
+  tool: AgentTool;
+  /** null when config.yaml names no model and the tool picks its own. Not a
+   *  default to paper over: showing roster's fallback here announced a Claude
+   *  model for an agent that runs codex. */
+  model: string | null;
   token_limit: number;
   temperature: number | null;
   instructions: string;
