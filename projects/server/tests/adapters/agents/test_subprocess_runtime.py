@@ -179,13 +179,14 @@ def summarise(monkeypatch):
     from adapters.agents import subprocess_runtime as module
     from adapters.agents.tools import ClaudeAdapter
 
-    async def _run(script: str, *, timeout: float = 30.0, entries=None):
+    async def _run(script: str, *, timeout: float = 30.0, entries=None, project_folder="/tmp"):
         monkeypatch.setitem(
             module.ADAPTERS, "claude", _SummariseAdapter(script, ClaudeAdapter().parse)
         )
         runtime = SubprocessRuntime(executables={"claude": sys.executable}, timeout_seconds=timeout)
         return await runtime.summarise(
-            Agent(name="atlas"), "# old digest", entries or ["did a thing"], 8000
+            Agent(name="atlas"), project_folder, "# old digest",
+            entries or ["did a thing"], 8000
         )
 
     return _run
@@ -238,7 +239,7 @@ async def test_a_disabled_agent_never_compacts(summarise):
     disabled = Agent(name="cinder", status="disabled", problem="AGENT.md is missing")
 
     with pytest.raises(AgentUnavailable):
-        await runtime.summarise(disabled, "# d", ["e"], 8000)
+        await runtime.summarise(disabled, "/tmp", "# d", ["e"], 8000)
 
 
 # A CLI that ignores SIGTERM is not hypothetical — a tool that traps it to flush
@@ -325,7 +326,7 @@ async def test_a_compaction_that_ignores_sigterm_is_killed_anyway(monkeypatch, t
     runtime = SubprocessRuntime(executables={"claude": sys.executable}, timeout_seconds=1.0)
 
     with pytest.raises(TimeoutError):
-        await runtime.summarise(Agent(name="atlas"), "# d", ["e"], 8000)
+        await runtime.summarise(Agent(name="atlas"), "/tmp", "# d", ["e"], 8000)
 
     pid = await _pid_from(pid_file)
     assert await _wait_until_dead(pid), "compaction timed out but its process is still running"
@@ -359,3 +360,16 @@ async def test_a_turn_is_never_handed_the_servers_stdin(monkeypatch):
     assert seen.get("stdin") is asyncio.subprocess.DEVNULL, (
         "the turn inherited the server's stdin"
     )
+
+
+async def test_compaction_runs_inside_the_project_it_is_compacting(summarise, tmp_path):
+    """Found by running it: the digest came back containing "Python/FastAPI server
+    at `projects/server`" — a fact in none of its inputs. Compaction inherited the
+    *server's* working directory, and the CLI read the files it found there. For a
+    project's memory that is at best another project's context.
+    """
+    project = tmp_path / "someones-project"
+    project.mkdir()
+    script = "import os, sys; sys.stdin.read(); print(os.getcwd())"
+
+    assert await summarise(script, project_folder=str(project)) == str(project.resolve())

@@ -225,6 +225,7 @@ class AgentTurnManager:
                 # infrastructure and never invents roster's shapes for itself.
                 digest = await self._runtime.summarise(
                     agent,
+                    str(folder),
                     store.read_digest() or empty_digest(folder.name),
                     [entry.text for entry in entries],
                     self._settings.memory_digest_budget_bytes,
