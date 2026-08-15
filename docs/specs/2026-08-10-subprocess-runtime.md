@@ -105,13 +105,54 @@ bury the agent's actual work.
    operator's interactive configuration — the subprocess environment needs deciding rather than
    defaulting.
 
-### `codex` and `gemini` — unverified, neither is installed
+### `codex` — verified 2026-08-15 against codex-cli 0.147.0
 
-`command -v` finds neither on this machine, so their argv and output shapes remain unknown. **They
-must not be written from guesses**; that is the mistake this section just corrected for `claude`.
-Either install them and probe, or ship `claude` alone and add the others when a binary exists. A
-`tool` naming an uninstalled binary already disables the agent with a readable reason (§5), so
-shipping one adapter is a coherent state rather than a half-built one.
+Installed and probed. The stream is NDJSON of lifecycle events and shares **no field** with
+claude's — claude nests content blocks inside an `assistant` message; codex emits flat
+`thread.started` / `turn.started` / `item.started` / `item.completed` / `turn.completed` and carries
+the work in `item`. This is the clearest evidence that per-tool adapters were the right shape.
+
+Turn: `codex exec --json --skip-git-repo-check --sandbox workspace-write [--model M] <task>`.
+Compaction: the same without `--json`, `--sandbox read-only`, and a trailing `-` — codex's own
+"instructions come from stdin". Plain stdout is exactly the answer and nothing else.
+
+| Event | Becomes |
+|---|---|
+| `item.completed` + `item.type: agent_message` | `("text", item.text)` |
+| `item.completed` + `item.type: file_change` | one `("file_write", path)` **per entry in `changes`** |
+| `item.completed` + `item.type: command_execution` | `("event", "ran <command>")` |
+| `item.completed` + `item.type: error` | `("event", message)` |
+| `{"type": "error", "message": …}` (top level) | `("event", message)` |
+| `{"type": "turn.failed", "error": {"message": …}}` | `("event", message)` |
+| `item.started`, `thread.started`, `turn.started`, `turn.completed` | nothing |
+| any other `item.type` | `("event", <the type>)` — a newer codex will emit types roster has not met |
+
+Three things only running it could establish:
+
+- **`item.started` must be silent.** Every item is reported twice, so honouring both would double
+  every file write and every command in the thread.
+- **One event can be several messages.** An `apply_patch` touching three files is one `file_change`
+  carrying three paths, which is why `parse` returns a *list*. Returning the first would drop the
+  rest — and the same bug was already latent in the claude adapter, which returned at the first
+  interesting content block and so hid the edit that followed an explanation.
+- **`--skip-git-repo-check` is mandatory.** codex refuses to run in a directory that is not a
+  trusted git repository, and a roster project frequently is not one: source kind `none` creates a
+  plain folder. Without it the turn dies before the agent sees the task.
+
+**`--model` is passed only when the operator chose one.** `Agent.model` falls back to a *claude*
+model, which is meaningless to codex; and forcing any model overrides codex's account-aware default
+— `--model gpt-5-codex` failed with "not supported when using Codex with a ChatGPT account" on an
+account where omitting it worked.
+
+### `gemini` — installed, unverified, no adapter
+
+`gemini` is installed (0.55.1) but **unauthenticated**: it exits asking for `GEMINI_API_KEY`,
+`GOOGLE_GENAI_USE_VERTEXAI` or `GOOGLE_GENAI_USE_GCA`, so its real output has never been seen. Its
+help advertises `-p/--prompt` for headless mode and `-o/--output-format` with a `stream-json` choice,
+but **the envelope inside that stream cannot be read off a help page**, and writing a parser from
+flag names is the mistake this section corrected twice. A `tool` with no adapter already disables the
+agent with a readable reason (§5), so shipping two adapters is a coherent state rather than a
+half-built one.
 
 - **A line the adapter cannot parse is yielded as `("event", <the raw line>)`,** never dropped. An
   agent that prints a stack trace to stdout must not vanish; spec §7 says a failure is visible in
@@ -125,11 +166,10 @@ Rejected: parsing free text with heuristics to recover `kind`. Roster would be g
 agent meant, and guessing wrong is indistinguishable from the agent having said something else.
 Untyped-but-honest beats typed-but-invented.
 
-**Unverified, and the first thing to check when implementing:** the exact streaming-output flag and
-JSON shape for each of `claude`, `codex` and `gemini`. They differ, they change between versions,
-and this spec deliberately does not guess at them — each adapter's first test should run its real
-binary if present and be skipped if not, so the table is grounded in what the tools actually emit
-rather than what this document assumed.
+**Still unverified: `gemini` only.** `claude` and `codex` are now grounded in what the binaries
+actually emitted, on the dates named above. They differ from each other completely and they change
+between versions, so the rule stands for whoever adds the third: probe the real binary, and mark
+what you have not seen as unseen.
 
 ## 5. Failure, and what it must never do
 
@@ -211,10 +251,14 @@ Everything above holds except the adapters, which are one of three.
 
 - **`claude`: done**, against the installed binary — a full turn answered in a thread, resolving
   wrote the journal entry, and a real compaction folded an entry into the digest.
-- **`codex` and `gemini`: blocked, not deferred.** Neither binary is installed on this machine, so
-  there is nothing to verify an adapter against. §4 records why writing them anyway is the specific
-  mistake this spec already made once: the `claude` mapping was invented, and every field of it was
-  wrong. They need someone with the CLIs installed to run the probes in §4 first.
+- **`codex`: done (2026-08-15)**, against codex-cli 0.147.0. A live turn through roster wrote a file
+  and answered in the thread. Two defects surfaced only by running it: roster handed every turn the
+  *server's stdin*, which codex reads and claude ignores, so the turn died before the agent saw the
+  task; and `parse` could return only one message per line, which would have dropped every file
+  after the first in a multi-file patch.
+- **`gemini`: blocked.** Installed but unauthenticated, so its real output has never been seen —
+  and §4 records why writing an adapter from its help text is the specific mistake this spec already
+  made twice.
 - **Termination is asserted against a process that ignores `SIGTERM`**, in both the turn and
   compaction paths. Compaction previously signalled its child and raised without waiting, so only
   the turn path escalated to `SIGKILL` — a CLI that traps `SIGTERM` survived a compaction timeout
