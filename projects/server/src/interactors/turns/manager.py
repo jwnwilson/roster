@@ -169,7 +169,11 @@ class AgentTurnManager:
             target = status_after_turn(thread.status, status)
             if target == thread.status:
                 return
-            await tx.threads.update(thread_id, thread.model_copy(update={"status": target}))
+            # Conditional on the status this decision was made from. Reading,
+            # deciding, then writing unconditionally loses an operator's resolve
+            # that commits in the gap — the guard above would have been applied
+            # to a value already stale by the time the write landed.
+            await tx.threads.move_status_if_unchanged(thread_id, thread.status, target)
 
     async def write_memory(
         self, folder: Path, agent: Agent, thread_id: str, timestamp: str, summary: str
