@@ -111,6 +111,7 @@
   /* Neutral overlays the handoff specifies per component. */
   --overlay-03: rgba(255, 255, 255, 0.03);
   --overlay-05: rgba(255, 255, 255, 0.05);
+  --overlay-08: rgba(255, 255, 255, 0.08);
   --overlay-06: rgba(255, 255, 255, 0.06);
   --overlay-07: rgba(255, 255, 255, 0.07);
   --overlay-10: rgba(255, 255, 255, 0.10);
@@ -305,6 +306,7 @@
   --color-agent-disabled-border: var(--agent-disabled-border);
   --color-overlay-03: var(--overlay-03);
   --color-overlay-05: var(--overlay-05);
+  --color-overlay-08: var(--overlay-08);
   --color-overlay-06: var(--overlay-06);
   --color-overlay-07: var(--overlay-07);
   --color-overlay-10: var(--overlay-10);

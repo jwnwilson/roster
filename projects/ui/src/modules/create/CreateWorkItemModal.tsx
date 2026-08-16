@@ -7,7 +7,7 @@ import { Modal } from "../../components/ui/Modal";
 import { TextInput } from "../../components/ui/TextInput";
 import { useWorkItems } from "../../lib/api/hooks";
 import { queryKeys } from "../../lib/api/queryKeys";
-import type { WorkItemType } from "../../lib/api/types";
+import type { WorkItemStatus, WorkItemType } from "../../lib/api/types";
 import { createWorkItem } from "../../lib/api/workItems";
 import type { NewWorkItem } from "../../lib/api/workItems";
 
@@ -26,9 +26,13 @@ const TYPES: { value: WorkItemType; label: string }[] = [
  */
 export function CreateWorkItemModal({
   projectId,
+  status,
   onClose,
 }: {
   projectId: string;
+  /** Set when opened from a board column, so the item starts in that column
+   *  rather than the backlog — otherwise the per-column + means nothing. */
+  status?: WorkItemStatus;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState("");
@@ -73,6 +77,7 @@ export function CreateWorkItemModal({
       project_id: projectId,
       type,
       title,
+      ...(status ? { status } : {}),
       ...(epicId ? { epic_id: epicId } : {}),
       ...(featureId ? { feature_id: featureId } : {}),
     });

@@ -203,3 +203,32 @@ async def test_assignment_survives_an_unrelated_patch(client, project_id):
 
     # exclude_none on the patch means an omitted field must not blank the column.
     assert response.json()["data"]["agent_name"] == "atlas"
+
+
+async def test_a_work_item_can_be_created_straight_into_a_column(client, project_id):
+    """The board's per-column + (handoff §Screen B) is meaningless without this:
+    every item would land in the backlog whichever column was clicked."""
+    response = await client.post(
+        "/work-items",
+        json={
+            "project_id": project_id, "type": "task",
+            "title": "Straight to in progress", "status": "in_progress",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["status"] == "in_progress"
+
+
+async def test_an_unknown_status_on_create_is_refused(client, project_id):
+    # The column a button belongs to is roster's own value, but the request is
+    # still operator input arriving over HTTP.
+    response = await client.post(
+        "/work-items",
+        json={
+            "project_id": project_id, "type": "task",
+            "title": "Nowhere", "status": "somewhere-else",
+        },
+    )
+
+    assert response.status_code == 422

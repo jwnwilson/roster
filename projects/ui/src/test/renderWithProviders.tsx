@@ -4,7 +4,10 @@ import type { RenderOptions } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 
-/** Render with the providers every screen assumes: React Query and a router.
+import { CreateModalProvider } from "../modules/create/CreateModalProvider";
+
+/** Render with the providers every screen assumes: React Query, a router, and
+ *  the create modals.
  *
  * Retries are off — a test asserting an error state should see it on the first
  * failed request, not after three seconds of retries. */
@@ -18,7 +21,9 @@ export function renderWithProviders(
 
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+      <MemoryRouter initialEntries={[route]}>
+        <CreateModalProvider>{children}</CreateModalProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   );
 
