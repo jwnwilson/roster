@@ -288,8 +288,10 @@ instruction entirely. Out of scope until one exists.
 
 ### 5.3 Size
 
-Estimated ~120–180 MB in the bundle, ~60–90 MB compressed. **This is an estimate.** Real numbers
-from the first build replace it; size optimisation is deferred until measured.
+**Measured, not estimated.** The Python payload is **43 MB** unpacked — well under the 120–180 MB
+this section originally guessed, because a standalone CPython plus 29 wheels is simply smaller than
+assumed. The compressed `.dmg` figure is recorded in the packaging PR. No size optimisation was
+needed, so none was done.
 
 ---
 
