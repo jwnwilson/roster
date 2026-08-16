@@ -94,3 +94,25 @@ legitimately absent because the element it belongs to is deliberately unbuilt.
 
 ### Screen J — Settings (Secrets)  (1 spec colours not wired)
    #1c1e24  -> bg-toggle-off
+
+## Findings that are not miswiring
+
+Elements the handoff specifies that **do not exist**. A wrong colour is a
+one-line fix; a missing element is a decision, so these are recorded rather than
+invented — several depend on data roster does not have.
+
+- **Kanban column `+` button** (§Screen B) — 18×18, opens the create-work-item
+  flow for that column's status. `CreateWorkItemModal` exists and is reachable
+  from the topbar, so this is wiring plus a status preset.
+- **Kanban card row 3** (§Screen B) — epic tag + token count. `epic_id` is real;
+  the token count is not backed by any entity (`tokens.usage` is a fixture).
+- **Issues List column-header row** (§Screen A) — 28px, field labels at 9.5px
+  monospace `#2e3038`.
+- **Issues List row fields** (§Screen A) — epic tag, token count and age are
+  specified and absent. `created_at` and `epic_id` are real; tokens are not.
+
+## Deliberate deviations, worth confirming
+
+- **Done status circle carries a checkmark.** §Status Circles specifies a filled
+  circle and nothing more. The tick may be an improvement, but it is not what the
+  handoff says.

@@ -46,14 +46,18 @@ export function ListView({ projectId }: { projectId: string | undefined }) {
               {grouped[status].map((item: WorkItem) => (
                 <li
                   key={item.id}
-                  className="flex h-[34px] items-center gap-3 border-b border-overlay-05 px-[14px]"
+                  className="flex h-[34px] items-center gap-3 border-b border-overlay-03 px-[14px]"
                 >
                   <PriorityBars priority={item.priority} />
                   <StatusCircle status={item.status} size={13} />
                   <span className="w-[62px] shrink-0 font-mono text-10-5 text-text-6">
                     {item.key}
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-12-5 text-text-2">
+                  <span
+                    className={`min-w-0 flex-1 truncate text-12-5 ${
+                      item.status === "in_progress" ? "text-text-strong" : "text-text-message"
+                    }`}
+                  >
                     {item.title}
                   </span>
                   {item.agent_name && (
