@@ -43,7 +43,7 @@ describe("stopSidecar", () => {
     const outcome = await stopSidecar(sidecar, { kill, sleep: async () => {} });
 
     // Assert
-    expect(outcome).toBe("graceful");
+    expect(outcome).toEqual({ kind: "graceful" });
     expect(kill).toHaveBeenCalledTimes(1);
     expect(kill).not.toHaveBeenCalledWith(-4242, "SIGKILL");
   });
@@ -57,7 +57,7 @@ describe("stopSidecar", () => {
     const outcome = await stopSidecar(sidecar, { kill, sleep: async () => {} });
 
     // Assert
-    expect(outcome).toBe("killed");
+    expect(outcome).toEqual({ kind: "killed" });
     expect(kill).toHaveBeenNthCalledWith(1, -4242, "SIGTERM");
     expect(kill).toHaveBeenNthCalledWith(2, -4242, "SIGKILL");
   });
@@ -85,7 +85,66 @@ describe("stopSidecar", () => {
     });
     release();
 
-    // Act / Assert
-    await expect(stopSidecar(sidecar, { kill, sleep: async () => {} })).resolves.toBeDefined();
+    // Act
+    const outcome = await stopSidecar(sidecar, { kill, sleep: async () => {} });
+
+    // Assert -- ESRCH is benign: the process is already gone, so this still
+    // counts as a successful (graceful) stop, not a failure.
+    expect(outcome).toEqual({ kind: "graceful" });
+  });
+
+  it("does not report a successful stop when the signal hits a permission error", async () => {
+    // EPERM means the signal genuinely did not land -- the sidecar is still
+    // alive. Swallowing this the way ESRCH is swallowed would tell the caller
+    // the shutdown cascade ran when it never started.
+    // Arrange
+    const { sidecar } = sidecarExitingAfter(null);
+    const permissionError = Object.assign(new Error("not permitted"), { code: "EPERM" });
+    const kill = vi.fn().mockImplementation(() => {
+      throw permissionError;
+    });
+
+    // Act
+    const outcome = await stopSidecar(sidecar, { kill, sleep: async () => {} });
+
+    // Assert
+    expect(outcome).toEqual({ kind: "signal-failed", error: permissionError });
+  });
+
+  it("reports signal-failed when the final SIGKILL cannot be delivered", async () => {
+    // The grace-period SIGTERM lands, the sidecar ignores it, and the
+    // follow-up SIGKILL hits a permission error. The caller must learn the
+    // process is still running, not believe it was killed.
+    // Arrange
+    const { sidecar } = sidecarExitingAfter(null);
+    const permissionError = Object.assign(new Error("not permitted"), { code: "EPERM" });
+    const kill = vi
+      .fn()
+      .mockImplementationOnce(() => {})
+      .mockImplementationOnce(() => {
+        throw permissionError;
+      });
+
+    // Act
+    const outcome = await stopSidecar(sidecar, { kill, sleep: async () => {} });
+
+    // Assert
+    expect(outcome).toEqual({ kind: "signal-failed", error: permissionError });
+  });
+
+  it.each([-1, 0])("never signals a non-positive pid (%i)", async (pid) => {
+    // spawn.ts records pid: -1 when Node fails to obtain a child pid.
+    // -pid would then be 1 (launchd) or 0 (the caller's own process group) --
+    // both far worse than doing nothing.
+    // Arrange
+    const sidecar = { pid, exited: Promise.resolve() };
+    const kill = vi.fn();
+
+    // Act
+    const outcome = await stopSidecar(sidecar, { kill, sleep: async () => {} });
+
+    // Assert
+    expect(kill).not.toHaveBeenCalled();
+    expect(outcome).toEqual({ kind: "no-pid" });
   });
 });

@@ -11,13 +11,36 @@ export interface StopDeps {
   sleep: (ms: number) => Promise<void>;
 }
 
-function signalGroup(deps: StopDeps, pid: number, signal: NodeJS.Signals): void {
+/**
+ * What `stopSidecar` found when it tried to stop the server.
+ *
+ * A union rather than a boolean because the caller's log line is the only
+ * diagnostic a tester can send back, and "I could not signal it" has to be
+ * distinguishable from "it stopped".
+ */
+export type StopOutcome =
+  | { kind: "graceful" }
+  | { kind: "killed" }
+  | { kind: "signal-failed"; error: NodeJS.ErrnoException }
+  | { kind: "no-pid" };
+
+type SignalResult = { ok: true } | { ok: false; error: NodeJS.ErrnoException };
+
+function signalGroup(deps: StopDeps, pid: number, signal: NodeJS.Signals): SignalResult {
   try {
     // Negative pid signals the process group. uvicorn is a grandchild of the
     // spawn, so signalling only the recorded pid leaves it running.
     deps.kill(-pid, signal);
-  } catch {
-    // ESRCH: already gone. Stopping something that stopped is not an error.
+    return { ok: true };
+  } catch (error: unknown) {
+    const failure = error as NodeJS.ErrnoException;
+    // ESRCH alone is benign: the process is already gone, and stopping
+    // something that stopped is not a failure. Every other code means the
+    // signal did not land -- EPERM most of all, which says the process is
+    // still running and we were not allowed to touch it. Swallowing that
+    // would report a clean shutdown while agent CLIs keep running.
+    if (failure.code === "ESRCH") return { ok: true };
+    return { ok: false, error: failure };
   }
 }
 
@@ -29,21 +52,24 @@ function signalGroup(deps: StopDeps, pid: number, signal: NodeJS.Signals): void 
  * clean uvicorn shutdown lets the turn manager cancel its tasks, which is what
  * terminates the agents. SIGKILL first leaves them running after roster quits.
  */
-export async function stopSidecar(
-  sidecar: Sidecar,
-  deps: StopDeps,
-): Promise<"graceful" | "killed"> {
-  signalGroup(deps, sidecar.pid, "SIGTERM");
+export async function stopSidecar(sidecar: Sidecar, deps: StopDeps): Promise<StopOutcome> {
+  // spawn.ts records `pid: child.pid ?? -1` when Node never handed back a pid.
+  // Negating that gives 1 -- launchd -- and a pid of 0 signals our own process
+  // group. Both are far worse than doing nothing, so a spawn that never
+  // started is reported, not signalled.
+  if (!Number.isInteger(sidecar.pid) || sidecar.pid <= 0) return { kind: "no-pid" };
+
+  const term = signalGroup(deps, sidecar.pid, "SIGTERM");
+  if (!term.ok) return { kind: "signal-failed", error: term.error };
 
   const timedOut = Symbol("timed-out");
-  const outcome = await Promise.race([
+  const raced = await Promise.race([
     sidecar.exited.then(() => "graceful" as const),
     deps.sleep(SIGTERM_GRACE_MS).then(() => timedOut),
   ]);
+  if (raced !== timedOut) return { kind: "graceful" };
 
-  if (outcome === timedOut) {
-    signalGroup(deps, sidecar.pid, "SIGKILL");
-    return "killed";
-  }
-  return "graceful";
+  const killed = signalGroup(deps, sidecar.pid, "SIGKILL");
+  if (!killed.ok) return { kind: "signal-failed", error: killed.error };
+  return { kind: "killed" };
 }

@@ -15,6 +15,9 @@ import { stopSidecar, type Sidecar } from "./supervisor";
 
 let sidecar: Sidecar | null = null;
 let window: BrowserWindow | null = null;
+// Hoisted so `before-quit` can record how the stop went. The log file is the
+// only diagnostic a tester can send back.
+let logStream: NodeJS.WritableStream | null = null;
 
 const paths = resolvePaths({
   isPackaged: app.isPackaged,
@@ -66,13 +69,16 @@ function reportCrash(): void {
 }
 
 async function start(): Promise<void> {
-  const logStream = openLog(paths.logFile);
+  // Local const keeps the type non-nullable for the spawn calls below; the
+  // module-level binding exists only so `before-quit` can log the stop outcome.
+  const log = openLog(paths.logFile);
+  logStream = log;
 
   const resolved = await resolveShellPath({
     readShellPath: readLoginShellPath,
     inheritedPath: process.env.PATH ?? "",
   });
-  logStream.write(`[roster] PATH from ${resolved.source}: ${resolved.path}\n`);
+  log.write(`[roster] PATH from ${resolved.source}: ${resolved.path}\n`);
 
   const env = sidecarEnv({
     basePath: resolved.path,
@@ -85,7 +91,7 @@ async function start(): Promise<void> {
     args: ["-m", "alembic", "-c", paths.alembicIni, "upgrade", "head"],
     cwd: paths.serverDir,
     env,
-    logStream,
+    logStream: log,
   });
   if (!migration.ok) {
     fail(migration.reason === "stale-bundle" ? STALE_BUNDLE_MESSAGE : migration.message);
@@ -98,7 +104,7 @@ async function start(): Promise<void> {
       args: ["-m", "interactors.cli.seed"],
       cwd: paths.serverDir,
       env,
-      logStream,
+      logStream: log,
     });
     seed.exited.then(resolve);
   });
@@ -121,7 +127,7 @@ async function start(): Promise<void> {
     ],
     cwd: paths.serverDir,
     env,
-    logStream,
+    logStream: log,
   });
   sidecar = started;
 
@@ -174,10 +180,17 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     const stopping = sidecar;
     sidecar = null;
-    await stopSidecar(stopping, {
+    const outcome = await stopSidecar(stopping, {
       kill: (pid, signal) => process.kill(pid, signal),
       sleep: (ms) => delay(ms),
     });
+    // signal-failed means the server may still be running, and with it any
+    // agent CLI it spawned. Saying so is the whole point of the union.
+    logStream?.write(
+      outcome.kind === "signal-failed"
+        ? `[roster] could not stop the server: ${outcome.error.code ?? outcome.error.message}\n`
+        : `[roster] server stopped: ${outcome.kind}\n`,
+    );
     app.quit();
   });
 }
