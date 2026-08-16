@@ -78,7 +78,7 @@ export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
       </div>
 
       <div className="flex items-center gap-3 px-4 py-3">
-        <label className="flex items-center gap-2 text-11 text-text-3">
+        <label className="flex items-center gap-2 text-11 text-text-secondary-2">
           Status
           <select
             value={item.status}
@@ -86,7 +86,7 @@ export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
               setError(null);
               move.mutate(event.target.value as WorkItemStatus);
             }}
-            className="h-[28px] rounded-5 border border-border-strong bg-bg-input px-2 text-11 text-text-3"
+            className="h-[28px] rounded-5 border border-border-strong bg-bg-input px-2 text-11 text-text-secondary-2"
           >
             {STATUSES.map((status) => (
               <option key={status} value={status}>
@@ -96,7 +96,7 @@ export function DetailScreen({ projectId, itemId }: DetailScreenProps) {
           </select>
         </label>
         {item.agent_name && (
-          <span className="text-11 text-text-3">Agent: {item.agent_name}</span>
+          <span className="text-11 text-text-secondary-2">Agent: {item.agent_name}</span>
         )}
       </div>
 
