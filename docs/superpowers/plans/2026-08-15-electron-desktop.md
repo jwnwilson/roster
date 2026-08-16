@@ -700,7 +700,7 @@ deliverable.
   "name": "roster-desktop",
   "private": true,
   "version": "0.1.0",
-  "main": "dist-main/main.js",
+  "main": "dist-main/main/main.js",
   "scripts": {
     "build": "tsc -b",
     "lint": "tsc --noEmit",
@@ -2172,7 +2172,7 @@ Build the venv the unpackaged path expects (the full build script lands in Task 
 ```bash
 cd /Users/noel/projects/roster/.claude/worktrees/roster-electron
 uv venv --relocatable --python 3.12 projects/desktop/build/python
-uv export --frozen --no-dev --format requirements-txt > /tmp/roster-req.txt
+uv export --frozen --no-dev --package roster-server --format requirements-txt > /tmp/roster-req.txt
 uv pip install --python projects/desktop/build/python/bin/python -r /tmp/roster-req.txt
 uv pip install --python projects/desktop/build/python/bin/python --no-deps ./projects/server
 cd projects/ui && pnpm build && cd ../desktop && pnpm start
@@ -2263,8 +2263,13 @@ mkdir -p "$build_dir/server"
 uv venv --relocatable --python 3.12 "$venv"
 
 # --no-dev: pytest, ruff and mypy have no business in a shipped app.
-uv export --frozen --no-dev --format requirements-txt --project "$repo_root" \
-  > "$build_dir/requirements.txt"
+# --package roster-server, not a bare --no-dev export. roster-server lives only in the
+# root pyproject's dev dependency-group, never in [project].dependencies, so a plain
+# `--no-dev` export strips it and yields an EMPTY requirements file -- a venv that builds
+# clean and then cannot import the app. Verified during Task 10.
+uv export --frozen --no-dev --package roster-server --format requirements-txt \
+  --project "$repo_root" > "$build_dir/requirements.txt"
+test -s "$build_dir/requirements.txt" || { echo "FAIL: empty requirements export" >&2; exit 1; }
 uv pip install --python "$venv/bin/python" -r "$build_dir/requirements.txt"
 uv pip install --python "$venv/bin/python" --no-deps "$repo_root/projects/server"
 
