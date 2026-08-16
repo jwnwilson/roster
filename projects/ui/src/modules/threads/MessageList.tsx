@@ -37,8 +37,8 @@ export function MessageList({ messages }: { messages: Message[] }) {
             <div
               className={
                 fromAgent
-                  ? "rounded-[4px_12px_12px_12px] border border-border bg-bg-surface px-3 py-2"
-                  : "rounded-[12px_4px_12px_12px] border border-accent-border bg-accent-bg px-3 py-2"
+                  ? "rounded-[3px_9px_9px_9px] border border-border bg-bg-surface px-3 py-2"
+                  : "rounded-[9px_3px_9px_9px] border border-accent-border bg-accent-bg px-3 py-2"
               }
             >
               {label && (
@@ -48,7 +48,11 @@ export function MessageList({ messages }: { messages: Message[] }) {
               )}
               <span
                 className={`text-12-5 leading-[1.65] ${
-                  message.kind === "file_write" ? "font-mono text-text-3" : "text-text-2"
+                  message.kind === "file_write"
+                    ? "font-mono text-text-3"
+                    : fromAgent
+                      ? "text-text-message"
+                      : "text-accent-text"
                 }`}
               >
                 {message.content}

@@ -39,7 +39,7 @@ export function ChatPanel({ projectId }: ChatPanelProps) {
   }
 
   return (
-    <aside className="flex w-[292px] shrink-0 flex-col border-l border-border-subtle bg-bg-surface-2">
+    <aside className="flex w-[292px] shrink-0 flex-col border-l border-border-subtle bg-bg-chat">
       <div className="flex h-[44px] items-center border-b border-border-subtle px-[13px]">
         <span className="text-11-5 font-medium text-accent-text">Chat</span>
         <button
