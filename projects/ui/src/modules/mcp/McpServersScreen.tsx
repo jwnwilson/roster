@@ -21,7 +21,7 @@ const STATUS_TEXT: Record<McpStatus, string> = {
 };
 const STATUS_COLOUR: Record<McpStatus, string> = {
   connected: "text-agent-working",
-  auth_expired: "text-badge-review-text",
+  auth_expired: "text-attention",
   disabled: "text-agent-disabled",
 };
 

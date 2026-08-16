@@ -15,12 +15,12 @@ export function Toggle({ checked, onChange, label }: ToggleProps) {
       aria-label={label}
       type="button"
       onClick={() => onChange(!checked)}
-      className="relative inline-block rounded-[10px] transition-colors"
-      style={{ width: 26, height: 14, background: checked ? "var(--accent)" : "var(--bg-badge)" }}
+      className="relative inline-block rounded-[8px] transition-colors"
+      style={{ width: 26, height: 15, background: checked ? "var(--accent)" : "var(--bg-toggle-off)" }}
     >
       <span
         className="absolute top-[2px] rounded-full transition-all"
-        style={{ width: 10, height: 10, left: checked ? 14 : 2, background: checked ? "var(--knob-on)" : "var(--dot-muted)" }}
+        style={{ width: 11, height: 11, left: checked ? 13 : 2, background: checked ? "var(--knob-on)" : "var(--dot-muted)" }}
       />
     </button>
   );

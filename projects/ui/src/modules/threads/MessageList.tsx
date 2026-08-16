@@ -37,8 +37,8 @@ export function MessageList({ messages }: { messages: Message[] }) {
             <div
               className={
                 fromAgent
-                  ? "rounded-[3px_9px_9px_9px] border border-border bg-bg-surface px-3 py-2"
-                  : "rounded-[9px_3px_9px_9px] border border-accent-border bg-accent-bg px-3 py-2"
+                  ? "rounded-[4px_12px_12px_12px] border border-border bg-bg-surface px-3 py-2"
+                  : "rounded-[12px_4px_12px_12px] border border-accent-border bg-accent-bg px-3 py-2"
               }
             >
               {label && (

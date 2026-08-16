@@ -116,3 +116,25 @@ invented — several depend on data roster does not have.
 - **Done status circle carries a checkmark.** §Status Circles specifies a filled
   circle and nothing more. The tick may be an improvement, but it is not what the
   handoff says.
+
+## The handoff contradicts itself once
+
+**Message bubble corner radii.** §Chat Panel gives `3px 9px 9px 9px`; §Screen G
+gives `4px 12px 12px 12px`. `MessageList` renders in both places, so it cannot
+satisfy both. It keeps §Screen G's values — what shipped, and the dedicated
+screen for messages — and the chat panel would need its own variant to honour
+§Chat Panel. **Worth a designer's ruling rather than a guess.**
+
+## False positives this method produces
+
+Three "unwired" colours on §Screen C and two on §Screen G were wrong. `StatusBadge`
+reaches its palette through `var(--agent-working)` and friends in a `style`
+object, and a search for Tailwind class names cannot see that. Any future run of
+this audit should treat `var(--…)` usage as wiring too.
+
+## Missing elements found in the second pass
+
+- **Dashboard token chart** (§Screen E) — past bars, day labels, today's
+  highlight. No chart component exists; it is entirely fixture data.
+- **Dashboard active-agent count** (§Screen E) — the header's count in `#4a8c68`.
+- **Agent local path** (§Screen C) — 10px monospace `#3a3d45` under the name.
