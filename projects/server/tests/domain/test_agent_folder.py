@@ -270,7 +270,7 @@ def test_the_tool_is_inferred_from_the_model_when_config_omits_it(tmp_path):
         ("claude-opus-5", "claude"),
         ("gpt-5-codex", "codex"),
         ("o3-mini", "codex"),
-        ("gemini-2.5-pro", "gemini"),
+        ("gemini-2.5-pro", "antigravity"),
     ]:
         root = tmp_path / model
         root.mkdir()

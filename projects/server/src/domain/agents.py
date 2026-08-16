@@ -15,15 +15,18 @@ DEFAULT_MODEL = "claude-opus-5"
 # arbitrary command would let a malformed config.yaml execute anything — turning
 # "a broken folder degrades to Disabled" into a security boundary it was never
 # designed to be (subprocess-runtime spec §3).
-AgentTool = Literal["claude", "codex", "gemini"]
+AgentTool = Literal["claude", "codex", "antigravity"]
 
-TOOLS: tuple[AgentTool, ...] = ("claude", "codex", "gemini")
+TOOLS: tuple[AgentTool, ...] = ("claude", "codex", "antigravity")
 
 # Which tool a model belongs to, when config.yaml does not say. Prefix-matched so
 # existing agent folders keep working untouched.
 _TOOL_BY_MODEL_PREFIX: tuple[tuple[str, AgentTool], ...] = (
     ("claude", "claude"),
-    ("gemini", "gemini"),
+    # Google's models run under antigravity, whose binary is `ayg`. Marked as an
+    # assumption rather than a fact: the binary is not installed here, so nothing
+    # has confirmed which models it accepts.
+    ("gemini", "antigravity"),
     ("gpt", "codex"),
     ("o1", "codex"),
     ("o3", "codex"),

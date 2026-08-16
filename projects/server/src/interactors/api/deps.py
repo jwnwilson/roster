@@ -73,7 +73,7 @@ def _build_runtime(settings: Settings) -> AgentRuntime:
         executables={
             "claude": settings.tool_claude,
             "codex": settings.tool_codex,
-            "gemini": settings.tool_gemini,
+            "antigravity": settings.tool_antigravity,
         },
         timeout_seconds=settings.agent_timeout_seconds,
     )

@@ -15,7 +15,7 @@ logger = logging.getLogger("roster.runtime")
 # on 2026-08-10 showed a spawned CLI inheriting this machine's interactive hooks
 # and opening its stream with four SessionStart frames of unrelated content. An
 # agent roster spawns is not the operator sitting at a terminal.
-_STRIPPED_ENV_PREFIXES = ("CLAUDE_", "ANTHROPIC_CONFIG", "CODEX_", "GEMINI_")
+_STRIPPED_ENV_PREFIXES = ("CLAUDE_", "ANTHROPIC_CONFIG", "CODEX_", "ANTIGRAVITY_", "AYG_")
 
 # How long a CLI gets to exit on SIGTERM before it is killed outright. Long
 # enough for a tool that flushes state on the way out, short enough that a stuck

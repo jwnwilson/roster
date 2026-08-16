@@ -38,7 +38,8 @@ class Settings(BaseSettings):
     # letting agent content name an arbitrary command.
     tool_claude: str = "claude"
     tool_codex: str = "codex"
-    tool_gemini: str = "gemini"
+    # antigravity ships as `ayg`, not as its own name.
+    tool_antigravity: str = "ayg"
 
     memory_compact_entries: int = 10
     memory_compact_bytes: int = 32_768

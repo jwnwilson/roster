@@ -125,13 +125,13 @@ async def test_a_disabled_agent_is_never_spawned(run):
 
 
 async def test_an_unbuilt_tool_refuses_rather_than_guessing(run):
-    # gemini is named in the enum and has no adapter: the binary is installed but
-    # unauthenticated, so its real output has never been seen. Refusing beats
+    # antigravity is named in the enum and has no adapter: its binary (`ayg`) is
+    # not installed, so its real output has never been seen. Refusing beats
     # inventing a parser — the mistake the claude mapping had to correct.
     runtime = SubprocessRuntime()
-    agent = Agent(name="atlas", tool="gemini")
+    agent = Agent(name="atlas", tool="antigravity")
 
-    with pytest.raises(AgentUnavailable, match="gemini"):
+    with pytest.raises(AgentUnavailable, match="antigravity"):
         [m async for m in runtime.execute(agent, "/tmp", "do it")]
 
 
