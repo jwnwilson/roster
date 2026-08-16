@@ -5,6 +5,8 @@ export type NewWorkItem = {
   project_id: string;
   type: WorkItemType;
   title: string;
+  /** The column a board + button belongs to. Omitted, the API starts it in the backlog. */
+  status?: WorkItemStatus;
   priority?: Priority;
   epic_id?: string;
   feature_id?: string;

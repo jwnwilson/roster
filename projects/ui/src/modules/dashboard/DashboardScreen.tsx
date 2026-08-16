@@ -10,6 +10,9 @@ import { ActiveAgentsPanel } from "./ActiveAgentsPanel";
  * one. Each panel owns its own loading and error state so a single failing query
  * cannot blank the screen.
  */
+/** §Screen E labels each bar; the last is today. */
+const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
 export function DashboardScreen() {
   const pct = Math.round((tokenUsage.budget_used / tokenUsage.budget_limit) * 100);
   const peak = Math.max(...tokenUsage.today);
@@ -56,10 +59,22 @@ export function DashboardScreen() {
                 <div
                   key={index}
                   className={`flex-1 rounded-t-[2px] ${
-                    index === tokenUsage.today.length - 1 ? "bg-accent" : "bg-text-7"
+                    index === tokenUsage.today.length - 1 ? "bg-accent" : "bg-text-faint-5"
                   }`}
                   style={{ height: `${(value / peak) * 100}%` }}
                 />
+              ))}
+            </div>
+            <div className="mt-1 flex gap-1 font-mono text-9">
+              {DAY_LABELS.map((day, index) => (
+                <span
+                  key={day}
+                  className={`flex-1 text-center ${
+                    index === DAY_LABELS.length - 1 ? "text-accent" : "text-text-faint-3"
+                  }`}
+                >
+                  {day}
+                </span>
               ))}
             </div>
           </section>

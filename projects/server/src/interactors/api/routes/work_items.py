@@ -21,6 +21,10 @@ class WorkItemIn(BaseModel):
     project_id: str
     type: WorkItemType
     title: str
+    # The board creates straight into a column (handoff §Screen B), so the
+    # starting status is the caller's to choose. Typed as Status, so an unknown
+    # column is a 422 from the schema rather than a row in a state nothing lists.
+    status: Status = "backlog"
     priority: Priority = "medium"
     epic_id: str | None = None
     feature_id: str | None = None

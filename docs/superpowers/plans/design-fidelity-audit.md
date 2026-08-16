@@ -134,7 +134,9 @@ this audit should treat `var(--…)` usage as wiring too.
 
 ## Missing elements found in the second pass
 
-- **Dashboard token chart** (§Screen E) — past bars, day labels, today's
-  highlight. No chart component exists; it is entirely fixture data.
-- **Dashboard active-agent count** (§Screen E) — the header's count in `#4a8c68`.
+- ~~**Dashboard token chart**~~ — **this was my error.** The chart exists; a
+  `grep -v test` filter hid the line carrying `data-testid="token-chart"`. Its
+  bars were miswired (`#22252c` rather than `#1e2028`) and its day labels were
+  genuinely missing. Both fixed.
+- ~~**Dashboard active-agent count**~~ — built; `working` is real data.
 - **Agent local path** (§Screen C) — 10px monospace `#3a3d45` under the name.
