@@ -90,3 +90,8 @@ desktop:
 	./projects/desktop/scripts/build-python.sh
 	cd projects/desktop && pnpm install --prefer-offline && pnpm build
 	cd projects/desktop && pnpm package
+
+# Boots the built payload's sidecar directly (no Electron, no display) and
+# checks migration, the API, and the UI. See projects/desktop/scripts/smoke.sh.
+desktop-smoke:
+	./projects/desktop/scripts/smoke.sh

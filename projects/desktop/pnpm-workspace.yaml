@@ -1,0 +1,9 @@
+# Declares postinstall-script approval for Electron and esbuild so CI can run
+# `pnpm install` unattended. Without this, pnpm refuses to run either
+# package's postinstall script and stops to ask for `pnpm approve-builds`,
+# which has no non-interactive flag -- Task 12 had to drive that prompt with
+# `expect`. Task 14's CI job runs `make desktop`, which would hit the same
+# wall without this file.
+onlyBuiltDependencies:
+  - electron
+  - esbuild
