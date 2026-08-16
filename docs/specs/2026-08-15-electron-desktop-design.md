@@ -140,7 +140,7 @@ and `.mako` template, and a `--factory` import string that must resolve inside a
 
 The disqualifying reason is specific to roster. PyInstaller's bootloader sets `DYLD_LIBRARY_PATH`
 in the process environment, and `SubprocessRuntime._env` copies `os.environ` into every spawned
-agent. `claude`, `codex` and `gemini` would inherit the bundle's library path and could load the
+agent. `claude`, `codex` and `antigravity` would inherit the bundle's library path and could load the
 wrong dylibs. Roster exists to spawn those CLIs; corrupting their environment to save ~70 MB is the
 wrong trade.
 
