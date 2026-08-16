@@ -24,13 +24,17 @@ no containers.
 
 ## Current state (2026-08-15)
 
-**Backend, UI and the real agent runtime are all merged.** Backend: **344 tests, ~94% coverage**
-against an 80% gate (PR #2, then #4). UI: **232 tests**, every screen in the design built (PR #3).
-`make dev` boots both; CI runs a job for each on every pull request.
+**Backend, UI and the real agent runtime are all merged.** Backend: **382 tests, ~93% coverage**
+against an 80% gate (PRs #2, #4, #6, #7, #8). UI: **236 tests**, every screen in the design built
+(PRs #3, #7). `make dev` boots both; CI runs a job for each on every pull request.
 
-Agents now genuinely run: `SubprocessRuntime` spawns a real CLI, and a full turn has been carried
-out end to end against the installed `claude` binary. `FakeRuntime` remains the default so tests and
-`make dev` are unchanged.
+Agents genuinely run. `SubprocessRuntime` spawns the agent's own CLI as a real process group, and
+full turns have been carried out end to end against the installed `claude` **and `codex`** binaries
+— answering in a thread, writing files, and folding a resolved thread into the project digest.
+`FakeRuntime` remains the default, selected off unless `roster_use_subprocess_runtime` is set, so
+tests and `make dev` are unchanged.
+
+The API is served under `/api`, with the built UI served from the same process at root (PR #8).
 
 Architecture is four layers in one package:
 
@@ -184,6 +188,41 @@ remain covered by component tests only. And compaction inherits the server's wor
 the CLI read files there and volunteered a fact present in none of its inputs. Both are recorded in
 the spec rather than quietly carried.
 
+## Status (2026-08-15) — a second CLI, and the screen that lied about it
+
+Both remaining CLIs were installed. `codex` authenticated, so its adapter is built and merged
+(PR #6); `gemini` did not, so it is not (Outstanding 1). Two further merges followed from what
+running codex exposed.
+
+**codex shares no field with claude.** claude nests content blocks inside an `assistant` message;
+codex emits flat lifecycle events — `thread.started`, `turn.started`, `item.started`,
+`item.completed`, `turn.completed` — and carries the work in `item`. Every shape in its tests was
+captured from the binary rather than composed from documentation. This is the clearest evidence
+that one thin adapter per tool was the right boundary.
+
+**Three defects only a second real tool could find.** Each was latent in merged, green code:
+
+- **Every turn was handed the server's stdin.** `execute` set stdout and stderr and left stdin
+  inherited from uvicorn. codex reads stdin when it is there, so the first live turn died with
+  "Reading additional input from stdin..." *before the agent saw the task*. claude ignores stdin,
+  which is the only reason it survived the first adapter.
+- **`parse` could return one message per line** — already losing data in the shipped claude
+  adapter, which returned at the first content block, so a message that explained an edit and then
+  made it showed only the explanation. codex made it unavoidable: an `apply_patch` over three files
+  is one event carrying three paths.
+- **The Agents screen announced the wrong vendor.** `Agent.model` fell back to a *claude* model, so
+  an agent whose `config.yaml` is only `tool: codex` reported `claude-opus-5` — under a column
+  headed "MODEL · config.yaml", from a file that never said it — and nothing on screen named the
+  tool at all. Found by opening the running app (PR #7). `model` is now `None` when nobody chose
+  one, and both agent screens name the tool.
+
+**`--model` is passed to codex only when the operator chose one.** Forcing it overrides codex's
+account-aware default: `--model gpt-5-codex` failed with "not supported when using Codex with a
+ChatGPT account" on an account where omitting it worked.
+
+Separately, PR #8 moved the API under `/api` and serves the built UI from the server, which is what
+lets the desktop packaging work bundle one process instead of two.
+
 ## Learnings
 
 Things this project has already paid for. They are here because each cost real time.
@@ -258,22 +297,36 @@ red run on a docs commit is proof of a pre-existing race rather than a bad edit.
 round found a product bug — a finishing turn undoing an operator's resolution — where a rerun would
 have hidden it.
 
+**A green suite says nothing about the case its fixtures never describe.** The Agents screen
+asserted the wrong vendor for a codex agent while 232 UI tests passed, because every fixture was a
+claude agent with an explicit model. The bug was found by opening the app. *When a field gains a
+second possible shape, the fixtures are the first thing that must learn it* — and `tsc` then caught
+two tests that had been passing a now-nullable value as a matcher, so the suite was green while the
+type was wrong.
+
+**A defaulted value is a claim, and a claim can be false.** `Agent.model` defaulted to a real model
+name rather than to nothing, so "the operator did not choose" and "the operator chose claude-opus-5"
+became indistinguishable. The adapters had to compare against the default value to recover the
+distinction the type had thrown away. *Prefer a type that can say "unset" over a default that
+pretends otherwise.*
+
 **Green tests prove values move, not that they are the right values.** Said three ways this project
 now: the traversal test, the fake that ignored its argument, and an `assert task.cancelled()` that
 was true of any cancelled task and said nothing about the subprocess its name promised to check.
 
 ## Outstanding
 
-**Backend, UI and the real runtime are all merged.** `main` carries 382 backend tests and 232 UI
-tests, with CI running a job for each on every pull request. What follows is what has never been
-built.
+**Backend, UI, the real runtime and two of its three adapters are merged.** `main` carries 382
+backend tests and 236 UI tests, with CI running a job for each on every pull request. What follows
+is what has never been built.
 
-**1. The `gemini` adapter — blocked, not merely unstarted.** `claude` and `codex` both run, each
-verified against its real binary. `gemini` is named in the enum and has no adapter. The binary is
-not installed on this machine, so there is nothing to verify against, and the one thing that must
-not happen is writing it from a guessed output format — that is exactly the mistake the `claude`
-mapping already made and had to correct. Needs the CLI installed so the probes in the runtime spec
-§4 can be run first.
+**1. The `gemini` adapter — blocked on authentication, not on installation.** `claude` and `codex`
+both run, each verified against its real binary. `gemini` (0.55.1) is now installed but
+**unauthenticated**: it exits asking for `GEMINI_API_KEY`, `GOOGLE_GENAI_USE_VERTEXAI` or
+`GOOGLE_GENAI_USE_GCA`, so its real output has never been seen. Its help advertises `-p/--prompt`
+and `-o stream-json`, but **the envelope inside that stream cannot be read off a help page**, and
+writing a parser from flag names is the mistake the runtime spec has now corrected twice.
+Authenticate it, probe it, then build the adapter — the order codex was done in.
 
 **2. Compaction inherits the server's working directory.** Found by running it: the CLI read files
 in whatever directory the server was started from and folded a fact into the digest that appeared
