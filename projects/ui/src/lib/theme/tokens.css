@@ -24,6 +24,7 @@
   --accent-bg: rgba(124,108,240,0.10);
   --accent-bg-hover: rgba(124,108,240,0.14);
   --accent-border: rgba(124,108,240,0.25);
+  --accent-border-card: rgba(124,108,240,0.18);
   --accent-text: #bab7f6;
   /* Semantic */
   --green: #4a8c68;
@@ -108,7 +109,9 @@
   --agent-disabled-bg: rgba(74, 77, 86, 0.10);
   --agent-disabled-border: rgba(74, 77, 86, 0.20);
   /* Neutral overlays the handoff specifies per component. */
+  --overlay-03: rgba(255, 255, 255, 0.03);
   --overlay-05: rgba(255, 255, 255, 0.05);
+  --overlay-06: rgba(255, 255, 255, 0.06);
   --overlay-07: rgba(255, 255, 255, 0.07);
   --overlay-10: rgba(255, 255, 255, 0.10);
   --overlay-13: rgba(255, 255, 255, 0.13);
@@ -225,6 +228,7 @@
   --color-accent-bg: var(--accent-bg);
   --color-accent-bg-hover: var(--accent-bg-hover);
   --color-accent-border: var(--accent-border);
+  --color-accent-border-card: var(--accent-border-card);
   --color-accent-text: var(--accent-text);
   --color-green: var(--green);
   --color-green-bg: var(--green-bg);
@@ -299,7 +303,9 @@
   --color-agent-active-border: var(--agent-active-border);
   --color-agent-disabled-bg: var(--agent-disabled-bg);
   --color-agent-disabled-border: var(--agent-disabled-border);
+  --color-overlay-03: var(--overlay-03);
   --color-overlay-05: var(--overlay-05);
+  --color-overlay-06: var(--overlay-06);
   --color-overlay-07: var(--overlay-07);
   --color-overlay-10: var(--overlay-10);
   --color-overlay-13: var(--overlay-13);

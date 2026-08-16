@@ -12,8 +12,8 @@ export interface BoardViewProps {
 function Card({ item }: { item: WorkItem }) {
   return (
     <article
-      className={`rounded-7 bg-bg-surface p-[10px] ${
-        item.status === "in_progress" ? "border border-accent-border" : ""
+      className={`rounded-7 bg-bg-panel p-[10px] ${
+        item.status === "in_progress" ? "border border-accent-border-card" : ""
       }`}
     >
       <div className="flex items-center">
@@ -29,7 +29,7 @@ function Card({ item }: { item: WorkItem }) {
           </span>
         )}
       </div>
-      <p className="mt-1 text-12 leading-[1.4] text-text-2">{item.title}</p>
+      <p className="mt-1 text-12 leading-[1.4] text-text-card">{item.title}</p>
     </article>
   );
 }
@@ -70,7 +70,7 @@ export function BoardView({ projectId }: BoardViewProps) {
               key={status}
               data-testid={`column-${status}`}
               className={`flex flex-1 flex-col gap-2 border-r border-overlay-05 p-3 ${
-                status === "in_progress" ? "bg-bg-column-header" : ""
+                status === "in_progress" ? "bg-bg-column-active" : ""
               }`}
             >
               <div className="flex items-center gap-2">

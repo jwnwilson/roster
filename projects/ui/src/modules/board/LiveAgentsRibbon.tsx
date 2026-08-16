@@ -24,7 +24,7 @@ export function LiveAgentsRibbon() {
       data-testid="live-agents-ribbon"
       className="flex h-[76px] shrink-0 items-center gap-3 overflow-x-auto border-b border-border-subtle bg-bg-column-header px-[14px]"
     >
-      <span className="shrink-0 font-mono text-9-5 tracking-[0.07em] text-text-7">
+      <span className="shrink-0 font-mono text-9-5 tracking-[0.07em] text-text-faint-2">
         LIVE AGENTS
       </span>
 
@@ -55,11 +55,13 @@ export function LiveAgentsRibbon() {
                 >
                   {item.name}
                 </span>
-                <span className="font-mono text-[8.5px] text-accent">
+                <span
+                  className={`font-mono text-[8.5px] ${working ? "text-accent" : "text-text-7"}`}
+                >
                   {working ? "RUN" : "IDLE"}
                 </span>
               </div>
-              <span className="truncate text-10 text-text-4">
+              <span className="truncate text-10 text-agent-disabled">
                 {working ? item.model : "Awaiting task"}
               </span>
               {working && (

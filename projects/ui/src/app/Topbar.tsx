@@ -42,7 +42,7 @@ export function Topbar({
         <span
           data-testid="artifact-chip"
           title={artifactPath}
-          className="inline-flex h-[26px] items-center gap-1 rounded-5 border border-border-strong px-[9px] font-mono text-10-5 text-text-4"
+          className="inline-flex h-[26px] items-center gap-1 rounded-5 border border-border-strong px-[9px] font-mono text-11 text-text-label-3"
         >
           artifacts · {artifactPath.split("/").filter(Boolean).at(-3) ?? "project"}
         </span>

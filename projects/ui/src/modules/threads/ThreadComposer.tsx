@@ -67,12 +67,12 @@ export function ThreadComposer({ threadId, agentName, disabled = false }: Thread
           onChange={(event) => setContent(event.target.value)}
           placeholder={agentName ? `Reply to @${agentName}…` : "Reply…"}
           rows={2}
-          className="rounded-7 border border-border-strong bg-bg-input p-2 text-12 text-text-1"
+          className="rounded-7 border border-border-strong bg-bg-input p-2 text-12 text-text-1 placeholder:text-text-faint-4"
         />
       </label>
       <div className="mt-2 flex items-center gap-2">
         {agentName && (
-          <span className="rounded-[3px] border border-border px-2 py-[2px] font-mono text-9-5 text-text-4">
+          <span className="rounded-[3px] border border-border px-2 py-[2px] font-mono text-9-5 text-dot-muted">
             @{agentName}
           </span>
         )}
