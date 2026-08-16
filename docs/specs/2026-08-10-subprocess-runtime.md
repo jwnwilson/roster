@@ -208,17 +208,19 @@ An **empty** result is refused rather than written. `compact()` deletes the jour
 folded in, so accepting an empty digest would erase a project's accumulated context irrecoverably;
 refusing makes that loss impossible rather than merely unlikely.
 
-> **Open, found by running it (2026-08-10).** Compacting a digest through the real CLI produced a
-> line that was in no input given to it — "Python/FastAPI server at `projects/server`" — because
-> the compaction subprocess inherits the server's working directory and the CLI can read files
-> there. For a *project's* memory that is at best the wrong project's context and at worst another
-> project's contents folded into this one's digest.
+> **Closed 2026-08-16.** Compacting through the real CLI produced a line that was in no input given
+> to it — "Python/FastAPI server at `projects/server`" — because the compaction subprocess inherited
+> the server's working directory and the CLI read the files it found there. For a *project's* memory
+> that is at best the wrong project's context.
 >
-> `summarise` never receives the project folder: `compact_now(folder, agent)` has it and does not
-> pass it on. Fixing this means either widening the `AgentRuntime.summarise` signature or running
-> compaction with a neutral cwd and no tool access. **Deliberately not fixed in this pass** — it
-> changes a port that `FakeRuntime` also implements, and it deserves its own change rather than
-> being smuggled in beside the feature that revealed it.
+> `AgentRuntime.summarise` now takes `project_folder`, which `compact_now(folder, agent)` always had
+> and simply did not pass on, and `SubprocessRuntime` spawns compaction with that as its cwd and the
+> same stripped environment a turn gets. Verified by compacting a throwaway project through the real
+> binary: the digest describes that project and mentions nothing of roster's own tree.
+>
+> Widening the port was the honest fix rather than the cheap one — `FakeRuntime` implements it too —
+> which is why it was held back to its own change instead of being smuggled in beside the feature
+> that revealed it.
 
 ## 7. Out of scope, deliberately
 
@@ -259,6 +261,8 @@ Everything above holds except the adapters, which are one of three.
 - **`gemini`: blocked.** Installed but unauthenticated, so its real output has never been seen —
   and §4 records why writing an adapter from its help text is the specific mistake this spec already
   made twice.
+- **The compaction cwd leak is closed** (§6). `summarise` receives the project folder and runs
+  there.
 - **Termination is asserted against a process that ignores `SIGTERM`**, in both the turn and
   compaction paths. Compaction previously signalled its child and raised without waiting, so only
   the turn path escalated to `SIGKILL` — a CLI that traps `SIGTERM` survived a compaction timeout

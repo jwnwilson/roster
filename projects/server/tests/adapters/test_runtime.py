@@ -38,7 +38,7 @@ def test_the_runtime_adapter_encodes_no_roster_rules():
 async def test_fake_runtime_folds_entries_into_the_digest_it_was_handed():
     # Act
     result = await FakeRuntime().summarise(
-        Agent(name="atlas"), "# handed in", ["one", "two"], 1_000
+        Agent(name="atlas"), "/tmp/project", "# handed in", ["one", "two"], 1_000
     )
 
     # Assert

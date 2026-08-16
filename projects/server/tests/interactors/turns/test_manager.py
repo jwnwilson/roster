@@ -42,7 +42,7 @@ class ScriptedRuntime:
         if self._error is not None:
             raise self._error
 
-    async def summarise(self, agent, digest, entries, budget_bytes):
+    async def summarise(self, agent, project_folder, digest, entries, budget_bytes):
         if self._summary_error is not None:
             raise self._summary_error
         return f"{digest}\n\n<!-- folded {len(entries)} entries -->"
@@ -392,7 +392,7 @@ class _ResolvingRuntime:
             )
         yield ("text", "never mind, figured it out")
 
-    async def summarise(self, agent, digest, entries, budget_bytes):
+    async def summarise(self, agent, project_folder, digest, entries, budget_bytes):
         return digest
 
 
@@ -414,3 +414,32 @@ async def test_a_turn_finishing_cannot_undo_a_resolution(make_manager, seeded):
     async with uow_factory().transaction() as tx:
         found = await tx.threads.read(thread.id)
     assert found.status == "resolved", "the finishing turn reopened a thread the operator resolved"
+
+
+async def test_compaction_is_told_which_project_it_is_compacting(make_manager, folder):
+    """`compact_now` has the folder and used not to pass it on.
+
+    The consequence was not abstract: a real compaction, inheriting the server's
+    working directory, folded "Python/FastAPI server at `projects/server`" into a
+    project's digest — a fact in none of its inputs, and at best another
+    project's context. Asserting the folder *arrives* is what stops that
+    regressing, because every runtime in the tests ignores it happily.
+    """
+    seen: dict = {}
+
+    class _RecordingRuntime:
+        async def execute(self, agent, project_folder, task):
+            yield ("text", "unused")
+
+        async def summarise(self, agent, project_folder, digest, entries, budget_bytes):
+            seen["folder"] = project_folder
+            return "# folded"
+
+    manager = make_manager(runtime=_RecordingRuntime())
+    store = manager._memory_store(folder)
+    store.append_entry("t1", "2026-08-16T00-00-00Z", "did a thing")
+
+    result = await manager.compact_now(folder, Agent(name="atlas"))
+
+    assert result.compacted
+    assert seen["folder"] == str(folder), "compaction was not told which project it is folding"

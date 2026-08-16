@@ -25,9 +25,16 @@ class AgentRuntime(Protocol):
         ...
 
     async def summarise(
-        self, agent: Agent, digest: str, entries: list[str], budget_bytes: int
+        self, agent: Agent, project_folder: str, digest: str,
+        entries: list[str], budget_bytes: int
     ) -> str:
         """Fold the journal entries into `digest` and return its replacement.
+
+        `project_folder` is here because compaction spawns a tool that can read
+        files, and it must read *this* project's. Without it the subprocess
+        inherited the server's own working directory and folded a fact about
+        roster's source tree into a project's memory — see the note in
+        `SubprocessRuntime.summarise`.
 
         `digest` is always supplied by the caller, never invented here: what an
         as-yet-unwritten digest should look like is a roster rule (see
@@ -52,7 +59,8 @@ class FakeRuntime:
         yield ("event", "done")
 
     async def summarise(
-        self, agent: Agent, digest: str, entries: list[str], budget_bytes: int
+        self, agent: Agent, project_folder: str, digest: str,
+        entries: list[str], budget_bytes: int
     ) -> str:
         if self._summary_error:
             raise self._summary_error

@@ -184,9 +184,17 @@ class SubprocessRuntime:
             await process.wait()
 
     async def summarise(
-        self, agent: Agent, digest: str, entries: list[str], budget_bytes: int
+        self, agent: Agent, project_folder: str, digest: str,
+        entries: list[str], budget_bytes: int
     ) -> str:
         """Fold the journal into the digest by asking the agent's own CLI.
+
+        Runs **in the project folder**. Compaction spawns a tool that can read
+        files, and without a cwd of its own it inherited the server's — a real
+        compaction then folded "Python/FastAPI server at `projects/server`" into
+        a project's digest, a fact present in none of its inputs. Whatever the
+        tool reads, it must be this project's own files. The environment is
+        stripped exactly as a turn's is, for the same reason.
 
         Raising is safe by design: `compact_now` turns any exception into a
         failed compaction that leaves the digest and journal untouched, and the
@@ -205,6 +213,8 @@ class SubprocessRuntime:
 
         process = await asyncio.create_subprocess_exec(
             *adapter.summarise_argv(agent, executable),
+            cwd=project_folder,
+            env=self._env(project_folder),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
