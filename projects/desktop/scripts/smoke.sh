@@ -6,7 +6,7 @@
 # it does not cover is Electron's own window; spec §6.4 records that gap.
 set -euo pipefail
 # Job control, not `setsid`: setsid is a Linux (util-linux) command with no
-# macOS build-in equivalent, and this smoke test only ever runs on macOS (the
+# macOS built-in equivalent, and this smoke test only ever runs on macOS (the
 # platform this app packages for). `set -m` gets the same result -- each
 # backgrounded job becomes the leader of its own new process group -- so the
 # `kill -TERM "-$server_pid"` in cleanup() below still reaps uvicorn and
