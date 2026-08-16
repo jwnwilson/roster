@@ -18,6 +18,8 @@ projects/ui/dist/
 .claude/
 
 # Desktop build output
+projects/desktop/build/
 projects/desktop/dist-main/
+projects/desktop/release/
 projects/desktop/coverage/
 projects/desktop/tsconfig.tsbuildinfo
