@@ -16,3 +16,8 @@ projects/ui/dist/
 
 # Claude Code session state and worktrees — never part of the repo.
 .claude/
+
+# Desktop build output
+projects/desktop/dist-main/
+projects/desktop/coverage/
+projects/desktop/tsconfig.tsbuildinfo
