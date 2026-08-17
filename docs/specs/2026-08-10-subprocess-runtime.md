@@ -40,7 +40,7 @@ agent on `gpt-5-codex` cannot be launched by `claude`. `config.yaml` gains one k
 
 ```yaml
 model: claude-opus-5
-tool: claude        # claude | codex | gemini
+tool: claude        # claude | codex | antigravity
 token_limit: 200000
 ```
 
@@ -52,11 +52,11 @@ boundary it was never designed to be. A name roster does not recognise is a **Di
 a readable reason**, exactly like a malformed `token_limit` today.
 
 Defaulting: `tool` is optional and inferred from the model prefix (`claude-*` → `claude`,
-`gpt-*`/`o[0-9]*` → `codex`, `gemini-*` → `gemini`), so existing agent folders keep working
+`gpt-*`/`o[0-9]*` → `codex`, `gemini-*` → `antigravity`), so existing agent folders keep working
 untouched. An explicit `tool` always wins over the inference.
 
 Each tool's argv lives in one table in the adapter, and the executable name for each is
-overridable through settings (`roster_tool_claude`, `roster_tool_codex`, `roster_tool_gemini`) for
+overridable through settings (`roster_tool_claude`, `roster_tool_codex`, `roster_tool_antigravity`) for
 operators whose binaries are not on `PATH` under the obvious name. Overriding the *path* to a
 known tool is not the same as letting agent content choose an arbitrary command.
 
@@ -144,32 +144,26 @@ model, which is meaningless to codex; and forcing any model overrides codex's ac
 — `--model gpt-5-codex` failed with "not supported when using Codex with a ChatGPT account" on an
 account where omitting it worked.
 
-### `gemini` — installed, unverified, no adapter
+### `antigravity` (`ayg`) — not installed, no adapter
 
-`gemini` is installed (0.55.1) but **unauthenticated**: it exits asking for `GEMINI_API_KEY`,
-`GOOGLE_GENAI_USE_VERTEXAI` or `GOOGLE_GENAI_USE_GCA`, so its real output has never been seen. Its
-help advertises `-p/--prompt` for headless mode and `-o/--output-format` with a `stream-json` choice,
-but **the envelope inside that stream cannot be read off a help page**, and writing a parser from
-flag names is the mistake this section corrected twice. A `tool` with no adapter already disables the
-agent with a readable reason (§5), so shipping two adapters is a coherent state rather than a
-half-built one.
+**Replaces gemini in the enum (2026-08-16).** Google's CLI for this is now
+antigravity, which ships as **`ayg`** rather than under its own name — so the
+`tool` value is `antigravity` and `roster_tool_antigravity` defaults to `ayg`.
 
-- **A line the adapter cannot parse is yielded as `("event", <the raw line>)`,** never dropped. An
-  agent that prints a stack trace to stdout must not vanish; spec §7 says a failure is visible in
-  the UI, never silent. This is also the fallback for a tool run in plain-text mode: its output
-  still reaches the thread, just untyped.
-- **A line missing `kind` is treated as `text`.** The common case should not need ceremony.
-- **stderr is streamed as `event` messages**, interleaved by arrival. An agent's diagnostics are
-  part of the record of what it did.
+The binary is **not installed on this machine**, so nothing here describes its
+output. Two things must not be inferred:
 
-Rejected: parsing free text with heuristics to recover `kind`. Roster would be guessing what an
-agent meant, and guessing wrong is indistinguishable from the agent having said something else.
-Untyped-but-honest beats typed-but-invented.
+- **Its stream format.** Every other adapter in this document was written from a
+  probe of the real binary, and the one that was not — claude's first mapping —
+  was wrong in every field. There is no help text to lean on either, since the
+  command is absent.
+- **Which models it accepts.** `tool_for_model` maps the `gemini` model prefix to
+  antigravity on the reasonable assumption that Google's models run under
+  Google's tool. That is an assumption, marked as one in the code, and the first
+  thing to check when the binary arrives.
 
-**Still unverified: `gemini` only.** `claude` and `codex` are now grounded in what the binaries
-actually emitted, on the dates named above. They differ from each other completely and they change
-between versions, so the rule stands for whoever adds the third: probe the real binary, and mark
-what you have not seen as unseen.
+A `tool` with no adapter already disables the agent with a readable reason (§5),
+so shipping two adapters is a coherent state rather than a half-built one.
 
 ## 5. Failure, and what it must never do
 
@@ -238,7 +232,7 @@ refusing makes that loss impossible rather than merely unlikely.
 - `SubprocessRuntime` implements `AgentRuntime` and is selected by `deps._build_runtime` when
   `roster_use_subprocess_runtime` is set; `FakeRuntime` remains the default so tests and
   `make dev` are unchanged.
-- Adapters exist for `claude`, `codex` and `gemini`, each with its argv and parser in its own file,
+- Adapters exist for `claude`, `codex` and `antigravity`, each with its argv and parser in its own file,
   and each with a test against its real binary that skips when the binary is absent.
 - An unknown `tool` value disables the agent with a readable reason rather than raising.
 - The model-prefix inference is tested for all three families, and an explicit `tool` overrides it.
@@ -258,9 +252,9 @@ Everything above holds except the adapters, which are one of three.
   *server's stdin*, which codex reads and claude ignores, so the turn died before the agent saw the
   task; and `parse` could return only one message per line, which would have dropped every file
   after the first in a multi-file patch.
-- **`gemini`: blocked.** Installed but unauthenticated, so its real output has never been seen —
-  and §4 records why writing an adapter from its help text is the specific mistake this spec already
-  made twice.
+- **`antigravity` (`ayg`): blocked, and now the third tool in the enum** — it replaced gemini on
+  2026-08-16. The binary is not installed, so its real output has never been seen, and §4 records
+  why writing an adapter from anything less is the specific mistake this spec already made twice.
 - **The compaction cwd leak is closed** (§6). `summarise` receives the project folder and runs
   there.
 - **Termination is asserted against a process that ignores `SIGTERM`**, in both the turn and

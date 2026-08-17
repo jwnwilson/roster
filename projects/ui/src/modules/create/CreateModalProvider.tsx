@@ -1,14 +1,19 @@
 import { createContext, useCallback, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import type { WorkItemStatus } from "../../lib/api/types";
+
 import { CreateProjectModal } from "./CreateProjectModal";
 import { CreateWorkItemModal } from "./CreateWorkItemModal";
 
-type OpenModal = { kind: "project" } | { kind: "workItem"; projectId: string } | null;
+type OpenModal =
+  | { kind: "project" }
+  | { kind: "workItem"; projectId: string; status?: WorkItemStatus }
+  | null;
 
 export interface CreateModalValue {
   openProject: () => void;
-  openWorkItem: (projectId: string) => void;
+  openWorkItem: (projectId: string, status?: WorkItemStatus) => void;
 }
 
 export const CreateModalContext = createContext<CreateModalValue | null>(null);
@@ -22,7 +27,8 @@ export function CreateModalProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CreateModalValue>(
     () => ({
       openProject: () => setOpen({ kind: "project" }),
-      openWorkItem: (projectId: string) => setOpen({ kind: "workItem", projectId }),
+      openWorkItem: (projectId: string, status?: WorkItemStatus) =>
+        setOpen({ kind: "workItem", projectId, status }),
     }),
     [],
   );
@@ -32,7 +38,7 @@ export function CreateModalProvider({ children }: { children: ReactNode }) {
       {children}
       {open?.kind === "project" && <CreateProjectModal onClose={close} />}
       {open?.kind === "workItem" && (
-        <CreateWorkItemModal projectId={open.projectId} onClose={close} />
+        <CreateWorkItemModal projectId={open.projectId} status={open.status} onClose={close} />
       )}
     </CreateModalContext.Provider>
   );

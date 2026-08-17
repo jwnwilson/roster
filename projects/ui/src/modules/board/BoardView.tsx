@@ -1,6 +1,7 @@
 import { DataSourceBadge } from "../../components/DataSourceBadge";
 import { Avatar } from "../../components/ui/Avatar";
 import { StatusCircle } from "../../components/ui/StatusCircle";
+import { useCreateModal } from "../create/useCreateModal";
 import { useWorkItems } from "../../lib/api/hooks";
 import type { WorkItem } from "../../lib/api/types";
 import { STATUSES, STATUS_LABELS, groupByStatus } from "./groupByStatus";
@@ -12,8 +13,8 @@ export interface BoardViewProps {
 function Card({ item }: { item: WorkItem }) {
   return (
     <article
-      className={`rounded-7 bg-bg-surface p-[10px] ${
-        item.status === "in_progress" ? "border border-accent-border" : ""
+      className={`rounded-7 bg-bg-panel p-[10px] ${
+        item.status === "in_progress" ? "border border-accent-border-card" : ""
       }`}
     >
       <div className="flex items-center">
@@ -29,13 +30,14 @@ function Card({ item }: { item: WorkItem }) {
           </span>
         )}
       </div>
-      <p className="mt-1 text-12 leading-[1.4] text-text-2">{item.title}</p>
+      <p className="mt-1 text-12 leading-[1.4] text-text-card">{item.title}</p>
     </article>
   );
 }
 
 export function BoardView({ projectId }: BoardViewProps) {
   const { data, isPending, isError } = useWorkItems(projectId);
+  const { openWorkItem } = useCreateModal();
 
   if (!projectId) {
     return (
@@ -70,13 +72,25 @@ export function BoardView({ projectId }: BoardViewProps) {
               key={status}
               data-testid={`column-${status}`}
               className={`flex flex-1 flex-col gap-2 border-r border-overlay-05 p-3 ${
-                status === "in_progress" ? "bg-bg-column-header" : ""
+                status === "in_progress" ? "bg-bg-column-active" : ""
               }`}
             >
               <div className="flex items-center gap-2">
                 <StatusCircle status={status} size={12} />
                 <h2 className="text-11-5 font-semibold text-text-2">{STATUS_LABELS[status]}</h2>
                 <span className="font-mono text-9-5 text-text-6">{grouped[status].length}</span>
+                <button
+                  type="button"
+                  aria-label={`Add a work item to ${STATUS_LABELS[status]}`}
+                  onClick={() => openWorkItem(projectId, status)}
+                  className={`ml-auto flex size-[18px] items-center justify-center rounded-4 border text-11 ${
+                    status === "in_progress"
+                      ? "border-accent-border text-accent"
+                      : "border-border text-text-5"
+                  }`}
+                >
+                  +
+                </button>
               </div>
               {grouped[status].map((item) => (
                 <Card key={item.id} item={item} />

@@ -48,7 +48,11 @@ export function MessageList({ messages }: { messages: Message[] }) {
               )}
               <span
                 className={`text-12-5 leading-[1.65] ${
-                  message.kind === "file_write" ? "font-mono text-text-3" : "text-text-2"
+                  message.kind === "file_write"
+                    ? "font-mono text-text-3"
+                    : fromAgent
+                      ? "text-text-message"
+                      : "text-accent-text"
                 }`}
               >
                 {message.content}

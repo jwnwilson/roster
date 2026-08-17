@@ -26,7 +26,7 @@ const NAV = [
 const navClass = ({ isActive }: { isActive: boolean }) =>
   [
     "flex items-center gap-[7px] rounded-5 px-[7px] py-[5px] text-11",
-    isActive ? "bg-accent-bg font-medium text-accent-text" : "text-text-4",
+    isActive ? "bg-accent-bg font-medium text-accent-text" : "text-agent-disabled",
   ].join(" ");
 
 export function Sidebar() {
@@ -48,9 +48,9 @@ export function Sidebar() {
 
       <div className="px-[9px]">
         <div className="flex h-[28px] items-center gap-2 rounded-5 border border-border bg-bg-input px-2">
-          <SearchIcon size={11} className="text-text-7" />
-          <span className="text-11-5 text-text-7">Search</span>
-          <span className="ml-auto font-mono text-9 text-text-7">⌘K</span>
+          <SearchIcon size={11} className="text-text-6" />
+          <span className="text-11-5 text-text-6">Search</span>
+          <span className="ml-auto font-mono text-9 text-text-faint-4">⌘K</span>
         </div>
       </div>
 
@@ -67,12 +67,12 @@ export function Sidebar() {
 
       <div className="pt-[14px]">
         <div className="flex items-center px-[9px] pb-1">
-          <span className="font-mono text-9-5 tracking-[0.08em] text-text-3">PROJECTS</span>
+          <span className="font-mono text-9-5 tracking-[0.08em] text-text-label-2">PROJECTS</span>
           <button
             type="button"
             aria-label="New project"
             onClick={openProject}
-            className="ml-auto flex size-[17px] items-center justify-center rounded-4 border border-border-strong bg-overlay-05 text-text-3"
+            className="ml-auto flex size-[17px] items-center justify-center rounded-4 border border-border-strong bg-overlay-05 text-text-muted-3"
           >
             <PlusIcon size={9} />
           </button>
@@ -88,7 +88,9 @@ export function Sidebar() {
                 to={`/projects?project=${project.id}`}
                 aria-label={project.name}
                 aria-current={selectedProject === project.id ? "page" : undefined}
-                className={navClass({ isActive: selectedProject === project.id })}
+                className={`${navClass({ isActive: selectedProject === project.id })} ${
+                  selectedProject === project.id ? "" : "text-text-5"
+                }`}
               >
                 {project.source.kind === "git" ? (
                   <GitRepoIcon size={11} data-glyph="git" />
@@ -110,7 +112,7 @@ export function Sidebar() {
         <div data-testid="token-budget" data-source="unbacked" className="mt-2">
           <div className="flex items-center justify-between font-mono text-9-5">
             <span className="text-text-6">TOKEN BUDGET</span>
-            <span className="text-text-3">{pct}%</span>
+            <span className="text-text-secondary-3">{pct}%</span>
           </div>
           <div className="mt-1 h-[3px] rounded-[1px] bg-bg-track">
             <div className="h-full rounded-[1px] bg-accent" style={{ width: `${pct}%` }} />

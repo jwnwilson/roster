@@ -43,7 +43,7 @@ export type AgentStatus = "working" | "active" | "disabled";
 
 /** Which CLI roster spawns for this agent. A closed enum on the backend too: an
  *  agent folder is operator content, so it names a *tool*, never a command. */
-export type AgentTool = "claude" | "codex" | "gemini";
+export type AgentTool = "claude" | "codex" | "antigravity";
 
 export type Agent = {
   name: string;

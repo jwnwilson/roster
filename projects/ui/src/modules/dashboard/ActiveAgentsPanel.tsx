@@ -7,13 +7,19 @@ import { useAgents } from "../../lib/api/hooks";
  *  Named "active agents", not "running": there is no run concept (spec §6). */
 export function ActiveAgentsPanel() {
   const { data, isPending, isError } = useAgents();
+  const working = data?.results.filter((item) => item.status === "working");
 
   return (
     <section
       data-testid="active-agents"
       className="rounded-8 border border-border bg-bg-surface p-4"
     >
-      <h2 className="text-12-5 font-semibold text-text-2">Agents working</h2>
+      <h2 className="flex items-center gap-2 text-12-5 font-semibold text-text-2">
+        Agents working
+        {working && working.length > 0 && (
+          <span className="font-mono text-10-5 text-agent-working">{working.length}</span>
+        )}
+      </h2>
 
       {isPending && <p className="mt-2 text-11-5 text-text-4">Loading agents…</p>}
 
@@ -25,8 +31,7 @@ export function ActiveAgentsPanel() {
 
       {data &&
         (() => {
-          const working = data.results.filter((item) => item.status === "working");
-          if (working.length === 0) {
+          if (working === undefined || working.length === 0) {
             // Honest: the alternative is inventing activity on the one panel
             // that is supposed to be true.
             return <p className="mt-2 text-11-5 text-text-4">No agent is working right now.</p>;

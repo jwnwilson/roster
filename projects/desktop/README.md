@@ -20,7 +20,7 @@ Security → **Open Anyway** is the fallback if you would rather not run the com
 ## What it does with your machine
 
 - Reads and writes `~/.roster` — the same data the development server uses.
-- Spawns your installed agent CLIs (`claude`, `codex`, `gemini`) as subprocesses. It finds them by
+- Spawns your installed agent CLIs (`claude`, `codex`, `ayg`) as subprocesses. It finds them by
   asking your login shell for its `PATH`; an agent whose CLI is not installed reports that on
   screen rather than failing silently.
 - Logs the server to `~/Library/Logs/Roster/server.log`. **Send this file when reporting a

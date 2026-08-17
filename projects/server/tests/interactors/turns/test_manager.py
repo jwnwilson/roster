@@ -3,6 +3,7 @@ import asyncio
 import pytest
 
 from adapters.agents.runtime import FakeRuntime
+from adapters.db.repositories import ThreadRepository
 from adapters.db.uow import AsyncUnitOfWork
 from adapters.storage.local import LocalFileStore
 from config.settings import Settings
@@ -443,3 +444,56 @@ async def test_compaction_is_told_which_project_it_is_compacting(make_manager, f
 
     assert result.compacted
     assert seen["folder"] == str(folder), "compaction was not told which project it is folding"
+
+
+async def test_a_resolve_landing_mid_write_is_not_overwritten(make_manager, seeded, monkeypatch):
+    """The lost update behind an intermittent CI failure (`assert 200 == 409`).
+
+    `_move_thread` reads the thread, applies `status_after_turn` to what it read,
+    then writes. SQLite has no `SELECT ... FOR UPDATE`, so an operator's resolve
+    committing *between* that read and that write is silently overwritten — the
+    guard was applied to a value already stale by the time the write landed. The
+    thread reverts to open, and a second journal entry becomes writable for the
+    same work: exactly the guarantee `status_after_turn` was added to restore.
+
+    The interleaving is forced here rather than waited for. It has never
+    reproduced on macOS by racing, and a guarantee that only holds on fast disks
+    is not a guarantee.
+    """
+    thread, uow_factory = seeded
+    resolved_mid_write = False
+
+    class _ResolvesWhileTheTurnFinishes:
+        async def execute(self, agent, project_folder, task):
+            yield ("question", "Which database?")
+
+        async def summarise(self, agent, project_folder, digest, entries, budget_bytes):
+            return digest
+
+    manager = make_manager(runtime=_ResolvesWhileTheTurnFinishes())
+
+    original_read = ThreadRepository.read
+
+    async def read_then_let_the_operator_resolve(self, record_id):
+        nonlocal resolved_mid_write
+        found = await original_read(self, record_id)
+        if not resolved_mid_write and record_id == thread.id:
+            resolved_mid_write = True
+            # The operator's resolve commits in its own transaction, after this
+            # read has already handed back the pre-resolution status.
+            async with uow_factory().transaction() as tx:
+                current = await original_read(tx.threads, record_id)
+                await tx.threads.update(
+                    record_id, current.model_copy(update={"status": "resolved"})
+                )
+        return found
+
+    monkeypatch.setattr(ThreadRepository, "read", read_then_let_the_operator_resolve)
+
+    await manager.start(thread, Agent(name="atlas"), "/tmp/p", "do it")
+
+    async with uow_factory().transaction() as tx:
+        after = await original_read(tx.threads, thread.id)
+
+    assert resolved_mid_write, "the interleaving never happened; the test proves nothing"
+    assert after.status == "resolved", "a finishing turn overwrote the operator's resolve"

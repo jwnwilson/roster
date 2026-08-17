@@ -156,7 +156,7 @@ export function ThreadsScreen() {
                   } ${selectedId === thread.id ? "border-l-2 border-l-accent bg-accent-bg-soft" : ""}`}
                 >
                   <StatusBadge kind={BADGE_KIND[thread.status]} />
-                  <span className={`text-12-5 ${thread.read ? "text-text-2" : "font-medium text-text-1"}`}>
+                  <span className={`text-12-5 ${thread.read ? "text-text-read" : "font-medium text-text-1"}`}>
                     {thread.title}
                   </span>
                   {thread.last_message && (

@@ -1,7 +1,8 @@
 from typing import Any, cast
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.engine import CursorResult
 
 from adapters.db.orm import MessageRow, ProjectRow, ThreadRow, WorkItemRow
 from adapters.db.repository import AsyncSqlRepository
@@ -56,6 +57,30 @@ class WorkItemRepository(AsyncSqlRepository[WorkItem]):
 class ThreadRepository(AsyncSqlRepository[Thread]):
     orm_model = ThreadRow
     dto = Thread
+
+    async def move_status_if_unchanged(
+        self, thread_id: str, expected: str, target: str
+    ) -> bool:
+        """Set the status only while it still reads `expected`. True if it moved.
+
+        Read-then-write loses. A turn finishing reads the thread, decides what
+        the status should become, and writes — and SQLite has no
+        `SELECT ... FOR UPDATE`, so an operator resolving in that gap is silently
+        overwritten. The thread reverts to open, and a second journal entry
+        becomes writable for the same work.
+
+        Putting the expectation in the WHERE clause makes the database do the
+        comparison at write time, so a concurrent change turns this into a no-op
+        rather than a lost update.
+        """
+        result = await self.session.execute(
+            update(ThreadRow)
+            .where(ThreadRow.id == thread_id, ThreadRow.status == expected)
+            .values(status=target)
+        )
+        # `execute` is typed as returning Result; an UPDATE always yields a
+        # CursorResult, which is the one that carries rowcount.
+        return bool(cast("CursorResult[Any]", result).rowcount)
 
 
 class MessageRepository(AsyncSqlRepository[Message]):

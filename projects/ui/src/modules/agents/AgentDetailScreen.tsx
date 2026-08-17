@@ -29,7 +29,7 @@ export function AgentDetailScreen({ name }: { name: string | undefined }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-3 border-b border-border-subtle px-6 py-3">
+      <div className="flex items-center gap-3 border-b border-border-subtle bg-bg-strip px-6 py-3">
         <h1 className="text-[17px] font-semibold text-text-1">{agent.name}</h1>
         <DataSourceBadge screen="agentDetail" />
         <span className="ml-auto flex items-center gap-2">
@@ -50,7 +50,7 @@ export function AgentDetailScreen({ name }: { name: string | undefined }) {
             aria-label="AGENT.md"
             value={agent.instructions}
             rows={16}
-            className="rounded-6 border border-border bg-bg-inset p-3 font-mono text-12 leading-[1.55] text-text-2"
+            className="rounded-6 border border-border bg-bg-surface-2 p-3 font-mono text-12 leading-[1.55] text-text-2"
           />
           <span className="text-11 text-text-5">
             Changes would write straight to the file on disk — once there is an endpoint.

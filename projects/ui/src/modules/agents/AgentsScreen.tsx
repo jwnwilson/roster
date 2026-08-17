@@ -57,7 +57,7 @@ export function AgentsScreen() {
         </span>
       </div>
 
-      <p className="bg-bg-column-header px-6 py-2 text-11 text-text-4">
+      <p className="bg-bg-strip px-6 py-2 text-11 text-text-4">
         <span className="mr-2 font-mono text-9-5 tracking-[0.07em] text-text-6">AGENT FOLDER</span>
         Instructions, skills, tool and model are read from disk — roster never stores agent config
         itself.
@@ -102,12 +102,14 @@ export function AgentsScreen() {
                   <StatusBadge kind={item.status} />
                 </td>
                 <td className="py-3 font-mono text-10-5 text-text-3">{item.tool}</td>
-                <td className="py-3 font-mono text-10-5 text-text-4">
+                <td className="py-3 font-mono text-10-5 whitespace-nowrap">
+                  <span className="rounded-4 bg-bg-chip px-[6px] py-[2px] text-text-4">
                   {item.model ?? (
                     // The column says config.yaml, so when config.yaml is silent
                     // it must not read as though it named something.
                     <span className="not-italic text-text-6">chosen by {item.tool}</span>
                   )}
+                  </span>
                 </td>
                 <td className="py-3 text-11 text-text-3">{item.skills.length}</td>
               </tr>

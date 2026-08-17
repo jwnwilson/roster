@@ -158,7 +158,7 @@ compaction folded that entry into the digest. `FakeRuntime` stays the default; `
 is selected by `roster_use_subprocess_runtime`, so tests and `make dev` are unchanged.
 
 **`config.yaml` names a *tool*, roster owns the *command*.** The new `tool` key is a closed enum
-(`claude | codex | gemini`), never a command string. An agent folder is operator content, and a
+(`claude | codex | antigravity`), never a command string. An agent folder is operator content, and a
 folder that could name an arbitrary command would turn "a broken folder degrades to Disabled" from
 a robustness feature into a security boundary it was never designed to be. An unrecognised name
 disables the agent with a reason, exactly as a malformed `token_limit` does.
@@ -191,7 +191,8 @@ the spec rather than quietly carried.
 ## Status (2026-08-15) — a second CLI, and the screen that lied about it
 
 Both remaining CLIs were installed. `codex` authenticated, so its adapter is built and merged
-(PR #6); `gemini` did not, so it is not (Outstanding 1). Two further merges followed from what
+(PR #6); `gemini` did not, so it is not (Outstanding 1). *(Gemini was replaced in the enum by
+**antigravity** — binary `ayg` — on 2026-08-16; the rest of this entry is left as it was written.)* Two further merges followed from what
 running codex exposed.
 
 **codex shares no field with claude.** claude nests content blocks inside an `assistant` message;
@@ -343,13 +344,13 @@ so the check survives the next caller nobody thought of.
 backend tests and 236 UI tests, with CI running a job for each on every pull request. What follows
 is what has never been built.
 
-**1. The `gemini` adapter — blocked on authentication, not on installation.** `claude` and `codex`
-both run, each verified against its real binary. `gemini` (0.55.1) is now installed but
-**unauthenticated**: it exits asking for `GEMINI_API_KEY`, `GOOGLE_GENAI_USE_VERTEXAI` or
-`GOOGLE_GENAI_USE_GCA`, so its real output has never been seen. Its help advertises `-p/--prompt`
-and `-o stream-json`, but **the envelope inside that stream cannot be read off a help page**, and
-writing a parser from flag names is the mistake the runtime spec has now corrected twice.
-Authenticate it, probe it, then build the adapter — the order codex was done in.
+**1. The `antigravity` adapter — blocked, and the binary is not here.** `claude` and `codex` both
+run, each verified against its real binary. The third slot in the enum was gemini until 2026-08-16;
+Google's CLI for this is now **antigravity**, which ships as **`ayg`**, so the enum, settings default
+and spec were changed to match. Nothing has probed it — `ayg` is not installed on this machine — and
+the runtime spec §4 records why writing an adapter from anything less than a probe is the specific
+mistake the `claude` mapping already made and had to correct. Install it, probe it, then build the
+adapter, in that order.
 
 **2. Compaction inherits the server's working directory.** Found by running it: the CLI read files
 in whatever directory the server was started from and folded a fact into the digest that appeared
