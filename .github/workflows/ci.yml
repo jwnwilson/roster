@@ -54,3 +54,34 @@ jobs:
         if: steps.exists.outputs.ui == 'true'
         working-directory: projects/ui
         run: pnpm test
+
+  desktop:
+    name: desktop
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: projects/desktop/pnpm-lock.yaml
+      - name: Install
+        run: cd projects/desktop && pnpm install --frozen-lockfile
+      - name: Lint
+        run: cd projects/desktop && pnpm lint
+      - name: Tests and coverage gate
+        run: cd projects/desktop && pnpm test:coverage
+      # The payload build and smoke run on macOS only, and only here -- they are
+      # what would otherwise be discovered on a tester's Mac.
+      - name: Build the python payload
+        run: ./projects/desktop/scripts/build-python.sh
+      - name: Build the UI
+        run: cd projects/ui && pnpm install --frozen-lockfile && pnpm build
+      - name: Smoke the bundle
+        run: make desktop-smoke

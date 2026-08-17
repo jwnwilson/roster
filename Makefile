@@ -1,4 +1,4 @@
-.PHONY: install install-server install-ui test coverage lint dev dev-server dev-ui run seed db-upgrade
+.PHONY: install install-server install-ui test coverage lint dev dev-server dev-ui run seed db-upgrade desktop desktop-smoke
 
 # The UI half is skipped when projects/ui is absent, so a clean checkout of a
 # server-only branch still installs — it is the first command AGENTS.md tells a
@@ -72,3 +72,26 @@ seed:
 
 db-upgrade:
 	cd projects/server && uv run alembic upgrade head
+
+# The four halves of a shippable app, in dependency order. Each fails loudly:
+# a missing UI build produces an app that serves 404s, and a missing python
+# payload produces one that never boots -- both only discoverable on a tester's
+# Mac if this target lets them through.
+#
+# VITE_USE_MOCKS=false on the UI build: mock-first is the UI's own default
+# (src/main.tsx -- unset is indistinguishable from "on"), which is correct for
+# `pnpm dev` with no backend but wrong here -- the packaged app ships a real
+# backend and MSW's live-parity handlers would silently intercept /api/projects,
+# /api/work-items etc. and serve fixture data forever instead. Confirmed by
+# building without this flag: the packaged app requested mockServiceWorker.js
+# and the board would have rendered fixtures, not ~/.roster.
+desktop:
+	cd projects/ui && pnpm install --prefer-offline && VITE_USE_MOCKS=false pnpm build
+	./projects/desktop/scripts/build-python.sh
+	cd projects/desktop && pnpm install --prefer-offline && pnpm build
+	cd projects/desktop && pnpm package
+
+# Boots the built payload's sidecar directly (no Electron, no display) and
+# checks migration, the API, and the UI. See projects/desktop/scripts/smoke.sh.
+desktop-smoke:
+	./projects/desktop/scripts/smoke.sh

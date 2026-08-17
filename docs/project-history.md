@@ -315,6 +315,29 @@ pretends otherwise.*
 now: the traversal test, the fake that ignored its argument, and an `assert task.cancelled()` that
 was true of any cancelled task and said nothing about the subprocess its name promised to check.
 
+**A plan's file path is a claim until you run it.** The desktop plan's own `package.json` snippet
+pointed the Electron entry point at `dist-main/main.js`; `tsc` with `rootDir: src` actually emits
+`dist-main/main/main.js`. The wrong path does not error — Electron finds no entry module,
+`whenReady` never fires, and the process just hangs with no output. It cost a bisection to find,
+and the plan doc was corrected once the real path was known rather than left to mislead the next
+reader.
+
+**An export flag can silently drop the one package that matters.** `uv export --frozen --no-dev`
+looked right and produced a venv that built clean, because `roster-server` lives only in the root
+`pyproject`'s dev dependency-group and never in `[project].dependencies` — a bare `--no-dev` export
+therefore yields an *empty* requirements file and a payload that cannot import the app. The fix is
+`--package roster-server` plus a `test -s` assertion on the export before trusting it. A clean
+build cannot reveal this class of bug on its own; only running the result can.
+
+**A guard that lives in one caller is not a guard.** The first fix for a packaged build shipping
+mock data was `VITE_USE_MOCKS=false` on the `make desktop` command line. An ordinary `pnpm build`
+in `projects/ui` — no flag — put the mock-service-worker chunk straight back in, and a packaged app
+that looked like a working board never sent a single request to uvicorn; it rendered fixtures
+forever against `~/.roster` it never touched. Moving the pin into `projects/ui/.env.production`,
+which Vite loads for every production build regardless of who invokes it, is what actually closed
+the gap. `make desktop-smoke` now also greps the built bundle for `setupWorker`/`mockServiceWorker`
+so the check survives the next caller nobody thought of.
+
 ## Outstanding
 
 **Backend, UI, the real runtime and two of its three adapters are merged.** `main` carries 382
@@ -362,17 +385,38 @@ deliberately disabled with their reason on screen.
 **8. The memory UI** — reading, hand-editing and reverting a digest. No screen exists in the design
 bundle yet, so this needs design before code.
 
-**9. Electron packaging — one of three PRs merged.** The desktop app has a design spec
+**9. Desktop packaging — merged, with one gap named.** The desktop app has a design spec
 ([2026-08-15](specs/2026-08-15-electron-desktop-design.md)) and a plan
-([2026-08-15](superpowers/plans/2026-08-15-electron-desktop.md)) covering all three. What landed is
-the server-side precondition: the API now lives under `/api` in dev and packaged alike, because the
-UI's own router claims the same root paths it used to serve; and the server can serve the built UI
-at `/` when given `ui_dir`, through the `create_desktop_app` entry point. What has not been built is
-the Electron shell itself (PR 2 — process supervision, login-shell `PATH` resolution, the graceful
-shutdown that keeps agent CLIs from being orphaned) and the `.dmg` build (PR 3 — a relocatable `uv`
-venv over python-build-standalone, electron-builder, `make desktop-smoke`, CI).
+([2026-08-15](superpowers/plans/2026-08-15-electron-desktop.md)); all three of its PRs are now
+merged: the server-side precondition (the API under `/api`, the built UI served at `/` through
+`create_desktop_app`), the Electron shell (process supervision, login-shell `PATH` resolution, the
+graceful shutdown that keeps agent CLIs from being orphaned), and the `.dmg` build (a relocatable
+`uv` venv over python-build-standalone, electron-builder, `make desktop-smoke`, CI). `make desktop`
+produces an unsigned arm64 `.dmg`; CI builds the python payload and runs `make desktop-smoke` on a
+macOS runner (`macos-14`, since it is the only job that builds a macOS app).
 
-Three things about the merged half a reader should know before building on it:
+Measured, not estimated: the relocatable python payload is **43 MB** (the design spec's own guess
+was 120–180 MB), `Roster.app` unpacked is **282 MB** — mostly Electron's own arm64 framework, not
+roster's code — and `Roster-0.1.0-arm64.dmg` is **106.3 MiB**.
+
+What is actually verified: the app boots end to end (login-shell `PATH` resolution, the alembic
+migration, the seed, uvicorn on `interactors.api.desktop:create_desktop_app`), `/api/health` returns
+200, `GET /` and its JS/CSS return 200 through a live `BrowserWindow`, real backend traffic reaches
+the real `~/.roster` (curl returned real project folders, not fixtures), a clean shutdown leaves no
+orphaned `uvicorn`, `make desktop-smoke` passes against the built payload, and 34 desktop unit tests
+pass.
+
+**The gap, named:** nobody has ever seen the board render on screen. `screencapture` is denied in
+this environment, so every check above was logs, curl, or bundle inspection — never a screenshot.
+Also never done: starting an agent turn in the packaged app and watching messages stream, and
+tearing down a *live* agent CLI subprocess through the shutdown cascade (only the sidecar's own
+clean stop was observed, with no turn in flight). `main.ts` is excluded from the desktop coverage
+gate for the same reason, which is why it is kept to wiring only.
+
+**Not built:** auto-update, notarization and Developer ID signing, universal or x64 builds, Windows
+and Linux targets.
+
+Three more things about the merged server-side half a reader should know before building on it:
 
 - With `ui_dir` set, a non-GET request to an unmatched path returns **405 rather than 404**. The
   single-page-app catch-all registers a GET route at every path, so the method mismatch preempts the
@@ -381,8 +425,8 @@ Three things about the merged half a reader should know before building on it:
 - `mount_ui` **must stay registered last** in `create_app`. Its catch-all otherwise shadows every
   real API route, and the whole test suite passed while it did. A test now covers it, verified by
   deleting the ordering and watching that test fail.
-- **No browser has rendered the UI from the server.** Every manual check was `curl`. This is the same
-  gap as items 4 and 5, and a browser smoke test is scoped into PR 3.
+- A packaged build shipped MSW fixtures instead of talking to `~/.roster` the first time it was
+  built, and the first fix for it was bypassable — see Learnings.
 
 **Further out:** secrets encryption at rest; tuning compaction prompt quality against real project
 history.

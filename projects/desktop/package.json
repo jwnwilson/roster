@@ -8,7 +8,8 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "start": "pnpm build && electron ."
+    "start": "pnpm build && electron .",
+    "package": "electron-builder --mac dmg --arm64 --config electron-builder.yml"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

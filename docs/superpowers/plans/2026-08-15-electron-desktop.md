@@ -2427,7 +2427,7 @@ Append to the root `Makefile`, and add `desktop desktop-smoke` to the `.PHONY` l
 # payload produces one that never boots -- both only discoverable on a tester's
 # Mac if this target lets them through.
 desktop:
-	cd projects/ui && pnpm install --prefer-offline && pnpm build
+	cd projects/ui && pnpm install --prefer-offline && VITE_USE_MOCKS=false pnpm build
 	./projects/desktop/scripts/build-python.sh
 	cd projects/desktop && pnpm install --prefer-offline && pnpm build
 	cd projects/desktop && pnpm package
