@@ -26,6 +26,9 @@ async def get_uow(request: Request) -> AsyncIterator[AsyncUnitOfWork]:
     it. Nothing here builds one.
     """
     uow = AsyncUnitOfWork(request.app.state.session_factory)
+    # Published so `TransactionalRoute` can commit it before the response is
+    # built. Committing at teardown alone let the response outrun the write.
+    request.state.uow = uow
     async with uow.transaction():
         yield uow
 

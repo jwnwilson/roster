@@ -5,9 +5,10 @@ from config.settings import Settings, agents_dir, get_settings
 from domain.agents import mark_working, read_agents
 from interactors.api.deps import get_file_store, get_turn_manager
 from interactors.api.envelope import ok_list
+from interactors.api.transactional_route import TransactionalRoute
 from interactors.turns.manager import AgentTurnManager
 
-router = APIRouter(prefix="/agents", tags=["agents"])
+router = APIRouter(route_class=TransactionalRoute, prefix="/agents", tags=["agents"])
 
 
 @router.get("")

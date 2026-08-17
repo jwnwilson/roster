@@ -12,11 +12,15 @@ from interactors.api.deps import get_turn_manager, get_uow
 def _request(session_factory=None):
     """A stand-in for one FastAPI request against one app instance.
 
-    The only thing the dependencies below take from the request is
-    `app.state.session_factory` — that is the whole point of difference 3.
+    The dependencies below take `app.state.session_factory` from the request —
+    that is the whole point of difference 3 — and publish the UnitOfWork on
+    `request.state`, where `TransactionalRoute` collects it to commit before the
+    response is built. A real `Request` always carries `state`; this stand-in has
+    to as well.
     """
     return SimpleNamespace(
-        app=SimpleNamespace(state=SimpleNamespace(session_factory=session_factory))
+        app=SimpleNamespace(state=SimpleNamespace(session_factory=session_factory)),
+        state=SimpleNamespace(),
     )
 
 

@@ -7,8 +7,9 @@ from domain.transitions import Status, validate_transition
 from domain.work_items import Priority, WorkItem, WorkItemType, validate_parent
 from interactors.api.deps import get_uow
 from interactors.api.envelope import ok, ok_list
+from interactors.api.transactional_route import TransactionalRoute
 
-router = APIRouter(prefix="/work-items", tags=["work-items"])
+router = APIRouter(route_class=TransactionalRoute, prefix="/work-items", tags=["work-items"])
 
 # Listings are unpaginated today (page_size=0 fetches every row); the envelope
 # still reports these fixed page numbers so the response shape already matches
