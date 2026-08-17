@@ -33,6 +33,17 @@ class AsyncUnitOfWork:
             self._session = self._session_factory()
         return self._session
 
+    async def commit(self) -> None:
+        """Commit whatever is pending, if a session is open.
+
+        Called by `TransactionalRoute` before the response is built, so a 2xx
+        means the write landed. Safe to call again — `transaction()`'s own commit
+        on exit then has nothing to do — and safe to call when nothing ever
+        touched the database, which is the common case for a read.
+        """
+        if self._session is not None:
+            await self._session.commit()
+
     @asynccontextmanager
     async def transaction(self) -> AsyncIterator["AsyncUnitOfWork"]:
         session = self.session

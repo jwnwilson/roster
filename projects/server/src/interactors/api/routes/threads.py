@@ -28,11 +28,12 @@ from domain.threads import (
 )
 from interactors.api.deps import get_file_store, get_turn_manager, get_uow
 from interactors.api.envelope import ok, ok_list
+from interactors.api.transactional_route import TransactionalRoute
 from interactors.turns.manager import AgentTurnManager, build_summary
 
 logger = logging.getLogger("roster.threads")
 
-router = APIRouter(prefix="/threads", tags=["threads"])
+router = APIRouter(route_class=TransactionalRoute, prefix="/threads", tags=["threads"])
 
 # Listings are unpaginated today (page_size=0 fetches every row); the envelope
 # still reports these fixed page numbers so the response shape already matches

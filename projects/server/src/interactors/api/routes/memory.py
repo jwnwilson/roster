@@ -8,14 +8,19 @@ from domain.agents import Agent
 from domain.memory import MemoryStore
 from interactors.api.deps import get_turn_manager, get_uow
 from interactors.api.envelope import ok
+from interactors.api.transactional_route import TransactionalRoute
 from interactors.memory_stores import open_project_memory
 from interactors.turns.manager import AgentTurnManager
 
-router = APIRouter(prefix="/projects/{project_id}/memory", tags=["memory"])
+router = APIRouter(
+    route_class=TransactionalRoute,
+    prefix="/projects/{project_id}/memory",
+    tags=["memory"],
+)
 
 # Same resource, but spelled as a full path rather than under the prefix above,
 # because the prefix already consumes the project id as a path parameter.
-compact_router = APIRouter(tags=["memory"])
+compact_router = APIRouter(route_class=TransactionalRoute, tags=["memory"])
 
 # A manual "compact now" call is not tied to any thread or any agent that actually
 # did work — this stands in for the agent so compact_now can still reach
