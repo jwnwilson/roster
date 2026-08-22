@@ -71,7 +71,19 @@ export function McpServersScreen() {
         <p className="px-6 py-4 text-12 text-text-3">No servers match that filter.</p>
       )}
 
-      <table className="w-full text-left">
+      <table className="w-full table-fixed text-left">
+        {/* §Screen K fixes these widths (300 128 1fr 92 96 104 92). Without
+            table-fixed nothing lands where the design puts it. USED BY and P50
+            are omitted: this whole screen is fixture-backed and badged as such,
+            and two more columns of invented numbers would deepen the fiction
+            rather than the fidelity. */}
+        <colgroup>
+          <col className="w-[300px]" />
+          <col className="w-[128px]" />
+          <col />
+          <col className="w-[92px]" />
+          <col className="w-[104px]" />
+        </colgroup>
         <thead>
           <tr className="font-mono text-9-5 tracking-[0.07em] text-text-7">
             <th className="px-6 py-2 font-normal">SERVER · ENDPOINT</th>

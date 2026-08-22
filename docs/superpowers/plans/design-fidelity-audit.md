@@ -140,3 +140,39 @@ this audit should treat `var(--…)` usage as wiring too.
   genuinely missing. Both fixed.
 - ~~**Dashboard active-agent count**~~ — built; `working` is real data.
 - **Agent local path** (§Screen C) — 10px monospace `#3a3d45` under the name.
+
+
+# Round 2 — 2026-08-22
+
+The first pass compared **colours only**. This one compares dimensions, and the
+method needs a warning attached.
+
+## The method has a high false-positive rate
+
+Searching for the handoff's px values in the source flags anything Tailwind
+expresses on its own scale: the New button's `28px` is `h-7`, most `16px` hits
+are `gap-4` or `p-4`. Those are not findings. Only values Tailwind cannot
+produce incidentally — the column grids below — are trustworthy without opening
+the file.
+
+## Fixed
+
+- **Agents and MCP column grids.** §Screen C gives `292px 118px 1fr 168px 76px
+  74px 88px`; §Screen K gives `300px 128px 1fr 92px 96px 104px 92px`. Both
+  screens were `table w-full` with no widths at all, so every column sized
+  itself to its content and nothing landed where the design puts it. Now
+  `table-fixed` with a `colgroup`.
+  - `CURRENT WORK ITEM`, `MCPS`, `SPEND`, `USED BY` and `P50` are **omitted, not
+    invented** — no entity carries them, and the MCP screen is fixture-backed
+    already. More columns of invented numbers would deepen the fiction, not the
+    fidelity.
+  - `TOOL` is absent from the handoff because the handoff predates the field.
+- **Agent Detail identity tile** (§C2) — a 38px tile opens the strip; it was the
+  one element of that strip never built.
+
+## A second self-contradiction in the handoff
+
+The message avatar is **20px** in §Chat Panel and **22px** in §Screen G, and one
+component renders in both places — exactly as with the bubble radii. The code
+follows §Screen G, consistently with the earlier decision. Both need a
+designer's ruling rather than a guess.

@@ -70,7 +70,20 @@ export function AgentsScreen() {
             : `No agents are ${LABEL[filter].toLowerCase()}.`}
         </p>
       ) : (
-        <table className="w-full text-left">
+        <table className="w-full table-fixed text-left">
+          {/* §Screen C fixes these widths (292 118 1fr 168 76 …). Without
+              table-fixed the columns size themselves to content, so no column
+              lands where the design puts it. CURRENT WORK ITEM, MCPS and SPEND
+              are omitted rather than invented — no entity carries them — and
+              MODEL takes the flexible column in their place. TOOL is not in the
+              handoff because the handoff predates the field. */}
+          <colgroup>
+            <col className="w-[292px]" />
+            <col className="w-[118px]" />
+            <col className="w-[96px]" />
+            <col />
+            <col className="w-[76px]" />
+          </colgroup>
           <thead>
             <tr className="font-mono text-9-5 tracking-[0.07em] text-text-7">
               <th className="px-6 py-2 font-normal">AGENT · PATH</th>

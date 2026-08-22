@@ -87,3 +87,21 @@ describe("AgentsScreen — which CLI an agent actually runs", () => {
     expect(within(row).getByText(/chosen by codex/i)).toBeInTheDocument();
   });
 });
+
+describe("AgentsScreen — the handoff's column grid", () => {
+  it("fixes the column widths instead of letting content decide them", async () => {
+    // §Screen C gives exact widths (292 118 1fr 168 76 …). The table was
+    // `w-full` with none of them, so every column sized itself to its content
+    // and nothing lined up with the design. Eighteen tests passed throughout;
+    // none looked at layout.
+    const { container } = renderWithProviders(<AgentsScreen />);
+    await screen.findByRole("table");
+
+    const table = container.querySelector("table")!;
+    expect(table.className).toMatch(/table-fixed/);
+
+    const widths = [...container.querySelectorAll("colgroup col")].map((c) => c.className);
+    expect(widths[0]).toMatch(/w-\[292px\]/);
+    expect(widths[1]).toMatch(/w-\[118px\]/);
+  });
+});
