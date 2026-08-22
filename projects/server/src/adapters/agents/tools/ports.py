@@ -27,8 +27,14 @@ class ToolAdapter(Protocol):
 
     name: str
 
-    def argv(self, agent: Agent, task: str, executable: str) -> list[str]:
-        """The command line to run, as a list — never a shell string."""
+    def argv(self, agent: Agent, project_folder: str, task: str, executable: str) -> list[str]:
+        """The command line to run, as a list — never a shell string.
+
+        `project_folder` is here because a cwd is not always enough to tell a
+        tool where it may work: antigravity writes to its own scratch directory
+        unless the workspace is named on the command line, verified by watching
+        it do exactly that. Adapters whose tools take the cwd ignore this.
+        """
         ...
 
     def parse(self, line: str) -> Parsed:

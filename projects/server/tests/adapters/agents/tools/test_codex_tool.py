@@ -100,7 +100,7 @@ def test_argv_runs_headless_json_and_survives_a_project_that_is_not_a_git_repo()
     # "Not inside a trusted directory", and roster projects are often a plain
     # folder — source kind "none" creates one with no repo at all.
     agent = Agent(name="atlas", model="gpt-5-codex", tool="codex")
-    argv = CodexAdapter().argv(agent, "do it", "codex")
+    argv = CodexAdapter().argv(agent, "/projects/acme", "do it", "codex")
 
     assert argv[:2] == ["codex", "exec"]
     assert "--json" in argv
@@ -110,7 +110,8 @@ def test_argv_runs_headless_json_and_survives_a_project_that_is_not_a_git_repo()
 
 
 def test_argv_lets_the_agent_write_inside_the_project_and_no_further():
-    argv = CodexAdapter().argv(Agent(name="atlas", tool="codex"), "do it", "codex")
+    agent = Agent(name="atlas", tool="codex")
+    argv = CodexAdapter().argv(agent, "/projects/acme", "do it", "codex")
 
     # workspace-write, never danger-full-access: roster's trust model is local
     # (design spec §10), but that is not a reason to hand a tool the whole disk
@@ -171,7 +172,8 @@ def test_an_unchosen_model_is_left_to_codex_rather_than_sent_claudes_default():
     2026-08-15, `--model gpt-5-codex` failed with "not supported when using Codex
     with a ChatGPT account" on an account where omitting it worked.
     """
-    argv = CodexAdapter().argv(Agent(name="atlas", tool="codex"), "do it", "codex")
+    agent = Agent(name="atlas", tool="codex")
+    argv = CodexAdapter().argv(agent, "/projects/acme", "do it", "codex")
 
     assert "--model" not in argv
 
@@ -181,7 +183,7 @@ def test_a_model_the_operator_actually_chose_is_honoured():
     # the refusal now reaches the thread with codex's own reason.
     agent = Agent(name="atlas", model="gpt-5.1-codex", tool="codex")
 
-    assert "--model" in CodexAdapter().argv(agent, "do it", "codex")
+    assert "--model" in CodexAdapter().argv(agent, "/projects/acme", "do it", "codex")
 
 
 def test_compaction_makes_the_same_choice():

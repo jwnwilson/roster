@@ -144,26 +144,40 @@ model, which is meaningless to codex; and forcing any model overrides codex's ac
 — `--model gpt-5-codex` failed with "not supported when using Codex with a ChatGPT account" on an
 account where omitting it worked.
 
-### `antigravity` (`ayg`) — not installed, no adapter
+### `antigravity` (`agy`) — verified 2026-08-22 against antigravity-cli 1.1.18
 
-**Replaces gemini in the enum (2026-08-16).** Google's CLI for this is now
-antigravity, which ships as **`ayg`** rather than under its own name — so the
-`tool` value is `antigravity` and `roster_tool_antigravity` defaults to `ayg`.
+Installed and probed. **The binary is `agy`, not `ayg`** — the cask makes it plain
+(`Linking Binary 'antigravity' to '/opt/homebrew/bin/agy'`), and the settings default was
+transposed until it was read.
 
-The binary is **not installed on this machine**, so nothing here describes its
-output. Two things must not be inferred:
+A third format, again sharing no field with the other two: the envelope key is `event`, and the
+work is nested under `step_update`.
 
-- **Its stream format.** Every other adapter in this document was written from a
-  probe of the real binary, and the one that was not — claude's first mapping —
-  was wrong in every field. There is no help text to lean on either, since the
-  command is absent.
-- **Which models it accepts.** `tool_for_model` maps the `gemini` model prefix to
-  antigravity on the reasonable assumption that Google's models run under
-  Google's tool. That is an assumption, marked as one in the code, and the first
-  thing to check when the binary arrives.
+Turn: `agy --output-format stream-json --dangerously-skip-permissions --add-dir <folder>
+[--model M] -p <task>`.
 
-A `tool` with no adapter already disables the agent with a readable reason (§5),
-so shipping two adapters is a coherent state rather than a half-built one.
+| Event | Becomes |
+|---|---|
+| `result` with `status: SUCCESS` | `("text", result.response)` |
+| `result` with any other status | `("event", result.error)` |
+| `step_update` + `step_type: tool`, `state: DONE`, `tool_name: write_to_file` | `("file_write", tool_info.parameters.TargetFile)` |
+| `step_update` + `step_type: tool`, `state: DONE`, any other tool | `("event", "ran <tool_name>")` |
+| `step_update` with `state: ACTIVE`, `init`, `user_input`, `checkpoint` | nothing |
+
+Three things only running it could establish:
+
+- **`--add-dir` is mandatory.** Without it the agent wrote to
+  `~/.gemini/antigravity-cli/scratch/` *while its cwd was the project folder*. An agent that never
+  touches the project it was asked about is worse than one that refuses — and a cwd alone does not
+  prevent it, which is why `ToolAdapter.argv` now receives the project folder.
+- **Text arrives as deltas.** `agent_response` streams one `text_delta` per fragment, so the final
+  `result` is the only thing read for the answer: `parse` sees one line with no memory, and
+  `ADAPTERS` holds one shared instance, so accumulating fragments would interleave concurrent turns
+  into each other.
+- **There is no stdin path.** `agy` takes its prompt as an argument and reads `-p -` as the literal
+  prompt `-`; `--input-format stream-json` expects an envelope whose shape the error messages did
+  not reveal. Compaction therefore passes the digest in argv — 8 KB against a 1 MB limit — which
+  deviates from every other adapter and is recorded here rather than hidden.
 
 ## 5. Failure, and what it must never do
 
@@ -252,9 +266,8 @@ Everything above holds except the adapters, which are one of three.
   *server's stdin*, which codex reads and claude ignores, so the turn died before the agent saw the
   task; and `parse` could return only one message per line, which would have dropped every file
   after the first in a multi-file patch.
-- **`antigravity` (`ayg`): blocked, and now the third tool in the enum** — it replaced gemini on
-  2026-08-16. The binary is not installed, so its real output has never been seen, and §4 records
-  why writing an adapter from anything less is the specific mistake this spec already made twice.
+- **`antigravity` (`agy`): done (2026-08-22)**, against antigravity-cli 1.1.18. All three tools in
+  the enum now have adapters, each verified against its real binary.
 - **The compaction cwd leak is closed** (§6). `summarise` receives the project folder and runs
   there.
 - **Termination is asserted against a process that ignores `SIGTERM`**, in both the turn and
