@@ -77,7 +77,7 @@ class SubprocessRuntime:
             )
 
         executable = self._executable(agent.tool)
-        argv = adapter.argv(agent, task, executable)
+        argv = adapter.argv(agent, project_folder, task, executable)
 
         try:
             process = await asyncio.create_subprocess_exec(

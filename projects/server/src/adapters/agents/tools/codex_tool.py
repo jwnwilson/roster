@@ -40,7 +40,7 @@ class CodexAdapter:
 
     name = "codex"
 
-    def argv(self, agent: Agent, task: str, executable: str) -> list[str]:
+    def argv(self, agent: Agent, project_folder: str, task: str, executable: str) -> list[str]:
         return [
             executable, "exec",
             "--json",

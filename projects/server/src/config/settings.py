@@ -38,8 +38,10 @@ class Settings(BaseSettings):
     # letting agent content name an arbitrary command.
     tool_claude: str = "claude"
     tool_codex: str = "codex"
-    # antigravity ships as `ayg`, not as its own name.
-    tool_antigravity: str = "ayg"
+    # antigravity ships as `agy`, not as its own name — and not as `ayg`, which
+    # is the transposition this defaulted to until the cask was read:
+    # `Linking Binary 'antigravity' to '/opt/homebrew/bin/agy'`.
+    tool_antigravity: str = "agy"
 
     memory_compact_entries: int = 10
     memory_compact_bytes: int = 32_768

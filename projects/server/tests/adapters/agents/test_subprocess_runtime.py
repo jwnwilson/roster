@@ -24,7 +24,7 @@ class _ScriptedAdapter:
         self._script = script
         self._parse = parser
 
-    def argv(self, agent, task, executable):
+    def argv(self, agent, project_folder, task, executable):
         return [executable, "-c", self._script]
 
     def parse(self, line):
@@ -124,10 +124,17 @@ async def test_a_disabled_agent_is_never_spawned(run):
         [m async for m in runtime.execute(disabled, "/tmp", "do it")]
 
 
-async def test_an_unbuilt_tool_refuses_rather_than_guessing(run):
-    # antigravity is named in the enum and has no adapter: its binary (`ayg`) is
-    # not installed, so its real output has never been seen. Refusing beats
-    # inventing a parser — the mistake the claude mapping had to correct.
+async def test_a_tool_with_no_adapter_refuses_rather_than_guessing(run, monkeypatch):
+    """All three tools in the enum now have adapters, so this simulates the
+    fourth.
+
+    The guarantee outlives the gap it was written for: a tool roster cannot
+    parse must refuse, because inventing a parser is the mistake the claude
+    mapping had to correct and the spec forbids twice over.
+    """
+    from adapters.agents import subprocess_runtime as module
+
+    monkeypatch.delitem(module.ADAPTERS, "antigravity")
     runtime = SubprocessRuntime()
     agent = Agent(name="atlas", tool="antigravity")
 
@@ -288,7 +295,7 @@ class _PidAdapter(_ScriptedAdapter):
         super().__init__(script, parse)
         self._pid_file = str(pid_file)
 
-    def argv(self, agent, task, executable):
+    def argv(self, agent, project_folder, task, executable):
         return [executable, "-c", self._script, self._pid_file]
 
     def summarise_argv(self, agent, executable):

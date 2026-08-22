@@ -23,7 +23,7 @@ TOOLS: tuple[AgentTool, ...] = ("claude", "codex", "antigravity")
 # existing agent folders keep working untouched.
 _TOOL_BY_MODEL_PREFIX: tuple[tuple[str, AgentTool], ...] = (
     ("claude", "claude"),
-    # Google's models run under antigravity, whose binary is `ayg`. Marked as an
+    # Google's models run under antigravity, whose binary is `agy`. Marked as an
     # assumption rather than a fact: the binary is not installed here, so nothing
     # has confirmed which models it accepts.
     ("gemini", "antigravity"),
