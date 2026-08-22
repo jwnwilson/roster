@@ -1,3 +1,4 @@
+import { Avatar } from "../../components/ui/Avatar";
 import { DataSourceBadge } from "../../components/DataSourceBadge";
 import { Button } from "../../components/ui/Button";
 import { useAgents } from "../../lib/api/hooks";
@@ -30,6 +31,9 @@ export function AgentDetailScreen({ name }: { name: string | undefined }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-3 border-b border-border-subtle bg-bg-strip px-6 py-3">
+        {/* §C2: the identity strip opens with a 38px tile. It was the one
+            element of the strip never built. */}
+        <Avatar initials={agent.name.slice(0, 2).toUpperCase()} variant="agent" size={38} />
         <h1 className="text-[17px] font-semibold text-text-1">{agent.name}</h1>
         <DataSourceBadge screen="agentDetail" />
         <span className="ml-auto flex items-center gap-2">
