@@ -1,0 +1,182 @@
+import type { Agent, Session } from '@shared/types'
+import { statusColor, statusLabel } from '@shared/status'
+import { useShallow } from 'zustand/shallow'
+import { useRoster, selectGridAgents, NO_SESSIONS } from '@/state/store'
+import { PrimaryButton, ScreenHeader, StatusDot, TextInput } from '@/components/primitives'
+
+export function AgentsGrid() {
+  const agents = useRoster(useShallow(selectGridAgents))
+  const total = useRoster((s) => s.agents.length)
+  const gridQuery = useRoster((s) => s.gridQuery)
+  const setGridQuery = useRoster((s) => s.setGridQuery)
+  const go = useRoster((s) => s.go)
+
+  const running = agents.filter((a) => a.status === 'running').length
+  const summary =
+    gridQuery.trim() === ''
+      ? `${total} configured · ${running} running`
+      : `${agents.length} of ${total} match`
+
+  return (
+    <div className="flex h-screen flex-col">
+      <ScreenHeader title="Agents">
+        <span className="text-md text-dim">{summary}</span>
+        <div className="ml-auto flex items-center gap-[8px]">
+          <TextInput
+            ariaLabel="Filter agents"
+            placeholder="Filter agents"
+            value={gridQuery}
+            onChange={setGridQuery}
+            className="w-[200px]"
+          />
+          <PrimaryButton onClick={() => go('new')}>New agent</PrimaryButton>
+        </div>
+      </ScreenHeader>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
+        {agents.length === 0 ? (
+          <EmptyState filtered={gridQuery.trim() !== ''} />
+        ) : (
+          <div className="grid min-h-full grid-cols-2 gap-[24px] [grid-auto-rows:minmax(268px,1fr)]">
+            {agents.map((agent) => (
+              <AgentCard key={agent.id} agent={agent} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <StatusBar />
+    </div>
+  )
+}
+
+interface AgentCardProps {
+  agent: Agent
+}
+
+function AgentCard({ agent }: AgentCardProps) {
+  const openAgent = useRoster((s) => s.openAgent)
+  const sessions = useRoster((s) => s.sessions[agent.id] ?? NO_SESSIONS)
+  const selected = useRoster((s) => s.sess[agent.id])
+  const needsApproval = agent.status === 'approval'
+
+  return (
+    <button
+      type="button"
+      onClick={() => openAgent(agent.id)}
+      className="flex min-h-0 cursor-pointer flex-col overflow-hidden rounded-card border bg-card p-0 text-left hover:border-[#34374a]"
+      style={{
+        borderColor: needsApproval ? 'var(--color-amber-line-card)' : 'var(--color-line)',
+        animation: needsApproval ? 'var(--animate-pulse-approval)' : undefined,
+      }}
+    >
+      <div className="flex flex-none items-center gap-[8px] border-b border-line bg-header px-[12px] py-[9px]">
+        <StatusDot status={agent.status} size={7} />
+        <span className="text-lg font-semibold">{agent.name}</span>
+        <span className="text-sm font-medium" style={{ color: statusColor(agent.status) }}>
+          {statusLabel(agent.status)}
+        </span>
+        <span className="ml-auto truncate font-mono text-xs text-dim-2">{agent.model}</span>
+      </div>
+
+      <div className="flex flex-none gap-[4px] overflow-hidden border-b border-line bg-well px-[10px] py-[6px]">
+        {sessions.length === 0 ? (
+          <span className="text-sm text-faint-2">no sessions yet</span>
+        ) : (
+          sessions.map((session) => (
+            <SessionChip
+              key={session.id}
+              session={session}
+              agentId={agent.id}
+              active={session.id === selected}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col justify-end gap-[7px] overflow-hidden px-[12px] py-[10px]">
+        {agent.status === 'error' ? (
+          <p className="m-0 text-md leading-[1.45] text-error">{agent.statusDetail}</p>
+        ) : (
+          <p className="m-0 text-md leading-[1.45] text-ink-4">{firstLine(agent.systemPrompt)}</p>
+        )}
+      </div>
+
+      <div className="flex flex-none items-center gap-[10px] border-t border-line bg-header px-[12px] py-[7px] font-mono text-xs text-dim-2">
+        <span className="truncate">{agent.cwdLabel}</span>
+        <span className="ml-auto flex-none">0 tok</span>
+        <span className="flex-none">$0.00</span>
+      </div>
+    </button>
+  )
+}
+
+interface SessionChipProps {
+  session: Session
+  agentId: string
+  active: boolean
+}
+
+function SessionChip({ session, agentId, active }: SessionChipProps) {
+  const openAgent = useRoster((s) => s.openAgent)
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        e.stopPropagation()
+        openAgent(agentId, session.id)
+      }}
+      onKeyDown={(e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.stopPropagation()
+        openAgent(agentId, session.id)
+      }}
+      className={`flex max-w-[150px] cursor-pointer items-center gap-[6px] overflow-hidden rounded-sm px-[8px] py-[3px] text-sm whitespace-nowrap hover:bg-[#1c1e26] ${
+        active ? 'bg-[#1c1e26] text-ink-2' : 'bg-transparent text-dim'
+      }`}
+    >
+      <span aria-hidden className="text-dim-2">
+        {session.origin === 'agent' ? '↳' : '•'}
+      </span>
+      <span className="truncate">{session.title}</span>
+      <StatusDot status={session.status} size={5} />
+    </span>
+  )
+}
+
+interface EmptyStateProps {
+  filtered: boolean
+}
+
+function EmptyState({ filtered }: EmptyStateProps) {
+  const go = useRoster((s) => s.go)
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-[10px]">
+      <p className="m-0 text-md text-dim">
+        {filtered ? 'No agents match that filter.' : 'No agents configured yet.'}
+      </p>
+      {filtered ? null : <PrimaryButton onClick={() => go('new')}>New agent</PrimaryButton>}
+    </div>
+  )
+}
+
+function StatusBar() {
+  return (
+    <footer className="flex h-statusbar flex-none items-center gap-[12px] border-t border-line bg-rail px-[18px]">
+      <span className="flex items-center gap-[6px] text-base text-[#5a5d69]">
+        <span aria-hidden className="text-accent-light">
+          ↳
+        </span>
+        session opened by another agent
+      </span>
+    </footer>
+  )
+}
+
+function firstLine(prompt: string): string {
+  const line = prompt.split('\n')[0]?.trim() ?? ''
+  return line === '' ? 'No system prompt set.' : line
+}
