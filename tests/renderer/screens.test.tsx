@@ -656,57 +656,72 @@ describe('WorkingDirectory picker', () => {
 })
 
 describe('Skills — creating files and folders', () => {
+  const ADR = aSkill({ name: 'adr-writer', path: '/skills/adr-writer', files: ['SKILL.md'] })
+  const REPRO = aSkill({
+    name: 'repro-harness',
+    path: '/skills/repro-harness',
+    files: ['SKILL.md', 'templates/'],
+  })
+
   beforeEach(() => {
     installRosterApi({
       skills: {
         read: vi.fn().mockResolvedValue('# ADR Writer'),
-        list: vi.fn().mockResolvedValue([aSkill({ name: 'adr-writer', path: '/skills/adr-writer' })]),
+        list: vi.fn().mockResolvedValue([ADR, REPRO]),
         createFile: vi.fn().mockResolvedValue('/skills/adr-writer/repro.py'),
         createFolder: vi.fn().mockResolvedValue('/skills/adr-writer/templates'),
       },
     })
-    useRoster.setState({
-      skills: [aSkill({ name: 'adr-writer', path: '/skills/adr-writer', files: ['SKILL.md'] })],
-      agents: [],
-    })
+    useRoster.setState({ skills: [ADR, REPRO], agents: [] })
   })
 
-  test('no name row appears until asked for', () => {
+  test('every skill carries its own create icons', () => {
     render(<Skills />)
-    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+
+    // The whole point: each skill is targetable, not just the open one.
+    expect(screen.getByRole('button', { name: 'New file in adr-writer' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New file in repro-harness' })).toBeInTheDocument()
   })
 
-  test('New file opens a name row in the tree', async () => {
+  test('a file row has no create icons, since nothing can go inside it', () => {
+    render(<Skills />)
+    expect(screen.queryByRole('button', { name: /New file in SKILL\.md/ })).not.toBeInTheDocument()
+  })
+
+  test('creates in the skill whose icon was clicked, not the open one', async () => {
     const user = userEvent.setup()
     render(<Skills />)
-
-    await user.click(screen.getByRole('button', { name: 'New file' }))
-
-    expect(screen.getByLabelText('New file name')).toBeInTheDocument()
-  })
-
-  test('Enter creates the file inside the open skill and opens it', async () => {
-    const user = userEvent.setup()
-    render(<Skills />)
+    // adr-writer's SKILL.md opens automatically.
     await screen.findByLabelText('Skill file contents')
 
-    await user.click(screen.getByRole('button', { name: 'New file' }))
-    await user.type(screen.getByLabelText('New file name'), 'repro.py{Enter}')
+    await user.click(screen.getByRole('button', { name: 'New file in repro-harness' }))
+    await user.type(screen.getByLabelText('New file name'), 'triage.py{Enter}')
 
     await waitFor(() =>
-      expect(window.roster.skills.createFile).toHaveBeenCalledWith('adr-writer', 'repro.py'),
-    )
-    // It should leave you in the new file.
-    await waitFor(() =>
-      expect(window.roster.skills.read).toHaveBeenCalledWith('/skills/adr-writer/repro.py'),
+      expect(window.roster.skills.createFile).toHaveBeenCalledWith('repro-harness', 'triage.py'),
     )
   })
 
-  test('New folder creates a folder rather than a file', async () => {
+  test('creating inside a folder prefixes its path', async () => {
     const user = userEvent.setup()
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'New folder' }))
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+    await user.type(screen.getByLabelText('New file name'), 'pytest.py{Enter}')
+
+    await waitFor(() =>
+      expect(window.roster.skills.createFile).toHaveBeenCalledWith(
+        'repro-harness',
+        'templates/pytest.py',
+      ),
+    )
+  })
+
+  test('the folder icon creates a folder rather than a file', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New folder in adr-writer' }))
     await user.type(screen.getByLabelText('New folder name'), 'templates{Enter}')
 
     await waitFor(() =>
@@ -715,11 +730,29 @@ describe('Skills — creating files and folders', () => {
     expect(window.roster.skills.createFile).not.toHaveBeenCalled()
   })
 
+  test('no name row appears until an icon is clicked', () => {
+    render(<Skills />)
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+  })
+
+  test('the name row appears under the row it belongs to', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file in repro-harness' }))
+
+    const rows = [...container.querySelectorAll('nav > *')]
+    const skillIndex = rows.findIndex((r) => r.textContent?.startsWith('repro-harness'))
+    const inputIndex = rows.findIndex((r) => r.querySelector('input'))
+
+    expect(inputIndex).toBe(skillIndex + 1)
+  })
+
   test('Escape cancels without creating anything', async () => {
     const user = userEvent.setup()
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'New file' }))
+    await user.click(screen.getByRole('button', { name: 'New file in adr-writer' }))
     await user.type(screen.getByLabelText('New file name'), 'unwanted.md{Escape}')
 
     expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
@@ -730,7 +763,7 @@ describe('Skills — creating files and folders', () => {
     const user = userEvent.setup()
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'New file' }))
+    await user.click(screen.getByRole('button', { name: 'New file in adr-writer' }))
     await user.type(screen.getByLabelText('New file name'), '{Enter}')
 
     expect(window.roster.skills.createFile).not.toHaveBeenCalled()
@@ -741,12 +774,14 @@ describe('Skills — creating files and folders', () => {
     installRosterApi({
       skills: {
         read: vi.fn().mockResolvedValue('# A'),
+        list: vi.fn().mockResolvedValue([ADR]),
         createFile: vi.fn().mockRejectedValue(new Error('"SKILL.md" already exists')),
       },
     })
+    useRoster.setState({ skills: [ADR], agents: [] })
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'New file' }))
+    await user.click(screen.getByRole('button', { name: 'New file in adr-writer' }))
     await user.type(screen.getByLabelText('New file name'), 'SKILL.md{Enter}')
 
     expect(await screen.findByText(/already exists/)).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Skill } from '@shared/types'
 import { statusColor } from '@shared/status'
 import { GhostButton, PrimaryButton, ScreenHeader, SectionLabel } from '@/components/primitives'
@@ -25,8 +25,10 @@ export function Skills() {
   const [saved, setSaved] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  /** Which kind of thing the inline row is about to create, if any. */
-  const [creating, setCreating] = useState<'file' | 'folder' | null>(null)
+  /** What is being created and inside which row, if anything. */
+  const [creating, setCreating] = useState<{ kind: 'file' | 'folder'; parent: TreeRow } | null>(
+    null,
+  )
   /** Which tree row is selected. Files also open; folders and skills only select. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const setSkills = useRoster((st) => st.setSkills)
@@ -91,16 +93,24 @@ export function Skills() {
     }
   }
 
-  /** Creates inside whichever skill is open, then opens the result. */
+  /**
+   * Creates inside the row whose icon was clicked, so the target is whatever
+   * the user pointed at rather than whichever file happens to be open.
+   */
   async function createEntry(name: string): Promise<void> {
-    const skill = openRow?.skill.name ?? skills[0]?.name
-    if (skill === undefined || creating === null) return
+    if (creating === null) return
+
+    const { kind, parent } = creating
+    const skill = parent.skill.name
+    // A skill row creates at its root; a folder row creates inside it.
+    const prefix = parent.depth === 0 ? '' : `${relativePathOf(parent)}/`
+    const target = `${prefix}${name}`.replace(/\/{2,}/g, '/')
 
     try {
-      if (creating === 'folder') {
-        await window.roster.skills.createFolder(skill, name)
+      if (kind === 'folder') {
+        await window.roster.skills.createFolder(skill, target)
       } else {
-        const path = await window.roster.skills.createFile(skill, name)
+        const path = await window.roster.skills.createFile(skill, target)
         setOpenPath(path)
       }
       setSkills(await window.roster.skills.list())
@@ -155,8 +165,6 @@ export function Skills() {
         <span className="font-mono text-md text-dim">~/roster/skills</span>
         <div className="ml-auto flex gap-[8px]">
           <GhostButton onClick={() => void reveal()}>Reveal in Finder</GhostButton>
-          <GhostButton onClick={() => setCreating('file')}>New file</GhostButton>
-          <GhostButton onClick={() => setCreating('folder')}>New folder</GhostButton>
           <GhostButton onClick={() => void remove()}>
             {selected === null ? 'Delete' : `Delete ${selected.name}`}
           </GhostButton>
@@ -171,55 +179,34 @@ export function Skills() {
           {rows.length === 0 ? (
             <p className="m-0 px-[8px] text-md text-dim">No skills yet.</p>
           ) : (
-            rows.map((row) => {
-              const active = row.path !== undefined && row.path === openPath
-              return (
-                <button
-                  key={row.key}
-                  type="button"
-                  aria-current={row.key === selectedKey ? 'true' : undefined}
-                  onClick={() => {
+            rows.map((row) => (
+              <Fragment key={row.key}>
+                <TreeRowView
+                  row={row}
+                  isOpen={row.path !== undefined && row.path === openPath}
+                  isSelected={row.key === selectedKey}
+                  onSelect={() => {
                     setSelectedKey(row.key)
                     // A folder or skill row selects without changing the editor.
                     if (row.path) setOpenPath(row.path)
                   }}
-                  style={{ paddingLeft: 12 + row.depth * 14 }}
-                  className={`flex w-full cursor-pointer items-center gap-[7px] rounded-sm border-0 py-[5px] pr-[8px] text-left hover:bg-[#1a1c23] ${
-                    row.key === selectedKey ? 'bg-[#1c1e26]' : 'bg-transparent'
-                  }`}
-                >
-                  <span
-                    aria-hidden
-                    className="h-[5px] w-[5px] flex-none"
-                    style={{
-                      borderRadius: row.isDir ? '1.5px' : '50%',
-                      background: row.isDir
-                        ? 'var(--color-dim-2)'
-                        : active
-                          ? 'var(--color-accent)'
-                          : 'var(--color-off)',
+                  onCreate={(kind) => setCreating({ kind, parent: row })}
+                />
+
+                {creating?.parent.key === row.key ? (
+                  <NewEntryRow
+                    kind={creating.kind}
+                    depth={row.depth + 1}
+                    onCommit={(name) => void createEntry(name)}
+                    onCancel={() => {
+                      setCreating(null)
+                      setError(null)
                     }}
                   />
-                  <span
-                    className={`truncate text-lg ${row.isDir ? 'font-ui text-ink-3' : 'font-mono text-muted'} ${active ? 'text-ink' : ''}`}
-                  >
-                    {row.name}
-                  </span>
-                </button>
-              )
-            })
+                ) : null}
+              </Fragment>
+            ))
           )}
-
-          {creating !== null ? (
-            <NewEntryRow
-              kind={creating}
-              onCommit={(name) => void createEntry(name)}
-              onCancel={() => {
-                setCreating(null)
-                setError(null)
-              }}
-            />
-          ) : null}
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col bg-sunken">
@@ -318,8 +305,126 @@ function relativePathOf(row: TreeRow): string {
   return row.key.slice(row.skill.name.length + 1)
 }
 
+/* -------------------------------------------------------------------------
+ * Tree rows.
+ *
+ * The handoff draws its icons as flat placeholders and says a real icon set
+ * replaces them directly, so these are the real thing: two small glyphs that
+ * appear on the row you are pointing at, the way an editor's explorer does.
+ * ---------------------------------------------------------------------- */
+
+interface TreeRowViewProps {
+  row: TreeRow
+  isOpen: boolean
+  isSelected: boolean
+  onSelect: () => void
+  onCreate: (kind: 'file' | 'folder') => void
+}
+
+function TreeRowView({ row, isOpen, isSelected, onSelect, onCreate }: TreeRowViewProps) {
+  return (
+    <div
+      // focus-within, not hover alone: the icons must be reachable by keyboard.
+      className={`group flex items-center rounded-sm pr-[4px] hover:bg-[#1a1c23] focus-within:bg-[#1a1c23] ${
+        isSelected ? 'bg-[#1c1e26]' : 'bg-transparent'
+      }`}
+    >
+      <button
+        type="button"
+        aria-current={isSelected ? 'true' : undefined}
+        onClick={onSelect}
+        style={{ paddingLeft: 12 + row.depth * 14 }}
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-[7px] border-0 bg-transparent py-[5px] text-left"
+      >
+        <span
+          aria-hidden
+          className="h-[5px] w-[5px] flex-none"
+          style={{
+            borderRadius: row.isDir ? '1.5px' : '50%',
+            background: row.isDir
+              ? 'var(--color-dim-2)'
+              : isOpen
+                ? 'var(--color-accent)'
+                : 'var(--color-off)',
+          }}
+        />
+        <span
+          className={`truncate text-lg ${row.isDir ? 'font-ui text-ink-3' : 'font-mono text-muted'} ${isOpen ? 'text-ink' : ''}`}
+        >
+          {row.name}
+        </span>
+      </button>
+
+      {row.isDir ? (
+        <span className="flex flex-none items-center gap-[2px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <IconButton label={`New file in ${row.name}`} onClick={() => onCreate('file')}>
+            <NewFileIcon />
+          </IconButton>
+          <IconButton label={`New folder in ${row.name}`} onClick={() => onCreate('folder')}>
+            <NewFolderIcon />
+          </IconButton>
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
+interface IconButtonProps {
+  label: string
+  onClick: () => void
+  children: React.ReactNode
+}
+
+function IconButton({ label, onClick, children }: IconButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="flex cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-[3px] text-dim hover:bg-[#24262f] hover:text-ink"
+    >
+      {children}
+    </button>
+  )
+}
+
+/** A page with a plus, drawn to sit on the 14px grid the rows use. */
+function NewFileIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M9 1.75H4.25a1 1 0 0 0-1 1v10.5a1 1 0 0 0 1 1H7"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      <path d="M9 1.75 12.75 5.5V8" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M11.5 10v4M9.5 12h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/** A folder with a plus. */
+function NewFolderIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M1.75 12.5v-9a1 1 0 0 1 1-1h3l1.5 2h5a1 1 0 0 1 1 1V8"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M1.75 12.5a1 1 0 0 0 1 1H7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M11.5 10v4M9.5 12h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 interface NewEntryRowProps {
   kind: 'file' | 'folder'
+  depth: number
   onCommit: (name: string) => void
   onCancel: () => void
 }
@@ -328,11 +433,14 @@ interface NewEntryRowProps {
  * The inline row that appears in the tree when creating. Enter commits,
  * Escape cancels, and blurring cancels too — so it never lingers.
  */
-function NewEntryRow({ kind, onCommit, onCancel }: NewEntryRowProps) {
+function NewEntryRow({ kind, depth, onCommit, onCancel }: NewEntryRowProps) {
   const [name, setName] = useState('')
 
   return (
-    <div className="flex items-center gap-[7px] py-[5px] pr-[8px] pl-[26px]">
+    <div
+      className="flex items-center gap-[7px] py-[5px] pr-[8px]"
+      style={{ paddingLeft: 12 + depth * 14 }}
+    >
       <span
         aria-hidden
         className="h-[5px] w-[5px] flex-none bg-accent"
