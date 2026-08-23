@@ -850,12 +850,19 @@ describe('Skills — deleting', () => {
     useRoster.setState({ skills: [SKILL], agents: [] })
   })
 
-  test('deletes the selected file by its path within the skill', async () => {
+  test('every row carries its own delete, including files', () => {
+    render(<Skills />)
+
+    expect(screen.getByRole('button', { name: 'Delete skill repro-harness' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete templates' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete pytest.py' })).toBeInTheDocument()
+  })
+
+  test('deletes a file by its path within the skill', async () => {
     const user = userEvent.setup()
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
-    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+    await user.click(screen.getByRole('button', { name: 'Delete pytest.py' }))
 
     await waitFor(() =>
       expect(window.roster.skills.remove).toHaveBeenCalledWith(
@@ -865,24 +872,23 @@ describe('Skills — deleting', () => {
     )
   })
 
-  test('deletes a selected folder', async () => {
+  test('deletes a folder', async () => {
     const user = userEvent.setup()
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'templates' }))
-    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+    await user.click(screen.getByRole('button', { name: 'Delete templates' }))
 
     await waitFor(() =>
       expect(window.roster.skills.remove).toHaveBeenCalledWith('repro-harness', 'templates/'),
     )
   })
 
-  test('deleting the skill row removes the whole skill', async () => {
+  test('the skill row removes the whole skill, and says so', async () => {
     const user = userEvent.setup()
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'repro-harness' }))
-    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+    // The label distinguishes it: deleting a skill is a bigger loss.
+    await user.click(screen.getByRole('button', { name: 'Delete skill repro-harness' }))
 
     await waitFor(() =>
       expect(window.roster.skills.removeSkill).toHaveBeenCalledWith('repro-harness'),
@@ -890,13 +896,20 @@ describe('Skills — deleting', () => {
     expect(window.roster.skills.remove).not.toHaveBeenCalled()
   })
 
-  test('names what will be deleted, so the button is never ambiguous', async () => {
+  test('deletes the row pressed, not whichever file is open', async () => {
     const user = userEvent.setup()
     render(<Skills />)
+    // SKILL.md opens automatically.
+    await screen.findByLabelText('Skill file contents')
 
-    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
+    await user.click(screen.getByRole('button', { name: 'Delete pytest.py' }))
 
-    expect(screen.getByRole('button', { name: 'Delete pytest.py' })).toBeInTheDocument()
+    await waitFor(() =>
+      expect(window.roster.skills.remove).toHaveBeenCalledWith(
+        'repro-harness',
+        'templates/pytest.py',
+      ),
+    )
   })
 
   test('cancelling at the dialog changes nothing', async () => {
@@ -912,24 +925,12 @@ describe('Skills — deleting', () => {
     })
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
-    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+    await user.click(screen.getByRole('button', { name: 'Delete pytest.py' }))
 
     await waitFor(() => expect(window.roster.skills.remove).toHaveBeenCalled())
-    // The tree is not reloaded and the selection is kept.
+    // The tree is not reloaded and the row is still there.
     expect(list).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Delete pytest.py' })).toBeInTheDocument()
-  })
-
-  test('does nothing when nothing is selected', async () => {
-    const user = userEvent.setup()
-    useRoster.setState({ skills: [] })
-    render(<Skills />)
-
-    await user.click(screen.getByRole('button', { name: /^Delete/ }))
-
-    expect(window.roster.skills.remove).not.toHaveBeenCalled()
-    expect(window.roster.skills.removeSkill).not.toHaveBeenCalled()
   })
 
   test('reports a failed delete rather than pretending it worked', async () => {
@@ -942,9 +943,47 @@ describe('Skills — deleting', () => {
     })
     render(<Skills />)
 
-    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
-    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+    await user.click(screen.getByRole('button', { name: 'Delete pytest.py' }))
 
     expect(await screen.findByText(/EPERM/)).toBeInTheDocument()
+  })
+
+  test('closes the editor when the open file is deleted', async () => {
+    const user = userEvent.setup()
+    // After the delete the library no longer holds that file.
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# Repro'),
+        remove: vi.fn().mockResolvedValue(true),
+        list: vi
+          .fn()
+          .mockResolvedValue([{ ...SKILL, files: ['templates/', 'templates/pytest.py'] }]),
+      },
+    })
+    render(<Skills />)
+    await screen.findByLabelText('Skill file contents')
+
+    await user.click(screen.getByRole('button', { name: 'Delete SKILL.md' }))
+
+    await waitFor(() => expect(screen.getByText('no file open')).toBeInTheDocument())
+  })
+
+  test('deleting an unrelated folder leaves the open file alone', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# Repro'),
+        remove: vi.fn().mockResolvedValue(true),
+        list: vi.fn().mockResolvedValue([{ ...SKILL, files: ['SKILL.md'] }]),
+      },
+    })
+    render(<Skills />)
+    await screen.findByLabelText('Skill file contents')
+
+    // SKILL.md is open and sits outside templates/, so it must stay open.
+    await user.click(screen.getByRole('button', { name: 'Delete templates' }))
+
+    await waitFor(() => expect(window.roster.skills.remove).toHaveBeenCalled())
+    expect(screen.queryByText('no file open')).not.toBeInTheDocument()
   })
 })

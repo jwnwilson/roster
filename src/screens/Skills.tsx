@@ -123,25 +123,27 @@ export function Skills() {
   }
 
   /**
-   * Deletes whatever is selected. The confirmation lives in the main process,
-   * so nothing is destroyed without it.
+   * Deletes the row whose icon was pressed. The confirmation lives in the
+   * main process, so nothing is destroyed without it.
    */
-  async function remove(): Promise<void> {
-    if (selected === null) return
-
+  async function remove(row: TreeRow): Promise<void> {
     try {
       const deleted =
-        selected.depth === 0
-          ? await window.roster.skills.removeSkill(selected.skill.name)
-          : await window.roster.skills.remove(selected.skill.name, relativePathOf(selected))
+        row.depth === 0
+          ? await window.roster.skills.removeSkill(row.skill.name)
+          : await window.roster.skills.remove(row.skill.name, relativePathOf(row))
 
       // Cancelled at the dialog: leave everything as it was.
       if (!deleted) return
 
       setSkills(await window.roster.skills.list())
-      setSelectedKey(null)
-      // The open file may have been what was deleted.
-      if (selected.path === openPath || selected.depth === 0) setOpenPath(null)
+      if (row.key === selectedKey) setSelectedKey(null)
+
+      // Clear the editor if what it was showing has gone — either the file
+      // itself, or a folder or skill that contained it. Containment is
+      // checked against the deleted folder, not merely its skill.
+      if (openPath !== null && containsOpenFile(row, openPath)) setOpenPath(null)
+
       setError(null)
     } catch (cause) {
       setError(messageFor(cause))
@@ -165,9 +167,6 @@ export function Skills() {
         <span className="font-mono text-md text-dim">~/roster/skills</span>
         <div className="ml-auto flex gap-[8px]">
           <GhostButton onClick={() => void reveal()}>Reveal in Finder</GhostButton>
-          <GhostButton onClick={() => void remove()}>
-            {selected === null ? 'Delete' : `Delete ${selected.name}`}
-          </GhostButton>
           <PrimaryButton onClick={() => void createSkill()}>
             {busy ? 'Creating…' : 'New skill'}
           </PrimaryButton>
@@ -191,6 +190,7 @@ export function Skills() {
                     if (row.path) setOpenPath(row.path)
                   }}
                   onCreate={(kind) => setCreating({ kind, parent: row })}
+                  onDelete={() => void remove(row)}
                 />
 
                 {creating?.parent.key === row.key ? (
@@ -299,6 +299,18 @@ export function Skills() {
  * A skill folder, then everything inside it. Folders are shown as their own
  * rows, indented by depth, as the handoff's tree draws them.
  */
+/** Whether deleting this row takes the open file with it. */
+function containsOpenFile(row: TreeRow, openPath: string): boolean {
+  if (row.path === openPath) return true
+  if (!row.isDir) return false
+
+  // A skill row owns everything under it; a folder row only its own subtree.
+  const root =
+    row.depth === 0 ? row.skill.path : `${row.skill.path}/${relativePathOf(row)}`.replace(/\/+$/, '')
+
+  return openPath.startsWith(`${root}/`)
+}
+
 /** A row's path relative to its own skill, which is what the store takes. */
 function relativePathOf(row: TreeRow): string {
   // The key is "<skill>/<relative path>"; the skill name is not part of it.
@@ -319,9 +331,20 @@ interface TreeRowViewProps {
   isSelected: boolean
   onSelect: () => void
   onCreate: (kind: 'file' | 'folder') => void
+  onDelete: () => void
 }
 
-function TreeRowView({ row, isOpen, isSelected, onSelect, onCreate }: TreeRowViewProps) {
+function TreeRowView({
+  row,
+  isOpen,
+  isSelected,
+  onSelect,
+  onCreate,
+  onDelete,
+}: TreeRowViewProps) {
+  // A skill row deletes the whole skill; anything else deletes just itself.
+  const deleteLabel = row.depth === 0 ? `Delete skill ${row.name}` : `Delete ${row.name}`
+
   return (
     <div
       // focus-within, not hover alone: the icons must be reachable by keyboard.
@@ -355,16 +378,21 @@ function TreeRowView({ row, isOpen, isSelected, onSelect, onCreate }: TreeRowVie
         </span>
       </button>
 
-      {row.isDir ? (
-        <span className="flex flex-none items-center gap-[2px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-          <IconButton label={`New file in ${row.name}`} onClick={() => onCreate('file')}>
-            <NewFileIcon />
-          </IconButton>
-          <IconButton label={`New folder in ${row.name}`} onClick={() => onCreate('folder')}>
-            <NewFolderIcon />
-          </IconButton>
-        </span>
-      ) : null}
+      <span className="flex flex-none items-center gap-[2px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+        {row.isDir ? (
+          <>
+            <IconButton label={`New file in ${row.name}`} onClick={() => onCreate('file')}>
+              <NewFileIcon />
+            </IconButton>
+            <IconButton label={`New folder in ${row.name}`} onClick={() => onCreate('folder')}>
+              <NewFolderIcon />
+            </IconButton>
+          </>
+        ) : null}
+        <IconButton label={deleteLabel} onClick={onDelete} destructive>
+          <TrashIcon />
+        </IconButton>
+      </span>
     </div>
   )
 }
@@ -373,19 +401,44 @@ interface IconButtonProps {
   label: string
   onClick: () => void
   children: React.ReactNode
+  /** Reddens on hover, so a destructive action never looks like the others. */
+  destructive?: boolean
 }
 
-function IconButton({ label, onClick, children }: IconButtonProps) {
+function IconButton({ label, onClick, children, destructive = false }: IconButtonProps) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="flex cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-[3px] text-dim hover:bg-[#24262f] hover:text-ink"
+      className={`flex cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-[3px] text-dim hover:bg-[#24262f] ${
+        destructive ? 'hover:text-error' : 'hover:text-ink'
+      }`}
     >
       {children}
     </button>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M2.75 4.25h10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <path
+        d="M6.25 4.25V3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75v1.25"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 4.25 4.6 13a.75.75 0 0 0 .75.7h5.3a.75.75 0 0 0 .75-.7l.6-8.75"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path d="M6.75 6.75v4.5M9.25 6.75v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
   )
 }
 
