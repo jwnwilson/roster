@@ -68,6 +68,8 @@ interface RosterState {
   setSessions(agentId: string, sessions: Session[]): void
   setMessages(sessionId: string, messages: Message[]): void
   setUsage(sessionId: string, usage: Usage): void
+  setMcpServers(servers: McpServer[]): void
+  setSkills(skills: Skill[]): void
   /** Applies one live event from the main process. */
   applySessionEvent(event: SessionEventPayload): void
 
@@ -131,6 +133,8 @@ export const useRoster = create<RosterState>((set, get) => ({
     set((s) => ({ messages: { ...s.messages, [sessionId]: messages } })),
 
   setUsage: (sessionId, usage) => set((s) => ({ usage: { ...s.usage, [sessionId]: usage } })),
+  setMcpServers: (mcpServers) => set({ mcpServers }),
+  setSkills: (skills) => set({ skills }),
 
   applySessionEvent: (event) => set((s) => reduceSessionEvent(s, event)),
 

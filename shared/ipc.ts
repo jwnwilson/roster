@@ -28,6 +28,7 @@ export interface RosterApi {
   agents: {
     list(): Promise<Agent[]>
     get(id: string): Promise<Agent | null>
+    create(input: NewAgentInput): Promise<Agent>
     update(id: string, patch: AgentPatch): Promise<Agent>
     /** Fires when an agent.toml changes on disk, including external edits. */
     onChanged(listener: (agents: Agent[]) => void): () => void
@@ -71,6 +72,17 @@ export interface AgentPatch {
   mcpServers?: string[]
 }
 
+export interface NewAgentInput {
+  name: string
+  runner: string
+  model: string
+  systemPrompt: string
+  skills: string[]
+  /** Defaults to ~/roster/workspace when omitted. */
+  cwd?: string
+  mcpServers?: string[]
+}
+
 export interface PtySize {
   cols: number
   rows: number
@@ -102,6 +114,7 @@ export const CHANNELS = {
 
   agentsList: 'agents:list',
   agentsGet: 'agents:get',
+  agentsCreate: 'agents:create',
   agentsUpdate: 'agents:update',
   agentsChanged: 'agents:changed',
 

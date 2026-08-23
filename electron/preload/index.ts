@@ -30,6 +30,7 @@ const api: RosterApi = {
   agents: {
     list: () => ipcRenderer.invoke(CHANNELS.agentsList),
     get: (id) => ipcRenderer.invoke(CHANNELS.agentsGet, id),
+    create: (input) => ipcRenderer.invoke(CHANNELS.agentsCreate, input),
     update: (id, patch: AgentPatch) => ipcRenderer.invoke(CHANNELS.agentsUpdate, id, patch),
     onChanged: (listener: (agents: Agent[]) => void) =>
       subscribe(CHANNELS.agentsChanged, listener),

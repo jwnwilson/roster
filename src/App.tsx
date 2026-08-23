@@ -2,6 +2,9 @@ import { useEffect } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { AgentDetail } from './screens/AgentDetail'
 import { AgentsGrid } from './screens/AgentsGrid'
+import { McpServers } from './screens/McpServers'
+import { NewAgent } from './screens/NewAgent'
+import { Skills } from './screens/Skills'
 import { useRoster } from './state/store'
 
 export function App() {
@@ -58,11 +61,11 @@ function Screen({ screen }: ScreenProps) {
     case 'agent':
       return <AgentDetail />
     case 'skills':
-      return <Pending title="Skills" />
+      return <Skills />
     case 'mcp':
-      return <Pending title="MCP servers" />
+      return <McpServers />
     case 'new':
-      return <Pending title="New agent" />
+      return <NewAgent />
   }
 }
 
@@ -70,18 +73,6 @@ function Loading() {
   return (
     <div className="flex h-full items-center justify-center text-md text-dim">
       Loading roster…
-    </div>
-  )
-}
-
-interface PendingProps {
-  title: string
-}
-
-function Pending({ title }: PendingProps) {
-  return (
-    <div className="flex h-full items-center justify-center text-md text-dim">
-      {title} — not built yet
     </div>
   )
 }

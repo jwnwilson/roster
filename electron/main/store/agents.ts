@@ -15,6 +15,25 @@ export interface Disposable {
   dispose(): void
 }
 
+export interface NewAgentInput {
+  name: string
+  runner: string
+  model: string
+  cwd: string
+  systemPrompt: string
+  skills: string[]
+  mcpServers?: string[]
+}
+
+/** Agent ids double as directory names, so they must be filesystem-safe. */
+export function slugify(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug === '' ? 'agent' : slug
+}
+
 /**
  * File-backed store over `~/roster/agents/<id>/agent.toml`.
  *
@@ -69,6 +88,41 @@ export class AgentStore {
     if (config) return this.toAgent(config)
     const failure = this.failures.get(id)
     return failure ? brokenAgent(id, failure) : null
+  }
+
+  /**
+   * Writes a new agent.toml. The id is derived from the name and made unique,
+   * since it is also the directory name.
+   */
+  async create(input: NewAgentInput): Promise<Agent> {
+    const id = this.uniqueId(slugify(input.name))
+
+    const config: AgentConfig = {
+      id,
+      name: input.name,
+      runner: input.runner,
+      model: input.model,
+      cwd: input.cwd,
+      systemPrompt: input.systemPrompt,
+      skills: input.skills,
+      mcpServers: input.mcpServers ?? [],
+    }
+
+    await mkdir(agentDir(id), { recursive: true })
+    await writeFile(agentTomlPath(id), serializeAgentToml(config), 'utf8')
+    this.configs.set(id, config)
+
+    return this.toAgent(config)
+  }
+
+  private uniqueId(base: string): string {
+    if (!this.configs.has(base) && !this.failures.has(base)) return base
+
+    for (let n = 2; n < 1_000; n += 1) {
+      const candidate = `${base}-${n}`
+      if (!this.configs.has(candidate) && !this.failures.has(candidate)) return candidate
+    }
+    throw new Error(`could not find a free id for "${base}"`)
   }
 
   async update(id: string, patch: AgentPatch): Promise<Agent> {

@@ -1,5 +1,10 @@
 import { BrowserWindow, ipcMain } from 'electron'
-import { CHANNELS, type AgentPatch, type PtySize } from '../../../shared/ipc'
+import {
+  CHANNELS,
+  type AgentPatch,
+  type NewAgentInput,
+  type PtySize,
+} from '../../../shared/ipc'
 import type { RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
@@ -11,7 +16,8 @@ import { McpStore } from '../store/mcp'
 import { SessionStore } from '../store/sessions'
 import { SkillStore } from '../store/skills'
 import { UsageStore } from '../store/usage'
-import { databasePath, mcpConfigPath } from '../store/paths'
+import { databasePath, mcpConfigPath, rosterHome } from '../store/paths'
+import { join } from 'node:path'
 import { seedIfEmpty } from '../store/seed'
 
 let runners = new Map<string, RunnerStatus>()
@@ -88,6 +94,13 @@ export function registerIpc(): void {
 
   ipcMain.handle(CHANNELS.agentsList, () => agentStore.findAll())
   ipcMain.handle(CHANNELS.agentsGet, (_e, id: string) => agentStore.findById(id))
+  ipcMain.handle(CHANNELS.agentsCreate, (_e, input: NewAgentInput) =>
+    agentStore.create({
+      ...input,
+      cwd: input.cwd ?? join(rosterHome(), 'workspace'),
+      mcpServers: input.mcpServers ?? [],
+    }),
+  )
   ipcMain.handle(CHANNELS.agentsUpdate, (_e, id: string, patch: AgentPatch) =>
     agentStore.update(id, patch),
   )

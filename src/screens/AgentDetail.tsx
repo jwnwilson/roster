@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { statusColor } from '@shared/status'
 import { ChatPane } from '@/chat/ChatPane'
+import { EditAgentModal } from './EditAgentModal'
 import { SectionLabel, Segmented, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
 import { NO_SESSIONS, selectCurrentAgent, useRoster, type PaneMode } from '@/state/store'
@@ -49,6 +50,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const setMessages = useRoster((s) => s.setMessages)
   const setUsage = useRoster((s) => s.setUsage)
   const selectSession = useRoster((s) => s.selectSession)
+  const editOpen = useRoster((s) => s.editOpen)
 
   // Sessions come from SQLite, not from the agent config, so they load per
   // agent rather than at startup.
@@ -155,6 +157,8 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
 
         <ConfigRail agent={agent} />
       </div>
+
+      {editOpen ? <EditAgentModal agent={agent} /> : null}
     </div>
   )
 }
