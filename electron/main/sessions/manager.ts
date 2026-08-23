@@ -234,6 +234,7 @@ export class SessionManager {
         // The tool row was written when the call started; fill in its result.
         const updated: Message = { ...message, output: event.output, isError: event.isError }
         run.toolMessages.delete(event.id)
+        this.sessions.update(updated)
         this.emit({ type: 'message-updated', sessionId, message: updated })
         return
       }
@@ -279,6 +280,9 @@ export class SessionManager {
 
     if (existing?.kind === 'text' && existing.role === 'assistant') {
       const updated: Message = { ...existing, text: existing.text + delta }
+      // Persist as well as emit: the emitted text is what the open window
+      // shows, the stored text is what a reload shows, and they must agree.
+      this.sessions.update(updated)
       this.emit({ type: 'message-updated', sessionId, message: updated })
       return
     }

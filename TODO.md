@@ -1,0 +1,1 @@
+- Add ability to create new files and folders in the skills editor

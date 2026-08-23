@@ -214,6 +214,19 @@ export class SessionStore {
     return byAgent
   }
 
+  /**
+   * Rewrites a stored message in place. Streamed prose arrives in pieces and
+   * is coalesced into one message, so the row has to be updated as it grows —
+   * emitting the growth without writing it loses everything after the first
+   * piece on reload.
+   */
+  update(message: Message): void {
+    const { id, sessionId, kind, createdAt, ...rest } = message
+    this.db
+      .prepare('UPDATE messages SET payload = ? WHERE id = ?')
+      .run(JSON.stringify(rest), id)
+  }
+
   messages(sessionId: string): Message[] {
     const rows = this.db
       .prepare<[string], MessageRow>(

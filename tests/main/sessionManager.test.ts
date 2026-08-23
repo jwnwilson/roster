@@ -134,6 +134,46 @@ describe('SessionManager.send — a plain turn', () => {
     await manager.send(session.id, 'Find the leak.')
   })
 
+  test('persists the whole coalesced reply, not just its first delta', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'text', delta: 'Hello ' },
+        { kind: 'text', delta: 'world' },
+        { kind: 'text', delta: '!' },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    // Read back from SQLite, which is what a reload would see.
+    const assistant = sessions
+      .messages(session.id)
+      .filter((m) => m.kind === 'text' && m.role === 'assistant')
+
+    expect(assistant.map((m) => (m.kind === 'text' ? m.text : ''))).toEqual(['Hello world!'])
+  })
+
+  test('the event stream carries the growing text too', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'text', delta: 'Hello ' },
+        { kind: 'text', delta: 'world' },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const updates = events
+      .filter((e): e is { type: string; message: { text: string } } =>
+        (e as { type: string }).type === 'message-updated',
+      )
+      .map((e) => e.message.text)
+
+    expect(updates.at(-1)).toBe('Hello world')
+  })
+
   test('stores assistant prose as one message, not one per delta', async () => {
     runnerStub.run.mockImplementation(
       streamOf([
@@ -205,6 +245,37 @@ describe('SessionManager.send — tools', () => {
     expect(kinds()).toEqual(['text', 'tool'])
     const updated = events.find((e) => (e as { type: string }).type === 'message-updated')
     expect(updated).toMatchObject({ message: { output: '1 passed', isError: false } })
+  })
+
+  test('persists the tool output, so it survives a reload', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'tool', id: 't1', name: 'Bash', args: 'pytest -k leak' },
+        { kind: 'result', id: 't1', output: '1 passed in 8.31s', isError: false },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const tool = sessions.messages(session.id).find((m) => m.kind === 'tool')
+    expect(tool).toMatchObject({ output: '1 passed in 8.31s', isError: false })
+  })
+
+  test('persists a failed tool result as an error', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'tool', id: 't1', name: 'Bash', args: 'false' },
+        { kind: 'result', id: 't1', output: 'command failed', isError: true },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    expect(sessions.messages(session.id).find((m) => m.kind === 'tool')).toMatchObject({
+      isError: true,
+    })
   })
 
   test('ignores a result for a tool call it never saw', async () => {
