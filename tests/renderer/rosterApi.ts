@@ -48,6 +48,8 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       createFile: vi.fn().mockResolvedValue('/skills/x/new.md'),
       createFolder: vi.fn().mockResolvedValue('/skills/x/new'),
       reveal: vi.fn().mockResolvedValue(undefined),
+      remove: vi.fn().mockResolvedValue(true),
+      removeSkill: vi.fn().mockResolvedValue(true),
     },
     mcp: {
       list: vi.fn().mockResolvedValue([]),

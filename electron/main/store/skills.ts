@@ -130,6 +130,35 @@ export class SkillStore {
     return target
   }
 
+  /**
+   * Moves a file or folder inside a skill to the Trash.
+   *
+   * Trash rather than unlink: these are the user's own files, and a mistaken
+   * click should be recoverable from the OS rather than gone.
+   */
+  async remove(skillName: string, relativePath: string): Promise<void> {
+    const target = this.resolveInSkill(skillName, relativePath)
+    if (!existsSync(target)) throw new Error(`"${relativePath}" is no longer there`)
+
+    await this.toTrash(target)
+    await this.load()
+  }
+
+  /** Moves a whole skill to the Trash. */
+  async removeSkill(skillName: string): Promise<void> {
+    const target = this.pathOf(skillName)
+    if (target === null) throw new Error(`unknown skill "${skillName}"`)
+
+    await this.toTrash(target)
+    await this.load()
+  }
+
+  /**
+   * Injected so the store can be tested without a desktop Trash; the real
+   * implementation is Electron's shell.trashItem.
+   */
+  constructor(private readonly toTrash: (path: string) => Promise<void> = defaultTrash) {}
+
   /** Absolute path of a skill folder, for revealing it in the file manager. */
   pathOf(name: string): string | null {
     return this.skills.find((skill) => skill.name === name)?.path ?? null
@@ -178,6 +207,12 @@ export class SkillStore {
     this.listeners.clear()
     this.stopWatching()
   }
+}
+
+/** Falls back to a permanent delete only where no desktop Trash exists. */
+async function defaultTrash(path: string): Promise<void> {
+  const { shell } = await import('electron')
+  await shell.trashItem(path)
 }
 
 /** Skill names double as directory names, so they must be filesystem-safe. */

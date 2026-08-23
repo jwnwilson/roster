@@ -537,3 +537,103 @@ describe('SkillStore.createFolder', () => {
     )
   })
 })
+
+/* -------------------------------------------------- skills: deletion */
+
+describe('SkillStore — deletion', () => {
+  /** Records what was sent to the Trash instead of needing a desktop. */
+  function trashSpy() {
+    const trashed: string[] = []
+    return {
+      trashed,
+      toTrash: async (path: string) => {
+        trashed.push(path)
+        await rm(path, { recursive: true, force: true })
+      },
+    }
+  }
+
+  async function withSkill(toTrash: (p: string) => Promise<void>) {
+    const store = new SkillStore(toTrash)
+    await store.load()
+    await store.create('repro-harness')
+    await store.createFile('repro-harness', 'templates/pytest.py')
+    return store
+  }
+
+  test('sends a file to the Trash rather than deleting it outright', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    await store.remove('repro-harness', 'templates/pytest.py')
+
+    // A mistaken click must be recoverable from the OS.
+    expect(spy.trashed).toHaveLength(1)
+    expect(spy.trashed[0]).toMatch(/templates\/pytest\.py$/)
+    expect(store.findAll()[0]?.files).not.toContain('templates/pytest.py')
+  })
+
+  test('removes a folder and everything in it', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    await store.remove('repro-harness', 'templates')
+
+    const files = store.findAll()[0]?.files ?? []
+    expect(files).not.toContain('templates/')
+    expect(files).not.toContain('templates/pytest.py')
+    expect(files).toContain('SKILL.md')
+  })
+
+  test('removes a whole skill', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    await store.removeSkill('repro-harness')
+
+    expect(store.findAll()).toEqual([])
+    expect(spy.trashed[0]).toMatch(/repro-harness$/)
+  })
+
+  test('refuses a path that escapes the skill', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    await expect(store.remove('repro-harness', '../../etc')).rejects.toThrow(/outside the skill/)
+    expect(spy.trashed).toEqual([])
+  })
+
+  test('refuses an absolute path', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    await expect(store.remove('repro-harness', '/etc/passwd')).rejects.toThrow(/absolute path/)
+    expect(spy.trashed).toEqual([])
+  })
+
+  test('refuses to remove the skill folder via an empty relative path', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    // removeSkill is the deliberate way to do that; this must not be a
+    // back door to it.
+    await expect(store.remove('repro-harness', '.')).rejects.toThrow(/name is required/)
+    expect(spy.trashed).toEqual([])
+  })
+
+  test('says so when the target is already gone', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    await expect(store.remove('repro-harness', 'never-existed.md')).rejects.toThrow(
+      /no longer there/,
+    )
+  })
+
+  test('refuses an unknown skill', async () => {
+    const spy = trashSpy()
+    const store = await withSkill(spy.toTrash)
+
+    await expect(store.removeSkill('ghost')).rejects.toThrow(/unknown skill/)
+  })
+})

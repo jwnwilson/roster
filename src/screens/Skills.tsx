@@ -27,6 +27,8 @@ export function Skills() {
   const [busy, setBusy] = useState(false)
   /** Which kind of thing the inline row is about to create, if any. */
   const [creating, setCreating] = useState<'file' | 'folder' | null>(null)
+  /** Which tree row is selected. Files also open; folders and skills only select. */
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const setSkills = useRoster((st) => st.setSkills)
 
   const rows = useMemo(() => buildTree(skills), [skills])
@@ -35,7 +37,10 @@ export function Skills() {
   useEffect(() => {
     if (openPath !== null) return
     const first = rows.find((r) => !r.isDir && r.name === 'SKILL.md')
-    if (first?.path) setOpenPath(first.path)
+    if (first?.path) {
+      setOpenPath(first.path)
+      setSelectedKey(first.key)
+    }
   }, [rows, openPath])
 
   useEffect(() => {
@@ -61,6 +66,7 @@ export function Skills() {
 
   const dirty = contents !== saved
   const openRow = rows.find((r) => r.path === openPath) ?? null
+  const selected = rows.find((r) => r.key === selectedKey) ?? null
 
   async function reveal(): Promise<void> {
     // Reveals the open skill's folder, or the library itself when none is open.
@@ -106,6 +112,32 @@ export function Skills() {
     }
   }
 
+  /**
+   * Deletes whatever is selected. The confirmation lives in the main process,
+   * so nothing is destroyed without it.
+   */
+  async function remove(): Promise<void> {
+    if (selected === null) return
+
+    try {
+      const deleted =
+        selected.depth === 0
+          ? await window.roster.skills.removeSkill(selected.skill.name)
+          : await window.roster.skills.remove(selected.skill.name, relativePathOf(selected))
+
+      // Cancelled at the dialog: leave everything as it was.
+      if (!deleted) return
+
+      setSkills(await window.roster.skills.list())
+      setSelectedKey(null)
+      // The open file may have been what was deleted.
+      if (selected.path === openPath || selected.depth === 0) setOpenPath(null)
+      setError(null)
+    } catch (cause) {
+      setError(messageFor(cause))
+    }
+  }
+
   async function save(): Promise<void> {
     if (!openPath) return
     try {
@@ -125,6 +157,9 @@ export function Skills() {
           <GhostButton onClick={() => void reveal()}>Reveal in Finder</GhostButton>
           <GhostButton onClick={() => setCreating('file')}>New file</GhostButton>
           <GhostButton onClick={() => setCreating('folder')}>New folder</GhostButton>
+          <GhostButton onClick={() => void remove()}>
+            {selected === null ? 'Delete' : `Delete ${selected.name}`}
+          </GhostButton>
           <PrimaryButton onClick={() => void createSkill()}>
             {busy ? 'Creating…' : 'New skill'}
           </PrimaryButton>
@@ -142,12 +177,16 @@ export function Skills() {
                 <button
                   key={row.key}
                   type="button"
-                  disabled={row.isDir}
-                  onClick={() => row.path && setOpenPath(row.path)}
+                  aria-current={row.key === selectedKey ? 'true' : undefined}
+                  onClick={() => {
+                    setSelectedKey(row.key)
+                    // A folder or skill row selects without changing the editor.
+                    if (row.path) setOpenPath(row.path)
+                  }}
                   style={{ paddingLeft: 12 + row.depth * 14 }}
-                  className={`flex w-full items-center gap-[7px] rounded-sm border-0 py-[5px] pr-[8px] text-left ${
-                    row.isDir ? 'cursor-default' : 'cursor-pointer hover:bg-[#1a1c23]'
-                  } ${active ? 'bg-[#1c1e26]' : 'bg-transparent'}`}
+                  className={`flex w-full cursor-pointer items-center gap-[7px] rounded-sm border-0 py-[5px] pr-[8px] text-left hover:bg-[#1a1c23] ${
+                    row.key === selectedKey ? 'bg-[#1c1e26]' : 'bg-transparent'
+                  }`}
                 >
                   <span
                     aria-hidden
@@ -273,6 +312,12 @@ export function Skills() {
  * A skill folder, then everything inside it. Folders are shown as their own
  * rows, indented by depth, as the handoff's tree draws them.
  */
+/** A row's path relative to its own skill, which is what the store takes. */
+function relativePathOf(row: TreeRow): string {
+  // The key is "<skill>/<relative path>"; the skill name is not part of it.
+  return row.key.slice(row.skill.name.length + 1)
+}
+
 interface NewEntryRowProps {
   kind: 'file' | 'folder'
   onCommit: (name: string) => void

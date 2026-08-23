@@ -68,6 +68,13 @@ export interface RosterApi {
     createFolder(skillName: string, relativePath: string): Promise<string>
     /** Opens the skill folder in the OS file manager. */
     reveal(name: string): Promise<void>
+    /**
+     * Confirms, then moves the target to the Trash. Resolves false when the
+     * user cancels. Confirmation happens in the main process, so it cannot
+     * be skipped by a caller in the renderer.
+     */
+    remove(skillName: string, relativePath: string): Promise<boolean>
+    removeSkill(skillName: string): Promise<boolean>
   }
   mcp: {
     list(): Promise<McpServer[]>
@@ -161,6 +168,8 @@ export const CHANNELS = {
   skillsCreate: 'skills:create',
   skillsCreateFile: 'skills:createFile',
   skillsCreateFolder: 'skills:createFolder',
+  skillsRemove: 'skills:remove',
+  skillsRemoveSkill: 'skills:removeSkill',
   skillsReveal: 'skills:reveal',
 
   mcpList: 'mcp:list',

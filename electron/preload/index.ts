@@ -73,6 +73,9 @@ const api: RosterApi = {
     createFolder: (skillName, relativePath) =>
       ipcRenderer.invoke(CHANNELS.skillsCreateFolder, skillName, relativePath),
     reveal: (name) => ipcRenderer.invoke(CHANNELS.skillsReveal, name),
+    remove: (skillName, relativePath) =>
+      ipcRenderer.invoke(CHANNELS.skillsRemove, skillName, relativePath),
+    removeSkill: (skillName) => ipcRenderer.invoke(CHANNELS.skillsRemoveSkill, skillName),
   },
 
   mcp: {

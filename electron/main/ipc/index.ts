@@ -171,6 +171,27 @@ export function registerIpc(): void {
     if (path !== null) shell.showItemInFolder(path)
   })
 
+  ipcMain.handle(
+    CHANNELS.skillsRemove,
+    async (e, skill: string, path: string) => {
+      const confirmed = await confirmDelete(e, path, 'This moves it to the Trash.')
+      if (!confirmed) return false
+      await skillStore.remove(skill, path)
+      return true
+    },
+  )
+
+  ipcMain.handle(CHANNELS.skillsRemoveSkill, async (e, skill: string) => {
+    const confirmed = await confirmDelete(
+      e,
+      skill,
+      'The whole skill and everything in it moves to the Trash. Agents using it will lose it.',
+    )
+    if (!confirmed) return false
+    await skillStore.removeSkill(skill)
+    return true
+  })
+
   ipcMain.handle(CHANNELS.mcpList, () => mcpStore.findAll())
   ipcMain.handle(CHANNELS.mcpSetEnabled, (_e, server: string, agentId: string, enabled: boolean) =>
     mcpStore.setEnabled(server, agentId, enabled),
@@ -192,6 +213,33 @@ export function registerIpc(): void {
 
     return result.canceled ? null : (result.filePaths[0] ?? null)
   })
+}
+
+/**
+ * Asks before destroying something. Lives in the main process so a caller in
+ * the renderer cannot skip it, and defaults to Cancel so that dismissing the
+ * dialog never deletes anything.
+ */
+async function confirmDelete(
+  event: Electron.IpcMainInvokeEvent,
+  name: string,
+  detail: string,
+): Promise<boolean> {
+  const win = BrowserWindow.fromWebContents(event.sender)
+  const options: Electron.MessageBoxOptions = {
+    type: 'warning',
+    buttons: ['Cancel', 'Delete'],
+    defaultId: 0,
+    cancelId: 0,
+    message: `Delete "${name}"?`,
+    detail,
+  }
+
+  const result = win
+    ? await dialog.showMessageBox(win, options)
+    : await dialog.showMessageBox(options)
+
+  return result.response === 1
 }
 
 export function disposeStores(): void {

@@ -777,14 +777,139 @@ describe('Skills — the file tree', () => {
     expect(within(tree).queryByText('templates/pytest.py')).not.toBeInTheDocument()
   })
 
-  test('a folder row is not selectable, since there is nothing to open', () => {
+  test('a folder row selects without changing the open file', async () => {
+    const user = userEvent.setup()
     installRosterApi({ skills: { read: vi.fn().mockResolvedValue('# A') } })
     useRoster.setState({
       skills: [aSkill({ name: 'x', path: '/skills/x', files: ['SKILL.md', 'templates/'] })],
       agents: [],
     })
     render(<Skills />)
+    await screen.findByLabelText('Skill file contents')
 
-    expect(screen.getByRole('button', { name: 'templates' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'templates' }))
+
+    // Selectable so it can be deleted, but there is no file to open.
+    expect(screen.getByRole('button', { name: 'templates' })).toHaveAttribute('aria-current', 'true')
+    expect(window.roster.skills.read).toHaveBeenCalledTimes(1)
+  })
+})
+
+
+describe('Skills — deleting', () => {
+  const SKILL = aSkill({
+    name: 'repro-harness',
+    path: '/skills/repro-harness',
+    files: ['SKILL.md', 'templates/', 'templates/pytest.py'],
+  })
+
+  beforeEach(() => {
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# Repro'),
+        list: vi.fn().mockResolvedValue([SKILL]),
+        remove: vi.fn().mockResolvedValue(true),
+        removeSkill: vi.fn().mockResolvedValue(true),
+      },
+    })
+    useRoster.setState({ skills: [SKILL], agents: [] })
+  })
+
+  test('deletes the selected file by its path within the skill', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
+    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+
+    await waitFor(() =>
+      expect(window.roster.skills.remove).toHaveBeenCalledWith(
+        'repro-harness',
+        'templates/pytest.py',
+      ),
+    )
+  })
+
+  test('deletes a selected folder', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'templates' }))
+    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+
+    await waitFor(() =>
+      expect(window.roster.skills.remove).toHaveBeenCalledWith('repro-harness', 'templates/'),
+    )
+  })
+
+  test('deleting the skill row removes the whole skill', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'repro-harness' }))
+    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+
+    await waitFor(() =>
+      expect(window.roster.skills.removeSkill).toHaveBeenCalledWith('repro-harness'),
+    )
+    expect(window.roster.skills.remove).not.toHaveBeenCalled()
+  })
+
+  test('names what will be deleted, so the button is never ambiguous', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
+
+    expect(screen.getByRole('button', { name: 'Delete pytest.py' })).toBeInTheDocument()
+  })
+
+  test('cancelling at the dialog changes nothing', async () => {
+    const user = userEvent.setup()
+    const list = vi.fn().mockResolvedValue([SKILL])
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# Repro'),
+        list,
+        // The main process reports a cancelled confirmation as false.
+        remove: vi.fn().mockResolvedValue(false),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
+    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+
+    await waitFor(() => expect(window.roster.skills.remove).toHaveBeenCalled())
+    // The tree is not reloaded and the selection is kept.
+    expect(list).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Delete pytest.py' })).toBeInTheDocument()
+  })
+
+  test('does nothing when nothing is selected', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ skills: [] })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+
+    expect(window.roster.skills.remove).not.toHaveBeenCalled()
+    expect(window.roster.skills.removeSkill).not.toHaveBeenCalled()
+  })
+
+  test('reports a failed delete rather than pretending it worked', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# Repro'),
+        remove: vi.fn().mockRejectedValue(new Error('EPERM: operation not permitted')),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'pytest.py' }))
+    await user.click(screen.getByRole('button', { name: /^Delete/ }))
+
+    expect(await screen.findByText(/EPERM/)).toBeInTheDocument()
   })
 })
