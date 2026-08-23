@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# dependencies
+node_modules/
+
+# build output
+dist/
+out/
+release/
+
+# local env
+.env
+.env.local
+
+# logs
+*.log

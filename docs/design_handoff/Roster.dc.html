@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin:0; padding:0; background:#111216; }
+  * { box-sizing:border-box; }
+  a { color:#a78bfa; text-decoration:none; }
+  a:hover { color:#c4b5fd; }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-thumb { background:#2b2d36; border-radius:8px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  @keyframes rosterPulse { 0%,100% { box-shadow:0 0 0 0 rgba(217,160,74,0.0); border-color:#4a3a1e; } 50% { box-shadow:0 0 0 3px rgba(217,160,74,0.10); border-color:#8a6a2e; } }
+  @keyframes rosterBlink { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
+  @keyframes rosterDash { to { stroke-dashoffset:-16; } }
+</style>
+</helmet>
+
+<div style="display:flex; height:100vh; width:100%; background:#111216; color:#e6e6ea; font-family:'Instrument Sans',system-ui,sans-serif; font-size:13px; overflow:hidden;">
+
+  <!-- sidebar -->
+  <div style="width:216px; flex:none; display:flex; flex-direction:column; background:#0d0e12; border-right:1px solid #1e2027;">
+    <div style="height:44px; flex:none; display:flex; align-items:center; gap:8px; padding:0 14px; border-bottom:1px solid #1e2027;">
+      <div style="width:16px; height:16px; border-radius:5px; background:#7c5cff;"></div>
+      <div style="font-weight:600; letter-spacing:-0.01em;">Roster</div>
+      <div style="margin-left:auto; display:flex; gap:5px;">
+        <div style="width:9px;height:9px;border-radius:50%;background:#24262f;"></div>
+        <div style="width:9px;height:9px;border-radius:50%;background:#24262f;"></div>
+        <div style="width:9px;height:9px;border-radius:50%;background:#24262f;"></div>
+      </div>
+    </div>
+
+    <div style="padding:12px 8px; display:flex; flex-direction:column; gap:1px;">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="5">
+        <div onClick="{{ n.go }}" style="display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:6px; cursor:pointer; color:{{ n.fg }}; background:{{ n.bg }};" style-hover="background:#1a1c23;">
+          <div style="width:5px; height:5px; border-radius:1.5px; background:{{ n.dot }};"></div>
+          <div style="font-weight:500;">{{ n.label }}</div>
+          <div style="margin-left:auto; font-size:11px; color:#5a5d69;">{{ n.meta }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:flex; align-items:center; padding:10px 16px 6px;">
+      <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Roster</div>
+      <div style="margin-left:auto; font-size:10.5px; color:#4f5260; font-family:'JetBrains Mono',monospace;">{{ agentCount }}</div>
+    </div>
+    <div style="padding:0 8px 8px;">
+      <input type="text" value="{{ query }}" onChange="{{ setQuery }}" placeholder="Search agents" style="width:100%; padding:6px 9px; border:1px solid #1e2027; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+    </div>
+    <div style="flex:1; min-height:0; padding:0 8px 8px; display:flex; flex-direction:column; gap:1px; overflow-y:auto;">
+      <sc-for list="{{ agents }}" as="a" hint-placeholder-count="5">
+        <div onClick="{{ a.open }}" style="display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:6px; cursor:pointer; color:#9a9daa;" style-hover="background:#1a1c23; color:#e6e6ea;">
+          <div style="width:6px; height:6px; border-radius:50%; background:{{ a.tone }};"></div>
+          <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ a.name }}</div>
+          <div style="margin-left:auto; font-size:10.5px; color:#4f5260; font-family:'JetBrains Mono',monospace;">{{ a.count }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="flex:none; padding:10px; border-top:1px solid #1e2027; display:flex; align-items:center; gap:8px;">
+      <div style="width:22px;height:22px;border-radius:6px;background:#20222b;display:flex;align-items:center;justify-content:center;font-size:10px;color:#9a9daa;font-weight:600;">JD</div>
+      <div style="font-size:12px; color:#9a9daa;">Local workspace</div>
+    </div>
+  </div>
+
+  <!-- main -->
+  <div style="flex:1; min-width:0; display:flex; flex-direction:column;">
+
+    <!-- GRID -->
+    <sc-if value="{{ isGrid }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; flex-direction:column; height:100vh;">
+        <div style="height:44px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #1e2027;">
+          <div style="font-weight:600; letter-spacing:-0.01em;">Agents</div>
+          <div style="font-size:12px; color:#6d707d;">{{ gridSummary }}</div>
+          <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+            <input type="text" value="{{ gridQuery }}" onChange="{{ setGridQuery }}" placeholder="Filter agents" style="width:200px; padding:5px 10px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+            <div onClick="{{ goNew }}" style="padding:5px 11px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">New agent</div>
+          </div>
+        </div>
+
+        <div style="flex:1; min-height:0; overflow-y:auto; padding:18px;">
+          <div style="display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:minmax(268px,1fr); gap:24px; min-height:100%;">
+            <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="4">
+              <div onClick="{{ t.open }}" style="display:flex; flex-direction:column; min-height:0; background:#15161c; border:1px solid {{ t.border }}; border-radius:10px; overflow:hidden; cursor:pointer; animation:{{ t.anim }};" style-hover="border-color:#34374a;">
+                <div style="flex:none; display:flex; align-items:center; gap:8px; padding:9px 12px; border-bottom:1px solid #1e2027; background:#131419;">
+                  <div style="width:7px;height:7px;border-radius:50%;background:{{ t.tone }};"></div>
+                  <div style="font-weight:600; font-size:12.5px;">{{ t.name }}</div>
+                  <div style="font-size:11px; color:{{ t.tone }}; font-weight:500;">{{ t.statusLabel }}</div>
+                  <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#5f6270;">{{ t.model }}</div>
+                </div>
+                <div style="flex:none; display:flex; gap:4px; padding:6px 10px; border-bottom:1px solid #1e2027; background:#101116; overflow:hidden;">
+                  <sc-for list="{{ t.sessions }}" as="ss" hint-placeholder-count="2">
+                    <div onClick="{{ ss.open }}" style="display:flex; align-items:center; gap:6px; padding:3px 8px; border-radius:5px; background:{{ ss.bg }}; color:{{ ss.fg }}; font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px; cursor:pointer;" style-hover="background:#1c1e26;">
+                      <div style="color:#5f6270;">{{ ss.glyph }}</div>
+                      <div style="overflow:hidden; text-overflow:ellipsis;">{{ ss.title }}</div>
+                      <div style="flex:none; width:5px;height:5px;border-radius:50%;background:{{ ss.tone }};"></div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="flex:1; min-height:0; overflow:hidden; padding:10px 12px; display:flex; flex-direction:column; gap:7px; justify-content:flex-end;">
+                  <sc-for list="{{ t.lines }}" as="l" hint-placeholder-count="4">
+                    <div style="display:flex; gap:8px; align-items:baseline; opacity:{{ l.op }};">
+                      <div style="flex:none; width:52px; font-family:'JetBrains Mono',monospace; font-size:10px; color:{{ l.tone }}; text-transform:uppercase; letter-spacing:0.04em;">{{ l.who }}</div>
+                      <div style="font-size:12px; line-height:1.45; color:#b9bcc8; text-wrap:pretty;">{{ l.text }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="flex:none; display:flex; align-items:center; gap:10px; padding:7px 12px; border-top:1px solid #1e2027; background:#131419; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#5f6270;">
+                  <div>{{ t.cwd }}</div>
+                  <div style="margin-left:auto;">{{ t.tokens }}</div>
+                  <div>{{ t.cost }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+
+        </div>
+
+        <div style="flex:none; height:38px; display:flex; align-items:center; gap:12px; padding:0 18px; border-top:1px solid #1e2027; background:#0d0e12;">
+          <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:#5a5d69;"><span style="color:#a78bfa;">↳</span>session opened by another agent</div>
+          <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:11px; color:#6d707d;">session 412k tok · $3.87</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- AGENT DETAIL -->
+    <sc-if value="{{ isAgent }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex; flex-direction:column; height:100vh;">
+        <div style="height:44px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #1e2027;">
+          <div onClick="{{ goGrid }}" style="font-size:12px; color:#6d707d; cursor:pointer;" style-hover="color:#e6e6ea;">Agents</div>
+          <div style="color:#3a3d47;">/</div>
+          <div style="width:7px;height:7px;border-radius:50%;background:{{ cur.tone }};"></div>
+          <div style="font-weight:600;">{{ cur.name }}</div>
+          <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#5f6270;">{{ cur.model }}</div>
+
+          <div style="margin-left:auto; display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; padding:2px; background:#15161c; border:1px solid #24262f; border-radius:7px;">
+              <div onClick="{{ setChat }}" style="padding:4px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ chatFg }}; background:{{ chatBg }};">Chat</div>
+              <div onClick="{{ setTerm }}" style="padding:4px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ termFg }}; background:{{ termBg }};">Terminal</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none; display:flex; align-items:stretch; gap:4px; padding:6px 12px; border-bottom:1px solid #1e2027; background:#0f1015; overflow-x:auto;">
+          <sc-for list="{{ sessions }}" as="s" hint-placeholder-count="3">
+            <div onClick="{{ s.pick }}" style="display:flex; align-items:center; gap:8px; padding:5px 11px; border:1px solid {{ s.border }}; border-radius:7px; cursor:pointer; background:{{ s.bg }}; color:{{ s.fg }}; white-space:nowrap;" style-hover="background:#1a1c23;">
+              <div style="font-size:11px; color:{{ s.glyphTone }};">{{ s.glyph }}</div>
+              <div style="font-size:12px; font-weight:500;">{{ s.title }}</div>
+              <div style="font-size:10.5px; color:#5a5d69;">{{ s.from }}</div>
+              <div style="width:6px;height:6px;border-radius:50%;background:{{ s.tone }};"></div>
+            </div>
+          </sc-for>
+          <div onClick="{{ newSession }}" style="display:flex; align-items:center; padding:5px 11px; border:1px dashed #2a2d38; border-radius:7px; font-size:12px; color:#6d707d; cursor:pointer; white-space:nowrap;" style-hover="border-color:#55596a; color:#c8cad4;">+ New session</div>
+        </div>
+
+        <sc-if value="{{ cur.needsApproval }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:none; display:flex; align-items:center; gap:12px; padding:10px 18px; background:#1c1710; border-bottom:1px solid #3a2f18;">
+            <div style="width:6px;height:6px;border-radius:50%;background:#d9a04a;"></div>
+            <div style="font-size:12.5px; color:#e8d3ad;">Waiting on you — agent wants to run <span style="font-family:'JetBrains Mono',monospace;">git push --force origin fix/session-leak</span></div>
+            <div style="margin-left:auto; display:flex; gap:7px;">
+              <div style="padding:4px 11px; border:1px solid #3a3d47; border-radius:6px; font-size:12px; color:#b9bcc8; cursor:pointer;" style-hover="border-color:#55596a;">Deny</div>
+              <div style="padding:4px 11px; border-radius:6px; background:#d9a04a; color:#1a1508; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#e8b262;">Approve</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ editOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:fixed; inset:0; z-index:40; background:rgba(6,7,10,0.66); display:flex; align-items:center; justify-content:center; padding:40px 24px;">
+            <div style="width:100%; max-width:520px; max-height:100%; display:flex; flex-direction:column; background:#111216; border:1px solid #262933; border-radius:12px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,0.5);">
+              <div style="flex:none; display:flex; align-items:center; gap:10px; padding:13px 18px; border-bottom:1px solid #1e2027;">
+                <div style="font-weight:600; font-size:13.5px;">Edit {{ cur.name }}</div>
+                <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#5f6270;">{{ cur.cwd }}/agent.toml</div>
+                <div onClick="{{ cancelEdit }}" style="margin-left:auto; font-size:15px; color:#6d707d; cursor:pointer; line-height:1;" style-hover="color:#e6e6ea;">×</div>
+              </div>
+
+              <div style="flex:1; min-height:0; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:20px;">
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="font-size:12px; color:#9a9daa; font-weight:500;">Name</div>
+                  <div style="padding:9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; font-size:13px; color:#e6e6ea;">{{ cur.name }}</div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="display:flex; align-items:center;">
+                    <div style="font-size:12px; color:#9a9daa; font-weight:500;">System prompt</div>
+                    <div style="margin-left:auto; font-size:11px; color:#4f5260; font-family:'JetBrains Mono',monospace;">{{ promptChars }}</div>
+                  </div>
+                  <textarea value="{{ draftPrompt }}" onChange="{{ setDraftPrompt }}" rows="6" placeholder="How this agent should work — house rules, what to do first, what never to do." style="width:100%; resize:vertical; padding:11px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#d2d4dd; font-family:'Instrument Sans',sans-serif; font-size:12.5px; line-height:1.6; outline:none;" style-focus="border-color:#3a3050; background:#171420"></textarea>
+                  <div style="font-size:11px; color:#5a5d69;">Prepended to every session on this agent, above its skills.</div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="font-size:12px; color:#9a9daa; font-weight:500;">Provider</div>
+                  <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:9px;">
+                    <sc-for list="{{ editProviders }}" as="p" hint-placeholder-count="3">
+                      <div onClick="{{ p.pick }}" style="padding:10px 11px; border:1px solid {{ p.border }}; background:{{ p.bg }}; border-radius:8px; cursor:pointer; display:flex; flex-direction:column; gap:3px;" style-hover="border-color:#3a3d47;">
+                        <div style="font-size:12.5px; font-weight:600; color:{{ p.fg }};">{{ p.name }}</div>
+                        <div style="font-size:11px; color:#6d707d; font-family:'JetBrains Mono',monospace;">{{ p.key }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="font-size:12px; color:#9a9daa; font-weight:500;">Model</div>
+                  <div style="display:flex; flex-direction:column; gap:6px;">
+                    <sc-for list="{{ editModels }}" as="m" hint-placeholder-count="3">
+                      <div onClick="{{ m.pick }}" style="display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid {{ m.border }}; background:{{ m.bg }}; border-radius:8px; cursor:pointer;" style-hover="border-color:#3a3d47;">
+                        <div style="width:12px;height:12px;border-radius:50%;border:1px solid {{ m.ring }}; display:flex; align-items:center; justify-content:center;">
+                          <div style="width:6px;height:6px;border-radius:50%;background:{{ m.fill }};"></div>
+                        </div>
+                        <div style="font-family:'JetBrains Mono',monospace; font-size:12.5px; color:#d2d4dd;">{{ m.id }}</div>
+                        <div style="margin-left:auto; font-size:11px; color:#5f6270; font-family:'JetBrains Mono',monospace;">{{ m.price }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="font-size:12px; color:#9a9daa; font-weight:500;">Working directory</div>
+                  <div style="display:flex; gap:9px;">
+                    <div style="flex:1; padding:9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; font-size:12.5px; color:#8f93a3; font-family:'JetBrains Mono',monospace;">{{ cur.cwd }}</div>
+                    <div style="padding:9px 14px; border:1px solid #262933; border-radius:8px; font-size:12.5px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Choose…</div>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="font-size:12px; color:#9a9daa; font-weight:500;">Skills</div>
+                  <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    <sc-for list="{{ editSkillChips }}" as="s" hint-placeholder-count="6">
+                      <div onClick="{{ s.toggle }}" style="display:flex; align-items:center; gap:7px; padding:6px 11px; border:1px solid {{ s.border }}; background:{{ s.bg }}; border-radius:20px; cursor:pointer; font-size:12px; color:{{ s.fg }};">
+                        <div style="width:5px;height:5px;border-radius:1.5px;background:{{ s.dot }};"></div>
+                        <div>{{ s.name }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="display:flex; align-items:center;">
+                    <div style="font-size:12px; color:#9a9daa; font-weight:500;">MCP servers</div>
+                    <div onClick="{{ goMcp }}" style="margin-left:auto; font-size:11px; color:#a78bfa; cursor:pointer;">Manage servers</div>
+                  </div>
+                  <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    <sc-for list="{{ mcpChips }}" as="s" hint-placeholder-count="4">
+                      <div onClick="{{ s.toggle }}" style="display:flex; align-items:center; gap:7px; padding:6px 11px; border:1px solid {{ s.border }}; background:{{ s.bg }}; border-radius:20px; cursor:pointer; font-size:12px; color:{{ s.fg }};">
+                        <div style="width:5px;height:5px;border-radius:50%;background:{{ s.dot }};"></div>
+                        <div style="font-family:'JetBrains Mono',monospace;">{{ s.name }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+
+              <div style="flex:none; display:flex; align-items:center; gap:10px; padding:13px 18px; border-top:1px solid #1e2027; background:#0f1015;">
+                <div style="font-size:11px; color:#5a5d69;">Changes are written back to agent.toml</div>
+                <div onClick="{{ cancelEdit }}" style="margin-left:auto; padding:7px 13px; border:1px solid #262933; border-radius:7px; font-size:12.5px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Cancel</div>
+                <div onClick="{{ saveEdit }}" style="padding:7px 15px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12.5px; cursor:pointer;" style-hover="background:#8f74ff;">Save changes</div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="flex:1; min-height:0; display:flex;">
+          <!-- primary pane -->
+          <div style="flex:1; min-width:0; display:flex; flex-direction:column;">
+
+            <!-- chat -->
+            <sc-if value="{{ showChat }}" hint-placeholder-val="{{ true }}">
+              <div style="flex:{{ chatFlex }}; min-height:0; display:flex; flex-direction:column; order:{{ chatOrder }};">
+                <div ref="{{ scrollRef }}" style="flex:1; min-height:0; overflow-y:auto; padding:22px 26px 8px; display:flex; flex-direction:column; gap:20px;">
+                  <sc-for list="{{ messages }}" as="m" hint-placeholder-count="4">
+                    <div style="display:flex; flex-direction:column; gap:7px; max-width:720px;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="font-size:11px; font-weight:600; letter-spacing:0.04em; text-transform:uppercase; color:{{ m.tone }};">{{ m.who }}</div>
+                        <div style="font-size:11px; color:#4f5260; font-family:'JetBrains Mono',monospace;">{{ m.time }}</div>
+                      </div>
+                      <sc-if value="{{ m.isTool }}" hint-placeholder-val="{{ false }}">
+                        <div onClick="{{ m.toggle }}" style="border:1px solid #24262f; border-radius:8px; background:#15161c; overflow:hidden; cursor:pointer;" style-hover="border-color:#33363f;">
+                          <div style="display:flex; align-items:center; gap:9px; padding:8px 11px;">
+                            <div style="font-size:10px; color:#6d707d;">{{ m.chev }}</div>
+                            <div style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#a78bfa;">{{ m.tool }}</div>
+                            <div style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#7d8090; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">{{ m.args }}</div>
+                            <div style="margin-left:auto; font-size:10.5px; color:#4f5260; font-family:'JetBrains Mono',monospace;">{{ m.dur }}</div>
+                          </div>
+                          <sc-if value="{{ m.open }}" hint-placeholder-val="{{ false }}">
+                            <div style="padding:10px 12px; border-top:1px solid #1e2027; background:#101116; font-family:'JetBrains Mono',monospace; font-size:11.5px; line-height:1.6; color:#8f93a3; white-space:pre-wrap;">{{ m.output }}</div>
+                          </sc-if>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ m.isText }}" hint-placeholder-val="{{ true }}">
+                        <div style="font-size:13.5px; line-height:1.62; color:#d2d4dd; text-wrap:pretty; white-space:pre-wrap;">{{ m.text }}</div>
+                      </sc-if>
+                      <sc-if value="{{ m.isSpawn }}" hint-placeholder-val="{{ false }}">
+                        <div style="border-left:2px solid #3a3050; padding:2px 0 2px 13px; display:flex; flex-direction:column; gap:8px; align-items:flex-start;">
+                          <div style="font-size:13.5px; line-height:1.62; color:#b3b6c2; text-wrap:pretty;">{{ m.text }}</div>
+                          <sc-if value="{{ m.hasBack }}" hint-placeholder-val="{{ true }}">
+                            <div onClick="{{ m.back }}" style="padding:4px 10px; border:1px solid #2e2a3d; border-radius:6px; font-size:11.5px; color:#a78bfa; cursor:pointer; background:#171420;" style-hover="border-color:#7c5cff;">{{ m.backLabel }}</div>
+                          </sc-if>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ m.isHandoff }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex; flex-direction:column; gap:6px; align-items:flex-start;">
+                          <sc-for list="{{ m.links }}" as="l" hint-placeholder-count="1">
+                            <div onClick="{{ l.go }}" style="display:flex; align-items:center; gap:9px; padding:6px 11px; border:1px solid #2e2a3d; border-radius:7px; background:#171420; cursor:pointer; font-size:12.5px; color:#c9c2ff;" style-hover="border-color:#7c5cff;">
+                              <div>{{ l.label }}</div>
+                              <div style="width:6px;height:6px;border-radius:50%;background:{{ l.tone }};"></div>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ isStreaming }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex; align-items:center; gap:8px; color:#6d707d; font-size:12px;">
+                    <div style="width:6px;height:6px;border-radius:50%;background:#7c5cff; animation:rosterBlink 1.1s steps(1) infinite;"></div>
+                    <div>{{ streamingText }}</div>
+                    <div onClick="{{ noop }}" style="margin-left:6px; padding:2px 9px; border:1px solid #2a2d38; border-radius:5px; cursor:pointer; font-size:11px;" style-hover="border-color:#55596a; color:#e6e6ea;">Stop</div>
+                    <div onClick="{{ noop }}" style="padding:2px 9px; border:1px solid #2a2d38; border-radius:5px; cursor:pointer; font-size:11px;" style-hover="border-color:#55596a; color:#e6e6ea;">Retry</div>
+                  </div>
+                  </sc-if>
+                </div>
+
+                <sc-if value="{{ showComposer }}" hint-placeholder-val="{{ true }}">
+                <div style="flex:none; padding:12px 26px 16px; border-top:1px solid #1e2027; background:#0f1015;">
+                  <div style="border:1px solid #262933; border-radius:9px; background:#15161c; padding:10px 12px; display:flex; flex-direction:column; gap:9px;">
+                    <div style="display:flex; gap:7px;">
+                      <sc-if value="{{ hasAttach }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:flex; align-items:center; gap:6px; padding:3px 8px; background:#1c1e26; border:1px solid #262933; border-radius:5px; font-size:11px; color:#9a9daa; font-family:'JetBrains Mono',monospace;">{{ attachName }}<span style="color:#5f6270;">{{ attachSize }}</span></div>
+                      </sc-if>
+                      <div style="display:flex; align-items:center; gap:6px; padding:3px 8px; border:1px dashed #2e313c; border-radius:5px; font-size:11px; color:#5f6270;">drop files here</div>
+                    </div>
+                    <div style="font-size:13px; color:#5a5d69;">{{ composerLabel }}</div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <div style="font-size:11px; color:#5a5d69; font-family:'JetBrains Mono',monospace;">{{ skillsLine }}</div>
+                      <div style="margin-left:auto; padding:4px 12px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">Send</div>
+                    </div>
+                  </div>
+                </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <!-- terminal -->
+            <sc-if value="{{ showTerm }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:{{ termFlex }}; min-height:0; display:flex; flex-direction:column; background:#0b0c0f; border-top:1px solid #1e2027; order:{{ termOrder }};">
+                <div style="flex:none; display:flex; align-items:center; gap:10px; padding:7px 14px; border-bottom:1px solid #1a1c22;">
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#7d8090;">pty · zsh · ~/work/api</div>
+                  <div style="display:flex; align-items:center; gap:5px; margin-left:8px;">
+                    <div style="width:5px;height:5px;border-radius:50%;background:#4fa86a;"></div>
+                    <div style="font-size:11px; color:#4fa86a;">agent attached</div>
+                  </div>
+                  <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:11px; color:#4f5260;">80×24</div>
+                </div>
+                <div style="flex:1; min-height:0; overflow-y:auto; padding:12px 14px; font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.65;">
+                  <sc-for list="{{ termLines }}" as="t" hint-placeholder-count="10">
+                    <div style="display:flex; gap:8px; white-space:pre-wrap;">
+                      <div style="flex:none; color:{{ t.tone }};">{{ t.p }}</div>
+                      <div style="color:{{ t.fg }};">{{ t.text }}</div>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <div style="color:#7c5cff;">›</div>
+                    <div style="color:#e6e6ea;">{{ typed }}</div>
+                    <div style="width:7px; height:14px; background:#7c5cff; animation:rosterBlink 1s steps(1) infinite;"></div>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- config rail -->
+          <div style="width:260px; flex:none; background:#0d0e12; border-left:1px solid #1e2027; overflow-y:auto; padding:16px 16px 24px; display:flex; flex-direction:column; gap:18px;">
+            <div style="display:flex; flex-direction:column; gap:9px;">
+              <div style="display:flex; align-items:center;">
+                <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Configuration</div>
+                <div onClick="{{ openEdit }}" style="margin-left:auto; padding:2px 9px; border:1px solid #24262f; border-radius:5px; font-size:11px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#55596a;">Edit</div>
+              </div>
+              <sc-for list="{{ cfg }}" as="c" hint-placeholder-count="4">
+                <div style="display:flex; align-items:baseline; gap:10px;">
+                  <div style="flex:none; width:74px; font-size:11.5px; color:#6d707d;">{{ c.k }}</div>
+                  <div style="font-size:12px; color:#d2d4dd; font-family:'JetBrains Mono',monospace; overflow:hidden; text-overflow:ellipsis;">{{ c.v }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:9px;">
+              <div style="display:flex; align-items:center;">
+                <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Skills</div>
+                <div onClick="{{ goSkills }}" style="margin-left:auto; font-size:11px; color:#a78bfa; cursor:pointer;">Manage</div>
+              </div>
+              <sc-for list="{{ curSkills }}" as="s" hint-placeholder-count="3">
+                <div style="display:flex; align-items:center; gap:8px; padding:6px 9px; background:#15161c; border:1px solid #1e2027; border-radius:6px;">
+                  <div style="width:5px;height:5px;border-radius:1.5px;background:#7c5cff;"></div>
+                  <div style="font-size:12px; color:#c8cad4;">{{ s.name }}</div>
+                  <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10px; color:#4f5260;">{{ s.files }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:9px;">
+              <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Session</div>
+              <div style="display:flex; flex-direction:column; gap:7px; padding:11px; background:#15161c; border:1px solid #1e2027; border-radius:8px;">
+                <div style="display:flex; align-items:baseline;">
+                  <div style="font-size:11.5px; color:#6d707d;">Tokens</div>
+                  <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:12px;">118,402</div>
+                </div>
+                <div style="display:flex; align-items:baseline;">
+                  <div style="font-size:11.5px; color:#6d707d;">Spend</div>
+                  <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:12px; color:#d9a04a;">$1.24</div>
+                </div>
+                <div style="height:4px; border-radius:2px; background:#1e2027; overflow:hidden; margin-top:2px;">
+                  <div style="width:58%; height:100%; background:#7c5cff;"></div>
+                </div>
+                <div style="font-size:10.5px; color:#4f5260;">58% of context window</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- SKILLS -->
+    <sc-if value="{{ isSkills }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; height:100vh;">
+        <div style="height:44px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #1e2027;">
+          <div style="font-weight:600;">Skills</div>
+          <div style="font-size:12px; color:#6d707d; font-family:'JetBrains Mono',monospace;">~/roster/skills</div>
+          <div style="margin-left:auto; display:flex; gap:8px;">
+            <div style="padding:5px 11px; border:1px solid #24262f; border-radius:6px; font-size:12px; color:#9a9daa; cursor:pointer;" style-hover="border-color:#33363f;">Reveal in Finder</div>
+            <div style="padding:5px 11px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;">New skill</div>
+          </div>
+        </div>
+        <div style="flex:1; min-height:0; display:flex;">
+          <div style="width:196px; flex:none; border-right:1px solid #1e2027; background:#0d0e12; overflow-y:auto; padding:10px 8px;">
+            <sc-for list="{{ tree }}" as="f" hint-placeholder-count="9">
+              <div onClick="{{ f.pick }}" style="display:flex; align-items:center; gap:7px; padding:5px 8px; padding-left:{{ f.pad }}; border-radius:5px; cursor:pointer; background:{{ f.bg }};" style-hover="background:#1a1c23;">
+                <div style="width:5px; height:5px; border-radius:{{ f.radius }}; background:{{ f.dot }};"></div>
+                <div style="font-size:12.5px; color:{{ f.fg }}; font-family:{{ f.font }};">{{ f.name }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="flex:1; min-width:0; display:flex; flex-direction:column; background:#0f1015;">
+            <div style="flex:none; display:flex; align-items:center; gap:10px; padding:8px 16px; border-bottom:1px solid #1e2027;">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:12px; color:#c8cad4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ openFile }}</div>
+              <div style="flex:none; width:5px;height:5px;border-radius:50%;background:#d9a04a;"></div>
+              <div style="flex:none; font-size:11px; color:#6d707d;">unsaved</div>
+              <div style="margin-left:auto; flex:none; display:flex; gap:7px;">
+                <div style="padding:4px 10px; border:1px solid #24262f; border-radius:6px; font-size:11.5px; color:#9a9daa; cursor:pointer; white-space:nowrap;">Revert</div>
+                <div style="padding:4px 10px; border-radius:6px; background:#26283a; color:#c9c2ff; font-size:11.5px; font-weight:600; cursor:pointer;">Save</div>
+              </div>
+            </div>
+            <div style="flex:1; min-height:0; overflow-y:auto; padding:14px 20px 40px 0; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.75;">
+              <sc-for list="{{ editorLines }}" as="e" hint-placeholder-count="20">
+                <div style="display:flex; gap:14px; align-items:flex-start; min-height:22px;">
+                  <div style="flex:none; width:46px; text-align:right; color:#3a3d47; user-select:none;">{{ e.n }}</div>
+                  <div style="flex:1; min-width:0; white-space:pre-wrap; color:{{ e.tone }}; font-weight:{{ e.w }};">{{ e.text }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="width:188px; flex:none; border-left:1px solid #1e2027; background:#0d0e12; padding:16px; display:flex; flex-direction:column; gap:16px;">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Used by</div>
+              <sc-for list="{{ skillUsers }}" as="u" hint-placeholder-count="2">
+                <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:#c8cad4;">
+                  <div style="width:6px;height:6px;border-radius:50%;background:{{ u.tone }};"></div>
+                  <div>{{ u.name }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Files</div>
+              <div style="font-size:12px; color:#8f93a3; line-height:1.7; font-family:'JetBrains Mono',monospace;">SKILL.md<br />repro.py<br />templates/</div>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Last edited</div>
+              <div style="font-size:12px; color:#8f93a3;">2 hours ago</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- MCP -->
+    <sc-if value="{{ isMcp }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; height:100vh;">
+        <div style="height:44px; flex:none; display:flex; align-items:center; gap:14px; padding:0 18px; border-bottom:1px solid #1e2027;">
+          <div style="font-weight:600;">MCP servers</div>
+          <div style="display:flex; gap:2px; padding:2px; background:#15161c; border:1px solid #24262f; border-radius:7px;">
+            <div onClick="{{ setInstalled }}" style="padding:4px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ instFg }}; background:{{ instBg }};">Installed</div>
+            <div onClick="{{ setRegistry }}" style="padding:4px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ regFg }}; background:{{ regBg }};">Registry</div>
+          </div>
+        </div>
+
+        <sc-if value="{{ mcpInstalled }}" hint-placeholder-val="{{ true }}">
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:18px 22px; display:flex; flex-direction:column; gap:10px; max-width:940px;">
+            <sc-for list="{{ servers }}" as="s" hint-placeholder-count="4">
+              <div style="border:1px solid #1e2027; background:#15161c; border-radius:9px; padding:13px 15px; display:flex; flex-direction:column; gap:11px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <div style="width:22px;height:22px;border-radius:6px;background:#20222b;"></div>
+                  <div style="font-weight:600; font-size:13px;">{{ s.name }}</div>
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:11px; color:#5f6270;">{{ s.cmd }}</div>
+                  <div style="margin-left:auto; font-size:11.5px; color:#6d707d;">{{ s.count }}</div>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:7px;">
+                  <sc-for list="{{ s.agents }}" as="a" hint-placeholder-count="3">
+                    <div onClick="{{ a.toggle }}" style="display:flex; align-items:center; gap:7px; padding:4px 9px; border:1px solid {{ a.border }}; background:{{ a.bg }}; border-radius:20px; cursor:pointer; font-size:11.5px; color:{{ a.fg }};">
+                      <div style="width:5px;height:5px;border-radius:50%;background:{{ a.dot }};"></div>
+                      <div>{{ a.name }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ mcpRegistry }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:18px 22px; display:flex; flex-direction:column; gap:22px;">
+            <sc-for list="{{ registry }}" as="cat" hint-placeholder-count="3">
+              <div style="display:flex; flex-direction:column; gap:11px;">
+                <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">{{ cat.title }}</div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(232px,1fr)); gap:11px;">
+                  <sc-for list="{{ cat.items }}" as="i" hint-placeholder-count="4">
+                    <div style="border:1px solid #1e2027; background:#15161c; border-radius:9px; padding:13px; display:flex; flex-direction:column; gap:9px;" style-hover="border-color:#33363f;">
+                      <div style="display:flex; align-items:center; gap:9px;">
+                        <div style="width:20px;height:20px;border-radius:6px;background:#20222b;"></div>
+                        <div style="font-weight:600; font-size:12.5px;">{{ i.name }}</div>
+                      </div>
+                      <div style="font-size:12px; color:#8f93a3; line-height:1.5; text-wrap:pretty; min-height:36px;">{{ i.desc }}</div>
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#4f5260;">{{ i.author }}</div>
+                        <div style="margin-left:auto; padding:3px 10px; border:1px solid #2e313c; border-radius:6px; font-size:11.5px; color:#c9c2ff; cursor:pointer; font-weight:500;" style-hover="border-color:#7c5cff;">Install</div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <!-- NEW AGENT -->
+    <sc-if value="{{ isNew }}" hint-placeholder-val="{{ false }}">
+      <div style="height:100vh; overflow-y:auto; display:flex; justify-content:center; padding:56px 24px 80px;">
+        <div style="width:100%; max-width:560px; display:flex; flex-direction:column; gap:28px;">
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div style="font-size:24px; font-weight:600; letter-spacing:-0.02em;">Roster</div>
+            <div style="font-size:14.5px; line-height:1.6; color:#9a9daa; text-wrap:pretty; max-width:460px;">Roster is your want to manage your agent roster, create your own agents add skills and MCPs then give them tasks to complete.</div>
+          </div>
+
+          <div style="height:1px; background:#1e2027;"></div>
+
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <div style="font-size:12px; color:#9a9daa; font-weight:500;">Name</div>
+            <div style="padding:9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; font-size:13px; color:#e6e6ea;">Architect Agent</div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <div style="font-size:12px; color:#9a9daa; font-weight:500;">System prompt</div>
+            <textarea value="{{ newPrompt }}" onChange="{{ setNewPrompt }}" rows="5" placeholder="How this agent should work — house rules, what to do first, what never to do." style="width:100%; resize:vertical; padding:11px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#d2d4dd; font-family:'Instrument Sans',sans-serif; font-size:12.5px; line-height:1.6; outline:none;" style-focus="border-color:#3a3050; background:#171420"></textarea>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <div style="font-size:12px; color:#9a9daa; font-weight:500;">Provider</div>
+            <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:9px;">
+              <sc-for list="{{ providers }}" as="p" hint-placeholder-count="3">
+                <div onClick="{{ p.pick }}" style="padding:11px 12px; border:1px solid {{ p.border }}; background:{{ p.bg }}; border-radius:8px; cursor:pointer; display:flex; flex-direction:column; gap:3px;" style-hover="border-color:#3a3d47;">
+                  <div style="font-size:12.5px; font-weight:600; color:{{ p.fg }};">{{ p.name }}</div>
+                  <div style="font-size:11px; color:#6d707d; font-family:'JetBrains Mono',monospace;">{{ p.key }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <div style="font-size:12px; color:#9a9daa; font-weight:500;">Model</div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              <sc-for list="{{ models }}" as="m" hint-placeholder-count="3">
+                <div onClick="{{ m.pick }}" style="display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid {{ m.border }}; background:{{ m.bg }}; border-radius:8px; cursor:pointer;" style-hover="border-color:#3a3d47;">
+                  <div style="width:12px;height:12px;border-radius:50%;border:1px solid {{ m.ring }}; display:flex; align-items:center; justify-content:center;">
+                    <div style="width:6px;height:6px;border-radius:50%;background:{{ m.fill }};"></div>
+                  </div>
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:12.5px; color:#d2d4dd;">{{ m.id }}</div>
+                  <div style="margin-left:auto; font-size:11px; color:#5f6270; font-family:'JetBrains Mono',monospace;">{{ m.price }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <div style="font-size:12px; color:#9a9daa; font-weight:500;">Working directory</div>
+            <div style="display:flex; gap:9px;">
+              <div style="flex:1; padding:9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; font-size:12.5px; color:#8f93a3; font-family:'JetBrains Mono',monospace;">~/work/api</div>
+              <div style="padding:9px 14px; border:1px solid #262933; border-radius:8px; font-size:12.5px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Choose…</div>
+            </div>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:7px;">
+            <div style="font-size:12px; color:#9a9daa; font-weight:500;">Skills</div>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              <sc-for list="{{ skillChips }}" as="s" hint-placeholder-count="6">
+                <div onClick="{{ s.toggle }}" style="display:flex; align-items:center; gap:7px; padding:6px 11px; border:1px solid {{ s.border }}; background:{{ s.bg }}; border-radius:20px; cursor:pointer; font-size:12px; color:{{ s.fg }};">
+                  <div style="width:5px;height:5px;border-radius:1.5px;background:{{ s.dot }};"></div>
+                  <div>{{ s.name }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:10px; padding-top:4px;">
+            <div onClick="{{ goGrid }}" style="font-size:12.5px; color:#6d707d; cursor:pointer;" style-hover="color:#e6e6ea;">Cancel</div>
+            <div onClick="{{ goGrid }}" style="margin-left:auto; padding:8px 16px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12.5px; cursor:pointer;" style-hover="background:#8f74ff;">Create agent</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900}}">
+const V = '#7c5cff', AM = '#d9a04a', GR = '#4fa86a', MU = '#6d707d';
+
+const AGENTS = [
+  { id:'arch', name:'Architect Agent', model:'claude-sonnet-4-6', provider:'Anthropic', status:'running', cwd:'~/work/api', tokens:'86.1k tok', cost:'$0.91',
+    lines:[
+      {who:'you', text:'Design the session store for multi-region.'},
+      {who:'agent', text:'Comparing sticky-session vs. token-replay. Sketching both in ADR-014.'},
+      {who:'tool', text:'read src/session/pool.ts (412 lines)'},
+      {who:'agent', text:'Replay wins — no cross-region affinity needed. Handing repro to Debugging.'}
+    ]},
+  { id:'debug', name:'Debugging Agent', model:'gpt-5', provider:'OpenAI', status:'approval', cwd:'~/work/api', tokens:'118.4k tok', cost:'$1.24',
+    lines:[
+      {who:'agent', text:'Reproduced the leak: pool never releases on 504.'},
+      {who:'tool', text:'run pytest tests/test_pool.py -k leak'},
+      {who:'agent', text:'Patch ready on fix/session-leak.'},
+      {who:'agent', text:'Requesting approval to force-push.'}
+    ]},
+  { id:'review', name:'Review Agent', model:'claude-sonnet-4-6', provider:'Anthropic', status:'done', cwd:'~/work/api', tokens:'44.7k tok', cost:'$0.48',
+    lines:[
+      {who:'tool', text:'diff HEAD~1..HEAD (3 files, +81 −22)'},
+      {who:'agent', text:'Two blocking notes on error handling, one nit.'},
+      {who:'agent', text:'Review posted. Waiting on the next handoff.'}
+    ]},
+  { id:'interview', name:'Interview Agent', model:'gemini-2.5-pro', provider:'Google', status:'idle', cwd:'~/work/hiring', tokens:'12.0k tok', cost:'$0.06',
+    lines:[
+      {who:'agent', text:'Idle. Last run: 4 transcripts scored against the backend rubric.'}
+    ]},
+  { id:'estimate', name:'Estimation Agent', model:'claude-sonnet-4-6', provider:'Anthropic', status:'idle', cwd:'~/work/api', tokens:'8.2k tok', cost:'$0.04', lines:[] }
+];
+
+const TONES = { running:V, approval:AM, done:GR, idle:'#4f5260', error:'#c2553f' };
+const LABELS = { running:'running', approval:'needs you', done:'finished', idle:'idle', error:'error' };
+
+const SKILL_MD = [
+  '# Repro Harness','',
+  'Turn a bug report into a minimal failing test before touching source.','',
+  '## When to use','',
+  '- A stack trace or failing CI job is in the request',
+  '- The user says "it breaks when…" without a test','',
+  '## Steps','',
+  '1. Read the trace top-down; find the first frame inside the repo.',
+  '2. Write the smallest test that fails for the same reason.',
+  '3. Commit the test alone, then fix.','',
+  '## Files','',
+  '`repro.py` scaffolds the test file.',
+  '`templates/` holds pytest and vitest starters.'
+];
+
+const TREE = [
+  {name:'repro-harness', dir:true},
+  {name:'SKILL.md', file:true, depth:1, active:true},
+  {name:'repro.py', file:true, depth:1},
+  {name:'templates', dir:true, depth:1},
+  {name:'stack-triage', dir:true},
+  {name:'SKILL.md', file:true, depth:1},
+  {name:'adr-writer', dir:true},
+  {name:'SKILL.md', file:true, depth:1},
+  {name:'rubric-scoring', dir:true},
+  {name:'SKILL.md', file:true, depth:1}
+];
+
+const SERVERS = [
+  {name:'filesystem', cmd:'npx @mcp/filesystem ~/work', on:['arch','debug','review']},
+  {name:'github', cmd:'npx @mcp/github', on:['arch','review']},
+  {name:'postgres', cmd:'uvx mcp-postgres', on:['debug']},
+  {name:'linear', cmd:'npx @mcp/linear', on:['arch']}
+];
+
+const REGISTRY = [
+  {title:'Code & repos', items:[
+    {name:'github', desc:'Issues, pull requests, and file contents across your repositories.', author:'modelcontextprotocol'},
+    {name:'gitlab', desc:'Merge requests, pipelines, and repository browsing.', author:'community'},
+    {name:'sentry', desc:'Read error events and stack traces from your projects.', author:'sentry'}
+  ]},
+  {title:'Data', items:[
+    {name:'postgres', desc:'Query a Postgres database with a read-only role.', author:'modelcontextprotocol'},
+    {name:'sqlite', desc:'Open and query local SQLite files.', author:'community'},
+    {name:'bigquery', desc:'Run scoped queries against BigQuery datasets.', author:'community'}
+  ]},
+  {title:'Workspace', items:[
+    {name:'linear', desc:'Read and update issues, cycles, and project status.', author:'linear'},
+    {name:'slack', desc:'Search channels and post messages as a bot user.', author:'community'},
+    {name:'notion', desc:'Read pages and databases from a Notion workspace.', author:'community'}
+  ]}
+];
+
+const MODELS = {
+  Anthropic:[['claude-sonnet-4-6','$3 / $15'],['claude-opus-4-1','$15 / $75'],['claude-haiku-4-5','$1 / $5']],
+  OpenAI:[['gpt-5','$2.50 / $10'],['gpt-5-mini','$0.40 / $1.60'],['o4-mini','$1.10 / $4.40']],
+  Google:[['gemini-2.5-pro','$1.25 / $10'],['gemini-2.5-flash','$0.30 / $2.50']]
+};
+
+const ALL_SKILLS = [
+  {name:'repro-harness', files:'3 files'},
+  {name:'stack-triage', files:'1 file'},
+  {name:'adr-writer', files:'2 files'},
+  {name:'rubric-scoring', files:'2 files'},
+  {name:'estimate-breakdown', files:'1 file'},
+  {name:'pr-review', files:'2 files'}
+];
+
+const AGENT_PROMPTS = {
+  arch: 'You design before you build. Compare at least two shapes, state the trade-off in one sentence each, and record the decision as an ADR in docs/adr. Hand implementation work to other agents rather than editing source yourself.',
+  debug: 'Reproduce before you fix. Write the failing test first, commit it alone, then patch. Never force-push without asking. Keep changes scoped to the files named in the request.',
+  review: 'Review for correctness first, style last. Separate blocking notes from nits and quote the line you are reacting to. If the change lacks a test, say so before anything else.',
+  interview: 'Score against the rubric in hiring/rubric.md and nothing else. Quote evidence from the transcript for every score. Never infer background the candidate did not state.',
+  estimate: 'Break work down until every task is a day or less. Flag unowned tasks and cross-team dependencies explicitly. Give ranges, not single numbers.'
+};
+
+const AGENT_SKILLS = {
+  arch: ['adr-writer','estimate-breakdown'],
+  debug: ['repro-harness','stack-triage'],
+  review: ['pr-review','stack-triage'],
+  interview: ['rubric-scoring'],
+  estimate: ['estimate-breakdown']
+};
+
+const SESSIONS = {
+  arch: [
+    {id:'arch-1', title:'Multi-region session store', origin:'you', status:'running'}
+  ],
+  debug: [
+    {id:'debug-1', title:'Session leak on 504', origin:'agent', from:'Architect', status:'approval'},
+    {id:'debug-2', title:'Flaky auth test', origin:'you', status:'idle'},
+    {id:'debug-3', title:'Migration dry-run', origin:'agent', from:'Architect', status:'running'}
+  ],
+  review: [
+    {id:'review-1', title:'PR #482 · pool release', origin:'agent', from:'Debugging', status:'done'},
+    {id:'review-2', title:'Style pass on api/', origin:'you', status:'idle'}
+  ],
+  interview: [
+    {id:'interview-1', title:'Backend loop — 4 transcripts', origin:'you', status:'idle'}
+  ],
+  estimate: [
+    {id:'estimate-1', title:'Q3 roadmap sizing', origin:'you', status:'idle'}
+  ]
+};
+
+const MSGS = {
+  'debug-1': [
+    {k:'spawn', from:'Architect Agent', to:{agent:'arch', sess:'arch-1', label:'Architect Agent · Multi-region session store'},
+     text:'Reproduce and patch the connection leak found in ADR-014. Branch off main, keep the fix to src/session.'},
+    {k:'tool', id:'t1', tool:'read_file', args:'src/session/pool.ts', dur:'1.2s',
+     output:'  87  async acquire(): Promise<Conn> {\n  88    const c = await this.free.pop() ?? this.spawn();\n  89    this.busy.add(c);\n  90    return c;\n  91  }\n\n  → release() is never called on the 504 path (line 143).'},
+    {k:'text', who:'Debugging Agent', time:'14:03', tone:'agent',
+     text:'Confirmed. When the upstream returns 504 the handler throws before release(), so the connection stays in this.busy forever. Under sustained 504s the pool drains in about 90 seconds.\n\nI wrote a failing test first, then the fix.'},
+    {k:'tool', id:'t2', tool:'run_command', args:'pytest tests/test_pool.py -k leak', dur:'8.4s',
+     output:'tests/test_pool.py::test_pool_leak_on_504 PASSED\n1 passed in 8.31s'},
+    {k:'text', who:'Debugging Agent', time:'14:05', tone:'agent',
+     text:'Patch is on fix/session-leak — a try/finally around the handler plus the regression test. I need approval to force-push, since I rebased off main.'},
+    {k:'handoff', time:'14:16', links:[
+      {agent:'review', sess:'review-1', label:'Review Agent · PR #482 · pool release', status:'done'}
+    ]}
+  ],
+  'debug-2': [
+    {k:'text', who:'you', time:'11:40', tone:'you',
+     text:'Unrelated to the leak work — tests/test_auth.py fails about one run in five on CI. Can you find the race?'},
+    {k:'tool', id:'t3', tool:'run_command', args:'pytest tests/test_auth.py --count 20', dur:'42s',
+     output:'19 passed, 1 failed in 41.8s\ntests/test_auth.py::test_refresh_window FAILED'},
+    {k:'text', who:'Debugging Agent', time:'11:43', tone:'agent',
+     text:'It reproduces at roughly 1 in 20 locally too. The refresh token window is compared against wall clock, so a test that crosses a second boundary flips the assertion. Want me to freeze the clock in the fixture, or widen the window?'}
+  ],
+  'debug-3': [
+    {k:'spawn', from:'Architect Agent', to:{agent:'arch', sess:'arch-1', label:'Architect Agent · Multi-region session store'}, text:'Dry-run the 014 migration against a copy of staging and report row counts before and after.'},
+    {k:'tool', id:'t4', tool:'run_command', args:'alembic upgrade head --sql', dur:'3.1s',
+     output:'-- running upgrade 8f21 -> a90c\nALTER TABLE sessions ADD COLUMN region text;\nCREATE INDEX ix_sessions_region ON sessions (region);'},
+    {k:'text', who:'Debugging Agent', time:'14:11', tone:'agent',
+     text:'Dry run is clean. The index build locks sessions for about 4 seconds at staging volume, so this wants a concurrent index in production. Still counting rows.'}
+  ],
+  'arch-1': [
+    {k:'text', who:'you', time:'13:20', tone:'you', text:'Design the session store for multi-region.'},
+    {k:'text', who:'Architect Agent', time:'13:26', tone:'agent',
+     text:'Two viable shapes: sticky sessions pinned by region, or token replay with a shared signing key. Replay wins — no cross-region affinity, and failover is a routing change rather than a data migration.\n\nWritten up as ADR-014. Opening sessions on Debugging Agent for the two pieces this depends on.'},
+    {k:'handoff', time:'13:27', links:[
+      {agent:'debug', sess:'debug-1', label:'Debugging Agent · Session leak on 504', status:'approval'},
+      {agent:'debug', sess:'debug-3', label:'Debugging Agent · Migration dry-run', status:'running'}
+    ]}
+  ],
+  'review-1': [
+    {k:'spawn', from:'Debugging Agent', to:{agent:'debug', sess:'debug-1', label:'Debugging Agent · Session leak on 504'},
+     text:'Review fix/session-leak — 3 files, +81 −22. Focus on the error paths.'},
+    {k:'text', who:'Review Agent', time:'14:18', tone:'agent',
+     text:'Two blocking notes and one nit. The try/finally is right, but the 504 branch still swallows the original exception, and the new test asserts on pool size rather than on release being called. Notes posted on the PR.'}
+  ],
+  'review-2': [
+    {k:'text', who:'you', time:'09:05', tone:'you', text:'Read through api/ and tell me where we drift from the house style.'},
+    {k:'text', who:'Review Agent', time:'09:12', tone:'agent',
+     text:'Mostly consistent. The exceptions are handler return types (three files return dicts instead of models) and inconsistent logger names in api/routes.'}
+  ],
+  'interview-1': [
+    {k:'text', who:'you', time:'Yesterday', tone:'you', text:'Score these four transcripts against the backend rubric.'},
+    {k:'text', who:'Interview Agent', time:'Yesterday', tone:'agent',
+     text:'Done — two clear hires, one no-hire, one that hinges on the system design round. Scores and quoted evidence are in hiring/scores.md.'}
+  ],
+  'estimate-1': [
+    {k:'text', who:'you', time:'Monday', tone:'you', text:'Break the Q3 roadmap into estimable pieces.'},
+    {k:'text', who:'Estimation Agent', time:'Monday', tone:'agent',
+     text:'Six epics, 41 tasks. Three tasks have no owner and two depend on the multi-region work landing first.'}
+  ]
+};
+
+const TERMS = {
+  'debug-1': [
+    {p:'›', tone:V, fg:'#e6e6ea', text:'git checkout -b fix/session-leak'},
+    {p:' ', tone:MU, fg:'#8f93a3', text:"Switched to a new branch 'fix/session-leak'"},
+    {p:'›', tone:V, fg:'#e6e6ea', text:'pytest tests/test_pool.py -k leak'},
+    {p:' ', tone:MU, fg:'#8f93a3', text:'collected 24 items / 23 deselected / 1 selected'},
+    {p:' ', tone:MU, fg:'#c2553f', text:'tests/test_pool.py::test_pool_leak_on_504 FAILED'},
+    {p:' ', tone:MU, fg:'#6d707d', text:'E   AssertionError: expected 0 busy connections, got 32'},
+    {p:'⟡', tone:AM, fg:'#a78bfa', text:'agent: applying patch to src/session/pool.ts'},
+    {p:' ', tone:MU, fg:'#8f93a3', text:'3 files changed, 81 insertions(+), 22 deletions(-)'},
+    {p:'›', tone:V, fg:'#e6e6ea', text:'pytest tests/test_pool.py -k leak'},
+    {p:' ', tone:MU, fg:GR, text:'tests/test_pool.py::test_pool_leak_on_504 PASSED'},
+    {p:'⟡', tone:AM, fg:AM, text:'agent: waiting for approval — git push --force origin fix/session-leak'}
+  ],
+  'debug-2': [
+    {p:'›', tone:V, fg:'#e6e6ea', text:'pytest tests/test_auth.py --count 20'},
+    {p:' ', tone:MU, fg:'#8f93a3', text:'collected 20 items'},
+    {p:' ', tone:MU, fg:'#c2553f', text:'tests/test_auth.py::test_refresh_window FAILED [ 17/20 ]'},
+    {p:' ', tone:MU, fg:'#8f93a3', text:'19 passed, 1 failed in 41.8s'},
+    {p:'⟡', tone:AM, fg:'#a78bfa', text:'agent: instrumenting fixture clock'}
+  ],
+  'debug-3': [
+    {p:'›', tone:V, fg:'#e6e6ea', text:'alembic upgrade head --sql'},
+    {p:' ', tone:MU, fg:'#8f93a3', text:'-- running upgrade 8f21 -> a90c'},
+    {p:' ', tone:MU, fg:'#8f93a3', text:'ALTER TABLE sessions ADD COLUMN region text;'},
+    {p:'⟡', tone:AM, fg:'#a78bfa', text:'agent: counting rows on staging copy'}
+  ]
+};
+
+const SESSION_META = {
+  'debug-1': {attach:{name:'pool.ts', size:'4.1 kB'}, streaming:'Reading src/session/pool.ts …', typed:'pytest tests/test_pool.py -k leak'},
+  'debug-2': {streaming:'Re-running tests/test_auth.py …', typed:'pytest tests/test_auth.py --count 20'},
+  'debug-3': {streaming:'Counting rows on the staging copy …', typed:'alembic upgrade head --sql'},
+  'arch-1': {attach:{name:'ADR-014.md', size:'6.8 kB'}, typed:'git log --oneline -5'},
+  'review-1': {typed:'git diff HEAD~1..HEAD'},
+  'review-2': {typed:'rg "def handle_" api/'},
+  'interview-1': {attach:{name:'transcripts/', size:'4 files'}, typed:'ls hiring/'},
+  'estimate-1': {typed:'ls'}
+};
+
+const TERM_FALLBACK = [
+  {p:'›', tone:V, fg:'#e6e6ea', text:'roster attach'},
+  {p:' ', tone:MU, fg:'#8f93a3', text:'shell ready — no commands run in this session yet'}
+];
+
+class Component extends DCLogic {
+  state = {
+    screen:'grid', agentId:'debug', mode:'chat', layout:'a',
+    mcpTab:'installed', openTools:{t1:true}, query:'', gridQuery:'',
+    sess:{arch:'arch-1', debug:'debug-1', review:'review-1', interview:'interview-1', estimate:'estimate-1'},
+    provider:'Anthropic', model:'claude-sonnet-4-6', editOpen:false, overrides:{}, agentSkills:{}, draft:null, prompts:{},
+    newPrompt:'',
+    picked:{'repro-harness':true,'stack-triage':true},
+    mcpOn:{}, typed:'pytest tests/test_pool.py -k leak'
+  };
+
+  scrollRef = React.createRef();
+
+  set(patch) { this.setState(patch); }
+
+  pin() {
+    const el = this.scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+  componentDidMount() { this.pin(); }
+  componentDidUpdate() {
+    const key = this.state.screen + this.state.agentId + (this.state.sess[this.state.agentId] || '') + this.state.mode;
+    if (key !== this._key) { this._key = key; this.pin(); }
+  }
+
+  renderVals() {
+    const s = this.state;
+    const cur = AGENTS.find(a => a.id === s.agentId) || AGENTS[0];
+    const ov = Object.assign({provider:cur.provider, model:cur.model}, (s.overrides || {})[cur.id] || {});
+    const defaultSkillMap = {};
+    (AGENT_SKILLS[cur.id] || []).forEach(n => { defaultSkillMap[n] = true; });
+    const curSkillMap = (s.agentSkills || {})[cur.id] || defaultSkillMap;
+    const curMcpMap = {};
+    SERVERS.forEach(sv => {
+      curMcpMap[sv.name] = s.mcpOn[sv.name + cur.id] !== undefined ? s.mcpOn[sv.name + cur.id] : sv.on.includes(cur.id);
+    });
+    const curPrompt = (s.prompts || {})[cur.id] !== undefined ? s.prompts[cur.id] : (AGENT_PROMPTS[cur.id] || '');
+    const draft = s.draft || {provider:ov.provider, model:ov.model, skills:curSkillMap, mcp:curMcpMap, prompt:curPrompt};
+    const chatPrimary = s.layout === 'a';
+
+    const nav = [
+      {key:'grid', label:'Agents', meta:'5', dot:'#8f93a3'},
+      {key:'skills', label:'Skills', meta:'4', dot:'#8f93a3'},
+      {key:'mcp', label:'MCP servers', meta:'4', dot:'#8f93a3'},
+      {key:'tasks', label:'Tasks', meta:'soon', dot:'#33363f'},
+      {key:'spend', label:'Spend', meta:'soon', dot:'#33363f'}
+    ].map(n => ({
+      ...n,
+      bg: s.screen === n.key ? '#1c1e26' : 'transparent',
+      fg: s.screen === n.key ? '#e6e6ea' : '#9a9daa',
+      go: () => this.set({screen:n.key})
+    }));
+
+    const tileOrder = ['arch','debug','interview','review','estimate'];
+    const gq = (s.gridQuery || '').toLowerCase();
+    const tiles = tileOrder
+      .map(id => AGENTS.find(a => a.id === id))
+      .filter(a => a.name.toLowerCase().includes(gq) || (SESSIONS[a.id] || []).some(x => x.title.toLowerCase().includes(gq)))
+      .map(a => ({
+      ...a,
+      tone: TONES[a.status],
+      sessions: (SESSIONS[a.id] || []).map(x => ({
+        title: x.title,
+        glyph: x.origin === 'agent' ? '↳' : '•',
+        tone: TONES[x.status],
+        bg: x.id === (s.sess[a.id]) ? '#1c1e26' : 'transparent',
+        fg: x.id === (s.sess[a.id]) ? '#d2d4dd' : '#6d707d',
+        open: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.setState(p => ({screen:'agent', agentId:a.id, sess:{...p.sess, [a.id]:x.id}})); }
+      })),
+      statusLabel: LABELS[a.status],
+      border: a.status === 'approval' ? '#4a3a1e' : '#1e2027',
+      anim: a.status === 'approval' ? 'rosterPulse 2s ease-in-out infinite' : 'none',
+      open: () => this.set({screen:'agent', agentId:a.id}),
+      lines: a.lines.map((l,i,arr) => ({
+        ...l,
+        op: String(Math.max(0.45, 1 - (arr.length - 1 - i) * 0.16)),
+        tone: l.who === 'you' ? '#8f93a3' : l.who === 'tool' ? '#a78bfa' : V
+      })).slice(-4)
+    }));
+
+    const tool = (id, name, args, dur, output) => ({
+      isTool:true, isText:false, who:'tool call', time:'', tone:'#a78bfa',
+      tool:name, args, dur, output,
+      open: !!s.openTools[id], chev: s.openTools[id] ? '▾' : '▸',
+      toggle: () => this.setState(p => ({openTools:{...p.openTools, [id]: !p.openTools[id]}}))
+    });
+
+    const sessList = SESSIONS[cur.id] || [];
+    const curSessId = s.sess[cur.id] || (sessList[0] && sessList[0].id);
+    const curSess = sessList.find(x => x.id === curSessId) || sessList[0] || {};
+
+    const sessions = sessList.map(x => {
+      const on = x.id === curSessId;
+      return {
+        id:x.id, title:x.title,
+        glyph: x.origin === 'agent' ? '↳' : '•',
+        glyphTone: x.origin === 'agent' ? '#a78bfa' : '#5a5d69',
+        from: x.origin === 'agent' ? x.from : 'you',
+        tone: TONES[x.status],
+        bg: on ? '#1c1e26' : 'transparent',
+        fg: on ? '#e6e6ea' : '#8f93a3',
+        border: on ? '#2e313c' : 'transparent',
+        pick: () => this.setState(p => ({sess:{...p.sess, [cur.id]:x.id}}))
+      };
+    });
+
+    const messages = (MSGS[curSessId] || []).map(m => {
+      if (m.k === 'tool') return tool(m.id, m.tool, m.args, m.dur, m.output);
+      if (m.k === 'spawn') return {
+        isText:false, isTool:false, isSpawn:true,
+        who:'session opened by ' + m.from, time:'', tone:'#a78bfa', text:m.text,
+        backLabel: m.to ? '↖ ' + m.to.label : '',
+        hasBack: !!m.to,
+        back: m.to ? () => this.setState(p => ({screen:'agent', agentId:m.to.agent, sess:{...p.sess, [m.to.agent]:m.to.sess}})) : null
+      };
+      if (m.k === 'handoff') return {
+        isText:false, isTool:false, isSpawn:false, isHandoff:true,
+        who:'opened sessions', time:m.time, tone:'#a78bfa',
+        links: m.links.map(l => ({
+          label:'↳ ' + l.label,
+          tone:TONES[l.status],
+          go: () => this.setState(p => ({screen:'agent', agentId:l.agent, sess:{...p.sess, [l.agent]:l.sess}}))
+        }))
+      };
+      return {
+        isText:true, isTool:false, isSpawn:false,
+        who:m.who, time:m.time, tone: m.tone === 'you' ? '#8f93a3' : V, text:m.text
+      };
+    });
+
+    const termLines = TERMS[curSessId] || TERM_FALLBACK;
+    const meta = SESSION_META[curSessId] || {};
+
+    const editorLines = SKILL_MD.map((text,i) => ({
+      n: i+1, text,
+      tone: text.startsWith('#') ? '#e6e6ea' : text.startsWith('`') || text.includes('`') ? '#a78bfa' : text.match(/^[-0-9]/) ? '#b9bcc8' : '#8f93a3',
+      w: text.startsWith('#') ? '600' : '400'
+    }));
+
+    const tree = TREE.map((f,i) => ({
+      name: f.name,
+      pad: (12 + (f.depth||0) * 14) + 'px',
+      bg: f.active ? '#1c1e26' : 'transparent',
+      fg: f.active ? '#e6e6ea' : f.dir ? '#c8cad4' : '#9a9daa',
+      dot: f.dir ? '#5f6270' : f.active ? V : '#33363f',
+      radius: f.dir ? '1.5px' : '50%',
+      font: f.dir ? "'Instrument Sans',sans-serif" : "'JetBrains Mono',monospace",
+      pick: () => {}
+    }));
+
+    const servers = SERVERS.map(sv => ({
+      name: sv.name, cmd: sv.cmd,
+      count: sv.on.length === 1 ? '1 agent' : sv.on.length + ' agents',
+      agents: AGENTS.map(a => {
+        const on = s.mcpOn[sv.name + a.id] !== undefined ? s.mcpOn[sv.name + a.id] : sv.on.includes(a.id);
+        return {
+          name: a.name.replace(' Agent',''),
+          border: on ? '#3a3050' : '#24262f',
+          bg: on ? '#1a1626' : 'transparent',
+          fg: on ? '#c9c2ff' : '#6d707d',
+          dot: on ? V : '#33363f',
+          toggle: () => this.setState(p => ({mcpOn:{...p.mcpOn, [sv.name + a.id]: !on}}))
+        };
+      })
+    }));
+
+    const providers = ['Anthropic','OpenAI','Google'].map(p => ({
+      name:p, key: p === 'Anthropic' ? 'sk-ant-…4f2' : p === 'OpenAI' ? 'sk-…9ab' : 'AIza…c71',
+      border: s.provider === p ? V : '#262933',
+      bg: s.provider === p ? '#1a1626' : '#15161c',
+      fg: s.provider === p ? '#e6e6ea' : '#9a9daa',
+      pick: () => this.set({provider:p})
+    }));
+
+    const models = (MODELS[s.provider] || []).map(([id,price]) => ({
+      id, price,
+      border: s.model === id ? V : '#262933',
+      bg: s.model === id ? '#1a1626' : '#15161c',
+      ring: s.model === id ? V : '#3a3d47',
+      fill: s.model === id ? V : 'transparent',
+      pick: () => this.set({model:id})
+    }));
+
+    const skillChips = ['repro-harness','stack-triage','adr-writer','rubric-scoring','estimate-breakdown','pr-review'].map(n => {
+      const on = !!s.picked[n];
+      return {
+        name:n,
+        border: on ? '#3a3050' : '#262933',
+        bg: on ? '#1a1626' : 'transparent',
+        fg: on ? '#c9c2ff' : '#8f93a3',
+        dot: on ? V : '#33363f',
+        toggle: () => this.setState(p => ({picked:{...p.picked, [n]: !on}}))
+      };
+    });
+
+    return {
+      nav,
+      scrollRef: this.scrollRef,
+      gridQuery: s.gridQuery || '',
+      setGridQuery: (e) => this.set({gridQuery: e.target.value}),
+      gridSummary: gq
+        ? tiles.length + ' of ' + AGENTS.length + ' match'
+        : AGENTS.length + ' configured · ' + AGENTS.filter(a => a.status === 'running').length + ' running',
+      newPrompt: s.newPrompt || '',
+      setNewPrompt: (e) => this.set({newPrompt: e.target.value}),
+      curPromptPreview: curPrompt,
+      query: s.query || '',
+      setQuery: (e) => this.set({query: e.target.value}),
+      agentCount: String(AGENTS.filter(a => a.name.toLowerCase().includes((s.query || '').toLowerCase())).length) + '/' + AGENTS.length,
+      agents: AGENTS.filter(a => a.name.toLowerCase().includes((s.query || '').toLowerCase())).map(a => ({
+        name:a.name, tone:TONES[a.status],
+        count: String((SESSIONS[a.id] || []).length),
+        open: () => this.set({screen:'agent', agentId:a.id})
+      })),
+      tiles, messages, termLines, editorLines, tree, servers, registry:REGISTRY, providers, models, skillChips,
+
+      isGrid: s.screen === 'grid',
+      isAgent: s.screen === 'agent',
+      isSkills: s.screen === 'skills',
+      isMcp: s.screen === 'mcp',
+      isNew: s.screen === 'new',
+
+      editOpen: !!s.editOpen,
+      openEdit: () => this.set({editOpen:true, draft:{provider:ov.provider, model:ov.model, skills:{...curSkillMap}, mcp:{...curMcpMap}, prompt:curPrompt}}),
+      draftPrompt: draft.prompt || '',
+      setDraftPrompt: (e) => { const v = e.target.value; this.setState(p => ({draft:{...p.draft, prompt:v}})); },
+      promptChars: (draft.prompt || '').length + ' characters',
+      cancelEdit: () => this.set({editOpen:false}),
+      saveEdit: () => this.setState(p => {
+        const mcp = {...p.mcpOn};
+        SERVERS.forEach(sv => { mcp[sv.name + cur.id] = !!p.draft.mcp[sv.name]; });
+        return {
+          editOpen:false,
+          overrides:{...p.overrides, [cur.id]:{provider:p.draft.provider, model:p.draft.model}},
+          agentSkills:{...p.agentSkills, [cur.id]:{...p.draft.skills}},
+          prompts:{...p.prompts, [cur.id]:p.draft.prompt},
+          mcpOn:mcp
+        };
+      }),
+      goMcp: () => this.set({editOpen:false, screen:'mcp'}),
+      editProviders: ['Anthropic','OpenAI','Google'].map(p => ({
+        name:p, key: p === 'Anthropic' ? 'sk-ant-…4f2' : p === 'OpenAI' ? 'sk-…9ab' : 'AIza…c71',
+        border: draft.provider === p ? V : '#262933',
+        bg: draft.provider === p ? '#1a1626' : '#15161c',
+        fg: draft.provider === p ? '#e6e6ea' : '#9a9daa',
+        pick: () => this.setState(pr => ({draft:{...pr.draft, provider:p, model:(MODELS[p][0] || [''])[0]}}))
+      })),
+      editModels: (MODELS[draft.provider] || []).map(([id,price]) => ({
+        id, price,
+        border: draft.model === id ? V : '#262933',
+        bg: draft.model === id ? '#1a1626' : '#15161c',
+        ring: draft.model === id ? V : '#3a3d47',
+        fill: draft.model === id ? V : 'transparent',
+        pick: () => this.setState(pr => ({draft:{...pr.draft, model:id}}))
+      })),
+      editSkillChips: ALL_SKILLS.map(sk => {
+        const on = !!draft.skills[sk.name];
+        return {
+          name: sk.name,
+          border: on ? '#3a3050' : '#262933',
+          bg: on ? '#1a1626' : 'transparent',
+          fg: on ? '#c9c2ff' : '#8f93a3',
+          dot: on ? V : '#33363f',
+          toggle: () => this.setState(pr => ({draft:{...pr.draft, skills:{...pr.draft.skills, [sk.name]: !on}}}))
+        };
+      }),
+      mcpChips: SERVERS.map(sv => {
+        const on = !!draft.mcp[sv.name];
+        return {
+          name: sv.name,
+          border: on ? '#3a3050' : '#262933',
+          bg: on ? '#1a1626' : 'transparent',
+          fg: on ? '#c9c2ff' : '#8f93a3',
+          dot: on ? V : '#33363f',
+          toggle: () => this.setState(pr => ({draft:{...pr.draft, mcp:{...pr.draft.mcp, [sv.name]: !on}}}))
+        };
+      }),
+      cur: {...cur, tone:TONES[cur.status], model:ov.model, provider:ov.provider, needsApproval: curSess.status === 'approval'},
+      sessions,
+      curSessTitle: curSess.title || '',
+      curSessOrigin: curSess.origin === 'agent' ? 'opened by ' + curSess.from + ' Agent' : 'opened by you',
+      newSession: () => {},
+      curSkills: ALL_SKILLS.filter(sk => curSkillMap[sk.name]),
+      cfg: [
+        {k:'Provider', v:ov.provider},
+        {k:'Model', v:ov.model},
+        {k:'Directory', v:cur.cwd},
+        {k:'Config', v:'agent.toml'},
+        {k:'MCP', v:SERVERS.filter(sv => curMcpMap[sv.name]).map(sv => sv.name).join(', ') || 'none'}
+      ],
+      openFile:'repro-harness / SKILL.md',
+      skillUsers:[{name:'Debugging Agent', tone:AM},{name:'Review Agent', tone:GR}],
+
+      showChat: s.mode === 'chat',
+      showTerm: s.mode === 'terminal',
+      showComposer: true,
+      chatFlex: '1 1 auto',
+      termFlex: '1 1 auto',
+      chatOrder: '0',
+      termOrder: '0',
+      layoutLabel: chatPrimary ? '1a chat-primary' : '1b terminal-primary',
+      toggleLayout: () => this.set({layout: chatPrimary ? 'b' : 'a', mode: chatPrimary ? 'terminal' : 'chat'}),
+      chatBg: s.mode === 'chat' ? '#26283a' : 'transparent',
+      chatFg: s.mode === 'chat' ? '#e6e6ea' : '#8f93a3',
+      termBg: s.mode === 'terminal' ? '#26283a' : 'transparent',
+      termFg: s.mode === 'terminal' ? '#e6e6ea' : '#8f93a3',
+      setChat: () => this.set({mode:'chat'}),
+      setTerm: () => this.set({mode:'terminal'}),
+      typed: meta.typed || '',
+      composerLabel: 'Message ' + cur.name + '…',
+      skillsLine: 'skills: ' + (ALL_SKILLS.filter(sk => curSkillMap[sk.name]).map(sk => sk.name).join(', ') || 'none'),
+      hasAttach: !!meta.attach,
+      attachName: meta.attach ? meta.attach.name : '',
+      attachSize: meta.attach ? meta.attach.size : '',
+      isStreaming: !!meta.streaming,
+      streamingText: meta.streaming || '',
+
+      mcpInstalled: s.mcpTab === 'installed',
+      mcpRegistry: s.mcpTab === 'registry',
+      instBg: s.mcpTab === 'installed' ? '#26283a' : 'transparent',
+      instFg: s.mcpTab === 'installed' ? '#e6e6ea' : '#8f93a3',
+      regBg: s.mcpTab === 'registry' ? '#26283a' : 'transparent',
+      regFg: s.mcpTab === 'registry' ? '#e6e6ea' : '#8f93a3',
+      setInstalled: () => this.set({mcpTab:'installed'}),
+      setRegistry: () => this.set({mcpTab:'registry'}),
+
+      goGrid: () => this.set({screen:'grid'}),
+      goNew: () => this.set({screen:'new'}),
+      goSkills: () => this.set({screen:'skills'}),
+      noop: () => {}
+    };
+  }
+}
+
+</script>
+</body>
+</html>
