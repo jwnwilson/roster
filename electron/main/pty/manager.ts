@@ -9,6 +9,23 @@ interface PtyHandle {
   pty: IPty
   cwd: string
   shell: string
+  /**
+   * Everything the shell has written, so a pane that was navigated away from
+   * comes back with its history rather than an empty screen. The pty itself
+   * keeps no scrollback and xterm's buffer dies with the component.
+   */
+  scrollback: string
+}
+
+/**
+ * How much output to keep per session. Enough for a long build's tail without
+ * letting a chatty process grow unbounded in memory.
+ */
+const MAX_SCROLLBACK = 256 * 1024
+
+/** Keeps the tail, which is the part worth reading. */
+function trimScrollback(text: string): string {
+  return text.length <= MAX_SCROLLBACK ? text : text.slice(text.length - MAX_SCROLLBACK)
 }
 
 /** Falls back sensibly when SHELL is unset, as it is under a launched .app. */
@@ -38,10 +55,19 @@ export class PtyManager {
     return () => this.exitListeners.delete(listener)
   }
 
-  /** Idempotent: opening an already-open session returns the existing pty. */
-  open(sessionId: string, cwd: string, size: PtySize): { shell: string; cwd: string } {
+  /**
+   * Idempotent: opening an already-open session returns the existing pty and
+   * whatever it has printed so far, so reopening a pane restores its history.
+   */
+  open(
+    sessionId: string,
+    cwd: string,
+    size: PtySize,
+  ): { shell: string; cwd: string; history: string } {
     const existing = this.ptys.get(sessionId)
-    if (existing) return { shell: existing.shell, cwd: existing.cwd }
+    if (existing) {
+      return { shell: existing.shell, cwd: existing.cwd, history: existing.scrollback }
+    }
 
     const shell = defaultShell()
     const pty = spawn(shell, [], {
@@ -53,6 +79,8 @@ export class PtyManager {
     })
 
     pty.onData((data) => {
+      const handle = this.ptys.get(sessionId)
+      if (handle) handle.scrollback = trimScrollback(handle.scrollback + data)
       for (const listener of this.listeners) listener(sessionId, data)
     })
 
@@ -61,8 +89,13 @@ export class PtyManager {
       for (const listener of this.exitListeners) listener(sessionId, exitCode)
     })
 
-    this.ptys.set(sessionId, { pty, cwd, shell })
-    return { shell, cwd }
+    this.ptys.set(sessionId, { pty, cwd, shell, scrollback: '' })
+    return { shell, cwd, history: '' }
+  }
+
+  /** What this session has printed so far, for a pane being reopened. */
+  history(sessionId: string): string {
+    return this.ptys.get(sessionId)?.scrollback ?? ''
   }
 
   write(sessionId: string, data: string): void {

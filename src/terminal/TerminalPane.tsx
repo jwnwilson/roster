@@ -71,7 +71,11 @@ export function TerminalPane({ sessionId, cwd, cwdLabel }: TerminalPaneProps) {
     void window.roster.pty
       .open(sessionId, cwd, { cols: term.cols, rows: term.rows })
       .then((info) => {
-        if (!disposed) setShell(info.shell.split('/').pop() ?? info.shell)
+        if (disposed) return
+        setShell(info.shell.split('/').pop() ?? info.shell)
+        // Replay what the shell printed before this pane existed, so
+        // navigating away and back does not look like a fresh terminal.
+        if (info.history !== '') term.write(info.history)
       })
 
     const stopData = window.roster.pty.onData((payload) => {

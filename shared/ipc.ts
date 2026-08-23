@@ -115,6 +115,8 @@ export interface PtySize {
 export interface PtyInfo {
   shell: string
   cwd: string
+  /** Output so far, replayed when a pane is reopened. */
+  history: string
 }
 
 /** Mirrors SessionManager's event union across the IPC boundary. */

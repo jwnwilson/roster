@@ -143,3 +143,49 @@ describe('PtyManager', () => {
     expect(calls).toBe(0)
   }, 15_000)
 })
+
+describe('PtyManager — scrollback', () => {
+  test('a freshly opened session has no history', () => {
+    expect(manager.open('s1', dir, SIZE).history).toBe('')
+  })
+
+  test('reopening returns what the shell has printed', async () => {
+    manager.open('s1', dir, SIZE)
+    manager.write('s1', 'echo history-is-kept\n')
+    await waitForOutput('s1', /history-is-kept/)
+
+    // Navigating away disposes the pane, not the pty; reopening replays.
+    const reopened = manager.open('s1', dir, SIZE)
+    expect(reopened.history).toMatch(/history-is-kept/)
+  }, 15_000)
+
+  test('history is readable without reopening', async () => {
+    manager.open('s1', dir, SIZE)
+    manager.write('s1', 'echo readable-history\n')
+    await waitForOutput('s1', /readable-history/)
+
+    expect(manager.history('s1')).toMatch(/readable-history/)
+  }, 15_000)
+
+  test('a session that was never opened has no history', () => {
+    expect(manager.history('ghost')).toBe('')
+  })
+
+  test('closing a session forgets its history', async () => {
+    manager.open('s1', dir, SIZE)
+    manager.write('s1', 'echo forgotten\n')
+    await waitForOutput('s1', /forgotten/)
+    manager.close('s1')
+
+    expect(manager.history('s1')).toBe('')
+  }, 15_000)
+
+  test('keeps sessions histories apart', async () => {
+    manager.open('a', dir, SIZE)
+    manager.open('b', dir, SIZE)
+    manager.write('a', 'echo only-in-a\n')
+    await waitForOutput('a', /only-in-a/)
+
+    expect(manager.history('b')).not.toMatch(/only-in-a/)
+  }, 15_000)
+})

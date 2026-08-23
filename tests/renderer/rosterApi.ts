@@ -33,7 +33,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
     pty: {
-      open: vi.fn().mockResolvedValue({ shell: 'zsh', cwd: '/work' }),
+      open: vi.fn().mockResolvedValue({ shell: 'zsh', cwd: '/work', history: '' }),
       write: vi.fn(),
       resize: vi.fn(),
       close: vi.fn(),
