@@ -261,6 +261,18 @@ approve a gated command, hand off between agents. Target 80% per `CLAUDE.md`.
 Runner adapters are tested against recorded fixtures rather than live CLI calls, so the
 suite runs offline and deterministically.
 
+**Four files are excluded from coverage**, each because testing it would mean testing a
+mock rather than the code:
+
+| File | Why | Covered instead by |
+|---|---|---|
+| `electron/main/index.ts` | Window creation; needs a real Electron `app` | The live harness |
+| `electron/main/ipc/index.ts` | Thin delegation to stores that are themselves covered | The live harness |
+| `src/terminal/TerminalPane.tsx` | xterm needs a real canvas and `devicePixelRatio` | A live shell in the built app |
+| `src/main.tsx` | Four-line React bootstrap, no branching | — |
+
+Nothing with real branching logic is excluded.
+
 ## 13. Deviations from the visual spec
 
 Each was raised and decided explicitly:

@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">60% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/15</span>
+                <span class='fraction'>9/15</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">71.42% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/14</span>
+                <span class='fraction'>10/14</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">57.14% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>4/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">66.66% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/12</span>
+                <span class='fraction'>8/12</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line medium'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -136,7 +136,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -152,7 +152,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -160,7 +160,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -168,20 +168,20 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { Agent, RunnerId } from '../../../shared/types'
 import { ClaudeRunner } from './claude'
@@ -196,7 +196,7 @@ import type { Runner } from './types'
  * blocked on. Custom runners are registered lazily from the agents that
  * declare them.
  */
-const RUNNERS = <span class="cstat-no" title="statement not covered" >new Map&lt;RunnerId, Runner&gt;([</span>
+const RUNNERS = new Map&lt;RunnerId, Runner&gt;([
   ['claude', new ClaudeRunner()],
   ['codex', new CodexRunner()],
 ])
@@ -211,28 +211,28 @@ export async function <span class="fstat-no" title="function not covered" >warmU
   )
 }
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >getRunner(i</span>d: RunnerId): Runner | null {
-<span class="cstat-no" title="statement not covered" >  return RUNNERS.get(id) ?? null</span>
+export function getRunner(id: RunnerId): Runner | null {
+  return RUNNERS.get(id) ?? null
 }
 &nbsp;
 export function <span class="fstat-no" title="function not covered" >allRunners(): Runner[] {</span>
 <span class="cstat-no" title="statement not covered" >  return [...RUNNERS.values()]</span>
 }
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >isBuiltinRunner(i</span>d: RunnerId): boolean {
-<span class="cstat-no" title="statement not covered" >  return id === 'claude' || id === 'codex'</span>
+export function isBuiltinRunner(id: RunnerId): boolean {
+  return id === 'claude' || id === 'codex'
 }
 &nbsp;
 /**
  * Registers a runner for every agent that names a custom command, so
  * bringing your own CLI needs only an agent.toml entry.
  */
-export function <span class="fstat-no" title="function not covered" >registerCustomRunners(a</span>gents: Agent[]): void {
-<span class="cstat-no" title="statement not covered" >  for (const agent of agents) {</span>
-<span class="cstat-no" title="statement not covered" >    if (isBuiltinRunner(agent.runner) || !agent.custom) <span class="cstat-no" title="statement not covered" >continue</span></span>
-<span class="cstat-no" title="statement not covered" >    if (RUNNERS.has(agent.runner)) <span class="cstat-no" title="statement not covered" >continue</span></span>
+export function registerCustomRunners(agents: Agent[]): void {
+  for (const agent of agents) {
+    if (isBuiltinRunner(agent.runner) || !agent.custom) continue
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (RUNNERS.has(agent.runner)) <span class="cstat-no" title="statement not covered" >continue</span>
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    RUNNERS.set(</span>
+    RUNNERS.set(
       agent.runner,
       new CustomRunner(agent.runner, agent.custom, dialectFor(agent.custom.command)),
     )
@@ -240,8 +240,8 @@ export function <span class="fstat-no" title="function not covered" >registerCus
 }
 &nbsp;
 /** A custom CLI declares its dialect by name; claude-shaped is the default. */
-function <span class="fstat-no" title="function not covered" >dialectFor(c</span>ommand: string): CustomDialect {
-<span class="cstat-no" title="statement not covered" >  return /codex/i.test(command) ? 'codex' : 'claude'</span>
+function dialectFor(command: string): CustomDialect {
+  return /codex/i.test(command) ? <span class="branch-0 cbranch-no" title="branch not covered" >'codex' : '</span>claude'
 }
 &nbsp;</pre></td></tr></table></pre>
 
@@ -250,7 +250,7 @@ function <span class="fstat-no" title="function not covered" >dialectFor(c</span
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-23T20:26:14.198Z
+                at 2026-08-23T20:33:27.626Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>
