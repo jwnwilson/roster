@@ -1,7 +1,7 @@
 import type { Agent, Session, TranscriptLine } from '@shared/types'
 import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
-import { useRoster, selectGridAgents, NO_LINES, NO_SESSIONS } from '@/state/store'
+import { agentStatus, useRoster, selectGridAgents, NO_LINES, NO_SESSIONS } from '@/state/store'
 import { PrimaryButton, ScreenHeader, StatusDot, TextInput } from '@/components/primitives'
 
 export function AgentsGrid() {
@@ -11,7 +11,10 @@ export function AgentsGrid() {
   const setGridQuery = useRoster((s) => s.setGridQuery)
   const go = useRoster((s) => s.go)
 
-  const running = agents.filter((a) => a.status === 'running').length
+  // A count, not an array: a fresh array here re-renders forever.
+  const running = useRoster(
+    (s) => agents.filter((agent) => agentStatus(s, agent) === 'running').length,
+  )
   const summary =
     gridQuery.trim() === ''
       ? `${total} configured · ${running} running`
@@ -58,7 +61,8 @@ function AgentCard({ agent }: AgentCardProps) {
   const openAgent = useRoster((s) => s.openAgent)
   const sessions = useRoster((s) => s.sessions[agent.id] ?? NO_SESSIONS)
   const selected = useRoster((s) => s.sess[agent.id])
-  const needsApproval = agent.status === 'approval'
+  const status = useRoster((s) => agentStatus(s, agent))
+  const needsApproval = status === 'approval'
 
   return (
     <button
@@ -71,10 +75,10 @@ function AgentCard({ agent }: AgentCardProps) {
       }}
     >
       <div className="flex flex-none items-center gap-[8px] border-b border-line bg-header px-[12px] py-[9px]">
-        <StatusDot status={agent.status} size={7} />
+        <StatusDot status={status} size={7} />
         <span className="text-lg font-semibold">{agent.name}</span>
-        <span className="text-sm font-medium" style={{ color: statusColor(agent.status) }}>
-          {statusLabel(agent.status)}
+        <span className="text-sm font-medium" style={{ color: statusColor(status) }}>
+          {statusLabel(status)}
         </span>
         <span className="ml-auto truncate font-mono text-xs text-dim-2">{agent.model}</span>
       </div>
@@ -95,7 +99,7 @@ function AgentCard({ agent }: AgentCardProps) {
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col justify-end gap-[7px] overflow-hidden px-[12px] py-[10px]">
-        {agent.status === 'error' ? (
+        {status === 'error' && agent.statusDetail ? (
           <p className="m-0 text-md leading-[1.45] text-error">{agent.statusDetail}</p>
         ) : (
           <Transcript agentId={agent.id} />

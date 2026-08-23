@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/shallow'
-import { useRoster, selectSidebarAgents, NO_SESSIONS, type Screen } from '@/state/store'
+import { agentStatus, useRoster, selectSidebarAgents, NO_SESSIONS, type Screen } from '@/state/store'
+import type { Agent } from '@shared/types'
 import { StatusDot } from './primitives'
 
 interface NavItem {
@@ -25,7 +26,6 @@ export function Sidebar() {
   const allAgents = useRoster((s) => s.agents)
   const skills = useRoster((s) => s.skills)
   const mcpServers = useRoster((s) => s.mcpServers)
-  const sessions = useRoster((s) => s.sessions)
   const agents = useRoster(useShallow(selectSidebarAgents))
 
   const counts: Record<string, string> = {
@@ -90,19 +90,7 @@ export function Sidebar() {
 
       <div className="flex min-h-0 flex-1 flex-col gap-[1px] overflow-y-auto px-[8px] pb-[8px]">
         {agents.map((agent) => (
-          <button
-            key={agent.id}
-            type="button"
-            onClick={() => openAgent(agent.id)}
-            title={agent.statusDetail ?? agent.name}
-            className="flex cursor-pointer items-center gap-[9px] rounded-chip border-0 bg-transparent px-[8px] py-[6px] text-left font-ui text-xl text-muted hover:bg-[#1a1c23] hover:text-ink"
-          >
-            <StatusDot status={agent.status} />
-            <span className="truncate">{agent.name}</span>
-            <span className="ml-auto font-mono text-xs text-faint-2">
-              {(sessions[agent.id] ?? NO_SESSIONS).length}
-            </span>
-          </button>
+          <SidebarAgentRow key={agent.id} agent={agent} onOpen={() => openAgent(agent.id)} />
         ))}
       </div>
 
@@ -116,6 +104,29 @@ export function Sidebar() {
         <span className="text-md text-muted">Local workspace</span>
       </div>
     </nav>
+  )
+}
+
+interface SidebarAgentRowProps {
+  agent: Agent
+  onOpen: () => void
+}
+
+function SidebarAgentRow({ agent, onOpen }: SidebarAgentRowProps) {
+  const status = useRoster((s) => agentStatus(s, agent))
+  const sessionCount = useRoster((s) => (s.sessions[agent.id] ?? NO_SESSIONS).length)
+
+  return (
+          <button
+            type="button"
+            onClick={onOpen}
+            title={agent.statusDetail ?? agent.name}
+            className="flex cursor-pointer items-center gap-[9px] rounded-chip border-0 bg-transparent px-[8px] py-[6px] text-left font-ui text-xl text-muted hover:bg-[#1a1c23] hover:text-ink"
+          >
+            <StatusDot status={status} />
+            <span className="truncate">{agent.name}</span>
+            <span className="ml-auto font-mono text-xs text-faint-2">{sessionCount}</span>
+          </button>
   )
 }
 

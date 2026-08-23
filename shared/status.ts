@@ -39,3 +39,31 @@ export function statusToken(status: Status): string {
 export function transcriptOpacity(index: number, total: number): number {
   return Math.max(0.45, 1 - (total - 1 - index) * 0.16)
 }
+
+/**
+ * The status an agent shows, given its own state and its sessions'.
+ *
+ * An agent has no activity of its own — its sessions do — so the dot rolls
+ * theirs up. Order is by how much it wants your attention:
+ *
+ *   error    the runner is missing or logged out, so nothing can run at all
+ *   approval a session is blocked waiting on you
+ *   running  a turn is in flight
+ *   done     work finished and nothing needs you
+ *   idle     nothing has happened yet
+ */
+export function rollUpAgentStatus(
+  agentStatus: Status,
+  sessionStatuses: readonly Status[],
+): Status {
+  // Being unable to run outranks anything a past session did.
+  if (agentStatus === 'error') return 'error'
+
+  const has = (status: Status): boolean => sessionStatuses.includes(status)
+
+  if (has('approval')) return 'approval'
+  if (has('running')) return 'running'
+  if (has('error')) return 'error'
+  if (has('done')) return 'done'
+  return 'idle'
+}

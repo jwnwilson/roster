@@ -6,7 +6,7 @@ import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
 import { SectionLabel, Segmented, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
-import { NO_SESSIONS, selectCurrentAgent, useRoster, type PaneMode } from '@/state/store'
+import { agentStatus, NO_SESSIONS, selectCurrentAgent, useRoster, type PaneMode } from '@/state/store'
 
 const MODES = [
   { value: 'chat' as const, label: 'Chat' },
@@ -52,6 +52,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const setUsage = useRoster((s) => s.setUsage)
   const selectSession = useRoster((s) => s.selectSession)
   const editOpen = useRoster((s) => s.editOpen)
+  const status = useRoster((s) => agentStatus(s, agent))
 
   // Sessions come from SQLite, not from the agent config, so they load per
   // agent rather than at startup.
@@ -112,7 +113,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
           <span aria-hidden className="text-line-hover-strong">
             /
           </span>
-          <StatusDot status={agent.status} size={7} />
+          <StatusDot status={status} size={7} />
           <span className="font-semibold">{agent.name}</span>
           <span className="font-mono text-sm text-dim-2">{agent.model}</span>
 

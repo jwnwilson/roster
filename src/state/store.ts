@@ -12,6 +12,7 @@ import type {
   Usage,
 } from '@shared/types'
 import type { SessionEventPayload } from '@shared/ipc'
+import { rollUpAgentStatus } from '@shared/status'
 
 export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new'
 export type PaneMode = 'chat' | 'terminal'
@@ -243,6 +244,19 @@ export function selectGridAgents(state: RosterState): Agent[] {
 
 export function selectCurrentAgent(state: RosterState): Agent | null {
   return state.agents.find((a) => a.id === state.agentId) ?? null
+}
+
+/**
+ * The status to show for an agent: its own, rolled up with its sessions'.
+ * Computed here rather than stored, so a live status event moves the dot
+ * without another read from disk.
+ */
+export function agentStatus(state: RosterState, agent: Agent): Status {
+  const sessions = state.sessions[agent.id] ?? NO_SESSIONS
+  return rollUpAgentStatus(
+    agent.status,
+    sessions.map((session) => session.status),
+  )
 }
 
 /* ---------------------------------------------------------------------

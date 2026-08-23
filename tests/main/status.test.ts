@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import { STATUSES } from '@shared/types'
-import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
+import {
+  rollUpAgentStatus,
+  statusColor,
+  statusLabel,
+  transcriptOpacity,
+} from '@shared/status'
 
 describe('status vocabulary', () => {
   test('every status has a colour and a label', () => {
@@ -34,5 +39,43 @@ describe('transcriptOpacity', () => {
 
   test('treats a single line as newest', () => {
     expect(transcriptOpacity(0, 1)).toBe(1)
+  })
+})
+
+describe('rollUpAgentStatus', () => {
+  test('an agent with no sessions is idle', () => {
+    expect(rollUpAgentStatus('idle', [])).toBe('idle')
+  })
+
+  test('a blocked session outranks everything else', () => {
+    // Needing you is the most urgent thing a card can say.
+    expect(rollUpAgentStatus('idle', ['done', 'running', 'approval'])).toBe('approval')
+  })
+
+  test('a running session outranks finished ones', () => {
+    expect(rollUpAgentStatus('idle', ['done', 'running', 'idle'])).toBe('running')
+  })
+
+  test('a failed session shows through once nothing is active', () => {
+    expect(rollUpAgentStatus('idle', ['done', 'error'])).toBe('error')
+  })
+
+  test('but activity outranks a past failure', () => {
+    expect(rollUpAgentStatus('idle', ['error', 'running'])).toBe('running')
+  })
+
+  test('finished work shows when nothing needs attention', () => {
+    expect(rollUpAgentStatus('idle', ['idle', 'done'])).toBe('done')
+  })
+
+  test('an unusable runner outranks any session state', () => {
+    // Nothing can run, so a stale "running" must not imply otherwise.
+    expect(rollUpAgentStatus('error', ['running', 'approval'])).toBe('error')
+  })
+
+  test('every rolled-up status is one the design defines', () => {
+    for (const status of STATUSES) {
+      expect(STATUSES).toContain(rollUpAgentStatus('idle', [status]))
+    }
   })
 })

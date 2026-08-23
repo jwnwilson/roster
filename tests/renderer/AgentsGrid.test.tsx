@@ -33,17 +33,54 @@ describe('AgentsGrid — rendering', () => {
   })
 
   test('counts running agents in the summary', () => {
-    useRoster.setState({ agents: [anAgent({ status: 'running' }), anAgent({ id: 'b' })] })
+    // An agent is "running" because a session of its is, not by its own field.
+    useRoster.setState({
+      agents: [anAgent({ id: 'a' }), anAgent({ id: 'b' })],
+      sessions: { a: [aSession({ agentId: 'a', status: 'running' })] },
+    })
     render(<AgentsGrid />)
 
     expect(screen.getByText('2 configured · 1 running')).toBeInTheDocument()
   })
 
   test('labels each status with the handoff vocabulary, not the raw key', () => {
+    useRoster.setState({
+      sessions: {
+        debugging: [aSession({ agentId: 'debugging', status: 'approval' })],
+        review: [aSession({ agentId: 'review', status: 'done' })],
+      },
+    })
     render(<AgentsGrid />)
 
     expect(screen.getByText('needs you')).toBeInTheDocument()
     expect(screen.getByText('finished')).toBeInTheDocument()
+  })
+
+  test('the dot follows its sessions rather than staying idle', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'a', name: 'Busy Agent' })],
+      sessions: {
+        a: [
+          aSession({ id: 's1', agentId: 'a', status: 'done' }),
+          aSession({ id: 's2', agentId: 'a', status: 'approval' }),
+        ],
+      },
+    })
+    render(<AgentsGrid />)
+
+    // Blocked outranks finished: that is the one that wants attention.
+    expect(screen.getByText('needs you')).toBeInTheDocument()
+    expect(screen.queryByText('idle')).not.toBeInTheDocument()
+  })
+
+  test('an unusable runner still shows as an error whatever its sessions say', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'a', status: 'error', statusDetail: 'not signed in' })],
+      sessions: { a: [aSession({ agentId: 'a', status: 'running' })] },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('error')).toBeInTheDocument()
   })
 
   test('shows the model id and working directory on each card', () => {
