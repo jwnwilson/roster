@@ -1,41 +1,22 @@
-import type { HandoffLink, Message, SessionRef } from '@shared/types'
+import type { HandoffLink, HandoffMessage, Message, SessionRef, SpawnMessage } from '@shared/types'
 import { statusColor } from '@shared/status'
 import { useRoster } from '@/state/store'
 
 /* -------------------------------------------------------------------------
  * Message renderers.
  *
- * Roster's four message kinds map onto assistant-ui parts as text,
- * tool-call, data-spawn, and data-handoff. These components are what those
- * parts render, and they are deliberately plain so the same markup serves
- * both the live runtime and the persisted history.
+ * Split into a header and per-kind bodies so the same markup serves both the
+ * plain transcript and the assistant-ui runtime, which supplies its own
+ * message wrapper and dispatches by part type.
  * ---------------------------------------------------------------------- */
 
-interface MessageViewProps {
-  message: Message
-  agentName: string
-}
-
-export function MessageView({ message, agentName }: MessageViewProps) {
-  switch (message.kind) {
-    case 'text':
-      return <TextMessageView message={message} />
-    case 'tool':
-      return <ToolMessageView message={message} />
-    case 'spawn':
-      return <SpawnMessageView message={message} agentName={agentName} />
-    case 'handoff':
-      return <HandoffMessageView message={message} />
-  }
-}
-
-interface HeaderProps {
+interface MessageHeaderProps {
   who: string
   time: number
-  isUser: boolean
+  isUser?: boolean
 }
 
-function Header({ who, time, isUser }: HeaderProps) {
+export function MessageHeader({ who, time, isUser = false }: MessageHeaderProps) {
   return (
     <div className="flex items-center gap-[8px]">
       <span
@@ -49,68 +30,73 @@ function Header({ who, time, isUser }: HeaderProps) {
   )
 }
 
-function TextMessageView({ message }: { message: Extract<Message, { kind: 'text' }> }) {
+/* ---- bodies ----------------------------------------------------------- */
+
+export function TextBody({ text }: { text: string }) {
   return (
-    <article className="flex max-w-[720px] flex-col gap-[7px]">
-      <Header who={message.who} time={message.createdAt} isUser={message.role === 'user'} />
-      <p className="m-0 text-2xl leading-[1.62] whitespace-pre-wrap text-ink-2">{message.text}</p>
-    </article>
+    <p className="m-0 text-2xl leading-[1.62] whitespace-pre-wrap text-ink-2">{text}</p>
   )
 }
 
-function ToolMessageView({ message }: { message: Extract<Message, { kind: 'tool' }> }) {
-  const open = useRoster((s) => s.openTools[message.id] ?? false)
+interface ToolBodyProps {
+  id: string
+  tool: string
+  args: string
+  output: string
+  isError: boolean
+  durationMs?: number
+}
+
+export function ToolBody({ id, tool, args, output, isError, durationMs }: ToolBodyProps) {
+  const open = useRoster((s) => s.openTools[id] ?? false)
   const toggleTool = useRoster((s) => s.toggleTool)
-  const running = message.output === '' && !message.isError
+  const running = output === '' && !isError
 
   return (
-    <article className="flex max-w-[720px] flex-col gap-[7px]">
-      <Header who="tool call" time={message.createdAt} isUser={false} />
-      <div
-        className="overflow-hidden rounded-field border border-line-input bg-card hover:border-line-hover"
-        data-hoverable
+    <div
+      className="overflow-hidden rounded-field border border-line-input bg-card hover:border-line-hover"
+      data-hoverable
+    >
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => toggleTool(id)}
+        className="flex w-full cursor-pointer items-center gap-[9px] border-0 bg-transparent px-[11px] py-[8px] text-left"
       >
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => toggleTool(message.id)}
-          className="flex w-full cursor-pointer items-center gap-[9px] border-0 bg-transparent px-[11px] py-[8px] text-left"
-        >
-          <span aria-hidden className="text-2xs text-dim">
-            {open ? '▾' : '▸'}
-          </span>
-          <span className="font-mono text-base text-accent-light">{message.tool}</span>
-          <span className="truncate font-mono text-base text-[#7d8090]">{message.args}</span>
-          <span className="ml-auto flex-none font-mono text-xs text-faint-2">
-            {running ? '…' : formatDuration(message.durationMs)}
-          </span>
-        </button>
-        {open ? (
-          <pre className="m-0 border-t border-line bg-well px-[12px] py-[10px] font-mono text-base leading-[1.6] whitespace-pre-wrap text-muted-2">
-            {message.output === '' ? 'no output' : message.output}
-          </pre>
-        ) : null}
-      </div>
-    </article>
+        <span aria-hidden className="text-2xs text-dim">
+          {open ? '▾' : '▸'}
+        </span>
+        <span className="font-mono text-base text-accent-light">{tool}</span>
+        <span className="truncate font-mono text-base text-[#7d8090]">{args}</span>
+        <span className="ml-auto flex-none font-mono text-xs text-faint-2">
+          {running ? '…' : formatDuration(durationMs)}
+        </span>
+      </button>
+      {open ? (
+        <pre className="m-0 border-t border-line bg-well px-[12px] py-[10px] font-mono text-base leading-[1.6] whitespace-pre-wrap text-muted-2">
+          {output === '' ? 'no output' : output}
+        </pre>
+      ) : null}
+    </div>
   )
 }
 
-function SpawnMessageView({
-  message,
-  agentName,
-}: {
-  message: Extract<Message, { kind: 'spawn' }>
-  agentName: string
-}) {
+export function SpawnBody({ message }: { message: SpawnMessage }) {
   return (
-    <article className="flex max-w-[720px] flex-col gap-[7px]">
-      <Header who={`session opened by ${message.from}`} time={message.createdAt} isUser={false} />
-      <div className="flex flex-col items-start gap-[8px] border-l-2 border-accent-line py-[2px] pl-[13px]">
-        <p className="m-0 text-2xl leading-[1.62] text-[#b3b6c2]">{message.text}</p>
-        {message.to ? <BackPill target={message.to} /> : null}
-      </div>
-      <span className="sr-only">{agentName}</span>
-    </article>
+    <div className="flex flex-col items-start gap-[8px] border-l-2 border-accent-line py-[2px] pl-[13px]">
+      <p className="m-0 text-2xl leading-[1.62] text-[#b3b6c2]">{message.text}</p>
+      {message.to ? <BackPill target={message.to} /> : null}
+    </div>
+  )
+}
+
+export function HandoffBody({ message }: { message: HandoffMessage }) {
+  return (
+    <div className="flex flex-col items-start gap-[6px]">
+      {message.links.map((link) => (
+        <HandoffPill key={`${link.agentId}:${link.sessionId}`} link={link} />
+      ))}
+    </div>
   )
 }
 
@@ -126,19 +112,6 @@ function BackPill({ target }: { target: SessionRef }) {
     >
       ↖ {target.label}
     </button>
-  )
-}
-
-function HandoffMessageView({ message }: { message: Extract<Message, { kind: 'handoff' }> }) {
-  return (
-    <article className="flex max-w-[720px] flex-col gap-[7px]">
-      <Header who="opened sessions" time={message.createdAt} isUser={false} />
-      <div className="flex flex-col items-start gap-[6px]">
-        {message.links.map((link) => (
-          <HandoffPill key={`${link.agentId}:${link.sessionId}`} link={link} />
-        ))}
-      </div>
-    </article>
   )
 }
 
@@ -160,6 +133,61 @@ function HandoffPill({ link }: { link: HandoffLink }) {
       />
     </button>
   )
+}
+
+/* ---- whole message (plain transcript) --------------------------------- */
+
+interface MessageViewProps {
+  message: Message
+  agentName: string
+}
+
+export function MessageView({ message, agentName }: MessageViewProps) {
+  switch (message.kind) {
+    case 'text':
+      return (
+        <article className="flex max-w-[720px] flex-col gap-[7px]">
+          <MessageHeader
+            who={message.who}
+            time={message.createdAt}
+            isUser={message.role === 'user'}
+          />
+          <TextBody text={message.text} />
+        </article>
+      )
+
+    case 'tool':
+      return (
+        <article className="flex max-w-[720px] flex-col gap-[7px]">
+          <MessageHeader who="tool call" time={message.createdAt} />
+          <ToolBody
+            id={message.id}
+            tool={message.tool}
+            args={message.args}
+            output={message.output}
+            isError={message.isError}
+            {...(message.durationMs !== undefined ? { durationMs: message.durationMs } : {})}
+          />
+        </article>
+      )
+
+    case 'spawn':
+      return (
+        <article className="flex max-w-[720px] flex-col gap-[7px]">
+          <MessageHeader who={`session opened by ${message.from}`} time={message.createdAt} />
+          <SpawnBody message={message} />
+          <span className="sr-only">{agentName}</span>
+        </article>
+      )
+
+    case 'handoff':
+      return (
+        <article className="flex max-w-[720px] flex-col gap-[7px]">
+          <MessageHeader who="opened sessions" time={message.createdAt} />
+          <HandoffBody message={message} />
+        </article>
+      )
+  }
 }
 
 /* ---- formatting ------------------------------------------------------- */

@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { statusColor } from '@shared/status'
-import { ChatPane } from '@/chat/ChatPane'
+import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
 import { SectionLabel, Segmented, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
@@ -140,7 +140,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
           {!active ? (
             <EmptyPane onNew={() => void newSession()} />
           ) : mode === 'chat' ? (
-            <ChatPane
+            <AssistantChatPane
               sessionId={active.id}
               agentName={agent.name}
               messages={messages}

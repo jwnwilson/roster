@@ -211,6 +211,14 @@ Rendering goes through `<MessagePrimitive.Parts>` with a render prop switching o
 `part.type`. No assistant-ui default styling is loaded — unstyled primitives only,
 with the project's tokens.
 
+Two details the part model forces:
+
+- A `data-<name>` part is authored as `data-spawn` but **arrives at render time as
+  `{ type: 'data', name: 'spawn' }`**, so the renderer switches on `name`, not the
+  authored type.
+- The message header (role label + timestamp) is per-message chrome rather than a
+  part, so it travels in `metadata.custom` and is rendered by the message component.
+
 ## 8. Terminal
 
 One pty per session via `node-pty`, spawned in the agent's cwd, streamed over IPC to
