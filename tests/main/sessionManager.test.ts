@@ -154,7 +154,7 @@ describe('SessionManager.send — a plain turn', () => {
     expect(assistant.map((m) => (m.kind === 'text' ? m.text : ''))).toEqual(['Hello world!'])
   })
 
-  test('the event stream carries the growing text too', async () => {
+  test('the renderer is told the same text that was stored', async () => {
     runnerStub.run.mockImplementation(
       streamOf([
         { kind: 'text', delta: 'Hello ' },
@@ -165,13 +165,62 @@ describe('SessionManager.send — a plain turn', () => {
     const session = manager.create('debugging', 'x')
     await manager.send(session.id, 'go')
 
-    const updates = events
-      .filter((e): e is { type: string; message: { text: string } } =>
-        (e as { type: string }).type === 'message-updated',
-      )
-      .map((e) => e.message.text)
+    // Deltas inside one flush window arrive as a single event, so read the
+    // last thing the renderer was told about this message either way.
+    const broadcast = events
+      .filter((e): e is { type: string; message: { role?: string; text?: string } } => {
+        const type = (e as { type: string }).type
+        return type === 'message' || type === 'message-updated'
+      })
+      .map((e) => e.message)
+      .filter((m) => m.role === 'assistant')
+      .at(-1)
 
-    expect(updates.at(-1)).toBe('Hello world')
+    const stored = sessions
+      .messages(session.id)
+      .find((m) => m.kind === 'text' && m.role === 'assistant')
+
+    expect(broadcast?.text).toBe('Hello world')
+    expect(stored).toMatchObject({ text: 'Hello world' })
+  })
+
+  test('batches deltas rather than writing one message per token', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf(
+        // A hundred tokens inside one flush window.
+        Array.from({ length: 100 }, () => ({ kind: 'text' as const, delta: 'x' })),
+      ),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const assistantEvents = events.filter((e) => {
+      const type = (e as { type: string }).type
+      return type === 'message' || type === 'message-updated'
+    })
+
+    // Without batching this would be 100 writes and 100 renders.
+    expect(assistantEvents.length).toBeLessThan(10)
+    expect(
+      sessions.messages(session.id).find((m) => m.kind === 'text' && m.role === 'assistant'),
+    ).toMatchObject({ text: 'x'.repeat(100) })
+  })
+
+  test('flushes buffered prose before a tool row, keeping the order readable', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'text', delta: 'Let me check.' },
+        { kind: 'tool', id: 't1', name: 'Bash', args: 'ls' },
+        { kind: 'result', id: 't1', output: 'a b c', isError: false },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    // The prose must land above the tool call, not after it.
+    expect(sessions.messages(session.id).map((m) => m.kind)).toEqual(['text', 'text', 'tool'])
   })
 
   test('stores assistant prose as one message, not one per delta', async () => {

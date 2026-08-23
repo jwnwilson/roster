@@ -12,10 +12,19 @@ import {
   TOOL_RESULT,
   TOOL_RESULT_ERROR,
   TOOL_USE,
+  ASSISTANT_TEXT_DUPLICATE,
+  STREAMED_TURN,
+  STREAM_BLOCK_STOP,
+  STREAM_MESSAGE_START,
+  STREAM_SIGNATURE_DELTA,
+  STREAM_TEXT_DELTA,
+  STREAM_TEXT_DELTA_2,
+  STREAM_THINKING_DELTA,
 } from './fixtures/claude-stream'
 
-function normalizeAll(messages: unknown[]): RunnerEvent[] {
-  return messages.flatMap(normalizeClaudeMessage)
+function normalizeAll(messages: unknown[], streaming = false): RunnerEvent[] {
+  // Not point-free: flatMap would pass the index as the options argument.
+  return messages.flatMap((message) => normalizeClaudeMessage(message, { streaming }))
 }
 
 describe('normalizeClaudeMessage — messages Roster ignores', () => {
@@ -179,5 +188,63 @@ describe('summariseArgs', () => {
     // A Write tool call carries the whole file body in `content`.
     const summary = summariseArgs({ content: 'line one\nline two', file_path: '/a.txt' })
     expect(summary).not.toContain('\n')
+  })
+})
+
+
+describe('normalizeClaudeMessage — streaming', () => {
+  const streaming = { streaming: true }
+
+  test('emits each text delta as it arrives', () => {
+    expect(normalizeClaudeMessage(STREAM_TEXT_DELTA, streaming)).toEqual([
+      { kind: 'text', delta: 'ONE ' },
+    ])
+  })
+
+  test('ignores stream events entirely when not streaming', () => {
+    // Otherwise a stray partial message would double the text.
+    expect(normalizeClaudeMessage(STREAM_TEXT_DELTA)).toEqual([])
+  })
+
+  test('ignores thinking and signature deltas, which the design never shows', () => {
+    expect(normalizeClaudeMessage(STREAM_THINKING_DELTA, streaming)).toEqual([])
+    expect(normalizeClaudeMessage(STREAM_SIGNATURE_DELTA, streaming)).toEqual([])
+  })
+
+  test('ignores the stream lifecycle events', () => {
+    expect(normalizeClaudeMessage(STREAM_MESSAGE_START, streaming)).toEqual([])
+    expect(normalizeClaudeMessage(STREAM_BLOCK_STOP, streaming)).toEqual([])
+  })
+
+  test('skips text on the complete message, which the deltas already delivered', () => {
+    // This is the whole reason streaming is an explicit mode: the SDK sends
+    // both, and reading both prints every reply twice.
+    expect(normalizeClaudeMessage(ASSISTANT_TEXT_DUPLICATE, streaming)).toEqual([])
+  })
+
+  test('still takes tool calls from the complete message', () => {
+    // A half-parsed argument object is of no use, so tools are never streamed.
+    expect(normalizeClaudeMessage(TOOL_USE, streaming)).toEqual([
+      { kind: 'tool', id: 'toolu_016Mdj', name: 'Read', args: '/work/api/note.txt' },
+    ])
+  })
+
+  test('a whole streamed turn yields each delta exactly once', () => {
+    const events = normalizeAll(STREAMED_TURN, true)
+
+    expect(events.map((e) => e.kind)).toEqual(['text', 'text', 'usage', 'done'])
+    expect(
+      events
+        .filter((e) => e.kind === 'text')
+        .map((e) => e.delta)
+        .join(''),
+    ).toBe('ONE TWO')
+  })
+
+  test('the same turn read without streaming yields the text once too', () => {
+    // Whichever mode is used, the reply must appear exactly once.
+    const events = normalizeAll(STREAMED_TURN, false)
+
+    expect(events.filter((e) => e.kind === 'text').map((e) => e.delta)).toEqual(['ONE TWO'])
   })
 })

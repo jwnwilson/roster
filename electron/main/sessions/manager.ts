@@ -21,6 +21,14 @@ export type SessionEvent =
   | { type: 'approval-resolved'; sessionId: string; approvalId: string }
   | { type: 'streaming'; sessionId: string; active: boolean }
 
+/**
+ * Streamed prose arrives token by token. Writing and broadcasting each one
+ * would mean a SQLite write and a React render per token; the buffer flushes
+ * on a short interval instead, so cost is bounded by time rather than by how
+ * fast the model talks.
+ */
+const FLUSH_INTERVAL_MS = 60
+
 interface ActiveRun {
   abort: AbortController
   /** Tool messages awaiting their result, keyed by the runner's tool id. */
@@ -28,6 +36,9 @@ interface ActiveRun {
   /** Approvals raised during this run. */
   approvals: Map<string, Approval>
   runnerId: string
+  /** Prose received but not yet written or broadcast. */
+  pendingText: string
+  flushTimer: NodeJS.Timeout | null
 }
 
 /**
@@ -149,6 +160,8 @@ export class SessionManager {
       toolMessages: new Map(),
       approvals: new Map(),
       runnerId: agent.runner,
+      pendingText: '',
+      flushTimer: null,
     }
     this.active.set(sessionId, run)
 
@@ -194,6 +207,8 @@ export class SessionManager {
     } catch (cause) {
       this.failTurn(sessionId, cause instanceof Error ? cause.message : String(cause))
     } finally {
+      // Whatever is still buffered belongs to this turn, not the next.
+      this.flushText(sessionId, run)
       this.active.delete(sessionId)
       this.emit({ type: 'streaming', sessionId, active: false })
       if (this.sessions.findById(sessionId)?.status === 'running') {
@@ -211,10 +226,13 @@ export class SessionManager {
   private handle(sessionId: string, run: ActiveRun, event: RunnerEvent): void {
     switch (event.kind) {
       case 'text':
-        this.appendAssistantText(sessionId, event.delta)
+        this.bufferAssistantText(sessionId, run, event.delta)
         return
 
       case 'tool': {
+        // Anything said before the tool call belongs above it in the
+        // transcript, so flush before writing the tool row.
+        this.flushText(sessionId, run)
         const message = this.record(sessionId, {
           sessionId,
           kind: 'tool',
@@ -268,6 +286,33 @@ export class SessionManager {
         this.failTurn(sessionId, event.message)
         return
     }
+  }
+
+  /**
+   * Buffers a delta and schedules a flush. Deltas that arrive within the
+   * interval are written and broadcast together.
+   */
+  private bufferAssistantText(sessionId: string, run: ActiveRun, delta: string): void {
+    run.pendingText += delta
+    if (run.flushTimer !== null) return
+
+    run.flushTimer = setTimeout(() => {
+      run.flushTimer = null
+      this.flushText(sessionId, run)
+    }, FLUSH_INTERVAL_MS)
+  }
+
+  /** Writes and broadcasts whatever prose has accumulated. */
+  private flushText(sessionId: string, run: ActiveRun): void {
+    if (run.flushTimer !== null) {
+      clearTimeout(run.flushTimer)
+      run.flushTimer = null
+    }
+
+    const pending = run.pendingText
+    if (pending === '') return
+    run.pendingText = ''
+    this.appendAssistantText(sessionId, pending)
   }
 
   /**

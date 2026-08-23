@@ -1,5 +1,19 @@
 import type { RunnerEvent } from './types'
 
+export interface NormalizeOptions {
+  /**
+   * Whether the CLI was asked for partial messages.
+   *
+   * This is not cosmetic. With partial messages on, the SDK emits both the
+   * incremental `stream_event` deltas *and* the complete `assistant` message
+   * carrying the same text. Reading both would print every reply twice, so
+   * exactly one source of prose is used: the deltas when streaming, the
+   * complete message otherwise. Tool calls always come from the complete
+   * message, since a half-parsed argument object is of no use.
+   */
+  streaming?: boolean
+}
+
 /**
  * Translates one Claude Agent SDK message into Roster events.
  *
@@ -9,12 +23,17 @@ import type { RunnerEvent } from './types'
  * The SDK's message union is large and grows between releases, so this reads
  * defensively: anything unrecognised yields no events rather than throwing.
  */
-export function normalizeClaudeMessage(message: unknown): RunnerEvent[] {
+export function normalizeClaudeMessage(
+  message: unknown,
+  options: NormalizeOptions = {},
+): RunnerEvent[] {
   if (!isRecord(message)) return []
 
   switch (message['type']) {
     case 'assistant':
-      return fromAssistant(message)
+      return fromAssistant(message, options.streaming === true)
+    case 'stream_event':
+      return options.streaming === true ? fromStreamEvent(message) : []
     case 'user':
       return fromUser(message)
     case 'result':
@@ -24,7 +43,19 @@ export function normalizeClaudeMessage(message: unknown): RunnerEvent[] {
   }
 }
 
-function fromAssistant(message: Record<string, unknown>): RunnerEvent[] {
+/** Incremental deltas. Only prose is surfaced; the design shows no thinking. */
+function fromStreamEvent(message: Record<string, unknown>): RunnerEvent[] {
+  const event = message['event']
+  if (!isRecord(event) || event['type'] !== 'content_block_delta') return []
+
+  const delta = event['delta']
+  if (!isRecord(delta) || delta['type'] !== 'text_delta') return []
+
+  const text = asString(delta['text'])
+  return text === null || text === '' ? [] : [{ kind: 'text', delta: text }]
+}
+
+function fromAssistant(message: Record<string, unknown>, streaming: boolean): RunnerEvent[] {
   const inner = message['message']
   if (!isRecord(inner)) return []
 
@@ -37,6 +68,8 @@ function fromAssistant(message: Record<string, unknown>): RunnerEvent[] {
     if (!isRecord(block)) continue
 
     if (block['type'] === 'text' && typeof block['text'] === 'string') {
+      // While streaming, this same text already arrived as deltas.
+      if (streaming) continue
       // Empty deltas are noise on the wire; drop them.
       if (block['text'] !== '') events.push({ kind: 'text', delta: block['text'] })
       continue

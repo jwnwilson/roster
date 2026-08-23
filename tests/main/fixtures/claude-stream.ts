@@ -117,3 +117,72 @@ export const FULL_TURN = [
   ASSISTANT_TEXT,
   RESULT_SUCCESS,
 ]
+
+/* -------------------------------------------------------------------------
+ * Recorded with includePartialMessages: true. Note that the complete
+ * assistant message still arrives alongside the deltas carrying the same
+ * text — reading both would print every reply twice.
+ * ---------------------------------------------------------------------- */
+
+export const STREAM_TEXT_DELTA = {
+  type: 'stream_event',
+  event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'ONE ' } },
+  session_id: 'sess-abc',
+}
+
+export const STREAM_TEXT_DELTA_2 = {
+  type: 'stream_event',
+  event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'TWO' } },
+  session_id: 'sess-abc',
+}
+
+export const STREAM_THINKING_DELTA = {
+  type: 'stream_event',
+  event: {
+    type: 'content_block_delta',
+    index: 0,
+    delta: { type: 'thinking_delta', thinking: 'The user is asking' },
+  },
+  session_id: 'sess-abc',
+}
+
+export const STREAM_SIGNATURE_DELTA = {
+  type: 'stream_event',
+  event: {
+    type: 'content_block_delta',
+    index: 0,
+    delta: { type: 'signature_delta', signature: 'abc123' },
+  },
+  session_id: 'sess-abc',
+}
+
+export const STREAM_MESSAGE_START = {
+  type: 'stream_event',
+  event: { type: 'message_start', message: { role: 'assistant', content: [] } },
+  session_id: 'sess-abc',
+}
+
+export const STREAM_BLOCK_STOP = {
+  type: 'stream_event',
+  event: { type: 'content_block_stop', index: 1 },
+  session_id: 'sess-abc',
+}
+
+/** The same text the deltas already delivered. */
+export const ASSISTANT_TEXT_DUPLICATE = {
+  type: 'assistant',
+  message: { role: 'assistant', content: [{ type: 'text', text: 'ONE TWO' }] },
+  session_id: 'sess-abc',
+}
+
+/** A streamed turn in order: deltas, then the complete message, then done. */
+export const STREAMED_TURN = [
+  STREAM_MESSAGE_START,
+  STREAM_THINKING_DELTA,
+  STREAM_SIGNATURE_DELTA,
+  STREAM_TEXT_DELTA,
+  STREAM_TEXT_DELTA_2,
+  STREAM_BLOCK_STOP,
+  ASSISTANT_TEXT_DUPLICATE,
+  RESULT_SUCCESS,
+]

@@ -68,6 +68,8 @@ export class ClaudeRunner implements Runner {
         // so its own allowlist is the one that applies.
         settingSources: [],
         permissionMode: 'default',
+        // Prose arrives token by token rather than a paragraph at a time.
+        includePartialMessages: true,
         // Roster's own tools are affordances of the app, not actions on the
         // user's machine — asking permission to look at the roster or open a
         // session would be friction with nothing behind it.
@@ -93,7 +95,7 @@ export class ClaudeRunner implements Runner {
 
     try {
       for await (const message of response) {
-        for (const event of normalizeClaudeMessage(message)) yield event
+        for (const event of normalizeClaudeMessage(message, { streaming: true })) yield event
       }
     } catch (cause) {
       // A crashed CLI must still end the turn, or the UI waits forever.
