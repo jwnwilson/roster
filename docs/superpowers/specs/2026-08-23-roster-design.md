@@ -45,16 +45,18 @@ The renderer never sees a credential, a file handle, or a child process.
 ```
 electron/main/
   runners/     Runner interface + claude | codex | custom adapters
-  db/          better-sqlite3, migrations, repositories
-  agents/      agent.toml read/write/watch
+  store/       one module per data kind, across both substrates (see §5)
+  db/          better-sqlite3 connection + migrations only
   pty/         node-pty session manager
-  skills/      ~/roster/skills reads and writes
-  mcp/         MCP server registry; writes runner MCP config
+  mcp/         MCP server config written into runner options
   auth/        CLI detection + auth probing; env/keychain fallback
   ipc/         typed channels, one module per domain
 electron/preload/   contextBridge -> window.roster
-src/                React renderer: screens/, components/, chat/, terminal/, store/
+src/                React renderer: screens/, components/, chat/, terminal/, state/
 ```
+
+IPC handlers never touch SQL or the filesystem directly — they call the store layer,
+which is also the only place row shapes and file formats become domain types.
 
 ## 4. The Runner abstraction
 
@@ -127,6 +129,57 @@ created_at), `approvals` (id, session_id, tool_name, command, status, decided_at
 
 `origin` and `from_agent_id` are what render the `↳` glyph and the spawn/handoff
 messages. `runner_session_id` is what `resume` and `fork` are keyed on.
+
+### The store layer
+
+Roster has two storage substrates — SQLite for runtime state, the filesystem for
+configuration — and `agent.toml` is as much data access as the sessions table is. So the
+store layer is organised by *what the data is*, not by where it happens to live:
+
+```
+store/
+  sessions.ts    SQLite    findByAgent, create, updateStatus
+  messages.ts    SQLite    findBySession, append
+  approvals.ts   SQLite    pending, resolve
+  usage.ts       SQLite    forSession, accumulate
+  agents.ts      TOML      findAll, findById, update, watch
+  skills.ts      FS dir    findAll, readFile, writeFile, watch
+  mcp.ts         JSON      findAll, setEnabled, watch
+```
+
+Callers write `agents.update(id, patch)` without knowing the backing format. Three
+things justify the layer, none of them being storage swappability:
+
+- **SQL and `fs` calls stay out of IPC handlers**, which otherwise become the files that
+  grow past 800 lines.
+- **One place where raw shapes become domain types** — snake_case columns, the JSON
+  `content` column, integer timestamps, TOML tables. Mapped per call site, these drift.
+- **Validation at the boundary.** A hand-edited `agent.toml` is untrusted external input;
+  it can name a runner that doesn't exist or omit `model` entirely. The store is where
+  the schema check lives, which scattered `readFile` calls have no natural place for.
+
+Stores are testable against an in-memory database and a temp directory, with no Electron.
+
+**One asymmetry is real and stays visible in the types.** Roster is the only writer to
+SQLite, so a row cannot change underneath it. Files can — someone edits `agent.toml` in
+an editor, or checks out a branch. File-backed stores therefore carry a change
+subscription that database stores do not:
+
+```ts
+interface Store<T> {
+  findAll(): Promise<T[]>
+  findById(id: string): Promise<T | null>
+  update(id: string, patch: Partial<T>): Promise<T>
+}
+
+interface WatchedStore<T> extends Store<T> {
+  watch(onChange: (ids: string[]) => void): Disposable
+}
+```
+
+`agents`, `skills`, and `mcp` are `WatchedStore`; the SQLite four are plain `Store`. This
+is what makes the Edit modal's "changes are written back to agent.toml" true in both
+directions — external edits reach the UI without a restart.
 
 ## 6. Screens and state
 
