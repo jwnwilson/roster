@@ -125,6 +125,8 @@ describe('edit draft', () => {
       systemPrompt: 'Reproduce before you fix.',
       skills: { 'repro-harness': true, 'stack-triage': true },
       mcp: { filesystem: true },
+      cwd: '/Users/test/work/api',
+      cwdLabel: '~/work/api',
     })
   })
 

@@ -483,3 +483,174 @@ describe('EditAgentModal', () => {
     expect(useRoster.getState().editOpen).toBe(false)
   })
 })
+
+/* ------------------------------------------------- newly wired affordances */
+
+describe('Skills — New skill and Reveal', () => {
+  beforeEach(() => {
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# ADR Writer'),
+        create: vi.fn().mockResolvedValue(aSkill({ name: 'new-skill', path: '/skills/new-skill' })),
+        list: vi.fn().mockResolvedValue([aSkill({ name: 'adr-writer', path: '/skills/adr-writer' })]),
+      },
+    })
+    useRoster.setState({
+      skills: [aSkill({ name: 'adr-writer', path: '/skills/adr-writer' })],
+      agents: [],
+    })
+  })
+
+  test('New skill creates one and opens it', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New skill' }))
+
+    await waitFor(() => expect(window.roster.skills.create).toHaveBeenCalledWith('New skill'))
+    // It should land you in the new file, not leave you where you were.
+    await waitFor(() =>
+      expect(window.roster.skills.read).toHaveBeenCalledWith('/skills/new-skill/SKILL.md'),
+    )
+  })
+
+  test('a failed creation is reported rather than swallowed', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# A'),
+        create: vi.fn().mockRejectedValue(new Error('EACCES: read-only library')),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New skill' }))
+
+    expect(await screen.findByText(/EACCES: read-only library/)).toBeInTheDocument()
+  })
+
+  test('Reveal opens the folder of the skill being edited', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+    await screen.findByLabelText('Skill file contents')
+
+    await user.click(screen.getByRole('button', { name: 'Reveal in Finder' }))
+
+    expect(window.roster.skills.reveal).toHaveBeenCalledWith('adr-writer')
+  })
+
+  test('Reveal does nothing when the library is empty', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ skills: [] })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Reveal in Finder' }))
+
+    expect(window.roster.skills.reveal).not.toHaveBeenCalled()
+  })
+})
+
+describe('McpServers — Install', () => {
+  test('installs a registry entry and shows it as installed', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      mcp: {
+        install: vi.fn().mockResolvedValue([anMcpServer({ name: 'gitlab', enabledFor: [] })]),
+      },
+    })
+    useRoster.setState({ mcpServers: [], agents: [] })
+    render(<McpServers />)
+
+    await user.click(screen.getByRole('tab', { name: 'Registry' }))
+    await user.click(screen.getAllByRole('button', { name: 'Install' })[0]!)
+
+    await waitFor(() =>
+      expect(window.roster.mcp.install).toHaveBeenCalledWith(
+        'github',
+        'npx @modelcontextprotocol/server-github',
+      ),
+    )
+    expect(useRoster.getState().mcpServers.map((s) => s.name)).toEqual(['gitlab'])
+  })
+})
+
+describe('WorkingDirectory picker', () => {
+  const AGENT = anAgent({ id: 'debugging', cwd: '/work/api', cwdLabel: '~/work/api' })
+
+  function openModal() {
+    useRoster.setState({
+      agents: [AGENT],
+      agentId: 'debugging',
+      runners: [aRunner()],
+      skills: [],
+      mcpServers: [],
+    })
+    useRoster.getState().openEdit()
+  }
+
+  test('a chosen directory updates the draft without touching the agent', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      runners: { models: vi.fn().mockResolvedValue([{ id: 'claude-opus-5', price: '' }]) },
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue('/work/other') },
+    })
+    openModal()
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.click(screen.getByRole('button', { name: 'Choose…' }))
+
+    await waitFor(() => expect(useRoster.getState().draft?.cwd).toBe('/work/other'))
+    expect(useRoster.getState().agents[0]?.cwd).toBe('/work/api')
+  })
+
+  test('cancelling the picker leaves the directory alone', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      runners: { models: vi.fn().mockResolvedValue([{ id: 'claude-opus-5', price: '' }]) },
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue(null) },
+    })
+    openModal()
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.click(screen.getByRole('button', { name: 'Choose…' }))
+
+    await waitFor(() => expect(useRoster.getState().draft?.cwd).toBe('/work/api'))
+  })
+
+  test('the picker opens at the directory currently set', async () => {
+    const user = userEvent.setup()
+    const chooseDirectory = vi.fn().mockResolvedValue(null)
+    installRosterApi({
+      runners: { models: vi.fn().mockResolvedValue([{ id: 'claude-opus-5', price: '' }]) },
+      dialog: { chooseDirectory },
+    })
+    openModal()
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.click(screen.getByRole('button', { name: 'Choose…' }))
+
+    expect(chooseDirectory).toHaveBeenCalledWith('/work/api')
+  })
+
+  test('Save writes the chosen directory back to agent.toml', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      runners: { models: vi.fn().mockResolvedValue([{ id: 'claude-opus-5', price: '' }]) },
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue('/work/other') },
+      agents: { update: vi.fn().mockResolvedValue(AGENT), list: vi.fn().mockResolvedValue([AGENT]) },
+    })
+    openModal()
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.click(screen.getByRole('button', { name: 'Choose…' }))
+    await waitFor(() => expect(useRoster.getState().draft?.cwd).toBe('/work/other'))
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ cwd: '/work/other' }),
+      ),
+    )
+  })
+})

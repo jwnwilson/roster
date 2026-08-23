@@ -23,6 +23,9 @@ export interface Draft {
   systemPrompt: string
   skills: Record<string, boolean>
   mcp: Record<string, boolean>
+  /** Absolute path, with a display label alongside it. */
+  cwd: string
+  cwdLabel: string
 }
 
 interface RosterState {
@@ -171,6 +174,8 @@ export const useRoster = create<RosterState>((set, get) => ({
         systemPrompt: agent.systemPrompt,
         skills: Object.fromEntries(agent.skills.map((name) => [name, true])),
         mcp: Object.fromEntries(agent.mcpServers.map((name) => [name, true])),
+        cwd: agent.cwd,
+        cwdLabel: agent.cwdLabel,
       },
     })
   },

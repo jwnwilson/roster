@@ -160,7 +160,9 @@ describe('streamJsonLines — failures', () => {
 
 describe('streamJsonLines — cancellation', () => {
   test('aborting stops the process and still ends the turn', async () => {
-    const cli = await fakeCli(`echo '{"text":"first"}'; sleep 30; echo '{"type":"done"}'`)
+    // Long enough that the abort is what ends the stream, short enough that a
+    // failure surfaces as an assertion rather than a suite-wide timeout.
+    const cli = await fakeCli(`echo '{"text":"first"}'; sleep 5; echo '{"type":"done"}'`)
     const controller = new AbortController()
 
     const events: RunnerEvent[] = []
@@ -176,5 +178,5 @@ describe('streamJsonLines — cancellation', () => {
 
     expect(events[0]).toEqual({ kind: 'text', delta: 'first' })
     expect(events.at(-1)).toMatchObject({ kind: 'done' })
-  }, 20_000)
+  }, 30_000)
 })

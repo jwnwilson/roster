@@ -296,7 +296,8 @@ Each was raised and decided explicitly:
    colour and vocabulary the handoff already defines.
 6. **Composer is a real input.** The prototype's static "Message X…" line becomes a
    working placeholder now that chat is live. The drop zone and skills line are
-   preserved as designed; the attachment chip is not yet wired to real files.
+   preserved as designed; the attachment chip is **not** wired to real files and is
+   the one affordance in the handoff that remains decorative.
 7. **`agent.toml` lives at `~/roster/agents/<id>/`, not `<cwd>/`.** Forced by the data
    model: the handoff's own roster has four agents sharing `~/work/api`, which one
    file per directory cannot represent. Each config names its own `cwd`, and the

@@ -57,10 +57,18 @@ export interface RosterApi {
     list(): Promise<Skill[]>
     read(path: string): Promise<string>
     write(path: string, contents: string): Promise<void>
+    create(name: string): Promise<Skill>
+    /** Opens the skill folder in the OS file manager. */
+    reveal(name: string): Promise<void>
   }
   mcp: {
     list(): Promise<McpServer[]>
     setEnabled(server: string, agentId: string, enabled: boolean): Promise<void>
+    install(name: string, command: string): Promise<McpServer[]>
+  }
+  dialog: {
+    /** Native directory picker; resolves null when cancelled. */
+    chooseDirectory(current?: string): Promise<string | null>
   }
 }
 
@@ -70,6 +78,7 @@ export interface AgentPatch {
   systemPrompt?: string
   skills?: string[]
   mcpServers?: string[]
+  cwd?: string
 }
 
 export interface NewAgentInput {
@@ -138,7 +147,12 @@ export const CHANNELS = {
   skillsList: 'skills:list',
   skillsRead: 'skills:read',
   skillsWrite: 'skills:write',
+  skillsCreate: 'skills:create',
+  skillsReveal: 'skills:reveal',
 
   mcpList: 'mcp:list',
   mcpSetEnabled: 'mcp:setEnabled',
+  mcpInstall: 'mcp:install',
+
+  dialogChooseDirectory: 'dialog:chooseDirectory',
 } as const

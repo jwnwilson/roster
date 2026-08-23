@@ -139,7 +139,11 @@ export class AgentStore {
       ...(patch.systemPrompt !== undefined ? { systemPrompt: patch.systemPrompt } : {}),
       ...(patch.skills !== undefined ? { skills: patch.skills } : {}),
       ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
+      ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
     }
+
+    // A new working directory must exist before the agent runs there.
+    if (patch.cwd !== undefined) await mkdir(next.cwd, { recursive: true })
 
     await mkdir(agentDir(id), { recursive: true })
     await writeFile(agentTomlPath(id), serializeAgentToml(next), 'utf8')

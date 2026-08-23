@@ -16,6 +16,17 @@ if (!('ResizeObserver' in globalThis)) {
   } as unknown as typeof ResizeObserver
 }
 
+// jsdom implements no scrolling at all, and assistant-ui's viewport calls
+// these while auto-scrolling. Left unstubbed they surface as unhandled
+// errors, which fail the run even when every test passes.
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function scrollIntoView(): void {}
+}
+
+if (!Element.prototype.scrollTo) {
+  Element.prototype.scrollTo = function scrollTo(): void {}
+}
+
+if (!Element.prototype.scrollBy) {
+  Element.prototype.scrollBy = function scrollBy(): void {}
 }

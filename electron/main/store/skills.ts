@@ -50,6 +50,40 @@ export class SkillStore {
     await writeFile(this.confine(path), contents, 'utf8')
   }
 
+  /**
+   * Creates a skill folder with a starter SKILL.md. The name is slugified
+   * because it is also a directory name, and a clashing name is suffixed
+   * rather than silently overwriting someone's work.
+   */
+  async create(name: string): Promise<Skill> {
+    const base = slugify(name)
+    const unique = await this.uniqueName(base)
+    const dir = join(skillsDir(), unique)
+
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'SKILL.md'), starterSkill(name.trim() || unique), 'utf8')
+    await this.load()
+
+    const created = this.skills.find((skill) => skill.name === unique)
+    if (!created) throw new Error(`created "${unique}" but could not read it back`)
+    return created
+  }
+
+  private async uniqueName(base: string): Promise<string> {
+    const taken = new Set(this.skills.map((skill) => skill.name))
+    if (!taken.has(base)) return base
+
+    for (let n = 2; n < 1_000; n += 1) {
+      if (!taken.has(`${base}-${n}`)) return `${base}-${n}`
+    }
+    throw new Error(`could not find a free name for "${base}"`)
+  }
+
+  /** Absolute path of a skill folder, for revealing it in the file manager. */
+  pathOf(name: string): string | null {
+    return this.skills.find((skill) => skill.name === name)?.path ?? null
+  }
+
   private confine(path: string): string {
     const root = resolve(skillsDir())
     const target = resolve(path)
@@ -93,6 +127,30 @@ export class SkillStore {
     this.listeners.clear()
     this.stopWatching()
   }
+}
+
+/** Skill names double as directory names, so they must be filesystem-safe. */
+export function slugify(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug === '' ? 'new-skill' : slug
+}
+
+function starterSkill(title: string): string {
+  return `# ${title}
+
+One line on what this skill is for.
+
+## When to use
+
+- The situation that should trigger it
+
+## Steps
+
+1. The first thing to do
+`
 }
 
 async function listFiles(dir: string, prefix = ''): Promise<string[]> {

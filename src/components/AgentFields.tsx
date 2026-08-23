@@ -111,10 +111,18 @@ export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
 
 interface WorkingDirectoryProps {
   value: string
-  onChoose?: () => void
+  /** Absolute path the picker opens at; falls back to the value shown. */
+  current?: string
+  onChange?: (path: string) => void
 }
 
-export function WorkingDirectory({ value, onChoose }: WorkingDirectoryProps) {
+export function WorkingDirectory({ value, current, onChange }: WorkingDirectoryProps) {
+  async function choose(): Promise<void> {
+    const picked = await window.roster.dialog.chooseDirectory(current ?? value)
+    // Cancelling leaves the directory untouched.
+    if (picked !== null) onChange?.(picked)
+  }
+
   return (
     <Field label="Working directory">
       <div className="flex gap-[9px]">
@@ -123,8 +131,8 @@ export function WorkingDirectory({ value, onChoose }: WorkingDirectoryProps) {
         </span>
         <button
           type="button"
-          onClick={onChoose}
-          disabled={!onChoose}
+          onClick={() => void choose()}
+          disabled={!onChange}
           className="cursor-pointer rounded-field border border-line-card bg-transparent px-[14px] py-[9px] font-ui text-lg text-ink-3 hover:border-line-hover-strong disabled:cursor-default disabled:opacity-50"
           data-hoverable
         >

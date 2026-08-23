@@ -111,9 +111,19 @@ function Installed() {
   )
 }
 
+/** The launch command Roster writes when installing from the registry. */
+function launchCommandFor(name: string): string {
+  return `npx @modelcontextprotocol/server-${name}`
+}
+
 function Registry() {
   const servers = useRoster((s) => s.mcpServers)
+  const setMcpServers = useRoster((s) => s.setMcpServers)
   const installed = new Set(servers.map((s) => s.name))
+
+  async function install(name: string): Promise<void> {
+    setMcpServers(await window.roster.mcp.install(name, launchCommandFor(name)))
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-[22px] py-[18px]">
@@ -139,6 +149,7 @@ function Registry() {
                   <button
                     type="button"
                     disabled={installed.has(entry.name)}
+                    onClick={() => void install(entry.name)}
                     className="ml-auto cursor-pointer rounded-chip border border-line-active bg-transparent px-[10px] py-[3px] font-ui text-base font-medium text-accent-text hover:border-accent disabled:cursor-default disabled:opacity-40"
                     data-hoverable
                   >

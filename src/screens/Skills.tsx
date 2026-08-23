@@ -23,6 +23,8 @@ export function Skills() {
   const [contents, setContents] = useState('')
   const [saved, setSaved] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const setSkills = useRoster((st) => st.setSkills)
 
   const rows = useMemo(() => buildTree(skills), [skills])
 
@@ -57,6 +59,29 @@ export function Skills() {
   const dirty = contents !== saved
   const openRow = rows.find((r) => r.path === openPath) ?? null
 
+  async function reveal(): Promise<void> {
+    // Reveals the open skill's folder, or the library itself when none is open.
+    const name = openRow?.skill.name ?? skills[0]?.name
+    if (name === undefined) return
+    await window.roster.skills.reveal(name)
+  }
+
+  async function createSkill(): Promise<void> {
+    setBusy(true)
+    setError(null)
+
+    try {
+      const created = await window.roster.skills.create('New skill')
+      setSkills(await window.roster.skills.list())
+      // Open it straight away, so the button leaves you somewhere useful.
+      setOpenPath(`${created.path}/SKILL.md`)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function save(): Promise<void> {
     if (!openPath) return
     try {
@@ -73,8 +98,10 @@ export function Skills() {
       <ScreenHeader title="Skills">
         <span className="font-mono text-md text-dim">~/roster/skills</span>
         <div className="ml-auto flex gap-[8px]">
-          <GhostButton onClick={() => {}}>Reveal in Finder</GhostButton>
-          <PrimaryButton onClick={() => {}}>New skill</PrimaryButton>
+          <GhostButton onClick={() => void reveal()}>Reveal in Finder</GhostButton>
+          <PrimaryButton onClick={() => void createSkill()}>
+            {busy ? 'Creating…' : 'New skill'}
+          </PrimaryButton>
         </div>
       </ScreenHeader>
 

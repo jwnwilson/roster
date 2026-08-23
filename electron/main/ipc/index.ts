@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import {
   CHANNELS,
   type AgentPatch,
@@ -156,10 +156,34 @@ export function registerIpc(): void {
     skillStore.write(path, contents),
   )
 
+  ipcMain.handle(CHANNELS.skillsCreate, (_e, name: string) => skillStore.create(name))
+  ipcMain.handle(CHANNELS.skillsReveal, (_e, name: string) => {
+    const path = skillStore.pathOf(name)
+    // Nothing to reveal is not an error; the folder may have just been deleted.
+    if (path !== null) shell.showItemInFolder(path)
+  })
+
   ipcMain.handle(CHANNELS.mcpList, () => mcpStore.findAll())
   ipcMain.handle(CHANNELS.mcpSetEnabled, (_e, server: string, agentId: string, enabled: boolean) =>
     mcpStore.setEnabled(server, agentId, enabled),
   )
+  ipcMain.handle(CHANNELS.mcpInstall, (_e, name: string, command: string) =>
+    mcpStore.install(name, command),
+  )
+
+  ipcMain.handle(CHANNELS.dialogChooseDirectory, async (e, current?: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const options: Electron.OpenDialogOptions = {
+      properties: ['openDirectory', 'createDirectory'],
+      ...(current !== undefined && current !== '' ? { defaultPath: current } : {}),
+    }
+
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
 }
 
 export function disposeStores(): void {

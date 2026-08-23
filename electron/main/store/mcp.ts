@@ -34,6 +34,15 @@ export class McpStore {
     return this.servers
   }
 
+  /** Adds a server from the registry. Installing an existing one is a no-op. */
+  async install(name: string, command: string): Promise<McpServer[]> {
+    if (this.servers.some((server) => server.name === name)) return this.servers
+
+    this.servers = [...this.servers, { name, command, enabledFor: [] }]
+    await this.persist()
+    return this.servers
+  }
+
   async setEnabled(server: string, agentId: string, enabled: boolean): Promise<void> {
     this.servers = this.servers.map((entry) => {
       if (entry.name !== server) return entry

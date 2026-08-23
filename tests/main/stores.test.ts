@@ -285,3 +285,132 @@ describe('seedIfEmpty', () => {
     expect(await seedIfEmpty(mcpConfigPath())).toBe(false)
   })
 })
+
+/* --------------------------------------------------- skills: create/reveal */
+
+describe('SkillStore.create', () => {
+  test('creates a folder with a starter SKILL.md', async () => {
+    const store = new SkillStore()
+    await store.load()
+
+    const created = await store.create('Repro Harness')
+
+    expect(created.name).toBe('repro-harness')
+    expect(created.files).toEqual(['SKILL.md'])
+    expect(await store.read(join(created.path, 'SKILL.md'))).toContain('# Repro Harness')
+  })
+
+  test('slugifies the name, since it is also a directory name', async () => {
+    const store = new SkillStore()
+    await store.load()
+
+    const created = await store.create('  My New Skill!  ')
+    expect(created.name).toBe('my-new-skill')
+  })
+
+  test('suffixes a clashing name rather than overwriting existing work', async () => {
+    const store = new SkillStore()
+    await store.load()
+
+    await store.create('duplicate')
+    const second = await store.create('duplicate')
+
+    expect(second.name).toBe('duplicate-2')
+  })
+
+  test('falls back to a usable name when the input has no usable characters', async () => {
+    const store = new SkillStore()
+    await store.load()
+
+    expect((await store.create('///')).name).toBe('new-skill')
+  })
+
+  test('the new skill appears in the library immediately', async () => {
+    const store = new SkillStore()
+    await store.load()
+    await store.create('fresh')
+
+    expect(store.findAll().map((s) => s.name)).toContain('fresh')
+  })
+})
+
+describe('SkillStore.pathOf', () => {
+  test('resolves a skill to its folder', async () => {
+    const store = new SkillStore()
+    await store.load()
+    const created = await store.create('locatable')
+
+    expect(store.pathOf('locatable')).toBe(created.path)
+  })
+
+  test('returns nothing for a skill that is not there', async () => {
+    const store = new SkillStore()
+    await store.load()
+
+    expect(store.pathOf('ghost')).toBeNull()
+  })
+})
+
+/* --------------------------------------------------------- mcp: install */
+
+describe('McpStore.install', () => {
+  test('adds a server, enabled for nobody until wired up', async () => {
+    const store = new McpStore()
+    await store.load()
+
+    const servers = await store.install('linear', 'npx server-linear')
+
+    expect(servers).toEqual([{ name: 'linear', command: 'npx server-linear', enabledFor: [] }])
+  })
+
+  test('persists to disk', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('linear', 'npx server-linear')
+
+    const reopened = new McpStore()
+    await reopened.load()
+    expect(reopened.findAll().map((s) => s.name)).toEqual(['linear'])
+  })
+
+  test('installing an existing server does not duplicate or clobber it', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('linear', 'npx server-linear')
+    await store.setEnabled('linear', 'debugging', true)
+
+    await store.install('linear', 'a-different-command')
+
+    expect(store.findAll()).toHaveLength(1)
+    // The wiring someone already did must survive.
+    expect(store.findAll()[0]?.enabledFor).toEqual(['debugging'])
+    expect(store.findAll()[0]?.command).toBe('npx server-linear')
+  })
+})
+
+/* ------------------------------------------- agents: working directory */
+
+describe('AgentStore.update — working directory', () => {
+  test('writes the new directory and creates it', async () => {
+    const { AgentStore } = await import('@main/store/agents')
+    const { mkdir: makeDir, writeFile: write } = await import('node:fs/promises')
+
+    await makeDir(join(home, 'agents', 'a'), { recursive: true })
+    await write(
+      join(home, 'agents', 'a', 'agent.toml'),
+      'name = "A"\nrunner = "claude"\nmodel = "m"\ncwd = "/tmp"\n',
+      'utf8',
+    )
+
+    const store = new AgentStore(() => new Map())
+    await store.load()
+
+    const target = join(home, 'brand-new-workspace')
+    await store.update('a', { cwd: target })
+
+    // Spawning into a missing cwd fails with a misleading ENOENT.
+    const { access } = await import('node:fs/promises')
+    await expect(access(target)).resolves.toBeUndefined()
+    expect(store.findById('a')?.cwd).toBe(target)
+  })
+})

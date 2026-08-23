@@ -28,6 +28,7 @@ export function NewAgent() {
   const setNewPrompt = useRoster((s) => s.setNewPrompt)
 
   const [name, setName] = useState('')
+  const [cwd, setCwd] = useState<string | null>(null)
   const [models, setModels] = useState<ModelInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -60,6 +61,8 @@ export function NewAgent() {
         skills: Object.entries(picked)
           .filter(([, on]) => on)
           .map(([skill]) => skill),
+        // Omitted means the default workspace, which the main process fills in.
+        ...(cwd !== null ? { cwd } : {}),
       })
       go('grid')
     } catch (cause) {
@@ -99,7 +102,11 @@ export function NewAgent() {
 
         <ModelPicker models={models} value={newModel} onChange={setNewModel} />
 
-        <WorkingDirectory value="~/roster/workspace" />
+        <WorkingDirectory
+          value={cwd ?? '~/roster/workspace'}
+          {...(cwd !== null ? { current: cwd } : {})}
+          onChange={setCwd}
+        />
 
         <ChipField
           label="Skills"

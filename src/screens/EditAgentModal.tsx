@@ -74,6 +74,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
         mcpServers: Object.entries(draft.mcp)
           .filter(([, on]) => on)
           .map(([name]) => name),
+        cwd: draft.cwd,
       })
       // Re-read rather than patching locally, so the UI reflects the file.
       setAgents(await window.roster.agents.list())
@@ -135,7 +136,11 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
             onChange={(model) => patchDraft({ model })}
           />
 
-          <WorkingDirectory value={agent.cwdLabel} />
+          <WorkingDirectory
+            value={draft.cwdLabel}
+            current={draft.cwd}
+            onChange={(cwd) => patchDraft({ cwd, cwdLabel: cwd })}
+          />
 
           <ChipField
             label="Skills"

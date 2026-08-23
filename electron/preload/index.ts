@@ -65,12 +65,19 @@ const api: RosterApi = {
     list: () => ipcRenderer.invoke(CHANNELS.skillsList),
     read: (path) => ipcRenderer.invoke(CHANNELS.skillsRead, path),
     write: (path, contents) => ipcRenderer.invoke(CHANNELS.skillsWrite, path, contents),
+    create: (name) => ipcRenderer.invoke(CHANNELS.skillsCreate, name),
+    reveal: (name) => ipcRenderer.invoke(CHANNELS.skillsReveal, name),
   },
 
   mcp: {
     list: () => ipcRenderer.invoke(CHANNELS.mcpList),
     setEnabled: (server, agentId, enabled) =>
       ipcRenderer.invoke(CHANNELS.mcpSetEnabled, server, agentId, enabled),
+    install: (name, command) => ipcRenderer.invoke(CHANNELS.mcpInstall, name, command),
+  },
+
+  dialog: {
+    chooseDirectory: (current) => ipcRenderer.invoke(CHANNELS.dialogChooseDirectory, current),
   },
 }
 
