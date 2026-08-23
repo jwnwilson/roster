@@ -33,13 +33,39 @@ export async function* streamJsonLines(
 
   // A launched .app does not inherit the user's shell PATH, so a CLI
   // installed under nvm or homebrew would otherwise fail to spawn.
+  //
+  // `detached` puts the CLI in its own process group. Agent CLIs spawn their
+  // own children (shells, language servers), and killing only the direct
+  // child leaves those holding stdout open — the stream never ends and the
+  // turn hangs. Cancelling kills the whole group instead.
   const child = spawn(spec.command, spec.args, {
     cwd: spec.cwd,
     env: { ...augmentedEnv(), ...spec.env },
     // stdin closed: Codex otherwise waits several seconds for piped input.
     stdio: ['ignore', 'pipe', 'pipe'],
-    signal: spec.signal,
+    detached: true,
   })
+
+  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
+
+  const onAbort = (): void => {
+    if (child.pid !== undefined && child.exitCode === null) {
+      try {
+        process.kill(-child.pid, 'SIGTERM')
+      } catch {
+        // Already gone, or the group vanished between the checks.
+        child.kill('SIGTERM')
+      }
+    }
+    // Destroying the stream is not enough: readline's async iterator ends on
+    // the interface closing, not on its input dying, so a cancelled turn
+    // would otherwise hang here forever.
+    lines.close()
+    child.stdout.destroy()
+  }
+
+  if (spec.signal.aborted) onAbort()
+  else spec.signal.addEventListener('abort', onAbort, { once: true })
 
   // stderr is captured so a failure can say why rather than just ending.
   let stderr = ''
@@ -56,8 +82,6 @@ export async function* streamJsonLines(
       resolve(-1)
     })
   })
-
-  const lines = createInterface({ input: child.stdout, crlfDelay: Infinity })
 
   let sawDone = false
   for await (const line of lines) {
@@ -78,7 +102,14 @@ export async function* streamJsonLines(
     }
   }
 
+  spec.signal.removeEventListener('abort', onAbort)
   const code = await exited
+
+  // A cancelled turn is not a failure; the user asked for it.
+  if (spec.signal.aborted) {
+    yield { kind: 'done', runnerSessionId: '' }
+    return
+  }
 
   if (code !== 0) {
     yield { kind: 'error', message: describeFailure(spec.command, code, spawnError, stderr) }
