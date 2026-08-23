@@ -10,6 +10,7 @@ import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
 import { createRosterMcpServer } from '../runners/handoffTool'
+import { describeActivity, THINKING } from './activity'
 
 /** Everything the manager emits so the renderer can follow a live turn. */
 export type SessionEvent =
@@ -20,6 +21,8 @@ export type SessionEvent =
   | { type: 'approval'; sessionId: string; approval: Approval }
   | { type: 'approval-resolved'; sessionId: string; approvalId: string }
   | { type: 'streaming'; sessionId: string; active: boolean }
+  /** What the agent is doing right now, for the streaming indicator. */
+  | { type: 'activity'; sessionId: string; text: string }
 
 /**
  * Streamed prose arrives token by token. Writing and broadcasting each one
@@ -167,6 +170,7 @@ export class SessionManager {
 
     this.setStatus(sessionId, 'running')
     this.emit({ type: 'streaming', sessionId, active: true })
+    this.emit({ type: 'activity', sessionId, text: THINKING })
 
     // Only the Claude runner supports in-process MCP, so only it can be
     // given the roster tools; other runners simply cannot hand off yet.
@@ -242,6 +246,11 @@ export class SessionManager {
           isError: false,
         })
         run.toolMessages.set(event.id, message)
+        this.emit({
+          type: 'activity',
+          sessionId,
+          text: describeActivity(event.name, event.args),
+        })
         return
       }
 
@@ -254,6 +263,10 @@ export class SessionManager {
         run.toolMessages.delete(event.id)
         this.sessions.update(updated)
         this.emit({ type: 'message-updated', sessionId, message: updated })
+        // Back to thinking unless another tool is still running.
+        if (run.toolMessages.size === 0) {
+          this.emit({ type: 'activity', sessionId, text: THINKING })
+        }
         return
       }
 

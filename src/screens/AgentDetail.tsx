@@ -43,6 +43,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const activeId = useRoster((s) => s.sess[agent.id])
   const messages = useRoster(useShallow((s) => (activeId ? (s.messages[activeId] ?? []) : [])))
   const streaming = useRoster((s) => (activeId ? (s.streaming[activeId] ?? false) : false))
+  const activity = useRoster((s) => (activeId ? s.activity[activeId] : undefined))
   const approvals = useRoster(
     useShallow((s) => (activeId ? (s.approvals[activeId] ?? []) : [])),
   )
@@ -145,7 +146,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               agentName={agent.name}
               messages={messages}
               isStreaming={streaming}
-              streamingText={`${agent.name} is working…`}
+              streamingText={activity ?? `${agent.name} is working…`}
               skillsLine={`skills: ${agent.skills.join(', ') || 'none'}`}
               onSend={(prompt) => void window.roster.sessions.send(active.id, prompt)}
               onCancel={() => void window.roster.sessions.cancel(active.id)}

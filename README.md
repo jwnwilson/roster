@@ -150,6 +150,9 @@ writing a normalizer and, ideally, recording a fixture from a real run.
 
 ## Known gaps
 
+- **Codex and custom runners do not stream.** Their replies arrive whole rather than
+  token by token. The activity indicator ("Thinking …", "Running `pytest` …") covers
+  the wait, but the prose itself still appears all at once.
 - The composer's attachment chip is decorative — attachments are not wired to real files.
 - **Handoff is Claude-only.** It works through an in-process MCP server, which only the
   Claude runner supports. Other runners can be handed *to*, but cannot hand off.

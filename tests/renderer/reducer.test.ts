@@ -287,3 +287,51 @@ describe('store actions', () => {
     expect(state().mcpTab).toBe('registry')
   })
 })
+
+describe('reduceSessionEvent — activity', () => {
+  test('records what the agent is doing', () => {
+    const next = reduceSessionEvent(state(), {
+      type: 'activity',
+      sessionId: 's1',
+      text: 'Running pytest …',
+    })
+
+    expect(next.activity?.['s1']).toBe('Running pytest …')
+  })
+
+  test('later activity replaces earlier', () => {
+    useRoster.setState({ activity: { s1: 'Thinking …' } })
+
+    const next = reduceSessionEvent(state(), {
+      type: 'activity',
+      sessionId: 's1',
+      text: 'Reading pool.ts …',
+    })
+
+    expect(next.activity?.['s1']).toBe('Reading pool.ts …')
+  })
+
+  test('a finished turn clears it, so no stale text lingers', () => {
+    useRoster.setState({ activity: { s1: 'Running pytest …' } })
+
+    const next = reduceSessionEvent(state(), {
+      type: 'streaming',
+      sessionId: 's1',
+      active: false,
+    })
+
+    expect(next.activity?.['s1']).toBeUndefined()
+  })
+
+  test('a finished turn leaves other sessions alone', () => {
+    useRoster.setState({ activity: { other: 'Reading …' } })
+
+    const next = reduceSessionEvent(state(), {
+      type: 'streaming',
+      sessionId: 's1',
+      active: false,
+    })
+
+    expect(next.activity?.['other']).toBe('Reading …')
+  })
+})

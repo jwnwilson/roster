@@ -40,6 +40,8 @@ interface RosterState {
   messages: Record<string, Message[]>
   /** sessionId -> a turn is in flight. */
   streaming: Record<string, boolean>
+  /** sessionId -> what the agent is doing, for the streaming indicator. */
+  activity: Record<string, string>
   /** sessionId -> approvals the runner is blocked on. */
   approvals: Record<string, Approval[]>
   usage: Record<string, Usage>
@@ -111,6 +113,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   sessions: {},
   messages: {},
   streaming: {},
+  activity: {},
   approvals: {},
   usage: {},
   transcripts: {},
@@ -275,7 +278,14 @@ export function reduceSessionEvent(
       return { sessions: withSessionStatus(state.sessions, event.sessionId, event.status) }
 
     case 'streaming':
-      return { streaming: { ...state.streaming, [event.sessionId]: event.active } }
+      return {
+        streaming: { ...state.streaming, [event.sessionId]: event.active },
+        // A finished turn leaves no activity to report.
+        ...(event.active ? {} : { activity: withoutKey(state.activity, event.sessionId) }),
+      }
+
+    case 'activity':
+      return { activity: { ...state.activity, [event.sessionId]: event.text } }
 
     case 'usage':
       return { usage: { ...state.usage, [event.sessionId]: event.usage } }
@@ -297,6 +307,11 @@ export function reduceSessionEvent(
       }
     }
   }
+}
+
+function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
+  const { [key]: _removed, ...rest } = record
+  return rest
 }
 
 /** Session status lives inside the per-agent lists, so update it in place. */

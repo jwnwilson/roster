@@ -279,6 +279,66 @@ describe('SessionManager.send — a plain turn', () => {
   })
 })
 
+describe('SessionManager — activity reporting', () => {
+  function activityTexts(): string[] {
+    return events
+      .filter((e): e is { type: string; text: string } => (e as { type: string }).type === 'activity')
+      .map((e) => e.text)
+  }
+
+  test('reports thinking as soon as the turn starts', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    // Matters most for a runner that does not stream: the pane would
+    // otherwise sit silent for the whole turn.
+    expect(activityTexts()[0]).toBe('Thinking …')
+  })
+
+  test('names the work while a tool runs', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([{ kind: 'tool', id: 't1', name: 'Bash', args: 'pytest -k leak' }]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    expect(activityTexts()).toContain('Running pytest -k leak …')
+  })
+
+  test('returns to thinking once the tool finishes', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'tool', id: 't1', name: 'Bash', args: 'ls' },
+        { kind: 'result', id: 't1', output: 'a', isError: false },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    expect(activityTexts()).toEqual(['Thinking …', 'Running ls …', 'Thinking …'])
+  })
+
+  test('stays on the running tool while another is still going', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'tool', id: 't1', name: 'Bash', args: 'one' },
+        { kind: 'tool', id: 't2', name: 'Bash', args: 'two' },
+        { kind: 'result', id: 't1', output: 'a', isError: false },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    // t2 is still running, so it must not claim to be thinking again.
+    expect(activityTexts().at(-1)).toBe('Running two …')
+  })
+})
+
 describe('SessionManager.send — tools', () => {
   test('opens a tool row on the call and fills it in on the result', async () => {
     runnerStub.run.mockImplementation(

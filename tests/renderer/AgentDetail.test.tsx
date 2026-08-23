@@ -220,3 +220,31 @@ describe('AgentDetail — usage readout', () => {
     expect(await screen.findByText('0% of context window')).toBeInTheDocument()
   })
 })
+
+describe('AgentDetail — activity indicator', () => {
+  test('shows what the agent is doing while a turn runs', async () => {
+    withSessions([aSession({ id: 's1' })])
+    useRoster.setState({ streaming: { s1: true }, activity: { s1: 'Running pytest -k leak …' } })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText('Running pytest -k leak …')).toBeInTheDocument()
+  })
+
+  test('falls back to a generic line before any activity is reported', async () => {
+    withSessions([aSession({ id: 's1' })])
+    useRoster.setState({ streaming: { s1: true } })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText('Debugging Agent is working…')).toBeInTheDocument()
+  })
+
+  test('shows nothing once the turn is over', async () => {
+    withSessions([aSession({ id: 's1' })])
+    useRoster.setState({ streaming: { s1: false } })
+    render(<AgentDetail />)
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument(),
+    )
+  })
+})

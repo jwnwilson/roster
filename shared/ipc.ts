@@ -116,6 +116,7 @@ export type SessionEventPayload =
   | { type: 'approval'; sessionId: string; approval: Approval }
   | { type: 'approval-resolved'; sessionId: string; approvalId: string }
   | { type: 'streaming'; sessionId: string; active: boolean }
+  | { type: 'activity'; sessionId: string; text: string }
 
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
