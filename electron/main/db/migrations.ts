@@ -1,0 +1,53 @@
+/**
+ * Ordered, append-only migrations. Never edit a shipped entry — add a new one.
+ * `user_version` tracks how many have run.
+ */
+export const MIGRATIONS: readonly string[] = [
+  // 1 — sessions, messages, approvals, usage
+  `
+  CREATE TABLE sessions (
+    id                TEXT PRIMARY KEY,
+    agent_id          TEXT NOT NULL,
+    title             TEXT NOT NULL,
+    origin            TEXT NOT NULL CHECK (origin IN ('you', 'agent')),
+    from_agent_id     TEXT,
+    from_session_id   TEXT,
+    from_label        TEXT,
+    status            TEXT NOT NULL,
+    runner_session_id TEXT,
+    created_at        INTEGER NOT NULL
+  );
+
+  CREATE INDEX ix_sessions_agent ON sessions (agent_id, created_at);
+
+  CREATE TABLE messages (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL CHECK (kind IN ('text', 'tool', 'spawn', 'handoff')),
+    payload    TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX ix_messages_session ON messages (session_id, created_at);
+
+  CREATE TABLE approvals (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+    tool_name  TEXT NOT NULL,
+    command    TEXT NOT NULL,
+    status     TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'denied')),
+    created_at INTEGER NOT NULL,
+    decided_at INTEGER
+  );
+
+  CREATE INDEX ix_approvals_pending ON approvals (session_id, status);
+
+  CREATE TABLE usage (
+    session_id    TEXT PRIMARY KEY REFERENCES sessions (id) ON DELETE CASCADE,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    cost_usd      REAL    NOT NULL DEFAULT 0,
+    context_used  REAL    NOT NULL DEFAULT 0
+  );
+  `,
+]
