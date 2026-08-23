@@ -361,17 +361,21 @@ function TreeRowView({
       >
         <span
           aria-hidden
-          className="h-[5px] w-[5px] flex-none"
+          className="flex h-[13px] w-[13px] flex-none items-center justify-center"
           style={{
-            borderRadius: row.isDir ? '1.5px' : '50%',
-            background: row.isDir
+            color: row.isDir
               ? 'var(--color-dim-2)'
               : isOpen
                 ? 'var(--color-accent)'
                 : 'var(--color-off)',
           }}
-        />
+        >
+          {row.isDir ? <FolderIcon /> : <FileIcon />}
+        </span>
         <span
+          // The icon costs a little label width, so a truncated name stays
+          // readable on hover rather than being lost.
+          title={row.name}
           className={`truncate text-lg ${row.isDir ? 'font-ui text-ink-3' : 'font-mono text-muted'} ${isOpen ? 'text-ink' : ''}`}
         >
           {row.name}
@@ -438,6 +442,40 @@ function TrashIcon() {
         strokeLinejoin="round"
       />
       <path d="M6.75 6.75v4.5M9.25 6.75v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/**
+ * Leading glyphs.
+ *
+ * The handoff distinguishes a folder from a file by the radius of a 5px dot
+ * — 1.5px against 50%. That reads as noise at that size, so shape does the
+ * work instead. Colour still carries state: an open file takes the accent.
+ */
+function FolderIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M1.75 12.75v-9.5a.75.75 0 0 1 .75-.75h3.1a.75.75 0 0 1 .6.3l1.05 1.4h6a.75.75 0 0 1 .75.75v7.8a.75.75 0 0 1-.75.75H2.5a.75.75 0 0 1-.75-.75Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function FileIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M9.25 1.75H4a.75.75 0 0 0-.75.75v11a.75.75 0 0 0 .75.75h8a.75.75 0 0 0 .75-.75V5.25Z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      <path d="M9.25 1.75v3.5h3.5" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
     </svg>
   )
 }

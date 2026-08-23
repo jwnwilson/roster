@@ -310,7 +310,13 @@ Each was raised and decided explicitly:
 10. **Handoff is Claude-only for now.** It is implemented as an in-process MCP server
     exposing `list_agents` and `open_session`, which only the Claude runner supports.
     Codex and custom runners can be handed *to*, but cannot yet hand off.
-11. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+11. **The skills tree uses folder and file icons, not the handoff's dots.** The
+    handoff separates them by the radius of a 5px dot — `1.5px` against `50%` —
+    which reads as noise at that size. Shape now carries the distinction and colour
+    still carries state, an open file taking the accent. Creation and deletion also
+    live on the rows as icons rather than in the header, since a header button
+    cannot express *which* skill to act on.
+12. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
     executes a script against the built app's real DOM and IPC. It exercises the actual
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.
