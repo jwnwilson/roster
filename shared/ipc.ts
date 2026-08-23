@@ -1,4 +1,15 @@
-import type { Agent, McpServer, Message, RunnerStatus, Session, Skill, Usage } from './types'
+import type {
+  Agent,
+  Approval,
+  McpServer,
+  Message,
+  ModelInfo,
+  RunnerStatus,
+  Session,
+  Skill,
+  Status,
+  Usage,
+} from './types'
 
 /**
  * The contract exposed on `window.roster`. The renderer may only reach the
@@ -12,6 +23,7 @@ export interface RosterApi {
   }
   runners: {
     list(): Promise<RunnerStatus[]>
+    models(runnerId: string): Promise<ModelInfo[]>
   }
   agents: {
     list(): Promise<Agent[]>
@@ -22,12 +34,20 @@ export interface RosterApi {
   }
   sessions: {
     listByAgent(agentId: string): Promise<Session[]>
+    create(agentId: string, title?: string): Promise<Session>
     messages(sessionId: string): Promise<Message[]>
     usage(sessionId: string): Promise<Usage | null>
+    send(sessionId: string, prompt: string): Promise<void>
+    cancel(sessionId: string): Promise<void>
+    respondToApproval(sessionId: string, approvalId: string, approved: boolean): Promise<void>
+    pendingApprovals(sessionId: string): Promise<Approval[]>
+    /** Live turn events: messages, status, usage, approvals. */
+    onEvent(listener: (event: SessionEventPayload) => void): () => void
   }
   skills: {
     list(): Promise<Skill[]>
     read(path: string): Promise<string>
+    write(path: string, contents: string): Promise<void>
   }
   mcp: {
     list(): Promise<McpServer[]>
@@ -43,21 +63,44 @@ export interface AgentPatch {
   mcpServers?: string[]
 }
 
+/** Mirrors SessionManager's event union across the IPC boundary. */
+export type SessionEventPayload =
+  | { type: 'message'; sessionId: string; message: Message }
+  | { type: 'message-updated'; sessionId: string; message: Message }
+  | { type: 'status'; sessionId: string; status: Status }
+  | { type: 'usage'; sessionId: string; usage: Usage }
+  | { type: 'approval'; sessionId: string; approval: Approval }
+  | { type: 'approval-resolved'; sessionId: string; approvalId: string }
+  | { type: 'streaming'; sessionId: string; active: boolean }
+
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
   windowMinimize: 'window:minimize',
   windowMaximize: 'window:maximize',
   windowClose: 'window:close',
+
   runnersList: 'runners:list',
+  runnersModels: 'runners:models',
+
   agentsList: 'agents:list',
   agentsGet: 'agents:get',
   agentsUpdate: 'agents:update',
   agentsChanged: 'agents:changed',
+
   sessionsListByAgent: 'sessions:listByAgent',
+  sessionsCreate: 'sessions:create',
   sessionsMessages: 'sessions:messages',
   sessionsUsage: 'sessions:usage',
+  sessionsSend: 'sessions:send',
+  sessionsCancel: 'sessions:cancel',
+  sessionsRespondToApproval: 'sessions:respondToApproval',
+  sessionsPendingApprovals: 'sessions:pendingApprovals',
+  sessionsEvent: 'sessions:event',
+
   skillsList: 'skills:list',
   skillsRead: 'skills:read',
+  skillsWrite: 'skills:write',
+
   mcpList: 'mcp:list',
   mcpSetEnabled: 'mcp:setEnabled',
 } as const

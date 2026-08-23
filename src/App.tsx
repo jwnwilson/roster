@@ -1,11 +1,13 @@
 import { useEffect } from 'react'
 import { Sidebar } from './components/Sidebar'
+import { AgentDetail } from './screens/AgentDetail'
 import { AgentsGrid } from './screens/AgentsGrid'
 import { useRoster } from './state/store'
 
 export function App() {
   const hydrate = useRoster((s) => s.hydrate)
   const setAgents = useRoster((s) => s.setAgents)
+  const applySessionEvent = useRoster((s) => s.applySessionEvent)
   const loaded = useRoster((s) => s.loaded)
   const screen = useRoster((s) => s.screen)
 
@@ -24,13 +26,16 @@ export function App() {
 
     void load()
     // agent.toml can change outside Roster; reflect it without a restart.
-    const unsubscribe = window.roster.agents.onChanged(setAgents)
+    const stopAgents = window.roster.agents.onChanged(setAgents)
+    // Live turn events: streamed text, tool calls, approvals, usage.
+    const stopSessions = window.roster.sessions.onEvent(applySessionEvent)
 
     return () => {
       cancelled = true
-      unsubscribe()
+      stopAgents()
+      stopSessions()
     }
-  }, [hydrate, setAgents])
+  }, [hydrate, setAgents, applySessionEvent])
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-app font-ui text-xl text-ink">
@@ -51,7 +56,7 @@ function Screen({ screen }: ScreenProps) {
     case 'grid':
       return <AgentsGrid />
     case 'agent':
-      return <Pending title="Agent detail" />
+      return <AgentDetail />
     case 'skills':
       return <Pending title="Skills" />
     case 'mcp':

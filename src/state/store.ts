@@ -1,5 +1,16 @@
 import { create } from 'zustand'
-import type { Agent, McpServer, RunnerStatus, Session, Skill } from '@shared/types'
+import type {
+  Agent,
+  Approval,
+  McpServer,
+  Message,
+  RunnerStatus,
+  Session,
+  Skill,
+  Status,
+  Usage,
+} from '@shared/types'
+import type { SessionEventPayload } from '@shared/ipc'
 
 export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new'
 export type PaneMode = 'chat' | 'terminal'
@@ -21,6 +32,13 @@ interface RosterState {
   skills: Skill[]
   mcpServers: McpServer[]
   sessions: Record<string, Session[]>
+  /** sessionId -> transcript, loaded on demand. */
+  messages: Record<string, Message[]>
+  /** sessionId -> a turn is in flight. */
+  streaming: Record<string, boolean>
+  /** sessionId -> approvals the runner is blocked on. */
+  approvals: Record<string, Approval[]>
+  usage: Record<string, Usage>
   loaded: boolean
 
   /* ---- navigation --------------------------------------------------- */
@@ -48,6 +66,10 @@ interface RosterState {
   hydrate(data: Pick<RosterState, 'agents' | 'runners' | 'skills' | 'mcpServers'>): void
   setAgents(agents: Agent[]): void
   setSessions(agentId: string, sessions: Session[]): void
+  setMessages(sessionId: string, messages: Message[]): void
+  setUsage(sessionId: string, usage: Usage): void
+  /** Applies one live event from the main process. */
+  applySessionEvent(event: SessionEventPayload): void
 
   go(screen: Screen): void
   openAgent(agentId: string, sessionId?: string): void
@@ -77,6 +99,10 @@ export const useRoster = create<RosterState>((set, get) => ({
   skills: [],
   mcpServers: [],
   sessions: {},
+  messages: {},
+  streaming: {},
+  approvals: {},
+  usage: {},
   loaded: false,
 
   screen: 'grid',
@@ -100,6 +126,13 @@ export const useRoster = create<RosterState>((set, get) => ({
   setAgents: (agents) => set({ agents }),
   setSessions: (agentId, sessions) =>
     set((s) => ({ sessions: { ...s.sessions, [agentId]: sessions } })),
+
+  setMessages: (sessionId, messages) =>
+    set((s) => ({ messages: { ...s.messages, [sessionId]: messages } })),
+
+  setUsage: (sessionId, usage) => set((s) => ({ usage: { ...s.usage, [sessionId]: usage } })),
+
+  applySessionEvent: (event) => set((s) => reduceSessionEvent(s, event)),
 
   go: (screen) => set({ screen }),
 
@@ -187,4 +220,78 @@ export function selectGridAgents(state: RosterState): Agent[] {
 
 export function selectCurrentAgent(state: RosterState): Agent | null {
   return state.agents.find((a) => a.id === state.agentId) ?? null
+}
+
+/* ---------------------------------------------------------------------
+ * Live turn events. Kept as a pure reducer so it can be tested without
+ * React or IPC.
+ * ------------------------------------------------------------------ */
+
+export function reduceSessionEvent(
+  state: RosterState,
+  event: SessionEventPayload,
+): Partial<RosterState> {
+  switch (event.type) {
+    case 'message': {
+      const existing = state.messages[event.sessionId] ?? []
+      return {
+        messages: { ...state.messages, [event.sessionId]: [...existing, event.message] },
+      }
+    }
+
+    case 'message-updated': {
+      const existing = state.messages[event.sessionId] ?? []
+      const index = existing.findIndex((m) => m.id === event.message.id)
+      // An update for a message we never saw is appended rather than dropped.
+      const next =
+        index === -1
+          ? [...existing, event.message]
+          : existing.map((m) => (m.id === event.message.id ? event.message : m))
+
+      return { messages: { ...state.messages, [event.sessionId]: next } }
+    }
+
+    case 'status':
+      return { sessions: withSessionStatus(state.sessions, event.sessionId, event.status) }
+
+    case 'streaming':
+      return { streaming: { ...state.streaming, [event.sessionId]: event.active } }
+
+    case 'usage':
+      return { usage: { ...state.usage, [event.sessionId]: event.usage } }
+
+    case 'approval': {
+      const existing = state.approvals[event.sessionId] ?? []
+      return {
+        approvals: { ...state.approvals, [event.sessionId]: [...existing, event.approval] },
+      }
+    }
+
+    case 'approval-resolved': {
+      const existing = state.approvals[event.sessionId] ?? []
+      return {
+        approvals: {
+          ...state.approvals,
+          [event.sessionId]: existing.filter((a) => a.id !== event.approvalId),
+        },
+      }
+    }
+  }
+}
+
+/** Session status lives inside the per-agent lists, so update it in place. */
+function withSessionStatus(
+  sessions: Record<string, Session[]>,
+  sessionId: string,
+  status: Status,
+): Record<string, Session[]> {
+  const next: Record<string, Session[]> = {}
+
+  for (const [agentId, list] of Object.entries(sessions)) {
+    next[agentId] = list.some((s) => s.id === sessionId)
+      ? list.map((s) => (s.id === sessionId ? { ...s, status } : s))
+      : list
+  }
+
+  return next
 }

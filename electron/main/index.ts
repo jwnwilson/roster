@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, shell } from 'electron'
 import { disposeStores, initStores, registerIpc } from './ipc'
@@ -62,17 +62,37 @@ function createWindow(): BrowserWindow {
 }
 
 /**
- * Dev-only: ROSTER_SCREENSHOT=<path> renders the window to a PNG and exits.
- * Used for visual checks against the design reference.
+ * Dev-only harness for driving the app without a human.
+ *
+ * ROSTER_SCRIPT=<file>     runs that JS in the renderer and awaits its result
+ * ROSTER_SCREENSHOT=<path> writes the window to a PNG
+ *
+ * Together these give end-to-end checks of real flows — navigate, send a
+ * message, wait for the reply — against the built app.
  */
 async function captureIfRequested(win: BrowserWindow): Promise<void> {
+  const script = process.env['ROSTER_SCRIPT']
   const target = process.env['ROSTER_SCREENSHOT']
-  if (!isDev || !target) return
+  if (!isDev || (!target && !script)) return
 
-  // Give webfonts a beat to land before capturing.
+  // Give webfonts and the initial hydrate a beat to land.
   await new Promise((resolve) => setTimeout(resolve, 1_500))
-  const image = await win.webContents.capturePage()
-  await writeFile(target, image.toPNG())
+
+  if (script) {
+    try {
+      const source = await readFile(script, 'utf8')
+      const result: unknown = await win.webContents.executeJavaScript(source, true)
+      process.stdout.write(`[script] ${JSON.stringify(result)}\n`)
+    } catch (cause) {
+      process.stdout.write(`[script-error] ${cause instanceof Error ? cause.message : String(cause)}\n`)
+    }
+  }
+
+  if (target) {
+    const image = await win.webContents.capturePage()
+    await writeFile(target, image.toPNG())
+  }
+
   app.quit()
 }
 

@@ -61,6 +61,11 @@ export class ClaudeRunner implements Runner {
         model: options.model,
         abortController: toController(options.signal),
         canUseTool: (toolName, input) => this.requestApproval(toolName, input),
+        // Roster owns permissions, not the user's global Claude Code config.
+        // Without this the CLI inherits their allowlist and canUseTool is
+        // never called, so the approval banner silently never fires.
+        settingSources: [],
+        permissionMode: 'default',
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),

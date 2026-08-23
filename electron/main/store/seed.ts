@@ -1,24 +1,25 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { serializeAgentToml, type AgentConfig } from './agentToml'
-import { agentDir, agentTomlPath, agentsDir, skillsDir } from './paths'
+import { agentDir, agentTomlPath, agentsDir, rosterHome, skillsDir } from './paths'
 
 /**
  * First-run content. Mirrors the roster in the design handoff so a fresh
  * install has something to look at; every file is a real, editable
  * agent.toml, not a hardcoded demo array.
  *
- * Working directories point at the user's home rather than the handoff's
- * `~/work/api`, which does not exist on a new machine.
+ * Working directories point at `~/roster/workspace` rather than the handoff's
+ * `~/work/api`, which does not exist on a new machine. Deliberately not the
+ * user's home: an approved write would otherwise land directly in it.
  */
-function seedAgents(home: string): AgentConfig[] {
+function seedAgents(workspace: string): AgentConfig[] {
   return [
     {
       id: 'architect',
       name: 'Architect Agent',
       runner: 'claude',
       model: 'claude-opus-5',
-      cwd: home,
+      cwd: workspace,
       systemPrompt:
         'You design before you build. Compare at least two shapes, state the trade-off in one sentence each, and record the decision as an ADR in docs/adr. Hand implementation work to other agents rather than editing source yourself.',
       skills: ['adr-writer', 'estimate-breakdown'],
@@ -29,7 +30,7 @@ function seedAgents(home: string): AgentConfig[] {
       name: 'Debugging Agent',
       runner: 'claude',
       model: 'claude-opus-5',
-      cwd: home,
+      cwd: workspace,
       systemPrompt:
         'Reproduce before you fix. Write the failing test first, commit it alone, then patch. Never force-push without asking. Keep changes scoped to the files named in the request.',
       skills: ['repro-harness', 'stack-triage'],
@@ -40,7 +41,7 @@ function seedAgents(home: string): AgentConfig[] {
       name: 'Review Agent',
       runner: 'claude',
       model: 'claude-sonnet-5',
-      cwd: home,
+      cwd: workspace,
       systemPrompt:
         'Review for correctness first, style last. Separate blocking notes from nits and quote the line you are reacting to. If the change lacks a test, say so before anything else.',
       skills: ['pr-review', 'stack-triage'],
@@ -51,7 +52,7 @@ function seedAgents(home: string): AgentConfig[] {
       name: 'Estimation Agent',
       runner: 'claude',
       model: 'claude-haiku-4-5',
-      cwd: home,
+      cwd: workspace,
       systemPrompt:
         'Break work down until every task is a day or less. Flag unowned tasks and cross-team dependencies explicitly. Give ranges, not single numbers.',
       skills: ['estimate-breakdown'],
@@ -126,12 +127,15 @@ const SEED_MCP = {
 }
 
 /** Seeds only when the agents directory is empty; never overwrites user files. */
-export async function seedIfEmpty(home: string, mcpPath: string): Promise<boolean> {
+export async function seedIfEmpty(mcpPath: string): Promise<boolean> {
   await mkdir(agentsDir(), { recursive: true })
   const existing = await readdir(agentsDir())
   if (existing.length > 0) return false
 
-  for (const config of seedAgents(home)) {
+  const workspace = join(rosterHome(), 'workspace')
+  await mkdir(workspace, { recursive: true })
+
+  for (const config of seedAgents(workspace)) {
     await mkdir(agentDir(config.id), { recursive: true })
     await writeFile(agentTomlPath(config.id), serializeAgentToml(config), 'utf8')
   }
