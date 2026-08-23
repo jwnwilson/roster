@@ -115,6 +115,8 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsListByAgent, (_e, agentId: string) =>
     requireSessions().listByAgent(agentId),
   )
+  ipcMain.handle(CHANNELS.sessionsRecentByAgent, () => requireSessions().recentByAgent())
+  ipcMain.handle(CHANNELS.sessionsListAll, () => requireSessions().listAll())
   ipcMain.handle(CHANNELS.sessionsCreate, (_e, agentId: string, title?: string) =>
     requireManager().create(agentId, title),
   )

@@ -8,6 +8,7 @@ import type {
   Session,
   Skill,
   Status,
+  TranscriptLine,
   Usage,
 } from './types'
 
@@ -35,6 +36,10 @@ export interface RosterApi {
   }
   sessions: {
     listByAgent(agentId: string): Promise<Session[]>
+    /** Every session grouped by agent, for the grid's chip rows. */
+    listAll(): Promise<Record<string, Session[]>>
+    /** Last few lines of each agent's most recent session, for the grid cards. */
+    recentByAgent(): Promise<Record<string, TranscriptLine[]>>
     create(agentId: string, title?: string): Promise<Session>
     messages(sessionId: string): Promise<Message[]>
     usage(sessionId: string): Promise<Usage | null>
@@ -128,6 +133,8 @@ export const CHANNELS = {
   agentsChanged: 'agents:changed',
 
   sessionsListByAgent: 'sessions:listByAgent',
+  sessionsRecentByAgent: 'sessions:recentByAgent',
+  sessionsListAll: 'sessions:listAll',
   sessionsCreate: 'sessions:create',
   sessionsMessages: 'sessions:messages',
   sessionsUsage: 'sessions:usage',

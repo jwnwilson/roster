@@ -174,3 +174,81 @@ describe('AgentsGrid — sessions', () => {
     expect(screen.getAllByText('no sessions yet').length).toBe(3)
   })
 })
+
+describe('AgentsGrid — transcript preview', () => {
+  const LINES = [
+    { who: 'you', role: 'user' as const, text: 'Find the leak.' },
+    { who: 'Debugging Agent', role: 'agent' as const, text: 'Reproduced it.' },
+    { who: 'tool', role: 'tool' as const, text: 'run_command pytest -k leak' },
+    { who: 'Debugging Agent', role: 'agent' as const, text: 'Patch ready.' },
+  ]
+
+  test('shows the recent conversation, not the system prompt', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', systemPrompt: 'Reproduce before you fix.' })],
+      transcripts: { debugging: LINES },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('Find the leak.')).toBeInTheDocument()
+    expect(screen.getByText('Patch ready.')).toBeInTheDocument()
+    expect(screen.queryByText('Reproduce before you fix.')).not.toBeInTheDocument()
+  })
+
+  test('labels each line with who said it', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging' })],
+      transcripts: { debugging: LINES },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('you')).toBeInTheDocument()
+    expect(screen.getByText('tool')).toBeInTheDocument()
+  })
+
+  test('fades older lines, leaving the newest fully opaque', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging' })],
+      transcripts: { debugging: LINES },
+    })
+    render(<AgentsGrid />)
+
+    const newest = screen.getByText('Patch ready.').closest('div')
+    const oldest = screen.getByText('Find the leak.').closest('div')
+
+    expect(newest).toHaveStyle({ opacity: '1' })
+    expect(oldest).toHaveStyle({ opacity: '0.52' })
+  })
+
+  test('says so when an agent has not spoken yet', () => {
+    useRoster.setState({ agents: [anAgent({ id: 'debugging' })], transcripts: {} })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('No messages yet.')).toBeInTheDocument()
+  })
+
+  test('an unusable runner still shows its reason instead of a transcript', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', status: 'error', statusDetail: 'not signed in' })],
+      transcripts: { debugging: LINES },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('not signed in')).toBeInTheDocument()
+    expect(screen.queryByText('Find the leak.')).not.toBeInTheDocument()
+  })
+
+  test('each agent shows only its own conversation', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging' }), anAgent({ id: 'review', name: 'Review Agent' })],
+      transcripts: {
+        debugging: [{ who: 'you', role: 'user' as const, text: 'debug talk' }],
+        review: [{ who: 'you', role: 'user' as const, text: 'review talk' }],
+      },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('debug talk')).toBeInTheDocument()
+    expect(screen.getByText('review talk')).toBeInTheDocument()
+  })
+})

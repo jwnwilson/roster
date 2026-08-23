@@ -8,6 +8,7 @@ import type {
   Session,
   Skill,
   Status,
+  TranscriptLine,
   Usage,
 } from '@shared/types'
 import type { SessionEventPayload } from '@shared/ipc'
@@ -42,6 +43,8 @@ interface RosterState {
   /** sessionId -> approvals the runner is blocked on. */
   approvals: Record<string, Approval[]>
   usage: Record<string, Usage>
+  /** agentId -> the last few lines of its most recent session. */
+  transcripts: Record<string, TranscriptLine[]>
   loaded: boolean
 
   /* ---- navigation --------------------------------------------------- */
@@ -71,6 +74,8 @@ interface RosterState {
   setSessions(agentId: string, sessions: Session[]): void
   setMessages(sessionId: string, messages: Message[]): void
   setUsage(sessionId: string, usage: Usage): void
+  setTranscripts(transcripts: Record<string, TranscriptLine[]>): void
+  setAllSessions(sessions: Record<string, Session[]>): void
   setMcpServers(servers: McpServer[]): void
   setSkills(skills: Skill[]): void
   /** Applies one live event from the main process. */
@@ -108,6 +113,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   streaming: {},
   approvals: {},
   usage: {},
+  transcripts: {},
   loaded: false,
 
   screen: 'grid',
@@ -136,6 +142,8 @@ export const useRoster = create<RosterState>((set, get) => ({
     set((s) => ({ messages: { ...s.messages, [sessionId]: messages } })),
 
   setUsage: (sessionId, usage) => set((s) => ({ usage: { ...s.usage, [sessionId]: usage } })),
+  setTranscripts: (transcripts) => set({ transcripts }),
+  setAllSessions: (sessions) => set({ sessions }),
   setMcpServers: (mcpServers) => set({ mcpServers }),
   setSkills: (skills) => set({ skills }),
 
@@ -209,6 +217,9 @@ export const useRoster = create<RosterState>((set, get) => ({
 
 /** Shared empty array so "no sessions" is a stable reference. */
 export const NO_SESSIONS: readonly Session[] = Object.freeze([])
+
+/** Likewise for an agent that has not said anything yet. */
+export const NO_LINES: readonly TranscriptLine[] = Object.freeze([])
 
 export function selectSidebarAgents(state: RosterState): Agent[] {
   const q = state.query.trim().toLowerCase()

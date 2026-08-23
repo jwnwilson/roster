@@ -194,3 +194,14 @@ export interface RegistryEntry {
   author: string
   category: string
 }
+
+/* -------------------------------------------------------------------------
+ * Grid card previews — the last few lines of an agent's most recent session.
+ * ---------------------------------------------------------------------- */
+export interface TranscriptLine {
+  /** Display label: "you", the agent's name, or "tool". */
+  who: string
+  /** Which colour the label takes, per the handoff's role colouring. */
+  role: 'user' | 'agent' | 'tool'
+  text: string
+}

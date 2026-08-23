@@ -1,7 +1,7 @@
-import type { Agent, Session } from '@shared/types'
-import { statusColor, statusLabel } from '@shared/status'
+import type { Agent, Session, TranscriptLine } from '@shared/types'
+import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
-import { useRoster, selectGridAgents, NO_SESSIONS } from '@/state/store'
+import { useRoster, selectGridAgents, NO_LINES, NO_SESSIONS } from '@/state/store'
 import { PrimaryButton, ScreenHeader, StatusDot, TextInput } from '@/components/primitives'
 
 export function AgentsGrid() {
@@ -98,7 +98,7 @@ function AgentCard({ agent }: AgentCardProps) {
         {agent.status === 'error' ? (
           <p className="m-0 text-md leading-[1.45] text-error">{agent.statusDetail}</p>
         ) : (
-          <p className="m-0 text-md leading-[1.45] text-ink-4">{firstLine(agent.systemPrompt)}</p>
+          <Transcript agentId={agent.id} />
         )}
       </div>
 
@@ -108,6 +108,56 @@ function AgentCard({ agent }: AgentCardProps) {
         <span className="flex-none">$0.00</span>
       </div>
     </button>
+  )
+}
+
+/**
+ * The last few lines of this agent's most recent session, oldest at the top.
+ * Older lines fade, so the newest reads first at a glance.
+ */
+function Transcript({ agentId }: { agentId: string }) {
+  const lines = useRoster(useShallow((s) => s.transcripts[agentId] ?? NO_LINES))
+
+  if (lines.length === 0) {
+    return <p className="m-0 text-md leading-[1.45] text-faint-2">No messages yet.</p>
+  }
+
+  return (
+    <>
+      {lines.map((line, index) => (
+        <TranscriptRow
+          key={`${line.who}:${index}`}
+          line={line}
+          opacity={transcriptOpacity(index, lines.length)}
+        />
+      ))}
+    </>
+  )
+}
+
+/** Roles are coloured per the handoff: you grey, agent purple, tool light purple. */
+const ROLE_COLOUR: Record<TranscriptLine['role'], string> = {
+  user: 'var(--color-muted-2)',
+  agent: 'var(--color-accent)',
+  tool: 'var(--color-accent-light)',
+}
+
+interface TranscriptRowProps {
+  line: TranscriptLine
+  opacity: number
+}
+
+function TranscriptRow({ line, opacity }: TranscriptRowProps) {
+  return (
+    <div className="flex items-baseline gap-[8px]" style={{ opacity }}>
+      <span
+        className="w-[52px] flex-none truncate font-mono text-2xs uppercase tracking-[0.04em]"
+        style={{ color: ROLE_COLOUR[line.role] }}
+      >
+        {line.who}
+      </span>
+      <span className="line-clamp-2 text-md leading-[1.45] text-ink-4">{line.text}</span>
+    </div>
   )
 }
 
@@ -174,9 +224,4 @@ function StatusBar() {
       </span>
     </footer>
   )
-}
-
-function firstLine(prompt: string): string {
-  const line = prompt.split('\n')[0]?.trim() ?? ''
-  return line === '' ? 'No system prompt set.' : line
 }
