@@ -49,7 +49,10 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
     },
   }
 
-  const merged = mergeDeep(api, overrides) as RosterApi
+  const merged = mergeDeep(
+    api as unknown as Record<string, unknown>,
+    overrides as Record<string, unknown>,
+  ) as RosterApi
   ;(window as unknown as { roster: RosterApi }).roster = merged
   return merged
 }

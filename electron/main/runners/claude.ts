@@ -17,6 +17,9 @@ const MODELS: ModelInfo[] = [
   { id: 'claude-haiku-4-5', price: '$1 / $5' },
 ]
 
+/** Roster's own MCP tools, namespaced as the SDK exposes them. */
+const ROSTER_TOOLS = ['mcp__roster__list_agents', 'mcp__roster__open_session']
+
 interface PendingApproval {
   resolve(decision: ApprovalDecision): void
 }
@@ -61,11 +64,14 @@ export class ClaudeRunner implements Runner {
         model: options.model,
         abortController: toController(options.signal),
         canUseTool: (toolName, input) => this.requestApproval(toolName, input),
-        // Roster owns permissions, not the user's global Claude Code config.
-        // Without this the CLI inherits their allowlist and canUseTool is
-        // never called, so the approval banner silently never fires.
+        // Roster owns permissions, not the user's global Claude Code config,
+        // so its own allowlist is the one that applies.
         settingSources: [],
         permissionMode: 'default',
+        // Roster's own tools are affordances of the app, not actions on the
+        // user's machine — asking permission to look at the roster or open a
+        // session would be friction with nothing behind it.
+        allowedTools: ROSTER_TOOLS,
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
