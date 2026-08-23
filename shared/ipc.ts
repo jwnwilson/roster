@@ -44,6 +44,14 @@ export interface RosterApi {
     /** Live turn events: messages, status, usage, approvals. */
     onEvent(listener: (event: SessionEventPayload) => void): () => void
   }
+  pty: {
+    open(sessionId: string, cwd: string, size: PtySize): Promise<PtyInfo>
+    write(sessionId: string, data: string): void
+    resize(sessionId: string, size: PtySize): void
+    close(sessionId: string): void
+    onData(listener: (payload: { sessionId: string; data: string }) => void): () => void
+    onExit(listener: (payload: { sessionId: string; code: number }) => void): () => void
+  }
   skills: {
     list(): Promise<Skill[]>
     read(path: string): Promise<string>
@@ -61,6 +69,16 @@ export interface AgentPatch {
   systemPrompt?: string
   skills?: string[]
   mcpServers?: string[]
+}
+
+export interface PtySize {
+  cols: number
+  rows: number
+}
+
+export interface PtyInfo {
+  shell: string
+  cwd: string
 }
 
 /** Mirrors SessionManager's event union across the IPC boundary. */
@@ -96,6 +114,13 @@ export const CHANNELS = {
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsEvent: 'sessions:event',
+
+  ptyOpen: 'pty:open',
+  ptyWrite: 'pty:write',
+  ptyResize: 'pty:resize',
+  ptyClose: 'pty:close',
+  ptyData: 'pty:data',
+  ptyExit: 'pty:exit',
 
   skillsList: 'skills:list',
   skillsRead: 'skills:read',

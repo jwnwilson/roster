@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { CHANNELS, type AgentPatch, type RosterApi, type SessionEventPayload } from '../../shared/ipc'
+import {
+  CHANNELS,
+  type AgentPatch,
+  type PtySize,
+  type RosterApi,
+  type SessionEventPayload,
+} from '../../shared/ipc'
 import type { Agent } from '../../shared/types'
 
 /** Subscribes to a broadcast channel and returns its unsubscribe. */
@@ -42,6 +48,16 @@ const api: RosterApi = {
       ipcRenderer.invoke(CHANNELS.sessionsPendingApprovals, sessionId),
     onEvent: (listener: (event: SessionEventPayload) => void) =>
       subscribe(CHANNELS.sessionsEvent, listener),
+  },
+
+  pty: {
+    open: (sessionId, cwd, size: PtySize) =>
+      ipcRenderer.invoke(CHANNELS.ptyOpen, sessionId, cwd, size),
+    write: (sessionId, data) => ipcRenderer.send(CHANNELS.ptyWrite, sessionId, data),
+    resize: (sessionId, size: PtySize) => ipcRenderer.send(CHANNELS.ptyResize, sessionId, size),
+    close: (sessionId) => ipcRenderer.send(CHANNELS.ptyClose, sessionId),
+    onData: (listener) => subscribe(CHANNELS.ptyData, listener),
+    onExit: (listener) => subscribe(CHANNELS.ptyExit, listener),
   },
 
   skills: {

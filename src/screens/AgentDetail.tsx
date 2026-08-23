@@ -4,6 +4,7 @@ import type { Agent, Approval, Session } from '@shared/types'
 import { statusColor } from '@shared/status'
 import { ChatPane } from '@/chat/ChatPane'
 import { SectionLabel, Segmented, StatusDot } from '@/components/primitives'
+import { TerminalPane } from '@/terminal/TerminalPane'
 import { NO_SESSIONS, selectCurrentAgent, useRoster, type PaneMode } from '@/state/store'
 
 const MODES = [
@@ -148,7 +149,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               onCancel={() => void window.roster.sessions.cancel(active.id)}
             />
           ) : (
-            <TerminalPlaceholder agent={agent} />
+            <TerminalPane sessionId={active.id} cwd={agent.cwd} cwdLabel={agent.cwdLabel} />
           )}
         </div>
 
@@ -262,19 +263,6 @@ function EmptyPane({ onNew }: { onNew: () => void }) {
       >
         New session
       </button>
-    </div>
-  )
-}
-
-function TerminalPlaceholder({ agent }: { agent: Agent }) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col border-t border-line bg-term">
-      <div className="flex flex-none items-center gap-[10px] border-b border-[#1a1c22] px-[14px] py-[7px]">
-        <span className="font-mono text-sm text-[#7d8090]">pty · {agent.cwdLabel}</span>
-      </div>
-      <div className="flex flex-1 items-center justify-center font-mono text-md text-dim">
-        terminal lands with the pty layer
-      </div>
     </div>
   )
 }

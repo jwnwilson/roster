@@ -1,8 +1,9 @@
 import { BrowserWindow, ipcMain } from 'electron'
-import { CHANNELS, type AgentPatch } from '../../../shared/ipc'
+import { CHANNELS, type AgentPatch, type PtySize } from '../../../shared/ipc'
 import type { RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
+import { PtyManager } from '../pty/manager'
 import { getRunner } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
 import { AgentStore } from '../store/agents'
@@ -22,6 +23,7 @@ let manager: SessionManager | null = null
 const agentStore = new AgentStore(() => runners)
 const skillStore = new SkillStore()
 const mcpStore = new McpStore()
+const ptyManager = new PtyManager()
 
 function broadcast(channel: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -65,6 +67,8 @@ export async function initStores(): Promise<void> {
   manager = new SessionManager(agentStore, sessionStore, skillStore, mcpStore, usageStore)
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
+  ptyManager.onData((sessionId, data) => broadcast(CHANNELS.ptyData, { sessionId, data }))
+  ptyManager.onExit((sessionId, code) => broadcast(CHANNELS.ptyExit, { sessionId, code }))
   agentStore.watch((agents) => broadcast(CHANNELS.agentsChanged, agents))
 }
 
@@ -115,6 +119,17 @@ export function registerIpc(): void {
     requireManager().pendingApprovals(sessionId),
   )
 
+  ipcMain.handle(CHANNELS.ptyOpen, (_e, sessionId: string, cwd: string, size: PtySize) =>
+    ptyManager.open(sessionId, cwd, size),
+  )
+  ipcMain.on(CHANNELS.ptyWrite, (_e, sessionId: string, data: string) =>
+    ptyManager.write(sessionId, data),
+  )
+  ipcMain.on(CHANNELS.ptyResize, (_e, sessionId: string, size: PtySize) =>
+    ptyManager.resize(sessionId, size),
+  )
+  ipcMain.on(CHANNELS.ptyClose, (_e, sessionId: string) => ptyManager.close(sessionId))
+
   ipcMain.handle(CHANNELS.skillsList, () => skillStore.findAll())
   ipcMain.handle(CHANNELS.skillsRead, (_e, path: string) => skillStore.read(path))
   ipcMain.handle(CHANNELS.skillsWrite, (_e, path: string, contents: string) =>
@@ -128,6 +143,7 @@ export function registerIpc(): void {
 }
 
 export function disposeStores(): void {
+  ptyManager.disposeAll()
   agentStore.dispose()
   skillStore.dispose()
   mcpStore.dispose()
