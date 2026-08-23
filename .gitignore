@@ -21,3 +21,6 @@ out/
 
 # TS incremental build info
 *.tsbuildinfo
+
+# test coverage output
+coverage/
