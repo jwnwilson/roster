@@ -33,6 +33,12 @@ export interface StartOptions {
   skillPaths: string[]
   /** MCP servers enabled for this agent, keyed by name. */
   mcpServers: Record<string, McpLaunchSpec>
+  /**
+   * An in-process MCP server exposing Roster's own tools, so the agent can
+   * hand work to another agent. Only runners that support in-process MCP
+   * receive it.
+   */
+  rosterTools?: unknown
   /** Resume the CLI's own session rather than starting fresh. */
   resumeFrom?: string
   /** Resume, but branch into a new session — the handoff primitive. */

@@ -275,8 +275,24 @@ Each was raised and decided explicitly:
 5. **`error` status becomes reachable** for missing or logged-out runners. Uses the
    colour and vocabulary the handoff already defines.
 6. **Composer is a real input.** The prototype's static "Message X…" line becomes a
-   working placeholder now that chat is live. Attachment chip, drop zone, and skills
-   line are preserved as designed.
+   working placeholder now that chat is live. The drop zone and skills line are
+   preserved as designed; the attachment chip is not yet wired to real files.
+7. **`agent.toml` lives at `~/roster/agents/<id>/`, not `<cwd>/`.** Forced by the data
+   model: the handoff's own roster has four agents sharing `~/work/api`, which one
+   file per directory cannot represent. Each config names its own `cwd`, and the
+   location sits alongside the `~/roster/skills` the handoff already establishes.
+8. **Seeded agents work in `~/roster/workspace`, not the user's home.** An approved
+   write would otherwise land directly in `~`.
+9. **Prices are shown only where Roster knows them.** The Claude table is data Roster
+   owns; Codex publishes no prices, so that column is left empty rather than invented.
+   Codex's model list is read from the CLI's own cache.
+10. **Handoff is Claude-only for now.** It is implemented as an in-process MCP server
+    exposing `list_agents` and `open_session`, which only the Claude runner supports.
+    Codex and custom runners can be handed *to*, but cannot yet hand off.
+11. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+    executes a script against the built app's real DOM and IPC. It exercises the actual
+    Electron main process, which is what the risky code lives in, and needs no browser
+    driver. Playwright remains an option if browser-level fidelity is ever needed.
 
 ## 14. Build order
 

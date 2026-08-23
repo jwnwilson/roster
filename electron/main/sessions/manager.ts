@@ -9,6 +9,7 @@ import { contextWindowFor, type UsageStore } from '../store/usage'
 import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
+import { createRosterMcpServer } from '../runners/handoffTool'
 
 /** Everything the manager emits so the renderer can follow a live turn. */
 export type SessionEvent =
@@ -63,22 +64,59 @@ export class SessionManager {
     return this.sessions.create({ agentId, title, origin: 'you' })
   }
 
-  /** Opens a session on another agent — how one agent hands work to another. */
+  /**
+   * Opens a session on another agent — how one agent hands work to another.
+   *
+   * Both sides are recorded: the new session gets a spawn message naming its
+   * origin, and the handing-off session gets a handoff message linking to it.
+   */
   handOff(input: {
     fromAgentId: string
     fromSessionId: string
     toAgentId: string
     title: string
-  }): Session {
+    brief: string
+  }): { session: Session; label: string } {
     const from = this.agents.findById(input.fromAgentId)
-    const label = from ? `${from.name} · ${input.title}` : input.title
+    const to = this.agents.findById(input.toAgentId)
+    const fromLabel = from ? `${from.name} · ${input.title}` : input.title
+    const toLabel = to ? `${to.name} · ${input.title}` : input.title
 
-    return this.sessions.create({
+    const session = this.sessions.create({
       agentId: input.toAgentId,
       title: input.title,
       origin: 'agent',
-      from: { agentId: input.fromAgentId, sessionId: input.fromSessionId, label },
+      from: { agentId: input.fromAgentId, sessionId: input.fromSessionId, label: fromLabel },
     })
+
+    // The receiving session opens with why it exists and a way back.
+    this.record(session.id, {
+      sessionId: session.id,
+      kind: 'spawn',
+      from: from?.name ?? 'another agent',
+      text: input.brief,
+      to: {
+        agentId: input.fromAgentId,
+        sessionId: input.fromSessionId,
+        label: fromLabel,
+      },
+    })
+
+    // The handing-off session gets a pill linking forward.
+    this.record(input.fromSessionId, {
+      sessionId: input.fromSessionId,
+      kind: 'handoff',
+      links: [
+        {
+          agentId: input.toAgentId,
+          sessionId: session.id,
+          label: toLabel,
+          status: session.status,
+        },
+      ],
+    })
+
+    return { session, label: toLabel }
   }
 
   isStreaming(sessionId: string): boolean {
@@ -117,8 +155,27 @@ export class SessionManager {
     this.setStatus(sessionId, 'running')
     this.emit({ type: 'streaming', sessionId, active: true })
 
+    // Only the Claude runner supports in-process MCP, so only it can be
+    // given the roster tools; other runners simply cannot hand off yet.
+    let rosterTools: unknown
     if (runner instanceof ClaudeRunner) {
       runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
+      rosterTools = await createRosterMcpServer(
+        {
+          listAgents: () => this.agents.findAll(),
+          openSession: ({ toAgentId, title, brief }) => {
+            const result = this.handOff({
+              fromAgentId: agent.id,
+              fromSessionId: sessionId,
+              toAgentId,
+              title,
+              brief,
+            })
+            return { sessionId: result.session.id, label: result.label }
+          },
+        },
+        agent.id,
+      )
     }
 
     try {
@@ -129,6 +186,7 @@ export class SessionManager {
         skillPaths: this.skillPathsFor(agent),
         mcpServers: this.mcpServersFor(agent),
         signal: run.abort.signal,
+        ...(rosterTools ? { rosterTools } : {}),
         ...(session.runnerSessionId !== undefined ? { resumeFrom: session.runnerSessionId } : {}),
       })
 

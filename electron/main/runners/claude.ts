@@ -70,8 +70,15 @@ export class ClaudeRunner implements Runner {
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
         ...(options.skillPaths.length > 0 ? { additionalDirectories: options.skillPaths } : {}),
-        ...(Object.keys(options.mcpServers).length > 0
-          ? { mcpServers: toMcpConfig(options.mcpServers) }
+        ...(Object.keys(options.mcpServers).length > 0 || options.rosterTools
+          ? {
+              mcpServers: {
+                ...toMcpConfig(options.mcpServers),
+                ...(options.rosterTools
+                  ? { roster: options.rosterTools as McpServerConfig }
+                  : {}),
+              },
+            }
           : {}),
         ...(options.resumeFrom !== undefined ? { resume: options.resumeFrom } : {}),
         ...(options.fork === true ? { forkSession: true } : {}),
