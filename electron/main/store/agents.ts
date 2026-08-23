@@ -109,6 +109,9 @@ export class AgentStore {
     }
 
     await mkdir(agentDir(id), { recursive: true })
+    // The working directory must exist before the agent runs: spawning into
+    // a missing cwd fails with ENOENT that reads as a missing binary.
+    await mkdir(config.cwd, { recursive: true })
     await writeFile(agentTomlPath(id), serializeAgentToml(config), 'utf8')
     this.configs.set(id, config)
 

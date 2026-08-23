@@ -16,7 +16,12 @@ export type RunnerEvent =
   | { kind: 'approval'; id: string; toolName: string; command: string }
   /** Running totals, not deltas. */
   | { kind: 'usage'; inputTokens: number; outputTokens: number; costUsd: number }
-  /** The turn finished; carries the CLI's own session id for resume and fork. */
+  /**
+   * The CLI's own session id, for resume and fork. Codex reports it when the
+   * thread opens; Claude reports it on the result, so `done` carries it too.
+   */
+  | { kind: 'session'; runnerSessionId: string }
+  /** The turn finished. */
   | { kind: 'done'; runnerSessionId: string }
   | { kind: 'error'; message: string }
 

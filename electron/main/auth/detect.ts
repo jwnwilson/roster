@@ -90,6 +90,7 @@ export async function detectRunner(id: RunnerId, deps: DetectDeps): Promise<Runn
       installed: path !== null,
       ready: path !== null,
       auth: 'none',
+      ...(path !== null ? { path } : {}),
       ...(path === null ? { detail: `"${id}" is not installed` } : {}),
     }
   }
@@ -117,6 +118,7 @@ export async function detectRunner(id: RunnerId, deps: DetectDeps): Promise<Runn
     installed: true,
     ready: auth !== 'none',
     auth,
+    path,
     ...(version !== null ? { version } : {}),
     ...(auth === 'none' ? { detail: `not signed in — ${spec.loginHint}` } : {}),
   }

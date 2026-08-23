@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
+import { sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { RunnerStatus } from '../../../shared/types'
 import { builtinRunnerIds, detectRunner, type DetectDeps } from './detect'
@@ -10,14 +11,23 @@ const run = promisify(execFile)
 const PROBE_TIMEOUT_MS = 3_000
 
 /**
- * A launched .app does not inherit the user's shell PATH on macOS, so the
- * usual install locations are appended before probing.
+ * The PATH Roster probes and spawns with.
+ *
+ * Two corrections to the inherited PATH:
+ *  - `node_modules/.bin` is removed. Roster's own dependencies ship copies of
+ *    these CLIs, and driving a bundled copy instead of the user's installed
+ *    one would defeat the point of running on their account.
+ *  - The usual install locations are appended, since a launched .app on macOS
+ *    does not inherit the user's shell PATH.
  */
-function probeEnv(): NodeJS.ProcessEnv {
+export function augmentedEnv(): NodeJS.ProcessEnv {
   const extra = ['/opt/homebrew/bin', '/usr/local/bin', `${process.env['HOME']}/.local/bin`]
-  const current = process.env['PATH'] ?? ''
-  const missing = extra.filter((dir) => !current.split(':').includes(dir))
-  return { ...process.env, PATH: [current, ...missing].filter(Boolean).join(':') }
+  const inherited = (process.env['PATH'] ?? '')
+    .split(':')
+    .filter((dir) => dir !== '' && !dir.includes(`${sep}node_modules${sep}.bin`))
+
+  const missing = extra.filter((dir) => !inherited.includes(dir))
+  return { ...process.env, PATH: [...inherited, ...missing].join(':') }
 }
 
 const realDeps: DetectDeps = {
@@ -25,7 +35,7 @@ const realDeps: DetectDeps = {
     try {
       const { stdout } = await run('which', [command], {
         timeout: PROBE_TIMEOUT_MS,
-        env: probeEnv(),
+        env: augmentedEnv(),
       })
       const path = stdout.trim()
       return path === '' ? null : path
@@ -38,7 +48,7 @@ const realDeps: DetectDeps = {
     try {
       const { stdout } = await run(command, ['--version'], {
         timeout: PROBE_TIMEOUT_MS,
-        env: probeEnv(),
+        env: augmentedEnv(),
       })
       // "2.1.241 (Claude Code)" and "codex-cli 0.147.0" both reduce to a number.
       return /\d+\.\d+\.\d+/.exec(stdout)?.[0] ?? stdout.trim().split('\n')[0] ?? null

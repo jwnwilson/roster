@@ -9,7 +9,7 @@ import type { RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
-import { getRunner } from '../runners/registry'
+import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
 import { AgentStore } from '../store/agents'
 import { McpStore } from '../store/mcp'
@@ -57,6 +57,10 @@ export async function initStores(): Promise<void> {
   await skillStore.load()
   await mcpStore.load()
 
+  // Bring your own CLI: agents naming a custom command get a runner.
+  registerCustomRunners(agentStore.findAll())
+  await warmUpRunners()
+
   // Re-detect against any custom runners the loaded agents actually name.
   const customIds = agentStore
     .findAll()
@@ -75,7 +79,10 @@ export async function initStores(): Promise<void> {
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
   ptyManager.onData((sessionId, data) => broadcast(CHANNELS.ptyData, { sessionId, data }))
   ptyManager.onExit((sessionId, code) => broadcast(CHANNELS.ptyExit, { sessionId, code }))
-  agentStore.watch((agents) => broadcast(CHANNELS.agentsChanged, agents))
+  agentStore.watch((agents) => {
+    registerCustomRunners(agents)
+    broadcast(CHANNELS.agentsChanged, agents)
+  })
 }
 
 export function registerIpc(): void {

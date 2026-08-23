@@ -31,6 +31,8 @@ export interface RunnerStatus {
   /** Usable right now: installed and authenticated. */
   ready: boolean
   auth: AuthKind
+  /** Absolute path to the binary, resolved once so spawning cannot miss it. */
+  path?: string
   /** Version string when detectable. */
   version?: string
   /** Human-readable reason when not ready, surfaced in the config rail. */

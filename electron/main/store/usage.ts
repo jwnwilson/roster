@@ -18,6 +18,10 @@ const CONTEXT_WINDOWS: Record<string, number> = {
   'claude-opus-5': 1_000_000,
   'claude-sonnet-5': 1_000_000,
   'claude-haiku-4-5': 200_000,
+  'gpt-5.6-terra': 400_000,
+  'gpt-5.6-luna': 400_000,
+  'gpt-5.5': 400_000,
+  'gpt-5.4-mini': 400_000,
 }
 
 export function contextWindowFor(model: string): number | null {

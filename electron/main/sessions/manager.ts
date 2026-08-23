@@ -198,6 +198,7 @@ export class SessionManager {
         return
       }
 
+      case 'session':
       case 'done':
         if (event.runnerSessionId !== '') {
           this.sessions.attachRunnerSession(sessionId, event.runnerSessionId)
