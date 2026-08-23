@@ -68,6 +68,10 @@ const api: RosterApi = {
     read: (path) => ipcRenderer.invoke(CHANNELS.skillsRead, path),
     write: (path, contents) => ipcRenderer.invoke(CHANNELS.skillsWrite, path, contents),
     create: (name) => ipcRenderer.invoke(CHANNELS.skillsCreate, name),
+    createFile: (skillName, relativePath) =>
+      ipcRenderer.invoke(CHANNELS.skillsCreateFile, skillName, relativePath),
+    createFolder: (skillName, relativePath) =>
+      ipcRenderer.invoke(CHANNELS.skillsCreateFolder, skillName, relativePath),
     reveal: (name) => ipcRenderer.invoke(CHANNELS.skillsReveal, name),
   },
 

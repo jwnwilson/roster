@@ -136,7 +136,7 @@ writing a normalizer and, ideally, recording a fixture from a real run.
 ```
 ~/roster/
   agents/<id>/agent.toml   one file per agent — hand-editable
-  skills/<name>/SKILL.md   the shared skill library
+  skills/<name>/SKILL.md   the shared skill library, nested files and all
   workspace/               default working directory for seeded agents
   mcp.json                 MCP servers and which agents use them
   roster.db                sessions, messages, approvals, usage

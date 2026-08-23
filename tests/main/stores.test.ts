@@ -414,3 +414,126 @@ describe('AgentStore.update — working directory', () => {
     expect(store.findById('a')?.cwd).toBe(target)
   })
 })
+
+/* ------------------------------------------- skills: files and folders */
+
+describe('SkillStore.createFile', () => {
+  async function withSkill() {
+    const store = new SkillStore()
+    await store.load()
+    await store.create('repro-harness')
+    return store
+  }
+
+  test('creates an empty file inside the skill', async () => {
+    const store = await withSkill()
+
+    const path = await store.createFile('repro-harness', 'repro.py')
+
+    expect(await store.read(path)).toBe('')
+    expect(store.findAll()[0]?.files).toContain('repro.py')
+  })
+
+  test('creates parent folders the path implies', async () => {
+    const store = await withSkill()
+
+    await store.createFile('repro-harness', 'templates/pytest.py')
+
+    const files = store.findAll()[0]?.files ?? []
+    expect(files).toContain('templates/')
+    expect(files).toContain('templates/pytest.py')
+  })
+
+  test('refuses to overwrite an existing file', async () => {
+    const store = await withSkill()
+
+    // SKILL.md was written when the skill was created.
+    await expect(store.createFile('repro-harness', 'SKILL.md')).rejects.toThrow(/already exists/)
+  })
+
+  test('refuses a path that escapes the skill', async () => {
+    const store = await withSkill()
+
+    await expect(store.createFile('repro-harness', '../escaped.md')).rejects.toThrow(
+      /outside the skill/,
+    )
+  })
+
+  test('refuses a path that escapes via a nested traversal', async () => {
+    const store = await withSkill()
+
+    await expect(
+      store.createFile('repro-harness', 'templates/../../escaped.md'),
+    ).rejects.toThrow(/outside the skill/)
+  })
+
+  test('refuses an absolute path', async () => {
+    const store = await withSkill()
+
+    await expect(store.createFile('repro-harness', '/etc/passwd')).rejects.toThrow(
+      /absolute path/,
+    )
+  })
+
+  test('refuses an empty name', async () => {
+    const store = await withSkill()
+
+    await expect(store.createFile('repro-harness', '   ')).rejects.toThrow(/name is required/)
+  })
+
+  test('refuses a name that resolves to the skill folder itself', async () => {
+    const store = await withSkill()
+
+    await expect(store.createFile('repro-harness', '.')).rejects.toThrow(/name is required/)
+  })
+
+  test('refuses an unknown skill', async () => {
+    const store = await withSkill()
+
+    await expect(store.createFile('ghost', 'a.md')).rejects.toThrow(/unknown skill/)
+  })
+})
+
+describe('SkillStore.createFolder', () => {
+  async function withSkill() {
+    const store = new SkillStore()
+    await store.load()
+    await store.create('repro-harness')
+    return store
+  }
+
+  test('creates a folder inside the skill', async () => {
+    const store = await withSkill()
+
+    await store.createFolder('repro-harness', 'templates')
+
+    expect(store.findAll()[0]?.files).toContain('templates/')
+  })
+
+  test('creates nested folders in one go', async () => {
+    const store = await withSkill()
+
+    await store.createFolder('repro-harness', 'templates/pytest')
+
+    const files = store.findAll()[0]?.files ?? []
+    expect(files).toContain('templates/')
+    expect(files).toContain('templates/pytest/')
+  })
+
+  test('refuses one that already exists', async () => {
+    const store = await withSkill()
+    await store.createFolder('repro-harness', 'templates')
+
+    await expect(store.createFolder('repro-harness', 'templates')).rejects.toThrow(
+      /already exists/,
+    )
+  })
+
+  test('refuses a path that escapes the skill', async () => {
+    const store = await withSkill()
+
+    await expect(store.createFolder('repro-harness', '../escaped')).rejects.toThrow(
+      /outside the skill/,
+    )
+  })
+})

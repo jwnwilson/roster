@@ -63,6 +63,9 @@ export interface RosterApi {
     read(path: string): Promise<string>
     write(path: string, contents: string): Promise<void>
     create(name: string): Promise<Skill>
+    /** Creates a file inside a skill; resolves to its absolute path. */
+    createFile(skillName: string, relativePath: string): Promise<string>
+    createFolder(skillName: string, relativePath: string): Promise<string>
     /** Opens the skill folder in the OS file manager. */
     reveal(name: string): Promise<void>
   }
@@ -156,6 +159,8 @@ export const CHANNELS = {
   skillsRead: 'skills:read',
   skillsWrite: 'skills:write',
   skillsCreate: 'skills:create',
+  skillsCreateFile: 'skills:createFile',
+  skillsCreateFolder: 'skills:createFolder',
   skillsReveal: 'skills:reveal',
 
   mcpList: 'mcp:list',

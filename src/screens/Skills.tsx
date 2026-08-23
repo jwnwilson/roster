@@ -3,6 +3,7 @@ import type { Skill } from '@shared/types'
 import { statusColor } from '@shared/status'
 import { GhostButton, PrimaryButton, ScreenHeader, SectionLabel } from '@/components/primitives'
 import { useRoster } from '@/state/store'
+import { messageFor } from '@/lib/errors'
 
 /** A row in the file tree: a skill folder or one of its files. */
 interface TreeRow {
@@ -24,6 +25,8 @@ export function Skills() {
   const [saved, setSaved] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /** Which kind of thing the inline row is about to create, if any. */
+  const [creating, setCreating] = useState<'file' | 'folder' | null>(null)
   const setSkills = useRoster((st) => st.setSkills)
 
   const rows = useMemo(() => buildTree(skills), [skills])
@@ -48,7 +51,7 @@ export function Skills() {
         setError(null)
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause))
+        if (!cancelled) setError(messageFor(cause))
       })
 
     return () => {
@@ -76,9 +79,30 @@ export function Skills() {
       // Open it straight away, so the button leaves you somewhere useful.
       setOpenPath(`${created.path}/SKILL.md`)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(messageFor(cause))
     } finally {
       setBusy(false)
+    }
+  }
+
+  /** Creates inside whichever skill is open, then opens the result. */
+  async function createEntry(name: string): Promise<void> {
+    const skill = openRow?.skill.name ?? skills[0]?.name
+    if (skill === undefined || creating === null) return
+
+    try {
+      if (creating === 'folder') {
+        await window.roster.skills.createFolder(skill, name)
+      } else {
+        const path = await window.roster.skills.createFile(skill, name)
+        setOpenPath(path)
+      }
+      setSkills(await window.roster.skills.list())
+      setCreating(null)
+      setError(null)
+    } catch (cause) {
+      // The row stays open so the name can be corrected rather than retyped.
+      setError(messageFor(cause))
     }
   }
 
@@ -89,7 +113,7 @@ export function Skills() {
       setSaved(contents)
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(messageFor(cause))
     }
   }
 
@@ -99,6 +123,8 @@ export function Skills() {
         <span className="font-mono text-md text-dim">~/roster/skills</span>
         <div className="ml-auto flex gap-[8px]">
           <GhostButton onClick={() => void reveal()}>Reveal in Finder</GhostButton>
+          <GhostButton onClick={() => setCreating('file')}>New file</GhostButton>
+          <GhostButton onClick={() => setCreating('folder')}>New folder</GhostButton>
           <PrimaryButton onClick={() => void createSkill()}>
             {busy ? 'Creating…' : 'New skill'}
           </PrimaryButton>
@@ -144,6 +170,17 @@ export function Skills() {
               )
             })
           )}
+
+          {creating !== null ? (
+            <NewEntryRow
+              kind={creating}
+              onCommit={(name) => void createEntry(name)}
+              onCancel={() => {
+                setCreating(null)
+                setError(null)
+              }}
+            />
+          ) : null}
         </nav>
 
         <div className="flex min-w-0 flex-1 flex-col bg-sunken">
@@ -232,19 +269,66 @@ export function Skills() {
   )
 }
 
+/**
+ * A skill folder, then everything inside it. Folders are shown as their own
+ * rows, indented by depth, as the handoff's tree draws them.
+ */
+interface NewEntryRowProps {
+  kind: 'file' | 'folder'
+  onCommit: (name: string) => void
+  onCancel: () => void
+}
+
+/**
+ * The inline row that appears in the tree when creating. Enter commits,
+ * Escape cancels, and blurring cancels too — so it never lingers.
+ */
+function NewEntryRow({ kind, onCommit, onCancel }: NewEntryRowProps) {
+  const [name, setName] = useState('')
+
+  return (
+    <div className="flex items-center gap-[7px] py-[5px] pr-[8px] pl-[26px]">
+      <span
+        aria-hidden
+        className="h-[5px] w-[5px] flex-none bg-accent"
+        style={{ borderRadius: kind === 'folder' ? '1.5px' : '50%' }}
+      />
+      <input
+        autoFocus
+        type="text"
+        value={name}
+        aria-label={kind === 'folder' ? 'New folder name' : 'New file name'}
+        placeholder={kind === 'folder' ? 'templates' : 'repro.py'}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={onCancel}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && name.trim() !== '') onCommit(name.trim())
+          if (e.key === 'Escape') onCancel()
+        }}
+        className="w-full min-w-0 rounded-sm border border-accent-line bg-accent-surface-2 px-[6px] py-[2px] font-mono text-lg text-ink outline-none placeholder:text-faint"
+      />
+    </div>
+  )
+}
+
 function buildTree(skills: Skill[]): TreeRow[] {
   return skills.flatMap((skill) => [
     { key: skill.name, name: skill.name, depth: 0, isDir: true, skill },
-    ...skill.files
-      .filter((file) => !file.endsWith('/'))
-      .map((file) => ({
+    ...skill.files.map((file) => {
+      const isDir = file.endsWith('/')
+      const relative = isDir ? file.slice(0, -1) : file
+      const segments = relative.split('/')
+
+      return {
         key: `${skill.name}/${file}`,
-        name: file,
-        depth: 1,
-        isDir: false,
+        // Only the last segment is shown; the indent carries the rest.
+        name: segments.at(-1) ?? relative,
+        depth: segments.length,
+        isDir,
         skill,
-        path: `${skill.path}/${file}`,
-      })),
+        ...(isDir ? {} : { path: `${skill.path}/${file}` }),
+      }
+    }),
   ])
 }
 

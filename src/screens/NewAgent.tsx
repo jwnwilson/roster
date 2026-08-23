@@ -9,6 +9,7 @@ import {
 } from '@/components/AgentFields'
 import { Field } from '@/components/primitives'
 import { useRoster } from '@/state/store'
+import { messageFor } from '@/lib/errors'
 
 /**
  * Create-agent form. Reuses the Edit modal's fields, per the handoff, and
@@ -66,7 +67,7 @@ export function NewAgent() {
       })
       go('grid')
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(messageFor(cause))
     } finally {
       setCreating(false)
     }

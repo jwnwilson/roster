@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { EditAgentModal } from '@/screens/EditAgentModal'
@@ -652,5 +652,139 @@ describe('WorkingDirectory picker', () => {
         expect.objectContaining({ cwd: '/work/other' }),
       ),
     )
+  })
+})
+
+describe('Skills — creating files and folders', () => {
+  beforeEach(() => {
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# ADR Writer'),
+        list: vi.fn().mockResolvedValue([aSkill({ name: 'adr-writer', path: '/skills/adr-writer' })]),
+        createFile: vi.fn().mockResolvedValue('/skills/adr-writer/repro.py'),
+        createFolder: vi.fn().mockResolvedValue('/skills/adr-writer/templates'),
+      },
+    })
+    useRoster.setState({
+      skills: [aSkill({ name: 'adr-writer', path: '/skills/adr-writer', files: ['SKILL.md'] })],
+      agents: [],
+    })
+  })
+
+  test('no name row appears until asked for', () => {
+    render(<Skills />)
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+  })
+
+  test('New file opens a name row in the tree', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file' }))
+
+    expect(screen.getByLabelText('New file name')).toBeInTheDocument()
+  })
+
+  test('Enter creates the file inside the open skill and opens it', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+    await screen.findByLabelText('Skill file contents')
+
+    await user.click(screen.getByRole('button', { name: 'New file' }))
+    await user.type(screen.getByLabelText('New file name'), 'repro.py{Enter}')
+
+    await waitFor(() =>
+      expect(window.roster.skills.createFile).toHaveBeenCalledWith('adr-writer', 'repro.py'),
+    )
+    // It should leave you in the new file.
+    await waitFor(() =>
+      expect(window.roster.skills.read).toHaveBeenCalledWith('/skills/adr-writer/repro.py'),
+    )
+  })
+
+  test('New folder creates a folder rather than a file', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New folder' }))
+    await user.type(screen.getByLabelText('New folder name'), 'templates{Enter}')
+
+    await waitFor(() =>
+      expect(window.roster.skills.createFolder).toHaveBeenCalledWith('adr-writer', 'templates'),
+    )
+    expect(window.roster.skills.createFile).not.toHaveBeenCalled()
+  })
+
+  test('Escape cancels without creating anything', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file' }))
+    await user.type(screen.getByLabelText('New file name'), 'unwanted.md{Escape}')
+
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+    expect(window.roster.skills.createFile).not.toHaveBeenCalled()
+  })
+
+  test('an empty name creates nothing', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file' }))
+    await user.type(screen.getByLabelText('New file name'), '{Enter}')
+
+    expect(window.roster.skills.createFile).not.toHaveBeenCalled()
+  })
+
+  test('a rejected name is reported and the row stays open to fix it', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# A'),
+        createFile: vi.fn().mockRejectedValue(new Error('"SKILL.md" already exists')),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file' }))
+    await user.type(screen.getByLabelText('New file name'), 'SKILL.md{Enter}')
+
+    expect(await screen.findByText(/already exists/)).toBeInTheDocument()
+    expect(screen.getByLabelText('New file name')).toBeInTheDocument()
+  })
+})
+
+describe('Skills — the file tree', () => {
+  test('shows folders as their own rows, per the handoff', () => {
+    installRosterApi({ skills: { read: vi.fn().mockResolvedValue('# A') } })
+    useRoster.setState({
+      skills: [
+        aSkill({
+          name: 'repro-harness',
+          path: '/skills/repro-harness',
+          files: ['SKILL.md', 'templates/', 'templates/pytest.py'],
+        }),
+      ],
+      agents: [],
+    })
+    const { container } = render(<Skills />)
+    const tree = container.querySelector('nav')!
+
+    expect(within(tree).getByText('templates')).toBeInTheDocument()
+    // In the tree only the last segment is shown; the indent carries the rest.
+    // The metadata rail still lists full paths, which is its job.
+    expect(within(tree).getByText('pytest.py')).toBeInTheDocument()
+    expect(within(tree).queryByText('templates/pytest.py')).not.toBeInTheDocument()
+  })
+
+  test('a folder row is not selectable, since there is nothing to open', () => {
+    installRosterApi({ skills: { read: vi.fn().mockResolvedValue('# A') } })
+    useRoster.setState({
+      skills: [aSkill({ name: 'x', path: '/skills/x', files: ['SKILL.md', 'templates/'] })],
+      agents: [],
+    })
+    render(<Skills />)
+
+    expect(screen.getByRole('button', { name: 'templates' })).toBeDisabled()
   })
 })

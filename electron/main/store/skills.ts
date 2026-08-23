@@ -1,6 +1,6 @@
-import { watch, type FSWatcher } from 'node:fs'
+import { existsSync, watch, type FSWatcher } from 'node:fs'
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { join, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { Skill } from '../../../shared/types'
 import type { Disposable } from './agents'
 import { skillsDir } from './paths'
@@ -77,6 +77,57 @@ export class SkillStore {
       if (!taken.has(`${base}-${n}`)) return `${base}-${n}`
     }
     throw new Error(`could not find a free name for "${base}"`)
+  }
+
+  /**
+   * Creates an empty file inside a skill, along with any parent folders the
+   * path implies. Returns its absolute path.
+   *
+   * The relative path is confined to the skill's own folder: it is typed by a
+   * user, and `../` in it would otherwise write anywhere on disk.
+   */
+  async createFile(skillName: string, relativePath: string): Promise<string> {
+    const target = this.resolveInSkill(skillName, relativePath)
+
+    if (existsSync(target)) throw new Error(`"${relativePath}" already exists`)
+
+    await mkdir(dirname(target), { recursive: true })
+    await writeFile(target, '', { encoding: 'utf8', flag: 'wx' })
+    await this.load()
+    return target
+  }
+
+  /** Creates a folder inside a skill. Returns its absolute path. */
+  async createFolder(skillName: string, relativePath: string): Promise<string> {
+    const target = this.resolveInSkill(skillName, relativePath)
+
+    if (existsSync(target)) throw new Error(`"${relativePath}" already exists`)
+
+    await mkdir(target, { recursive: true })
+    await this.load()
+    return target
+  }
+
+  /**
+   * Resolves a user-typed relative path inside one skill, refusing anything
+   * that escapes it. Confinement is checked after resolution, so `../` and
+   * symlink-ish trickery are both caught.
+   */
+  private resolveInSkill(skillName: string, relativePath: string): string {
+    const trimmed = relativePath.trim()
+    if (trimmed === '') throw new Error('a name is required')
+    if (isAbsolute(trimmed)) throw new Error('an absolute path is not allowed here')
+
+    const root = this.pathOf(skillName)
+    if (root === null) throw new Error(`unknown skill "${skillName}"`)
+
+    const target = resolve(root, trimmed)
+    if (target !== root && !target.startsWith(resolve(root) + sep)) {
+      throw new Error(`"${relativePath}" would land outside the skill`)
+    }
+    if (target === resolve(root)) throw new Error('a name is required')
+
+    return target
   }
 
   /** Absolute path of a skill folder, for revealing it in the file manager. */

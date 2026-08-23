@@ -9,6 +9,7 @@ import {
 } from '@/components/AgentFields'
 import { Field } from '@/components/primitives'
 import { useRoster } from '@/state/store'
+import { messageFor } from '@/lib/errors'
 
 interface EditAgentModalProps {
   agent: Agent
@@ -80,7 +81,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
       setAgents(await window.roster.agents.list())
       cancelEdit()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      setError(messageFor(cause))
     } finally {
       setSaving(false)
     }

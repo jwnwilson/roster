@@ -159,6 +159,12 @@ export function registerIpc(): void {
   )
 
   ipcMain.handle(CHANNELS.skillsCreate, (_e, name: string) => skillStore.create(name))
+  ipcMain.handle(CHANNELS.skillsCreateFile, (_e, skill: string, path: string) =>
+    skillStore.createFile(skill, path),
+  )
+  ipcMain.handle(CHANNELS.skillsCreateFolder, (_e, skill: string, path: string) =>
+    skillStore.createFolder(skill, path),
+  )
   ipcMain.handle(CHANNELS.skillsReveal, (_e, name: string) => {
     const path = skillStore.pathOf(name)
     // Nothing to reveal is not an error; the folder may have just been deleted.
