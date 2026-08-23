@@ -23,6 +23,15 @@ interface MessageRow {
   created_at: number
 }
 
+/**
+ * Omit over a union collapses it to the common keys, which would silently
+ * reject every variant-specific field. Distribute so each member keeps its own.
+ */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
+
+/** A message to append: the store assigns id and createdAt. */
+export type NewMessage = DistributiveOmit<Message, 'id' | 'createdAt'> & { id?: string }
+
 export interface CreateSessionInput {
   agentId: string
   title: string
@@ -121,7 +130,7 @@ export class SessionStore {
 
   /* ---- messages -------------------------------------------------------- */
 
-  append(message: Omit<Message, 'id' | 'createdAt'> & { id?: string }): Message {
+  append(message: NewMessage): Message {
     const stored = {
       ...message,
       id: message.id ?? randomUUID(),
