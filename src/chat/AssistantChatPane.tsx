@@ -8,7 +8,7 @@ import {
 } from '@assistant-ui/react'
 import type { HandoffMessage, Message, SpawnMessage } from '@shared/types'
 import { toThreadMessage, type RosterHeader } from './convert'
-import { Composer, StreamingRow } from './ChatPane'
+import { Composer, StreamingRow } from './Composer'
 import { HandoffBody, SpawnBody, TextBody, ToolBody, MessageHeader } from './messages'
 
 interface AssistantChatPaneProps {

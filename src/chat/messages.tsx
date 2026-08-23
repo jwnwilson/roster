@@ -1,4 +1,4 @@
-import type { HandoffLink, HandoffMessage, Message, SessionRef, SpawnMessage } from '@shared/types'
+import type { HandoffLink, HandoffMessage, SessionRef, SpawnMessage } from '@shared/types'
 import { statusColor } from '@shared/status'
 import { useRoster } from '@/state/store'
 
@@ -133,61 +133,6 @@ function HandoffPill({ link }: { link: HandoffLink }) {
       />
     </button>
   )
-}
-
-/* ---- whole message (plain transcript) --------------------------------- */
-
-interface MessageViewProps {
-  message: Message
-  agentName: string
-}
-
-export function MessageView({ message, agentName }: MessageViewProps) {
-  switch (message.kind) {
-    case 'text':
-      return (
-        <article className="flex max-w-[720px] flex-col gap-[7px]">
-          <MessageHeader
-            who={message.who}
-            time={message.createdAt}
-            isUser={message.role === 'user'}
-          />
-          <TextBody text={message.text} />
-        </article>
-      )
-
-    case 'tool':
-      return (
-        <article className="flex max-w-[720px] flex-col gap-[7px]">
-          <MessageHeader who="tool call" time={message.createdAt} />
-          <ToolBody
-            id={message.id}
-            tool={message.tool}
-            args={message.args}
-            output={message.output}
-            isError={message.isError}
-            {...(message.durationMs !== undefined ? { durationMs: message.durationMs } : {})}
-          />
-        </article>
-      )
-
-    case 'spawn':
-      return (
-        <article className="flex max-w-[720px] flex-col gap-[7px]">
-          <MessageHeader who={`session opened by ${message.from}`} time={message.createdAt} />
-          <SpawnBody message={message} />
-          <span className="sr-only">{agentName}</span>
-        </article>
-      )
-
-    case 'handoff':
-      return (
-        <article className="flex max-w-[720px] flex-col gap-[7px]">
-          <MessageHeader who="opened sessions" time={message.createdAt} />
-          <HandoffBody message={message} />
-        </article>
-      )
-  }
 }
 
 /* ---- formatting ------------------------------------------------------- */

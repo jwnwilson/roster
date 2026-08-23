@@ -84,10 +84,6 @@ export function toThreadMessage(message: Message): ThreadMessageLike {
   }
 }
 
-export function toThreadMessages(messages: readonly Message[]): ThreadMessageLike[] {
-  return messages.map(toThreadMessage)
-}
-
 /** Narrows a `data-*` part back to the Roster message it carries. */
 export function messageFromDataPart(part: { type: string; data?: unknown }): Message | null {
   if (part.type !== 'data-spawn' && part.type !== 'data-handoff') return null

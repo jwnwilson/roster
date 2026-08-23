@@ -3,15 +3,15 @@
 <html lang="en">
 
 <head>
-    <title>Code coverage report for electron/main/runners/types.ts</title>
+    <title>Code coverage report for src/chat/Composer.tsx</title>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="../../../prettify.css" />
-    <link rel="stylesheet" href="../../../base.css" />
-    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <link rel="stylesheet" href="../../prettify.css" />
+    <link rel="stylesheet" href="../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <style type='text/css'>
         .coverage-summary .sorter {
-            background-image: url(../../../sort-arrow-sprite.png);
+            background-image: url(../../sort-arrow-sprite.png);
         }
     </style>
 </head>
@@ -19,34 +19,34 @@
 <body>
 <div class='wrapper'>
     <div class='pad1'>
-        <h1><a href="../../../index.html">All files</a> / <a href="index.html">electron/main/runners</a> types.ts</h1>
+        <h1><a href="../../index.html">All files</a> / <a href="index.html">src/chat</a> Composer.tsx</h1>
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>2/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
                 <span class='fraction'>0/0</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>2/2</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>2/2</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -131,7 +131,10 @@
 <a name='L66'></a><a href='#L66'>66</a>
 <a name='L67'></a><a href='#L67'>67</a>
 <a name='L68'></a><a href='#L68'>68</a>
-<a name='L69'></a><a href='#L69'>69</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -139,6 +142,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -170,6 +174,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -199,73 +204,77 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { ModelInfo, RunnerId, RunnerStatus } from '../../../shared/types'
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { ComposerPrimitive } from '@assistant-ui/react'
 &nbsp;
-/**
- * A normalised event from any agent CLI. Each adapter translates its own
- * stream into this shape so nothing above the runner layer knows which CLI
- * produced it.
- */
-export type RunnerEvent =
-  /** A chunk of assistant prose. */
-  | { kind: 'text'; delta: string }
-  /** The agent decided to call a tool. */
-  | { kind: 'tool'; id: string; name: string; args: string }
-  /** That tool finished. */
-  | { kind: 'result'; id: string; output: string; isError: boolean }
-  /** The CLI is blocked waiting for the user to allow or deny an action. */
-  | { kind: 'approval'; id: string; toolName: string; command: string }
-  /** Running totals, not deltas. */
-  | { kind: 'usage'; inputTokens: number; outputTokens: number; costUsd: number }
-  /**
-   * The CLI's own session id, for resume and fork. Codex reports it when the
-   * thread opens; Claude reports it on the result, so `done` carries it too.
-   */
-  | { kind: 'session'; runnerSessionId: string }
-  /** The turn finished. */
-  | { kind: 'done'; runnerSessionId: string }
-  | { kind: 'error'; message: string }
-&nbsp;
-export interface StartOptions {
-  cwd: string
-  model: string
-  systemPrompt: string
-  /** Absolute paths to skill folders enabled for this agent. */
-  skillPaths: string[]
-  /** MCP servers enabled for this agent, keyed by name. */
-  mcpServers: Record&lt;string, McpLaunchSpec&gt;
-  /**
-   * An in-process MCP server exposing Roster's own tools, so the agent can
-   * hand work to another agent. Only runners that support in-process MCP
-   * receive it.
-   */
-  rosterTools?: unknown
-  /** Resume the CLI's own session rather than starting fresh. */
-  resumeFrom?: string
-  /** Resume, but branch into a new session — the handoff primitive. */
-  fork?: boolean
-  signal: AbortSignal
+export interface StreamingRowProps {
+  text: string
+  onCancel: () =&gt; void
 }
 &nbsp;
-export interface McpLaunchSpec {
-  command: string
-  args: string[]
+export function StreamingRow({ text, onCancel }: StreamingRowProps) {
+  return (
+    &lt;div className="flex items-center gap-[8px] text-md text-dim"&gt;
+      &lt;span
+        aria-hidden
+        className="h-[6px] w-[6px] rounded-full bg-accent"
+        style={{ animation: 'var(--animate-blink)' }}
+      /&gt;
+      &lt;span&gt;{text}&lt;/span&gt;
+      &lt;button
+        type="button"
+        onClick={onCancel}
+        className="ml-[6px] cursor-pointer rounded-sm border border-line-dashed bg-transparent px-[9px] py-[2px] font-ui text-sm text-dim hover:border-[#55596a] hover:text-ink"
+        data-hoverable
+      &gt;
+        Stop
+      &lt;/button&gt;
+    &lt;/div&gt;
+  )
 }
 &nbsp;
-/** How Roster answers a pending approval. */
-export interface ApprovalDecision {
-  approved: boolean
-  reason?: string
+/* -------------------------------------------------------------------------
+ * The same composer, driven by assistant-ui's composer runtime rather than
+ * local state, so the markup does not fork between the two panes.
+ * ---------------------------------------------------------------------- */
+&nbsp;
+interface ComposerProps {
+  agentName: string
+  skillsLine: string
+  disabled: boolean
 }
 &nbsp;
-export interface Runner {
-  readonly id: RunnerId
-  detect(): Promise&lt;RunnerStatus&gt;
-  models(): Promise&lt;ModelInfo[]&gt;
-  /** Runs one turn, yielding events until the turn ends. */
-  run(prompt: string, options: StartOptions): AsyncIterable&lt;RunnerEvent&gt;
-  /** Answers an approval this runner is blocked on. */
-  respondToApproval(approvalId: string, decision: ApprovalDecision): void
+export function Composer({ agentName, skillsLine, disabled }: ComposerProps) {
+  return (
+    &lt;div className="flex-none border-t border-line bg-sunken px-[26px] pt-[12px] pb-[16px]"&gt;
+      &lt;ComposerPrimitive.Root className="flex flex-col gap-[9px] rounded-[9px] border border-line-card bg-card px-[12px] py-[10px]"&gt;
+        &lt;div className="flex gap-[7px]"&gt;
+          &lt;span className="flex items-center gap-[6px] rounded-sm border border-dashed border-line-active px-[8px] py-[3px] text-sm text-dim-2"&gt;
+            drop files here
+          &lt;/span&gt;
+        &lt;/div&gt;
+&nbsp;
+        &lt;ComposerPrimitive.Input
+          rows={2}
+          autoFocus={false}
+          disabled={disabled}
+          aria-label={`Message ${agentName}`}
+          placeholder={`Message ${agentName}…`}
+          className="w-full resize-none border-0 bg-transparent font-ui text-xl leading-[1.5] text-ink outline-none placeholder:text-faint disabled:opacity-60"
+        /&gt;
+&nbsp;
+        &lt;div className="flex items-center gap-[8px]"&gt;
+          &lt;span className="truncate font-mono text-sm text-faint"&gt;{skillsLine}&lt;/span&gt;
+          &lt;ComposerPrimitive.Send
+            disabled={disabled}
+            className="ml-auto cursor-pointer rounded-chip border-0 bg-accent px-[12px] py-[4px] font-ui text-md font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-40"
+          &gt;
+            Send
+          &lt;/ComposerPrimitive.Send&gt;
+        &lt;/div&gt;
+      &lt;/ComposerPrimitive.Root&gt;
+    &lt;/div&gt;
+  )
 }
 &nbsp;</pre></td></tr></table></pre>
 
@@ -276,14 +285,14 @@ export interface Runner {
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
                 at 2026-08-23T20:43:10.133Z
             </div>
-        <script src="../../../prettify.js"></script>
+        <script src="../../prettify.js"></script>
         <script>
             window.onload = function () {
                 prettyPrint();
             };
         </script>
-        <script src="../../../sorter.js"></script>
-        <script src="../../../block-navigation.js"></script>
+        <script src="../../sorter.js"></script>
+        <script src="../../block-navigation.js"></script>
     </body>
 </html>
     

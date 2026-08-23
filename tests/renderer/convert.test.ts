@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { Message } from '@shared/types'
-import { headerFor, messageFromDataPart, toThreadMessage, toThreadMessages } from '@/chat/convert'
+import { headerFor, messageFromDataPart, toThreadMessage } from '@/chat/convert'
 
 const AT = 1_800_000_000_000
 
@@ -146,21 +146,20 @@ describe('headerFor', () => {
   })
 })
 
-describe('toThreadMessages', () => {
-  test('converts a whole transcript in order', () => {
-    const converted = toThreadMessages([TEXT, TOOL, SPAWN, HANDOFF])
-
-    expect(converted.map((m) => m.id)).toEqual(['m1', 't1', 'sp1', 'h1'])
+describe('toThreadMessage — every kind', () => {
+  test('preserves ids, so a transcript keeps its order and keys', () => {
+    expect([TEXT, TOOL, SPAWN, HANDOFF].map((m) => toThreadMessage(m).id)).toEqual([
+      'm1',
+      't1',
+      'sp1',
+      'h1',
+    ])
   })
 
-  test('every message carries a header', () => {
-    for (const message of toThreadMessages([TEXT, TOOL, SPAWN, HANDOFF])) {
-      expect(message.metadata?.custom).toHaveProperty('header')
+  test('every kind carries a header', () => {
+    for (const message of [TEXT, TOOL, SPAWN, HANDOFF]) {
+      expect(toThreadMessage(message).metadata?.custom).toHaveProperty('header')
     }
-  })
-
-  test('an empty transcript converts to nothing', () => {
-    expect(toThreadMessages([])).toEqual([])
   })
 })
 
