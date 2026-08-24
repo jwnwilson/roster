@@ -30,7 +30,7 @@ export class CustomRunner implements Runner {
   ) {}
 
   async detect(): Promise<RunnerStatus> {
-    const statuses = await detectAllRunners([this.id])
+    const statuses = await detectAllRunners([{ id: this.id, command: this.spec.command }])
     return (
       statuses.get(this.id) ?? {
         id: this.id,

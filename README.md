@@ -142,6 +142,36 @@ writing a normalizer and, ideally, recording a fixture from a real run.
   roster.db                sessions, messages, approvals, usage
 ```
 
+## Running against a local model
+
+Roster drives agent CLIs, so a local model is a matter of pointing one at a
+local server rather than adding a provider. Codex ships this: install
+[Ollama](https://ollama.com), `ollama serve`, pull a model, then give an agent
+its own runner in `~/roster/agents/<id>/agent.toml`:
+
+```toml
+runner = "ollama-codex"
+model  = "gpt-oss:20b"
+
+[custom]
+command = "codex"
+args = [
+  "exec", "--json", "--skip-git-repo-check",
+  "--sandbox", "workspace-write",
+  "--oss", "--local-provider", "ollama",
+  "-C", "{cwd}", "--model", "{model}", "{prompt}",
+]
+```
+
+Roster reads the dialect from the command name, so `codex` here means its JSON
+event stream is understood — tools, approvals and streaming all work as they do
+for the built-in runner.
+
+`--local-provider` must be given explicitly: without it Codex prompts
+interactively for a provider, and Roster runs it non-interactively. `lmstudio`
+works in place of `ollama`. Codex talks to these over the OpenAI *Responses*
+API, so a server that only speaks chat-completions will not work.
+
 ## The app icon
 
 The icon is generated, but committed, so a build machine without Python still

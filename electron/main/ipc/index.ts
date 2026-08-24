@@ -62,12 +62,13 @@ export async function initStores(): Promise<void> {
   await warmUpRunners()
 
   // Re-detect against any custom runners the loaded agents actually name.
-  const customIds = agentStore
+  // Probed by their [custom] command, not the name the user gave the runner.
+  const custom = agentStore
     .findAll()
-    .map((a) => a.runner)
-    .filter((id) => !runners.has(id))
-  if (customIds.length > 0) {
-    runners = await detectAllRunners(customIds)
+    .filter((a) => !runners.has(a.runner) && a.custom)
+    .map((a) => ({ id: a.runner, command: a.custom?.command ?? a.runner }))
+  if (custom.length > 0) {
+    runners = await detectAllRunners(custom)
     await agentStore.load()
   }
 

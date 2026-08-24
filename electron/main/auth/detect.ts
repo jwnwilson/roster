@@ -77,13 +77,22 @@ function hasApiKey(spec: RunnerSpec, env: DetectDeps['env']): boolean {
   })
 }
 
-export async function detectRunner(id: RunnerId, deps: DetectDeps): Promise<RunnerStatus> {
+/**
+ * @param command The binary to look for, when it differs from the runner id.
+ *   A custom runner is named by the user — "ollama-codex" might run `codex` —
+ *   so probing the id would report a working setup as missing.
+ */
+export async function detectRunner(
+  id: RunnerId,
+  deps: DetectDeps,
+  command: string = id,
+): Promise<RunnerStatus> {
   const spec = SPECS[id]
 
   // A runner Roster does not know about: report presence only. We cannot know
   // how someone else's CLI authenticates, so we never claim it is logged in.
   if (!spec) {
-    const path = await deps.which(id)
+    const path = await deps.which(command)
     return {
       id,
       provider: 'Custom',
@@ -91,7 +100,7 @@ export async function detectRunner(id: RunnerId, deps: DetectDeps): Promise<Runn
       ready: path !== null,
       auth: 'none',
       ...(path !== null ? { path } : {}),
-      ...(path === null ? { detail: `"${id}" is not installed` } : {}),
+      ...(path === null ? { detail: `${command} is not installed` } : {}),
     }
   }
 

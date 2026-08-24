@@ -84,8 +84,21 @@ const realDeps: DetectDeps = {
  * Detects every builtin runner plus any extra ids in use by custom agents.
  * Cached by the caller; re-run when the user asks Roster to re-check.
  */
-export async function detectAllRunners(extraIds: string[] = []): Promise<Map<string, RunnerStatus>> {
-  const ids = [...new Set([...builtinRunnerIds(), ...extraIds])]
-  const statuses = await Promise.all(ids.map((id) => detectRunner(id, realDeps)))
+/** A custom runner, which is named by its user and may run any binary. */
+export interface CustomProbe {
+  id: string
+  command: string
+}
+
+export async function detectAllRunners(
+  extra: readonly CustomProbe[] = [],
+): Promise<Map<string, RunnerStatus>> {
+  const builtin = builtinRunnerIds().map((id) => ({ id, command: id }))
+  const byId = new Map<string, CustomProbe>()
+  for (const probe of [...builtin, ...extra]) byId.set(probe.id, probe)
+
+  const statuses = await Promise.all(
+    [...byId.values()].map((probe) => detectRunner(probe.id, realDeps, probe.command)),
+  )
   return new Map(statuses.map((status) => [status.id, status]))
 }

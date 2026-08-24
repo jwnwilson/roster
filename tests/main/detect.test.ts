@@ -132,3 +132,40 @@ describe('detectRunner — custom', () => {
     expect(status.auth).toBe('none')
   })
 })
+
+describe('detectRunner — custom runners', () => {
+  const withInstalled = (found: string[]): DetectDeps =>
+    deps({
+      which: async (command: string) =>
+        found.includes(command) ? `/usr/local/bin/${command}` : null,
+    })
+
+  test('probes the command, not the name the user gave the runner', async () => {
+    // A runner called "ollama-codex" that runs `codex` is installed.
+    const status = await detectRunner('ollama-codex', withInstalled(['codex']), 'codex')
+
+    expect(status.installed).toBe(true)
+    expect(status.path).toBe('/usr/local/bin/codex')
+  })
+
+  test('reports the missing command by name so the message is actionable', async () => {
+    const status = await detectRunner('ollama-codex', withInstalled([]), 'codex')
+
+    expect(status.installed).toBe(false)
+    expect(status.detail).toBe('codex is not installed')
+  })
+
+  test('falls back to the id when no command is given', async () => {
+    const status = await detectRunner('mytool', withInstalled(['mytool']))
+
+    expect(status.installed).toBe(true)
+  })
+
+  test('never claims a custom CLI is authenticated', async () => {
+    // Roster cannot know how someone else's tool signs in.
+    const status = await detectRunner('ollama-codex', withInstalled(['codex']), 'codex')
+
+    expect(status.auth).toBe('none')
+    expect(status.provider).toBe('Custom')
+  })
+})
