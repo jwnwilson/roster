@@ -203,7 +203,6 @@ describe('AgentDetail — usage readout', () => {
           outputTokens: 18_402,
           totalTokens: 118402,
           costUsd: 1.24,
-          contextUsed: 0.58,
         },
       },
     })
@@ -211,7 +210,73 @@ describe('AgentDetail — usage readout', () => {
 
     expect(await screen.findByText('118,402')).toBeInTheDocument()
     expect(screen.getByText('$1.24')).toBeInTheDocument()
-    expect(screen.getByText('58% of context window')).toBeInTheDocument()
+    // Derived from the model's window, not from a number stored at turn time
+    // that goes stale the moment the agent's model changes.
+    expect(screen.getByText('12% of context window')).toBeInTheDocument()
+  })
+
+  test('says so rather than drawing a bar for a model it cannot size', async () => {
+    // Codex serves whatever slugs are in the user's models_cache.json, so an
+    // unknown window is routine. An empty bar would read as "plenty of room".
+    withSessions([aSession({ id: 's1' })])
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', model: 'gpt-6-unreleased' })],
+      usage: {
+        s1: {
+          sessionId: 's1',
+          inputTokens: 10,
+          outputTokens: 5,
+          totalTokens: 900_000,
+          costUsd: 0.1,
+        },
+      },
+    })
+    render(<AgentDetail />)
+
+    expect(
+      await screen.findByText('context window unknown for gpt-6-unreleased'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/% of context window/)).not.toBeInTheDocument()
+  })
+
+  test('counts the cached tokens, matching the grid card', async () => {
+    withSessions([aSession({ id: 's1' })])
+    useRoster.setState({
+      usage: {
+        s1: {
+          sessionId: 's1',
+          inputTokens: 18,
+          outputTokens: 297,
+          totalTokens: 77_913,
+          costUsd: 0.94,
+        },
+      },
+    })
+    render(<AgentDetail />)
+
+    // Not 315 — the rail used to disagree with the grid about the same turn.
+    expect(await screen.findByText('77,913')).toBeInTheDocument()
+  })
+
+  test('opens on the newest session rather than none', async () => {
+    // The sidebar and the card body name no session, so the pane used to
+    // come up empty beside a tab strip full of them. Deliberately not using
+    // withSessions, which pre-selects one and would hide this.
+    const sessions = [aSession({ id: 'old' }), aSession({ id: 'newest' })]
+    installRosterApi({ sessions: { listByAgent: vi.fn().mockResolvedValue(sessions) } })
+    useRoster.setState({ sessions: { debugging: sessions }, sess: {} })
+    render(<AgentDetail />)
+
+    await waitFor(() => expect(useRoster.getState().sess['debugging']).toBe('newest'))
+  })
+
+  test('says no session is open rather than showing zeros', async () => {
+    installRosterApi({ sessions: { listByAgent: vi.fn().mockResolvedValue([]) } })
+    useRoster.setState({ sessions: { debugging: [] }, sess: {} })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText('No session open.')).toBeInTheDocument()
+    expect(screen.queryByText(/% of context window/)).not.toBeInTheDocument()
   })
 
   test('reads zero before a session has run', async () => {

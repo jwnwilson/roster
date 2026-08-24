@@ -413,28 +413,6 @@ describe('SessionManager.send — usage', () => {
     })
   })
 
-  test('computes the context fraction from the agent model', async () => {
-    runnerStub.run.mockImplementation(
-      streamOf([{ kind: 'usage', inputTokens: 500_000, outputTokens: 0, totalTokens: 500_000, costUsd: 0 }]),
-    )
-
-    const session = manager.create('debugging', 'x')
-    await manager.send(session.id, 'go')
-
-    // claude-opus-5 is a 1M window, so half of it.
-    expect(usage.forSession(session.id)?.contextUsed).toBeCloseTo(0.5)
-  })
-
-  test('never reports more than a full context window', async () => {
-    runnerStub.run.mockImplementation(
-      streamOf([{ kind: 'usage', inputTokens: 9_000_000, outputTokens: 0, totalTokens: 9_000_000, costUsd: 0 }]),
-    )
-
-    const session = manager.create('debugging', 'x')
-    await manager.send(session.id, 'go')
-
-    expect(usage.forSession(session.id)?.contextUsed).toBe(1)
-  })
 })
 
 describe('SessionManager.send — session identity and failure', () => {

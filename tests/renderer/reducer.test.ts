@@ -31,7 +31,6 @@ const USAGE: Usage = {
   outputTokens: 5,
   totalTokens: 15,
   costUsd: 0.5,
-  contextUsed: 0.1,
 }
 
 const APPROVAL: Approval = {

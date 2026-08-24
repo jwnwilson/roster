@@ -183,7 +183,6 @@ describe('App — agent spend totals', () => {
           outputTokens: 297,
           totalTokens: 77_913,
           costUsd: 0.94,
-          contextUsed: 0.08,
         },
       }),
     )

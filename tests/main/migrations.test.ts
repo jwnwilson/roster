@@ -87,3 +87,40 @@ describe('migration 2 — total tokens', () => {
     old.close()
   })
 })
+
+describe('migration 3 — the stored context fraction goes', () => {
+  test('usage no longer carries context_used', () => {
+    const columns = (db.pragma('table_info(usage)') as { name: string }[]).map((c) => c.name)
+
+    // It was computed at turn time, so it went stale whenever an agent's
+    // model changed, and it could not express "unknown model" at all.
+    expect(columns).not.toContain('context_used')
+  })
+
+  test('drops it from a database that still has it', () => {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    old.exec(MIGRATIONS[0] as string)
+    old.exec(MIGRATIONS[1] as string)
+    old.pragma('user_version = 2')
+    old.prepare(
+      `INSERT INTO sessions (id, agent_id, title, origin, status, created_at)
+       VALUES ('s1', 'debugging', 'x', 'you', 'done', 0)`,
+    ).run()
+    old.prepare(
+      `INSERT INTO usage (session_id, input_tokens, output_tokens, total_tokens, cost_usd, context_used)
+       VALUES ('s1', 100, 50, 150, 0.25, 0.58)`,
+    ).run()
+
+    migrate(old)
+
+    const columns = (old.pragma('table_info(usage)') as { name: string }[]).map((c) => c.name)
+    expect(columns).not.toContain('context_used')
+    // The rest of the row survives the drop.
+    expect(old.prepare('SELECT total_tokens, cost_usd FROM usage').get()).toEqual({
+      total_tokens: 150,
+      cost_usd: 0.25,
+    })
+    old.close()
+  })
+})

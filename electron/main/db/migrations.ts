@@ -58,4 +58,12 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE usage ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0;
   UPDATE usage SET total_tokens = input_tokens + output_tokens;
   `,
+
+  // 3 — context_used goes. It was a fraction computed when the turn ran, so
+  // it went stale the moment an agent's model changed, and it could not say
+  // "unknown model" at all. The renderer derives it from total_tokens and the
+  // model instead, leaving one place for it to be wrong.
+  `
+  ALTER TABLE usage DROP COLUMN context_used;
+  `,
 ]

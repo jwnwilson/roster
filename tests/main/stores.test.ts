@@ -6,7 +6,7 @@ import { openDatabase, type Db } from '@main/db'
 import { McpStore } from '@main/store/mcp'
 import { SessionStore } from '@main/store/sessions'
 import { SkillStore } from '@main/store/skills'
-import { UsageStore, contextWindowFor } from '@main/store/usage'
+import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
 import { agentsDir, mcpConfigPath, skillsDir } from '@main/store/paths'
 
@@ -47,7 +47,6 @@ describe('UsageStore', () => {
       outputTokens: 5,
       totalTokens: 95,
       costUsd: 0.5,
-      contextUsed: 0.25,
     })
 
     expect(store.forSession(s.id)).toEqual({
@@ -56,14 +55,13 @@ describe('UsageStore', () => {
       outputTokens: 5,
       totalTokens: 95,
       costUsd: 0.5,
-      contextUsed: 0.25,
     })
   })
 
   test('replaces rather than accumulates, since runners report totals', () => {
     const s = sessions.create({ agentId: 'a', title: 'x', origin: 'you' })
-    store.record({ sessionId: s.id, inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsd: 0.5, contextUsed: 0 })
-    store.record({ sessionId: s.id, inputTokens: 30, outputTokens: 9, totalTokens: 39, costUsd: 1.5, contextUsed: 0 })
+    store.record({ sessionId: s.id, inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsd: 0.5 })
+    store.record({ sessionId: s.id, inputTokens: 30, outputTokens: 9, totalTokens: 39, costUsd: 1.5 })
 
     expect(store.forSession(s.id)).toMatchObject({ inputTokens: 30, totalTokens: 39, costUsd: 1.5 })
   })
@@ -73,9 +71,9 @@ describe('UsageStore', () => {
     const b = sessions.create({ agentId: 'debugging', title: '2', origin: 'you' })
     const other = sessions.create({ agentId: 'review', title: '3', origin: 'you' })
 
-    store.record({ sessionId: a.id, inputTokens: 10, outputTokens: 5, totalTokens: 800, costUsd: 1, contextUsed: 0 })
-    store.record({ sessionId: b.id, inputTokens: 20, outputTokens: 5, totalTokens: 200, costUsd: 2, contextUsed: 0 })
-    store.record({ sessionId: other.id, inputTokens: 99, outputTokens: 0, totalTokens: 99, costUsd: 9, contextUsed: 0 })
+    store.record({ sessionId: a.id, inputTokens: 10, outputTokens: 5, totalTokens: 800, costUsd: 1 })
+    store.record({ sessionId: b.id, inputTokens: 20, outputTokens: 5, totalTokens: 200, costUsd: 2 })
+    store.record({ sessionId: other.id, inputTokens: 99, outputTokens: 0, totalTokens: 99, costUsd: 9 })
 
     expect(store.byAgent()['debugging']).toEqual({ tokens: 1_000, costUsd: 3 })
   })
@@ -90,7 +88,6 @@ describe('UsageStore', () => {
       outputTokens: 297,
       totalTokens: 77_913,
       costUsd: 0.94,
-      contextUsed: 0,
     })
 
     expect(store.byAgent()['debugging']?.tokens).toBe(77_913)
@@ -98,24 +95,13 @@ describe('UsageStore', () => {
 
   test('keeps agents apart', () => {
     const a = sessions.create({ agentId: 'debugging', title: '1', origin: 'you' })
-    store.record({ sessionId: a.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1, contextUsed: 0 })
+    store.record({ sessionId: a.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1 })
 
     expect(store.byAgent()['review']).toBeUndefined()
   })
 
   test('an agent with no usage is simply absent', () => {
     expect(store.byAgent()).toEqual({})
-  })
-})
-
-describe('contextWindowFor', () => {
-  test('knows the models Roster ships with', () => {
-    expect(contextWindowFor('claude-opus-5')).toBe(1_000_000)
-    expect(contextWindowFor('claude-haiku-4-5')).toBe(200_000)
-  })
-
-  test('reports nothing for an unknown model rather than guessing', () => {
-    expect(contextWindowFor('some-future-model')).toBeNull()
   })
 })
 

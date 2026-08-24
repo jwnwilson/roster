@@ -5,7 +5,7 @@ import type { AgentStore } from '../store/agents'
 import type { McpStore } from '../store/mcp'
 import type { SessionStore } from '../store/sessions'
 import type { SkillStore } from '../store/skills'
-import { contextWindowFor, type UsageStore } from '../store/usage'
+import type { UsageStore } from '../store/usage'
 import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
@@ -281,9 +281,6 @@ export class SessionManager {
           outputTokens: event.outputTokens,
           totalTokens: event.totalTokens,
           costUsd: event.costUsd,
-          // The window holds the cached prompt too, so the fraction has to
-          // count it — input + output alone reads as near-empty on Claude.
-          contextUsed: this.contextFraction(sessionId, event.totalTokens),
         }
         // Persist as well as emit, or the totals vanish on reload.
         this.usage.record(usage)
@@ -418,16 +415,6 @@ export class SessionManager {
   }
 
   /** Fraction of the model's context window consumed, 0..1. */
-  private contextFraction(sessionId: string, tokens: number): number {
-    const session = this.sessions.findById(sessionId)
-    const agent = session ? this.agents.findById(session.agentId) : null
-    const window = agent ? contextWindowFor(agent.model) : null
-
-    // An unknown model reports nothing rather than a made-up bar.
-    if (window === null || window === 0) return 0
-    return Math.min(1, tokens / window)
-  }
-
   usageFor(sessionId: string): Usage | null {
     return this.usage.forSession(sessionId)
   }

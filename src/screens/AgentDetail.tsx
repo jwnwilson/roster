@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { statusColor } from '@shared/status'
+import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
 import { SectionLabel, Segmented, StatusDot } from '@/components/primitives'
@@ -82,6 +83,16 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
       cancelled = true
     }
   }, [activeId, setMessages, setUsage])
+
+  // Opening an agent from the sidebar or a card body names no session, which
+  // used to leave the tab strip full and the pane empty. The newest is the
+  // one the grid previews, so it is the one to land on.
+  useEffect(() => {
+    if (activeId !== undefined || sessions.length === 0) return
+
+    const newest = sessions[sessions.length - 1]
+    if (newest) selectSession(agent.id, newest.id)
+  }, [activeId, sessions, agent.id, selectSession])
 
   const active = sessions.find((s) => s.id === activeId) ?? null
   const pending = approvals[0] ?? null
@@ -345,9 +356,27 @@ function SessionCard() {
   const agentId = useRoster((s) => s.agentId)
   const activeId = useRoster((s) => (agentId ? s.sess[agentId] : undefined))
   const usage = useRoster((s) => (activeId ? s.usage[activeId] : undefined))
+  const model = useRoster((s) => s.agents.find((a) => a.id === agentId)?.model ?? '')
 
-  const tokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
-  const percent = Math.round((usage?.contextUsed ?? 0) * 100)
+  // Zeros here would read as "this session has cost nothing", which is a
+  // different claim from "no session is open".
+  if (activeId === undefined) {
+    return (
+      <section className="flex flex-col gap-[9px]">
+        <SectionLabel>Session</SectionLabel>
+        <div className="rounded-field border border-line bg-card p-[11px] text-base text-dim">
+          No session open.
+        </div>
+      </section>
+    )
+  }
+
+  // The same figure the grid cards show — cache included, which on Claude is
+  // most of a turn.
+  const tokens = usage?.totalTokens ?? 0
+  // Asked here rather than trusted from the stored fraction, which cannot
+  // distinguish "window unknown" from "window empty".
+  const fraction = contextFraction(model, tokens)
 
   return (
     <section className="flex flex-col gap-[9px]">
@@ -363,10 +392,20 @@ function SessionCard() {
             ${(usage?.costUsd ?? 0).toFixed(2)}
           </span>
         </div>
-        <div className="mt-[2px] h-[4px] overflow-hidden rounded-[2px] bg-line">
-          <div className="h-full bg-accent" style={{ width: `${percent}%` }} />
-        </div>
-        <span className="text-xs text-faint-2">{percent}% of context window</span>
+        {fraction === null ? (
+          // No bar at all: an empty one reads as "plenty of room left", which
+          // is a claim Roster cannot make about a model it does not know.
+          <span className="text-xs text-faint-2">context window unknown for {model}</span>
+        ) : (
+          <>
+            <div className="mt-[2px] h-[4px] overflow-hidden rounded-[2px] bg-line">
+              <div className="h-full bg-accent" style={{ width: `${fraction * 100}%` }} />
+            </div>
+            <span className="text-xs text-faint-2">
+              {contextLabel(fraction)} of context window
+            </span>
+          </>
+        )}
       </div>
     </section>
   )
