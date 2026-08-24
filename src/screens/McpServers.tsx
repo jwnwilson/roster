@@ -1,5 +1,6 @@
 import type { Agent, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
+import { ServerGlyph } from '@/components/ServerGlyph'
 import { useRoster, type McpTab } from '@/state/store'
 
 const TABS = [
@@ -73,7 +74,7 @@ function Installed() {
           className="flex flex-col gap-[11px] rounded-[9px] border border-line bg-card px-[15px] py-[13px]"
         >
           <div className="flex items-center gap-[10px]">
-            <span aria-hidden className="h-[22px] w-[22px] flex-none rounded-chip bg-[#20222b]" />
+            <ServerGlyph name={server.name} />
             <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
             <span className="truncate font-mono text-sm text-dim-2">{server.command}</span>
             <span className="ml-auto flex-none text-base text-dim">
@@ -147,7 +148,7 @@ function Registry() {
                 data-hoverable
               >
                 <div className="flex items-center gap-[9px]">
-                  <span aria-hidden className="h-[20px] w-[20px] rounded-chip bg-[#20222b]" />
+                  <ServerGlyph name={entry.name} size={20} />
                   <h3 className="m-0 text-lg font-semibold">{entry.name}</h3>
                 </div>
                 <p className="m-0 min-h-[36px] text-md leading-[1.5] text-muted-2">
