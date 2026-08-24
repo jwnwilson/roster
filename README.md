@@ -142,6 +142,25 @@ writing a normalizer and, ideally, recording a fixture from a real run.
   roster.db                sessions, messages, approvals, usage
 ```
 
+## The app icon
+
+The icon is generated, but committed, so a build machine without Python still
+gets one:
+
+```bash
+python3 scripts/make-icon.py   # writes build/icon.png and build/icon.icns
+```
+
+Rerun it after changing the mark. `src/components/Logo.tsx` draws the same mark
+in the sidebar and has to be kept in step by hand — the script's docstring says
+which cut it mirrors.
+
+To see it on a real bundle:
+
+```bash
+npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
+```
+
 ## Design and decisions
 
 - `docs/design_handoff/` — the original design: screens, tokens, and the HTML prototype

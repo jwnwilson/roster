@@ -1,6 +1,7 @@
 import { useShallow } from 'zustand/shallow'
 import { agentStatus, useRoster, selectSidebarAgents, NO_SESSIONS, type Screen } from '@/state/store'
 import type { Agent } from '@shared/types'
+import { Logo } from './Logo'
 import { StatusDot } from './primitives'
 
 interface NavItem {
@@ -146,7 +147,7 @@ function WindowChrome() {
       className="flex h-header flex-none items-center gap-[8px] border-b border-line px-[14px]"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      <span aria-hidden className="h-[16px] w-[16px] rounded-[5px] bg-accent" />
+      <Logo />
       <span className="font-semibold tracking-[-0.01em]">Roster</span>
       <div
         className="ml-auto flex gap-[5px]"

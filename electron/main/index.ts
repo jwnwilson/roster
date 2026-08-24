@@ -1,9 +1,28 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, nativeImage, shell } from 'electron'
 import { disposeStores, initStores, registerIpc } from './ipc'
 
 const isDev = !app.isPackaged
+
+/** The generated app icon; see scripts/make-icon.py. */
+const ICON_PATH = join(import.meta.dirname, '../../build/icon.png')
+
+/**
+ * A packaged app takes its icon from the bundle, but a dev run shows
+ * Electron's own until it is set explicitly — so the icon is only verifiable
+ * while developing if we do this.
+ */
+function applyDevIcon(): void {
+  if (!isDev) return
+
+  const icon = nativeImage.createFromPath(ICON_PATH)
+  if (icon.isEmpty()) {
+    process.stdout.write(`[icon] not found at ${ICON_PATH}; run scripts/make-icon.py\n`)
+    return
+  }
+  app.dock?.setIcon(icon)
+}
 
 /**
  * The design specifies its own window chrome — a 44px sidebar header carrying
@@ -20,6 +39,7 @@ function createWindow(): BrowserWindow {
     show: false,
     frame: false,
     backgroundColor: '#111216',
+    icon: ICON_PATH,
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),
       sandbox: false,
@@ -97,6 +117,7 @@ async function captureIfRequested(win: BrowserWindow): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  applyDevIcon()
   registerIpc()
   await initStores()
   createWindow()

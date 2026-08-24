@@ -3,8 +3,29 @@
   "version": "0.1.0",
   "description": "Desktop app for managing a roster of AI coding agents",
   "main": "out/main/index.js",
-  "directories": {
-    "doc": "docs"
+  "author": "jwnwilson88@gmail.com",
+  "build": {
+    "appId": "dev.roster.app",
+    "productName": "Roster",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Development"
+    }
   },
   "scripts": {
     "dev": "electron-vite dev",
