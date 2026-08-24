@@ -181,11 +181,13 @@ export interface Skill {
   lastEditedMs: number
 }
 
+/**
+ * A configured server. Which agents use it is not stored here — that lives in
+ * each agent's `mcp_servers`, so there is exactly one place it can be wrong.
+ */
 export interface McpServer {
   name: string
   command: string
-  /** Agent ids this server is enabled for. */
-  enabledFor: string[]
 }
 
 export interface RegistryEntry {

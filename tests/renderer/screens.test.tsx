@@ -177,10 +177,13 @@ describe('McpServers', () => {
   beforeEach(() => {
     useRoster.setState({
       mcpServers: [
-        anMcpServer({ name: 'filesystem', enabledFor: ['debugging'] }),
-        anMcpServer({ name: 'github', command: 'npx server-github', enabledFor: [] }),
+        anMcpServer({ name: 'filesystem' }),
+        anMcpServer({ name: 'github', command: 'npx server-github' }),
       ],
-      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent' })],
+      // Enablement lives on the agent, not on the server.
+      agents: [
+        anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: ['filesystem'] }),
+      ],
     })
   })
 
@@ -213,6 +216,56 @@ describe('McpServers', () => {
     await user.click(screen.getAllByRole('button', { name: 'Debugging' })[1]!)
 
     expect(window.roster.mcp.setEnabled).toHaveBeenCalledWith('github', 'debugging', true)
+  })
+
+  test('toggling off reports the server the chip belongs to', async () => {
+    const user = userEvent.setup()
+    render(<McpServers />)
+
+    // The first chip is filesystem's, which this agent already has on.
+    await user.click(screen.getAllByRole('button', { name: 'Debugging' })[0]!)
+
+    expect(window.roster.mcp.setEnabled).toHaveBeenCalledWith('filesystem', 'debugging', false)
+  })
+
+  test('re-reads the agents, since enablement lives in agent.toml', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      agents: {
+        list: vi
+          .fn()
+          .mockResolvedValue([
+            anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: ['filesystem', 'github'] }),
+          ]),
+      },
+    })
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'filesystem' }), anMcpServer({ name: 'github' })],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: ['filesystem'] })],
+    })
+    render(<McpServers />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Debugging' })[1]!)
+
+    // The chip must follow the file, not a local guess — this is the join
+    // that used to be written to one place and read from another.
+    await waitFor(() =>
+      expect(useRoster.getState().agents[0]?.mcpServers).toEqual(['filesystem', 'github']),
+    )
+    expect(screen.getAllByRole('button', { name: 'Debugging' })[1]).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+
+  test('a server no agent names shows as wired into nobody', () => {
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'sqlite' })],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
+    })
+    render(<McpServers />)
+
+    expect(screen.getByText('0 agents')).toBeInTheDocument()
   })
 
   test('the registry tab groups servers by category', async () => {
@@ -555,7 +608,7 @@ describe('McpServers — Install', () => {
     const user = userEvent.setup()
     installRosterApi({
       mcp: {
-        install: vi.fn().mockResolvedValue([anMcpServer({ name: 'gitlab', enabledFor: [] })]),
+        install: vi.fn().mockResolvedValue([anMcpServer({ name: 'gitlab' })]),
       },
     })
     useRoster.setState({ mcpServers: [], agents: [] })

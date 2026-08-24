@@ -121,8 +121,8 @@ Break work down until every task is a day or less.
 
 const SEED_MCP = {
   servers: [
-    { name: 'filesystem', command: 'npx @modelcontextprotocol/server-filesystem ~', enabledFor: [] },
-    { name: 'github', command: 'npx @modelcontextprotocol/server-github', enabledFor: [] },
+    { name: 'filesystem', command: 'npx @modelcontextprotocol/server-filesystem ~' },
+    { name: 'github', command: 'npx @modelcontextprotocol/server-github' },
   ],
 }
 

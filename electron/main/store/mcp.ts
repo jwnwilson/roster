@@ -11,8 +11,8 @@ interface McpFile {
 
 /**
  * File-backed store over `~/roster/mcp.json`. Holds which servers exist and
- * which agents each is wired into; the runner layer turns this into per-agent
- * MCP config when starting a session.
+ * how to launch them — nothing about which agents use them. That lives in each
+ * agent's `mcp_servers`, so the two cannot disagree.
  */
 export class McpStore {
   private servers: McpServer[] = []
@@ -38,18 +38,9 @@ export class McpStore {
   async install(name: string, command: string): Promise<McpServer[]> {
     if (this.servers.some((server) => server.name === name)) return this.servers
 
-    this.servers = [...this.servers, { name, command, enabledFor: [] }]
+    this.servers = [...this.servers, { name, command }]
     await this.persist()
     return this.servers
-  }
-
-  async setEnabled(server: string, agentId: string, enabled: boolean): Promise<void> {
-    this.servers = this.servers.map((entry) => {
-      if (entry.name !== server) return entry
-      const without = entry.enabledFor.filter((id) => id !== agentId)
-      return { ...entry, enabledFor: enabled ? [...without, agentId] : without }
-    })
-    await this.persist()
   }
 
   private async persist(): Promise<void> {
@@ -98,12 +89,29 @@ export class McpStore {
   }
 }
 
+/**
+ * The agent's `mcp_servers` with one server added or removed.
+ *
+ * Adding is idempotent and appends, so the order someone wired things up in
+ * survives a round trip through the UI.
+ */
+export function withServer(
+  names: readonly string[],
+  server: string,
+  enabled: boolean,
+): string[] {
+  const without = names.filter((name) => name !== server)
+  return enabled ? [...without, server] : without
+}
+
+/**
+ * Drops anything unrecognised, which includes the `enabledFor` list older
+ * files carry — enablement moved to agent.toml, and that list never took
+ * effect on its own.
+ */
 function normalize(entry: Partial<McpServer>): McpServer {
   return {
     name: typeof entry.name === 'string' ? entry.name : 'unknown',
     command: typeof entry.command === 'string' ? entry.command : '',
-    enabledFor: Array.isArray(entry.enabledFor)
-      ? entry.enabledFor.filter((id): id is string => typeof id === 'string')
-      : [],
   }
 }

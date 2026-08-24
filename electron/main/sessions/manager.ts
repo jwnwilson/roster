@@ -444,18 +444,30 @@ export class SessionManager {
       .map((skill) => resolve(skill.path))
   }
 
+  /**
+   * The servers this agent's `mcp_servers` names, resolved to launch specs.
+   *
+   * agent.toml is the only thing that decides this; mcp.json just says how to
+   * start each server. A name with no entry there is a misconfiguration that
+   * would otherwise vanish silently, so it is reported.
+   */
   private mcpServersFor(agent: Agent): Record<string, McpLaunchSpec> {
-    const enabled = new Set(agent.mcpServers)
+    const configured = new Map(this.mcp.findAll().map((server) => [server.name, server]))
 
-    return Object.fromEntries(
-      this.mcp
-        .findAll()
-        .filter((server) => enabled.has(server.name) && server.enabledFor.includes(agent.id))
-        .map((server) => {
-          const [command = '', ...args] = server.command.split(/\s+/)
-          return [server.name, { command, args }]
-        }),
-    )
+    const resolved: [string, McpLaunchSpec][] = []
+    for (const name of agent.mcpServers) {
+      const server = configured.get(name)
+      if (!server) {
+        process.stderr.write(
+          `[mcp] agent "${agent.id}" enables "${name}", which is not in mcp.json\n`,
+        )
+        continue
+      }
+      const [command = '', ...args] = server.command.split(/\s+/)
+      resolved.push([name, { command, args }])
+    }
+
+    return Object.fromEntries(resolved)
   }
 }
 

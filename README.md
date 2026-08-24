@@ -138,7 +138,7 @@ writing a normalizer and, ideally, recording a fixture from a real run.
   agents/<id>/agent.toml   one file per agent — hand-editable
   skills/<name>/SKILL.md   the shared skill library, nested files and all
   workspace/               default working directory for seeded agents
-  mcp.json                 MCP servers and which agents use them
+  mcp.json                 MCP servers and how to launch them
   roster.db                sessions, messages, approvals, usage
 ```
 
@@ -176,5 +176,12 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
 - **Handoff is Claude-only.** It works through an in-process MCP server, which only the
   Claude runner supports. Other runners can be handed *to*, but cannot hand off.
 - Tasks and Spend are disabled placeholders, as in the original design.
+- **Only the Claude runner uses MCP servers.** Codex and custom runners drop the
+  config silently — an agent on those runners can name servers in its
+  `mcp_servers` and nothing will start them.
+- **The MCP registry is a static catalogue.** Nine hardcoded entries, nothing
+  fetched, and the launch command is derived as
+  `npx @modelcontextprotocol/server-<name>` rather than stored per entry — so it
+  is only correct for the servers actually published under that scope.
 - Model prices are a table Roster maintains for Claude; Codex publishes none, so that
   column is left empty rather than invented.

@@ -71,8 +71,8 @@ const SKILLS: Skill[] = [
 ]
 
 const SERVERS: McpServer[] = [
-  { name: 'filesystem', command: 'npx server-filesystem ~', enabledFor: ['debugging'] },
-  { name: 'github', command: 'npx server-github', enabledFor: [] },
+  { name: 'filesystem', command: 'npx server-filesystem ~' },
+  { name: 'github', command: 'npx server-github' },
 ]
 
 /** Turns a fixed event list into the async iterable a runner returns. */
@@ -528,6 +528,69 @@ describe('SessionManager — what the runner is given', () => {
       command: 'npx',
       args: ['server-filesystem', '~'],
     })
+  })
+
+  test('leaves out servers this agent has not enabled', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    // 'github' is configured in mcp.json but absent from this agent.toml.
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const options = runnerStub.run.mock.calls[0]?.[1] as { mcpServers: Record<string, unknown> }
+    expect(options.mcpServers).not.toHaveProperty('github')
+  })
+
+  test('passes nothing for an agent that enables nothing', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = manager.create('review', 'x')
+    await manager.send(session.id, 'go')
+
+    const options = runnerStub.run.mock.calls[0]?.[1] as { mcpServers: Record<string, unknown> }
+    expect(options.mcpServers).toEqual({})
+  })
+
+  test('skips a server the agent names that mcp.json does not define', async () => {
+    // The regression this guards: enablement is agent.toml's alone, so an
+    // unresolvable name must be dropped rather than crashing the turn.
+    const store = { findAll: () => [{ name: 'github', command: 'npx server-github' }] }
+    const solo = new SessionManager(
+      { findAll: () => AGENTS, findById: (id: string) => AGENTS.find((a) => a.id === id) ?? null } as never,
+      sessions,
+      { findAll: () => SKILLS } as never,
+      store as never,
+      usage,
+    )
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = solo.create('debugging', 'x')
+    await solo.send(session.id, 'go')
+
+    const options = runnerStub.run.mock.calls[0]?.[1] as { mcpServers: Record<string, unknown> }
+    expect(options.mcpServers).toEqual({})
+  })
+
+  test('says so when a named server cannot be resolved', async () => {
+    const written: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk))
+      return true
+    })
+    const solo = new SessionManager(
+      { findAll: () => AGENTS, findById: (id: string) => AGENTS.find((a) => a.id === id) ?? null } as never,
+      sessions,
+      { findAll: () => SKILLS } as never,
+      { findAll: () => [] } as never,
+      usage,
+    )
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = solo.create('debugging', 'x')
+    await solo.send(session.id, 'go')
+    spy.mockRestore()
+
+    expect(written.join('')).toContain('filesystem')
   })
 
   test('passes the agent cwd, model, and system prompt', async () => {

@@ -78,7 +78,8 @@ export interface RosterApi {
   }
   mcp: {
     list(): Promise<McpServer[]>
-    setEnabled(server: string, agentId: string, enabled: boolean): Promise<void>
+    /** Adds or removes the server from that agent's `mcp_servers`. */
+    setEnabled(server: string, agentId: string, enabled: boolean): Promise<Agent>
     install(name: string, command: string): Promise<McpServer[]>
   }
   dialog: {

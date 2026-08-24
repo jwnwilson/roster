@@ -194,17 +194,13 @@ describe('McpStore', () => {
     expect(store.findAll()).toEqual([])
   })
 
-  test('reads servers and their per-agent wiring', async () => {
-    await writeConfig({
-      servers: [{ name: 'filesystem', command: 'npx fs', enabledFor: ['debugging'] }],
-    })
+  test('reads servers and how to launch them', async () => {
+    await writeConfig({ servers: [{ name: 'filesystem', command: 'npx fs' }] })
 
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()).toEqual([
-      { name: 'filesystem', command: 'npx fs', enabledFor: ['debugging'] },
-    ])
+    expect(store.findAll()).toEqual([{ name: 'filesystem', command: 'npx fs' }])
   })
 
   test('fills in defaults for a partially written entry', async () => {
@@ -213,41 +209,33 @@ describe('McpStore', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()[0]).toEqual({ name: 'partial', command: '', enabledFor: [] })
+    expect(store.findAll()[0]).toEqual({ name: 'partial', command: '' })
   })
 
-  test('enabling a server for an agent persists to disk', async () => {
-    await writeConfig({ servers: [{ name: 'filesystem', command: 'npx fs', enabledFor: [] }] })
+  test('drops the enabledFor list older files carry', async () => {
+    // Enablement moved to agent.toml; a stale list here must not come back
+    // and become a second, disagreeing answer.
+    await writeConfig({
+      servers: [{ name: 'filesystem', command: 'npx fs', enabledFor: ['debugging'] }],
+    })
+
     const store = new McpStore()
     await store.load()
 
-    await store.setEnabled('filesystem', 'debugging', true)
-
-    const reopened = new McpStore()
-    await reopened.load()
-    expect(reopened.findAll()[0]?.enabledFor).toEqual(['debugging'])
+    expect(store.findAll()[0]).toEqual({ name: 'filesystem', command: 'npx fs' })
   })
 
-  test('disabling removes just that agent', async () => {
+  test('rewriting the file does not persist enablement', async () => {
     await writeConfig({
-      servers: [{ name: 'filesystem', command: 'npx fs', enabledFor: ['debugging', 'review'] }],
+      servers: [{ name: 'filesystem', command: 'npx fs', enabledFor: ['debugging'] }],
     })
     const store = new McpStore()
     await store.load()
 
-    await store.setEnabled('filesystem', 'debugging', false)
-    expect(store.findAll()[0]?.enabledFor).toEqual(['review'])
-  })
+    await store.install('github', 'npx server-github')
 
-  test('enabling twice does not duplicate the agent', async () => {
-    await writeConfig({ servers: [{ name: 'filesystem', command: 'npx fs', enabledFor: [] }] })
-    const store = new McpStore()
-    await store.load()
-
-    await store.setEnabled('filesystem', 'debugging', true)
-    await store.setEnabled('filesystem', 'debugging', true)
-
-    expect(store.findAll()[0]?.enabledFor).toEqual(['debugging'])
+    const raw = await readFile(mcpConfigPath(), 'utf8')
+    expect(raw).not.toContain('enabledFor')
   })
 })
 
@@ -354,13 +342,13 @@ describe('SkillStore.pathOf', () => {
 /* --------------------------------------------------------- mcp: install */
 
 describe('McpStore.install', () => {
-  test('adds a server, enabled for nobody until wired up', async () => {
+  test('adds a server with its launch command', async () => {
     const store = new McpStore()
     await store.load()
 
     const servers = await store.install('linear', 'npx server-linear')
 
-    expect(servers).toEqual([{ name: 'linear', command: 'npx server-linear', enabledFor: [] }])
+    expect(servers).toEqual([{ name: 'linear', command: 'npx server-linear' }])
   })
 
   test('persists to disk', async () => {
@@ -377,13 +365,11 @@ describe('McpStore.install', () => {
     const store = new McpStore()
     await store.load()
     await store.install('linear', 'npx server-linear')
-    await store.setEnabled('linear', 'debugging', true)
 
     await store.install('linear', 'a-different-command')
 
     expect(store.findAll()).toHaveLength(1)
-    // The wiring someone already did must survive.
-    expect(store.findAll()[0]?.enabledFor).toEqual(['debugging'])
+    // The command someone already tuned must survive.
     expect(store.findAll()[0]?.command).toBe('npx server-linear')
   })
 })
@@ -635,5 +621,45 @@ describe('SkillStore — deletion', () => {
     const store = await withSkill(spy.toTrash)
 
     await expect(store.removeSkill('ghost')).rejects.toThrow(/unknown skill/)
+  })
+})
+
+/* --------------------------------------------------- mcp: enablement edits */
+
+describe('withServer', () => {
+  test('adds a server the agent did not have', async () => {
+    const { withServer } = await import('@main/store/mcp')
+
+    expect(withServer(['github'], 'filesystem', true)).toEqual(['github', 'filesystem'])
+  })
+
+  test('removes one it did', async () => {
+    const { withServer } = await import('@main/store/mcp')
+
+    expect(withServer(['github', 'filesystem'], 'github', false)).toEqual(['filesystem'])
+  })
+
+  test('adding twice does not duplicate it', async () => {
+    const { withServer } = await import('@main/store/mcp')
+
+    // Two clicks on the same chip must not write the name twice into
+    // agent.toml, which would then launch the server twice.
+    const once = withServer([], 'filesystem', true)
+    expect(withServer(once, 'filesystem', true)).toEqual(['filesystem'])
+  })
+
+  test('removing one that was never there is a no-op', async () => {
+    const { withServer } = await import('@main/store/mcp')
+
+    expect(withServer(['github'], 'filesystem', false)).toEqual(['github'])
+  })
+
+  test('does not mutate the list it was given', async () => {
+    const { withServer } = await import('@main/store/mcp')
+    const original = ['github']
+
+    withServer(original, 'filesystem', true)
+
+    expect(original).toEqual(['github'])
   })
 })

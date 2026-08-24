@@ -322,7 +322,13 @@ Each was raised and decided explicitly:
     the in-app wordmark are the same thing. The mark's amber is the icon's
     `#ffca70` rather than the `#d9a04a` status token, which loses too much
     contrast against the accent at 16px to read as a separate row.
-13. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+13. **MCP enablement lives only in `agent.toml`.** `mcp.json` says which
+    servers exist and how to launch them; each agent's `mcp_servers` says which
+    it uses. Storing it in both — as `mcp.json`'s `enabledFor` originally did —
+    meant the MCP screen wrote one and the session manager read the AND of
+    both, so a chip could read as enabled while nothing launched. The field is
+    dropped on load, so older files migrate silently.
+14. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
     executes a script against the built app's real DOM and IPC. It exercises the actual
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.

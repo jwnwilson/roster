@@ -1,4 +1,4 @@
-import type { RegistryEntry } from '@shared/types'
+import type { Agent, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
 import { useRoster, type McpTab } from '@/state/store'
 
@@ -48,11 +48,13 @@ export function McpServers() {
 function Installed() {
   const servers = useRoster((s) => s.mcpServers)
   const agents = useRoster((s) => s.agents)
-  const setMcpServers = useRoster((s) => s.setMcpServers)
+  const setAgents = useRoster((s) => s.setAgents)
 
   async function toggle(server: string, agentId: string, enabled: boolean): Promise<void> {
     await window.roster.mcp.setEnabled(server, agentId, enabled)
-    setMcpServers(await window.roster.mcp.list())
+    // Enablement lives in agent.toml, so it is the agents that changed.
+    // Re-read rather than patching locally, so the UI reflects the file.
+    setAgents(await window.roster.agents.list())
   }
 
   if (servers.length === 0) {
@@ -75,13 +77,15 @@ function Installed() {
             <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
             <span className="truncate font-mono text-sm text-dim-2">{server.command}</span>
             <span className="ml-auto flex-none text-base text-dim">
-              {server.enabledFor.length === 1 ? '1 agent' : `${server.enabledFor.length} agents`}
+              {countEnabled(agents, server.name) === 1
+                ? '1 agent'
+                : `${countEnabled(agents, server.name)} agents`}
             </span>
           </div>
 
           <div className="flex flex-wrap gap-[7px]">
             {agents.map((agent) => {
-              const on = server.enabledFor.includes(agent.id)
+              const on = agent.mcpServers.includes(server.name)
               return (
                 <button
                   key={agent.id}
@@ -109,6 +113,11 @@ function Installed() {
       ))}
     </div>
   )
+}
+
+/** How many agents name this server in their `mcp_servers`. */
+function countEnabled(agents: Agent[], server: string): number {
+  return agents.filter((agent) => agent.mcpServers.includes(server)).length
 }
 
 /** The launch command Roster writes when installing from the registry. */

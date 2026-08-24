@@ -12,7 +12,7 @@ import { PtyManager } from '../pty/manager'
 import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
 import { AgentStore } from '../store/agents'
-import { McpStore } from '../store/mcp'
+import { McpStore, withServer } from '../store/mcp'
 import { SessionStore } from '../store/sessions'
 import { SkillStore } from '../store/skills'
 import { UsageStore } from '../store/usage'
@@ -193,8 +193,17 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle(CHANNELS.mcpList, () => mcpStore.findAll())
-  ipcMain.handle(CHANNELS.mcpSetEnabled, (_e, server: string, agentId: string, enabled: boolean) =>
-    mcpStore.setEnabled(server, agentId, enabled),
+  ipcMain.handle(
+    CHANNELS.mcpSetEnabled,
+    async (_e, server: string, agentId: string, enabled: boolean) => {
+      // Enablement is a property of the agent, so this is an agent.toml edit.
+      const agent = agentStore.findById(agentId)
+      if (!agent) throw new Error(`unknown agent "${agentId}"`)
+
+      return agentStore.update(agentId, {
+        mcpServers: withServer(agent.mcpServers, server, enabled),
+      })
+    },
   )
   ipcMain.handle(CHANNELS.mcpInstall, (_e, name: string, command: string) =>
     mcpStore.install(name, command),
