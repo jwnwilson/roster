@@ -289,3 +289,44 @@ describe('AgentsGrid — transcript preview', () => {
     expect(screen.getByText('review talk')).toBeInTheDocument()
   })
 })
+
+describe('AgentsGrid — spend', () => {
+  test('shows what an agent has spent across all its sessions', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent' })],
+      agentUsage: { debugging: { tokens: 86_120, costUsd: 0.91 } },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('86.1k tok')).toBeInTheDocument()
+    expect(screen.getByText('$0.91')).toBeInTheDocument()
+  })
+
+  test('an agent that has never run reads as zero', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging' })],
+      agentUsage: {},
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('0 tok')).toBeInTheDocument()
+    expect(screen.getByText('$0.00')).toBeInTheDocument()
+  })
+
+  test('each card shows its own total, not the roster-wide one', () => {
+    useRoster.setState({
+      agents: [
+        anAgent({ id: 'a', name: 'A Agent' }),
+        anAgent({ id: 'b', name: 'B Agent' }),
+      ],
+      agentUsage: {
+        a: { tokens: 1_000, costUsd: 1 },
+        b: { tokens: 2_000, costUsd: 2 },
+      },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('1.0k tok')).toBeInTheDocument()
+    expect(screen.getByText('2.0k tok')).toBeInTheDocument()
+  })
+})

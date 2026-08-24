@@ -120,10 +120,19 @@ function fromResult(message: Record<string, unknown>): RunnerEvent[] {
   const cost = message['total_cost_usd']
 
   if (usage !== null || typeof cost === 'number') {
+    const inputTokens = asNumber(usage?.['input_tokens']) ?? 0
+    const outputTokens = asNumber(usage?.['output_tokens']) ?? 0
+    // Claude reports cache tokens on top of input_tokens, not inside it, and
+    // they dominate a real turn — 18 fresh input against 77k cached is
+    // typical, and total_cost_usd already bills for all of it.
+    const cacheCreation = asNumber(usage?.['cache_creation_input_tokens']) ?? 0
+    const cacheRead = asNumber(usage?.['cache_read_input_tokens']) ?? 0
+
     events.push({
       kind: 'usage',
-      inputTokens: asNumber(usage?.['input_tokens']) ?? 0,
-      outputTokens: asNumber(usage?.['output_tokens']) ?? 0,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + cacheCreation + cacheRead + outputTokens,
       costUsd: typeof cost === 'number' ? cost : 0,
     })
   }

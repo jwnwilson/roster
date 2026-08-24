@@ -50,4 +50,12 @@ export const MIGRATIONS: readonly string[] = [
     context_used  REAL    NOT NULL DEFAULT 0
   );
   `,
+
+  // 2 — total tokens, which input + output alone undercounts once a CLI
+  // reports cache tokens separately. Existing rows keep their old sum; the
+  // cache half of those turns was never recorded and cannot be recovered.
+  `
+  ALTER TABLE usage ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0;
+  UPDATE usage SET total_tokens = input_tokens + output_tokens;
+  `,
 ]

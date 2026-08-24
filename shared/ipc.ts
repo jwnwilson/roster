@@ -9,6 +9,7 @@ import type {
   Skill,
   Status,
   TranscriptLine,
+  AgentUsage,
   Usage,
 } from './types'
 
@@ -43,6 +44,8 @@ export interface RosterApi {
     create(agentId: string, title?: string): Promise<Session>
     messages(sessionId: string): Promise<Message[]>
     usage(sessionId: string): Promise<Usage | null>
+    /** Token and cost totals per agent, for the grid cards. */
+    usageByAgent(): Promise<Record<string, AgentUsage>>
     send(sessionId: string, prompt: string): Promise<void>
     cancel(sessionId: string): Promise<void>
     respondToApproval(sessionId: string, approvalId: string, approved: boolean): Promise<void>
@@ -152,6 +155,7 @@ export const CHANNELS = {
   sessionsCreate: 'sessions:create',
   sessionsMessages: 'sessions:messages',
   sessionsUsage: 'sessions:usage',
+  sessionsUsageByAgent: 'sessions:usageByAgent',
   sessionsSend: 'sessions:send',
   sessionsCancel: 'sessions:cancel',
   sessionsRespondToApproval: 'sessions:respondToApproval',

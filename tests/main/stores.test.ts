@@ -45,6 +45,7 @@ describe('UsageStore', () => {
       sessionId: s.id,
       inputTokens: 10,
       outputTokens: 5,
+      totalTokens: 95,
       costUsd: 0.5,
       contextUsed: 0.25,
     })
@@ -53,6 +54,7 @@ describe('UsageStore', () => {
       sessionId: s.id,
       inputTokens: 10,
       outputTokens: 5,
+      totalTokens: 95,
       costUsd: 0.5,
       contextUsed: 0.25,
     })
@@ -60,10 +62,10 @@ describe('UsageStore', () => {
 
   test('replaces rather than accumulates, since runners report totals', () => {
     const s = sessions.create({ agentId: 'a', title: 'x', origin: 'you' })
-    store.record({ sessionId: s.id, inputTokens: 10, outputTokens: 5, costUsd: 0.5, contextUsed: 0 })
-    store.record({ sessionId: s.id, inputTokens: 30, outputTokens: 9, costUsd: 1.5, contextUsed: 0 })
+    store.record({ sessionId: s.id, inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsd: 0.5, contextUsed: 0 })
+    store.record({ sessionId: s.id, inputTokens: 30, outputTokens: 9, totalTokens: 39, costUsd: 1.5, contextUsed: 0 })
 
-    expect(store.forSession(s.id)).toMatchObject({ inputTokens: 30, costUsd: 1.5 })
+    expect(store.forSession(s.id)).toMatchObject({ inputTokens: 30, totalTokens: 39, costUsd: 1.5 })
   })
 
   test('totals every session an agent owns, for its grid card', () => {
@@ -71,15 +73,38 @@ describe('UsageStore', () => {
     const b = sessions.create({ agentId: 'debugging', title: '2', origin: 'you' })
     const other = sessions.create({ agentId: 'review', title: '3', origin: 'you' })
 
-    store.record({ sessionId: a.id, inputTokens: 10, outputTokens: 5, costUsd: 1, contextUsed: 0 })
-    store.record({ sessionId: b.id, inputTokens: 20, outputTokens: 5, costUsd: 2, contextUsed: 0 })
-    store.record({ sessionId: other.id, inputTokens: 99, outputTokens: 0, costUsd: 9, contextUsed: 0 })
+    store.record({ sessionId: a.id, inputTokens: 10, outputTokens: 5, totalTokens: 800, costUsd: 1, contextUsed: 0 })
+    store.record({ sessionId: b.id, inputTokens: 20, outputTokens: 5, totalTokens: 200, costUsd: 2, contextUsed: 0 })
+    store.record({ sessionId: other.id, inputTokens: 99, outputTokens: 0, totalTokens: 99, costUsd: 9, contextUsed: 0 })
 
-    expect(store.forAgent('debugging')).toEqual({ tokens: 40, costUsd: 3 })
+    expect(store.byAgent()['debugging']).toEqual({ tokens: 1_000, costUsd: 3 })
   })
 
-  test('an agent with no usage totals to zero rather than null', () => {
-    expect(store.forAgent('nobody')).toEqual({ tokens: 0, costUsd: 0 })
+  test('counts the cached tokens, not just input plus output', () => {
+    // The regression: a real Claude turn is mostly cache, so summing
+    // input + output reported a few hundred tokens against dollars of spend.
+    const s = sessions.create({ agentId: 'debugging', title: '1', origin: 'you' })
+    store.record({
+      sessionId: s.id,
+      inputTokens: 18,
+      outputTokens: 297,
+      totalTokens: 77_913,
+      costUsd: 0.94,
+      contextUsed: 0,
+    })
+
+    expect(store.byAgent()['debugging']?.tokens).toBe(77_913)
+  })
+
+  test('keeps agents apart', () => {
+    const a = sessions.create({ agentId: 'debugging', title: '1', origin: 'you' })
+    store.record({ sessionId: a.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1, contextUsed: 0 })
+
+    expect(store.byAgent()['review']).toBeUndefined()
+  })
+
+  test('an agent with no usage is simply absent', () => {
+    expect(store.byAgent()).toEqual({})
   })
 })
 

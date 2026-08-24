@@ -1,10 +1,11 @@
 import type { Db } from '../db'
-import type { Usage } from '../../../shared/types'
+import type { AgentUsage, Usage } from '../../../shared/types'
 
 interface UsageRow {
   session_id: string
   input_tokens: number
   output_tokens: number
+  total_tokens: number
   cost_usd: number
   context_used: number
 }
@@ -47,11 +48,13 @@ export class UsageStore {
   record(usage: Usage): void {
     this.db
       .prepare(
-        `INSERT INTO usage (session_id, input_tokens, output_tokens, cost_usd, context_used)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO usage
+           (session_id, input_tokens, output_tokens, total_tokens, cost_usd, context_used)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT (session_id) DO UPDATE SET
            input_tokens  = excluded.input_tokens,
            output_tokens = excluded.output_tokens,
+           total_tokens  = excluded.total_tokens,
            cost_usd      = excluded.cost_usd,
            context_used  = excluded.context_used`,
       )
@@ -59,23 +62,31 @@ export class UsageStore {
         usage.sessionId,
         usage.inputTokens,
         usage.outputTokens,
+        usage.totalTokens,
         usage.costUsd,
         usage.contextUsed,
       )
   }
 
-  /** Totals across every session an agent owns, for its grid card. */
-  forAgent(agentId: string): { tokens: number; costUsd: number } {
-    const row = this.db
-      .prepare<[string], { tokens: number | null; cost: number | null }>(
-        `SELECT SUM(u.input_tokens + u.output_tokens) AS tokens, SUM(u.cost_usd) AS cost
+  /**
+   * Totals per agent, across every session it owns — one grouped query rather
+   * than one per card. Agents with no usage are absent, not zero rows.
+   */
+  byAgent(): Record<string, AgentUsage> {
+    const rows = this.db
+      .prepare<[], { agent_id: string; tokens: number | null; cost: number | null }>(
+        `SELECT s.agent_id AS agent_id,
+                SUM(u.total_tokens) AS tokens,
+                SUM(u.cost_usd)     AS cost
            FROM usage u
            JOIN sessions s ON s.id = u.session_id
-          WHERE s.agent_id = ?`,
+          GROUP BY s.agent_id`,
       )
-      .get(agentId)
+      .all()
 
-    return { tokens: row?.tokens ?? 0, costUsd: row?.cost ?? 0 }
+    return Object.fromEntries(
+      rows.map((row) => [row.agent_id, { tokens: row.tokens ?? 0, costUsd: row.cost ?? 0 }]),
+    )
   }
 }
 
@@ -84,6 +95,7 @@ function toUsage(row: UsageRow): Usage {
     sessionId: row.session_id,
     inputTokens: row.input_tokens,
     outputTokens: row.output_tokens,
+    totalTokens: row.total_tokens,
     costUsd: row.cost_usd,
     contextUsed: row.context_used,
   }

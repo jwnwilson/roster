@@ -117,7 +117,7 @@ describe('normalizeClaudeMessage — tool results', () => {
 describe('normalizeClaudeMessage — result', () => {
   test('reports usage and ends the turn with the CLI session id', () => {
     expect(normalizeClaudeMessage(RESULT_SUCCESS)).toEqual([
-      { kind: 'usage', inputTokens: 18, outputTokens: 297, costUsd: 0.0484788 },
+      { kind: 'usage', inputTokens: 18, outputTokens: 297, totalTokens: 77_913, costUsd: 0.0484788 },
       { kind: 'done', runnerSessionId: 'sess-abc' },
     ])
   })
@@ -246,5 +246,37 @@ describe('normalizeClaudeMessage — streaming', () => {
     const events = normalizeAll(STREAMED_TURN, false)
 
     expect(events.filter((e) => e.kind === 'text').map((e) => e.delta)).toEqual(['ONE TWO'])
+  })
+})
+
+describe('normalizeClaudeMessage — token totals', () => {
+  test('counts cache tokens, which Claude reports alongside input', () => {
+    // 18 fresh + 20,640 written + 56,958 read + 297 out. Counting only
+    // input + output would report 315 of the 77,913 the turn was billed for.
+    const [usage] = normalizeClaudeMessage(RESULT_SUCCESS)
+
+    expect(usage).toMatchObject({ inputTokens: 18, outputTokens: 297, totalTokens: 77_913 })
+  })
+
+  test('falls back to input plus output when no cache fields are present', () => {
+    const [usage] = normalizeClaudeMessage({
+      type: 'result',
+      subtype: 'success',
+      session_id: 's',
+      usage: { input_tokens: 10, output_tokens: 4 },
+    })
+
+    expect(usage).toMatchObject({ totalTokens: 14 })
+  })
+
+  test('reports zero rather than NaN when usage is absent', () => {
+    const [usage] = normalizeClaudeMessage({
+      type: 'result',
+      subtype: 'success',
+      session_id: 's',
+      total_cost_usd: 0.5,
+    })
+
+    expect(usage).toMatchObject({ totalTokens: 0, costUsd: 0.5 })
   })
 })

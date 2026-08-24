@@ -201,6 +201,7 @@ describe('AgentDetail — usage readout', () => {
           sessionId: 's1',
           inputTokens: 100_000,
           outputTokens: 18_402,
+          totalTokens: 118402,
           costUsd: 1.24,
           contextUsed: 0.58,
         },

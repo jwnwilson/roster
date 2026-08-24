@@ -126,6 +126,7 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsUsage, (_e, sessionId: string) =>
     usageStore?.forSession(sessionId) ?? null,
   )
+  ipcMain.handle(CHANNELS.sessionsUsageByAgent, () => usageStore?.byAgent() ?? {})
   ipcMain.handle(CHANNELS.sessionsSend, (_e, sessionId: string, prompt: string) =>
     requireManager().send(sessionId, prompt),
   )

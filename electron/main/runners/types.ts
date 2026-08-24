@@ -15,7 +15,19 @@ export type RunnerEvent =
   /** The CLI is blocked waiting for the user to allow or deny an action. */
   | { kind: 'approval'; id: string; toolName: string; command: string }
   /** Running totals, not deltas. */
-  | { kind: 'usage'; inputTokens: number; outputTokens: number; costUsd: number }
+  | {
+      kind: 'usage'
+      inputTokens: number
+      outputTokens: number
+      /**
+       * Every token the turn consumed, cache included. Each normalizer works
+       * this out itself: Claude reports cache tokens *alongside* input, while
+       * Codex reports them as a subset *of* input, so there is no summing rule
+       * that is right for both.
+       */
+      totalTokens: number
+      costUsd: number
+    }
   /**
    * The CLI's own session id, for resume and fork. Codex reports it when the
    * thread opens; Claude reports it on the result, so `done` carries it too.

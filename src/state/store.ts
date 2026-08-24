@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type {
   Agent,
+  AgentUsage,
   Approval,
   McpServer,
   Message,
@@ -46,6 +47,8 @@ interface RosterState {
   /** sessionId -> approvals the runner is blocked on. */
   approvals: Record<string, Approval[]>
   usage: Record<string, Usage>
+  /** Token and cost totals per agent, for the grid cards. */
+  agentUsage: Record<string, AgentUsage>
   /** agentId -> the last few lines of its most recent session. */
   transcripts: Record<string, TranscriptLine[]>
   loaded: boolean
@@ -77,6 +80,7 @@ interface RosterState {
   setSessions(agentId: string, sessions: Session[]): void
   setMessages(sessionId: string, messages: Message[]): void
   setUsage(sessionId: string, usage: Usage): void
+  setAgentUsage(totals: Record<string, AgentUsage>): void
   setTranscripts(transcripts: Record<string, TranscriptLine[]>): void
   setAllSessions(sessions: Record<string, Session[]>): void
   setMcpServers(servers: McpServer[]): void
@@ -117,6 +121,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   activity: {},
   approvals: {},
   usage: {},
+  agentUsage: {},
   transcripts: {},
   loaded: false,
 
@@ -146,6 +151,7 @@ export const useRoster = create<RosterState>((set, get) => ({
     set((s) => ({ messages: { ...s.messages, [sessionId]: messages } })),
 
   setUsage: (sessionId, usage) => set((s) => ({ usage: { ...s.usage, [sessionId]: usage } })),
+  setAgentUsage: (agentUsage) => set({ agentUsage }),
   setTranscripts: (transcripts) => set({ transcripts }),
   setAllSessions: (sessions) => set({ sessions }),
   setMcpServers: (mcpServers) => set({ mcpServers }),

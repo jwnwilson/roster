@@ -1,3 +1,3 @@
-- [x] Add colour coded dots to agents based on if they are running, finished or blocked and waiting for input
-- [x] Have terminal retain history when navigating away and returning
-- [x] Generate a roster logo and add that to electron app icon
+- [ ] Add logos to MCP servers
+- [ ] Add ability to configure MCP servers via modal matching new skill style clicking on them in the installed list or via the registry
+- [ ] Extend LLMs to work with local llms, brainstorm best approach here ollama or MLX

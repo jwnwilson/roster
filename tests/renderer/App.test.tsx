@@ -134,3 +134,62 @@ describe('App — live subscriptions', () => {
     expect(stopSessions).toHaveBeenCalled()
   })
 })
+
+describe('App — agent spend totals', () => {
+  test('loads them alongside everything else at startup', async () => {
+    loadedApi({
+      sessions: {
+        usageByAgent: vi.fn().mockResolvedValue({ debugging: { tokens: 900, costUsd: 0.5 } }),
+      },
+    })
+    render(<App />)
+
+    await waitFor(() =>
+      expect(useRoster.getState().agentUsage['debugging']).toEqual({
+        tokens: 900,
+        costUsd: 0.5,
+      }),
+    )
+  })
+
+  test('re-reads them when a turn reports usage', async () => {
+    let emit: ((event: SessionEventPayload) => void) | null = null
+    const usageByAgent = vi
+      .fn()
+      .mockResolvedValueOnce({})
+      .mockResolvedValue({ debugging: { tokens: 77_913, costUsd: 0.94 } })
+
+    loadedApi({
+      sessions: {
+        usageByAgent,
+        onEvent: vi.fn().mockImplementation((listener) => {
+          emit = listener
+          return () => {}
+        }),
+      },
+    })
+    render(<App />)
+    await waitFor(() => expect(useRoster.getState().loaded).toBe(true))
+
+    // Totals are a SQL sum across every session, so one session's event
+    // cannot be folded in locally — the renderer has to ask again.
+    act(() =>
+      emit?.({
+        type: 'usage',
+        sessionId: 's1',
+        usage: {
+          sessionId: 's1',
+          inputTokens: 18,
+          outputTokens: 297,
+          totalTokens: 77_913,
+          costUsd: 0.94,
+          contextUsed: 0.08,
+        },
+      }),
+    )
+
+    await waitFor(() =>
+      expect(useRoster.getState().agentUsage['debugging']?.tokens).toBe(77_913),
+    )
+  })
+})

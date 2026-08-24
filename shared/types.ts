@@ -165,9 +165,17 @@ export interface Usage {
   sessionId: string
   inputTokens: number
   outputTokens: number
+  /** Every token consumed, cache included; see the runner event of the same name. */
+  totalTokens: number
   costUsd: number
   /** Fraction of the model's context window consumed, 0..1. */
   contextUsed: number
+}
+
+/** What one agent has spent, summed across its sessions. */
+export interface AgentUsage {
+  tokens: number
+  costUsd: number
 }
 
 /* -------------------------------------------------------------------------

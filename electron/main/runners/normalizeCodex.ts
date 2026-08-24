@@ -98,10 +98,17 @@ function fromTurnCompleted(message: Record<string, unknown>): RunnerEvent[] {
   const usage = message['usage']
 
   if (isRecord(usage)) {
+    const inputTokens = asNumber(usage['input_tokens']) ?? 0
+    const outputTokens = asNumber(usage['output_tokens']) ?? 0
+
     events.push({
       kind: 'usage',
-      inputTokens: asNumber(usage['input_tokens']) ?? 0,
-      outputTokens: asNumber(usage['output_tokens']) ?? 0,
+      inputTokens,
+      outputTokens,
+      // Unlike Claude, Codex's cached_input_tokens is how many of
+      // input_tokens were cache hits — already counted, so adding it would
+      // double them. reasoning_output_tokens sits inside output_tokens too.
+      totalTokens: inputTokens + outputTokens,
       // Codex reports no dollar figure; spend is tracked by the vendor.
       costUsd: 0,
     })

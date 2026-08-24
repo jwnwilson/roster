@@ -26,6 +26,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       create: vi.fn().mockResolvedValue(null),
       messages: vi.fn().mockResolvedValue([]),
       usage: vi.fn().mockResolvedValue(null),
+      usageByAgent: vi.fn().mockResolvedValue({}),
       send: vi.fn().mockResolvedValue(undefined),
       cancel: vi.fn().mockResolvedValue(undefined),
       respondToApproval: vi.fn().mockResolvedValue(undefined),

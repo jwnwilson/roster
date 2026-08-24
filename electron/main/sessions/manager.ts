@@ -279,8 +279,11 @@ export class SessionManager {
           sessionId,
           inputTokens: event.inputTokens,
           outputTokens: event.outputTokens,
+          totalTokens: event.totalTokens,
           costUsd: event.costUsd,
-          contextUsed: this.contextFraction(sessionId, event.inputTokens + event.outputTokens),
+          // The window holds the cached prompt too, so the fraction has to
+          // count it — input + output alone reads as near-empty on Claude.
+          contextUsed: this.contextFraction(sessionId, event.totalTokens),
         }
         // Persist as well as emit, or the totals vanish on reload.
         this.usage.record(usage)

@@ -29,6 +29,7 @@ const USAGE: Usage = {
   sessionId: 's1',
   inputTokens: 10,
   outputTokens: 5,
+  totalTokens: 15,
   costUsd: 0.5,
   contextUsed: 0.1,
 }

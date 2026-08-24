@@ -13,6 +13,7 @@ export function App() {
   const applySessionEvent = useRoster((s) => s.applySessionEvent)
   const setTranscripts = useRoster((s) => s.setTranscripts)
   const setAllSessions = useRoster((s) => s.setAllSessions)
+  const setAgentUsage = useRoster((s) => s.setAgentUsage)
   const loaded = useRoster((s) => s.loaded)
   const screen = useRoster((s) => s.screen)
 
@@ -20,18 +21,21 @@ export function App() {
     let cancelled = false
 
     async function load(): Promise<void> {
-      const [agents, runners, skills, mcpServers, transcripts, sessions] = await Promise.all([
-        window.roster.agents.list(),
-        window.roster.runners.list(),
-        window.roster.skills.list(),
-        window.roster.mcp.list(),
-        window.roster.sessions.recentByAgent(),
-        window.roster.sessions.listAll(),
-      ])
+      const [agents, runners, skills, mcpServers, transcripts, sessions, agentUsage] =
+        await Promise.all([
+          window.roster.agents.list(),
+          window.roster.runners.list(),
+          window.roster.skills.list(),
+          window.roster.mcp.list(),
+          window.roster.sessions.recentByAgent(),
+          window.roster.sessions.listAll(),
+          window.roster.sessions.usageByAgent(),
+        ])
       if (cancelled) return
       hydrate({ agents, runners, skills, mcpServers })
       setTranscripts(transcripts)
       setAllSessions(sessions)
+      setAgentUsage(agentUsage)
     }
 
     void load()
@@ -40,6 +44,11 @@ export function App() {
     // Live turn events: streamed text, tool calls, approvals, usage.
     const stopSessions = window.roster.sessions.onEvent((event) => {
       applySessionEvent(event)
+      // Totals are summed in SQL across every session, which the renderer
+      // cannot do from one session's event.
+      if (event.type === 'usage') {
+        void window.roster.sessions.usageByAgent().then(setAgentUsage)
+      }
       // A finished turn changes what the grid cards should show.
       if (event.type === 'streaming' && !event.active) {
         void window.roster.sessions.recentByAgent().then(setTranscripts)
@@ -52,7 +61,7 @@ export function App() {
       stopAgents()
       stopSessions()
     }
-  }, [hydrate, setAgents, applySessionEvent, setTranscripts, setAllSessions])
+  }, [hydrate, setAgents, applySessionEvent, setTranscripts, setAllSessions, setAgentUsage])
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-app font-ui text-xl text-ink">

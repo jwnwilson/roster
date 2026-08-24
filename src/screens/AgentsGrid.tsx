@@ -3,6 +3,7 @@ import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
 import { agentStatus, useRoster, selectGridAgents, NO_LINES, NO_SESSIONS } from '@/state/store'
 import { PrimaryButton, ScreenHeader, StatusDot, TextInput } from '@/components/primitives'
+import { formatCost, formatTokens } from '@/state/format'
 
 export function AgentsGrid() {
   const agents = useRoster(useShallow(selectGridAgents))
@@ -108,10 +109,27 @@ function AgentCard({ agent }: AgentCardProps) {
 
       <div className="flex flex-none items-center gap-[10px] border-t border-line bg-header px-[12px] py-[7px] font-mono text-xs text-dim-2">
         <span className="truncate">{agent.cwdLabel}</span>
-        <span className="ml-auto flex-none">0 tok</span>
-        <span className="flex-none">$0.00</span>
+        <Spend agentId={agent.id} />
       </div>
     </button>
+  )
+}
+
+/**
+ * What this agent has cost, summed over every session it owns.
+ *
+ * Selecting the two numbers rather than the object keeps this from
+ * re-rendering every card whenever any agent's totals change.
+ */
+function Spend({ agentId }: { agentId: string }) {
+  const tokens = useRoster((s) => s.agentUsage[agentId]?.tokens ?? 0)
+  const costUsd = useRoster((s) => s.agentUsage[agentId]?.costUsd ?? 0)
+
+  return (
+    <>
+      <span className="ml-auto flex-none">{formatTokens(tokens)}</span>
+      <span className="flex-none">{formatCost(costUsd)}</span>
+    </>
   )
 }
 

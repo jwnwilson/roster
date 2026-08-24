@@ -107,7 +107,7 @@ describe('normalizeCodexMessage — command execution', () => {
 describe('normalizeCodexMessage — turn completion', () => {
   test('reports usage and ends the turn', () => {
     expect(normalizeCodexMessage(TURN_COMPLETED)).toEqual([
-      { kind: 'usage', inputTokens: 29_223, outputTokens: 121, costUsd: 0 },
+      { kind: 'usage', inputTokens: 29_223, outputTokens: 121, totalTokens: 29_344, costUsd: 0 },
       { kind: 'done', runnerSessionId: '' },
     ])
   })
@@ -144,5 +144,15 @@ describe('composePrompt', () => {
   test('passes the prompt through untouched when there are no house rules', () => {
     expect(composePrompt('Fix the leak.', '')).toBe('Fix the leak.')
     expect(composePrompt('Fix the leak.', '   ')).toBe('Fix the leak.')
+  })
+})
+
+describe('normalizeCodexMessage — token totals', () => {
+  test('does not add cached tokens, which Codex counts inside input', () => {
+    // 29,223 input already contains the 24,064 cache hits. Adding them —
+    // which is right for Claude — would report 53,408 for a 29,344 turn.
+    const [usage] = normalizeCodexMessage(TURN_COMPLETED)
+
+    expect(usage).toMatchObject({ totalTokens: 29_344 })
   })
 })

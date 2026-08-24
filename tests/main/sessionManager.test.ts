@@ -400,7 +400,7 @@ describe('SessionManager.send — tools', () => {
 describe('SessionManager.send — usage', () => {
   test('persists totals so they survive a reload', async () => {
     runnerStub.run.mockImplementation(
-      streamOf([{ kind: 'usage', inputTokens: 100, outputTokens: 50, costUsd: 0.25 }]),
+      streamOf([{ kind: 'usage', inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsd: 0.25 }]),
     )
 
     const session = manager.create('debugging', 'x')
@@ -415,7 +415,7 @@ describe('SessionManager.send — usage', () => {
 
   test('computes the context fraction from the agent model', async () => {
     runnerStub.run.mockImplementation(
-      streamOf([{ kind: 'usage', inputTokens: 500_000, outputTokens: 0, costUsd: 0 }]),
+      streamOf([{ kind: 'usage', inputTokens: 500_000, outputTokens: 0, totalTokens: 500_000, costUsd: 0 }]),
     )
 
     const session = manager.create('debugging', 'x')
@@ -427,7 +427,7 @@ describe('SessionManager.send — usage', () => {
 
   test('never reports more than a full context window', async () => {
     runnerStub.run.mockImplementation(
-      streamOf([{ kind: 'usage', inputTokens: 9_000_000, outputTokens: 0, costUsd: 0 }]),
+      streamOf([{ kind: 'usage', inputTokens: 9_000_000, outputTokens: 0, totalTokens: 9_000_000, costUsd: 0 }]),
     )
 
     const session = manager.create('debugging', 'x')
