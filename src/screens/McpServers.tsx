@@ -89,14 +89,14 @@ function Installed({ onEdit }: EditsServers) {
       {servers.map((server) => (
         <article
           key={server.name}
-          className="flex flex-col gap-[11px] rounded-[9px] border border-line bg-card px-[15px] py-[13px]"
+          className="relative flex flex-col gap-[11px] rounded-[9px] border border-line bg-card px-[15px] py-[13px] hover:border-line-hover"
+          data-hoverable
         >
           <button
             type="button"
             aria-label={`Configure ${server.name}`}
             onClick={() => onEdit({ name: server.name, command: server.command, installing: false })}
-            className="-m-[4px] flex cursor-pointer items-center gap-[10px] rounded-sm border-0 bg-transparent p-[4px] text-left hover:bg-[#1c1e26]"
-            data-hoverable
+            className="flex cursor-pointer items-center gap-[10px] border-0 bg-transparent p-0 text-left after:absolute after:inset-0 after:content-['']"
           >
             <ServerGlyph name={server.name} />
             <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
@@ -108,7 +108,7 @@ function Installed({ onEdit }: EditsServers) {
             </span>
           </button>
 
-          <div className="flex flex-wrap gap-[7px]">
+          <div className="relative z-[1] flex flex-wrap gap-[7px]">
             {agents.map((agent) => {
               const on = agent.mcpServers.includes(server.name)
               return (
@@ -163,7 +163,7 @@ function Registry({ onEdit }: EditsServers) {
             {REGISTRY.filter((entry) => entry.category === category).map((entry) => (
               <article
                 key={entry.name}
-                className="flex flex-col gap-[9px] rounded-[9px] border border-line bg-card p-[13px] hover:border-line-hover"
+                className="relative flex flex-col gap-[9px] rounded-[9px] border border-line bg-card p-[13px] hover:border-line-hover"
                 data-hoverable
               >
                 <button
@@ -176,8 +176,7 @@ function Registry({ onEdit }: EditsServers) {
                       installing: !installed.has(entry.name),
                     })
                   }
-                  className="-m-[4px] flex cursor-pointer items-center gap-[9px] rounded-sm border-0 bg-transparent p-[4px] text-left"
-                  data-hoverable
+                  className="flex cursor-pointer items-center gap-[9px] border-0 bg-transparent p-0 text-left after:absolute after:inset-0 after:content-['']"
                 >
                   <ServerGlyph name={entry.name} size={20} />
                   <h3 className="m-0 text-lg font-semibold">{entry.name}</h3>
@@ -185,7 +184,7 @@ function Registry({ onEdit }: EditsServers) {
                 <p className="m-0 min-h-[36px] text-md leading-[1.5] text-muted-2">
                   {entry.description}
                 </p>
-                <div className="flex items-center gap-[8px]">
+                <div className="relative z-[1] flex items-center gap-[8px]">
                   <span className="font-mono text-xs text-faint-2">{entry.author}</span>
                   <button
                     type="button"

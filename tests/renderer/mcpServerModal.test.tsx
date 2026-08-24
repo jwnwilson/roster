@@ -146,3 +146,66 @@ describe('McpServerModal — saving', () => {
     expect(within(dialog).getByText(/plain text in mcp.json/)).toBeInTheDocument()
   })
 })
+
+describe('McpServers — the whole card is the target', () => {
+  // The card is made clickable by stretching the button's hit area over it
+  // with an ::after overlay. jsdom does no layout, so nothing here can prove
+  // the overlay actually catches a click on the card's padding — that part is
+  // verified against the running app. What these do check is that stretching
+  // it did not break the pieces jsdom can see.
+
+  test('the command text opens the editor', async () => {
+    const user = userEvent.setup()
+    render(<McpServers />)
+
+    await user.click(screen.getByText('npx server-github'))
+
+    expect(await screen.findByRole('dialog', { name: 'Configure github' })).toBeInTheDocument()
+  })
+
+  test('the overlay is declared on the button, not left to the card', () => {
+    render(<McpServers />)
+    const button = screen.getByRole('button', { name: 'Configure github' })
+
+    // If this class is lost the card silently shrinks back to a text target.
+    expect(button.className).toContain('after:absolute')
+    expect(button.className).toContain('after:inset-0')
+  })
+
+  test('the chips are layered above the overlay', () => {
+    render(<McpServers />)
+    const chip = screen.getByRole('button', { name: 'Debugging' })
+
+    // Without the raised stacking context the overlay would swallow them.
+    expect(chip.parentElement?.className).toContain('z-[1]')
+  })
+
+  test('the agent chips still toggle rather than opening the editor', async () => {
+    const user = userEvent.setup()
+    render(<McpServers />)
+
+    // They are layered above the stretched area; if that broke, this click
+    // would open the dialog instead.
+    await user.click(screen.getByRole('button', { name: 'Debugging' }))
+
+    expect(window.roster.mcp.setEnabled).toHaveBeenCalledWith('github', 'debugging', true)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  test('a registry card carries the same overlay', async () => {
+    const user = userEvent.setup()
+    render(<McpServers />)
+    await user.click(screen.getByRole('tab', { name: 'Registry' }))
+
+    expect(screen.getByRole('button', { name: 'Configure gitlab' }).className).toContain(
+      'after:absolute',
+    )
+  })
+
+  test('the card still exposes one named control for the keyboard', async () => {
+    render(<McpServers />)
+
+    // Stretching the hit area must not cost the button its accessible name.
+    expect(screen.getByRole('button', { name: 'Configure github' })).toBeInTheDocument()
+  })
+})
