@@ -136,10 +136,26 @@ function SidebarAgentRow({ agent, onOpen }: SidebarAgentRowProps) {
  * native frame is disabled and these three dots are the real controls.
  */
 function WindowChrome() {
+  // The traffic-light convention, in the app's own palette rather than
+  // macOS's saturated one, which would shout next to everything else here.
+  // Colour alone does not identify a button, so each keeps its label and
+  // gains a tooltip.
   const controls = [
-    { label: 'Minimize window', action: () => window.roster.window.minimize() },
-    { label: 'Maximize window', action: () => window.roster.window.maximize() },
-    { label: 'Close window', action: () => window.roster.window.close() },
+    {
+      label: 'Minimize window',
+      color: 'var(--color-amber)',
+      action: () => window.roster.window.minimize(),
+    },
+    {
+      label: 'Maximize window',
+      color: 'var(--color-done)',
+      action: () => window.roster.window.maximize(),
+    },
+    {
+      label: 'Close window',
+      color: 'var(--color-error)',
+      action: () => window.roster.window.close(),
+    },
   ]
 
   return (
@@ -158,8 +174,10 @@ function WindowChrome() {
             key={control.label}
             type="button"
             aria-label={control.label}
+            title={control.label}
             onClick={control.action}
-            className="h-[9px] w-[9px] cursor-pointer rounded-full border-0 bg-[#24262f] p-0 hover:bg-line-hover-strong"
+            style={{ background: control.color }}
+            className="h-[9px] w-[9px] cursor-pointer rounded-full border-0 p-0 opacity-85 hover:opacity-100"
           />
         ))}
       </div>

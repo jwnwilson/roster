@@ -1,3 +1,4 @@
 - [ ] Add logos to MCP servers
 - [ ] Add ability to configure MCP servers via modal matching new skill style clicking on them in the installed list or via the registry
+- [ ] Ensure the % of token window logic is working correctly
 - [ ] Extend LLMs to work with local llms, brainstorm best approach here ollama or MLX

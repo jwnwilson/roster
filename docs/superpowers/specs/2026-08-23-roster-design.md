@@ -328,7 +328,13 @@ Each was raised and decided explicitly:
     meant the MCP screen wrote one and the session manager read the AND of
     both, so a chip could read as enabled while nothing launched. The field is
     dropped on load, so older files migrate silently.
-14. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+14. **The window controls are colour coded.** The handoff draws three
+    identical `#24262f` dots, which say nothing about which is which. They now
+    follow the traffic-light convention — amber minimize, green maximize, red
+    close — in the app's own status palette rather than macOS's saturated one,
+    which would shout beside everything else in the chrome. Colour is never
+    the only signal: each keeps its `aria-label` and gains a tooltip.
+15. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
     executes a script against the built app's real DOM and IPC. It exercises the actual
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.
