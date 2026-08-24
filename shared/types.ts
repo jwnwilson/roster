@@ -194,6 +194,12 @@ export interface Skill {
 export interface McpServer {
   name: string
   command: string
+  /**
+   * Passed to the server process on launch. Most real servers need at least
+   * one — a token, a connection string — and without these Roster could
+   * start them but never authenticate them.
+   */
+  env: Record<string, string>
 }
 
 export interface RegistryEntry {

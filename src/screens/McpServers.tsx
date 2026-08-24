@@ -1,7 +1,9 @@
-import type { Agent, RegistryEntry } from '@shared/types'
+import { useState } from 'react'
+import type { Agent, McpServer, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
 import { ServerGlyph } from '@/components/ServerGlyph'
 import { useRoster, type McpTab } from '@/state/store'
+import { McpServerModal, type McpServerDraft } from './McpServerModal'
 
 const TABS = [
   { value: 'installed' as const, label: 'Installed' },
@@ -29,6 +31,9 @@ const CATEGORIES = ['Code & repos', 'Data', 'Workspace']
 export function McpServers() {
   const tab = useRoster((s) => s.mcpTab)
   const setTab = useRoster((s) => s.setMcpTab)
+  const servers = useRoster((s) => s.mcpServers)
+  const setMcpServers = useRoster((s) => s.setMcpServers)
+  const [editing, setEditing] = useState<McpServerDraft | null>(null)
 
   return (
     <div className="flex h-screen flex-col">
@@ -41,12 +46,25 @@ export function McpServers() {
         />
       </ScreenHeader>
 
-      {tab === 'installed' ? <Installed /> : <Registry />}
+      {tab === 'installed' ? <Installed onEdit={setEditing} /> : <Registry onEdit={setEditing} />}
+
+      {editing ? (
+        <McpServerModal
+          draft={editing}
+          existing={servers.find((s) => s.name === editing.name) ?? null}
+          onClose={() => setEditing(null)}
+          onSaved={setMcpServers}
+        />
+      ) : null}
     </div>
   )
 }
 
-function Installed() {
+interface EditsServers {
+  onEdit: (draft: McpServerDraft) => void
+}
+
+function Installed({ onEdit }: EditsServers) {
   const servers = useRoster((s) => s.mcpServers)
   const agents = useRoster((s) => s.agents)
   const setAgents = useRoster((s) => s.setAgents)
@@ -73,7 +91,13 @@ function Installed() {
           key={server.name}
           className="flex flex-col gap-[11px] rounded-[9px] border border-line bg-card px-[15px] py-[13px]"
         >
-          <div className="flex items-center gap-[10px]">
+          <button
+            type="button"
+            aria-label={`Configure ${server.name}`}
+            onClick={() => onEdit({ name: server.name, command: server.command, installing: false })}
+            className="-m-[4px] flex cursor-pointer items-center gap-[10px] rounded-sm border-0 bg-transparent p-[4px] text-left hover:bg-[#1c1e26]"
+            data-hoverable
+          >
             <ServerGlyph name={server.name} />
             <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
             <span className="truncate font-mono text-sm text-dim-2">{server.command}</span>
@@ -82,7 +106,7 @@ function Installed() {
                 ? '1 agent'
                 : `${countEnabled(agents, server.name)} agents`}
             </span>
-          </div>
+          </button>
 
           <div className="flex flex-wrap gap-[7px]">
             {agents.map((agent) => {
@@ -126,14 +150,9 @@ function launchCommandFor(name: string): string {
   return `npx @modelcontextprotocol/server-${name}`
 }
 
-function Registry() {
+function Registry({ onEdit }: EditsServers) {
   const servers = useRoster((s) => s.mcpServers)
-  const setMcpServers = useRoster((s) => s.setMcpServers)
   const installed = new Set(servers.map((s) => s.name))
-
-  async function install(name: string): Promise<void> {
-    setMcpServers(await window.roster.mcp.install(name, launchCommandFor(name)))
-  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-[22px] py-[18px]">
@@ -147,10 +166,22 @@ function Registry() {
                 className="flex flex-col gap-[9px] rounded-[9px] border border-line bg-card p-[13px] hover:border-line-hover"
                 data-hoverable
               >
-                <div className="flex items-center gap-[9px]">
+                <button
+                  type="button"
+                  aria-label={`Configure ${entry.name}`}
+                  onClick={() =>
+                    onEdit({
+                      name: entry.name,
+                      command: launchCommandFor(entry.name),
+                      installing: !installed.has(entry.name),
+                    })
+                  }
+                  className="-m-[4px] flex cursor-pointer items-center gap-[9px] rounded-sm border-0 bg-transparent p-[4px] text-left"
+                  data-hoverable
+                >
                   <ServerGlyph name={entry.name} size={20} />
                   <h3 className="m-0 text-lg font-semibold">{entry.name}</h3>
-                </div>
+                </button>
                 <p className="m-0 min-h-[36px] text-md leading-[1.5] text-muted-2">
                   {entry.description}
                 </p>
@@ -159,7 +190,13 @@ function Registry() {
                   <button
                     type="button"
                     disabled={installed.has(entry.name)}
-                    onClick={() => void install(entry.name)}
+                    onClick={() =>
+                      onEdit({
+                        name: entry.name,
+                        command: launchCommandFor(entry.name),
+                        installing: true,
+                      })
+                    }
                     className="ml-auto cursor-pointer rounded-chip border border-line-active bg-transparent px-[10px] py-[3px] font-ui text-base font-medium text-accent-text hover:border-accent disabled:cursor-default disabled:opacity-40"
                     data-hoverable
                   >

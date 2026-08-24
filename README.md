@@ -138,7 +138,7 @@ writing a normalizer and, ideally, recording a fixture from a real run.
   agents/<id>/agent.toml   one file per agent — hand-editable
   skills/<name>/SKILL.md   the shared skill library, nested files and all
   workspace/               default working directory for seeded agents
-  mcp.json                 MCP servers and how to launch them
+  mcp.json                 MCP servers: launch command and environment
   roster.db                sessions, messages, approvals, usage
 ```
 
@@ -180,8 +180,12 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
   config silently — an agent on those runners can name servers in its
   `mcp_servers` and nothing will start them.
 - **The MCP registry is a static catalogue.** Nine hardcoded entries, nothing
-  fetched, and the launch command is derived as
+  fetched, and the suggested launch command is derived as
   `npx @modelcontextprotocol/server-<name>` rather than stored per entry — so it
-  is only correct for the servers actually published under that scope.
+  is only a starting point, editable before install.
+- **MCP server environments are stored in the clear**, in `~/roster/mcp.json`.
+  Tokens there are as exposed as any dotfile's; there is no keychain integration.
+- **There is no way to remove an MCP server from the UI.** Delete it from
+  `mcp.json` by hand.
 - Model prices are a table Roster maintains for Claude; Codex publishes none, so that
   column is left empty rather than invented.

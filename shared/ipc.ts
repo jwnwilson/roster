@@ -84,6 +84,8 @@ export interface RosterApi {
     /** Adds or removes the server from that agent's `mcp_servers`. */
     setEnabled(server: string, agentId: string, enabled: boolean): Promise<Agent>
     install(name: string, command: string): Promise<McpServer[]>
+    /** Replaces a configured server's launch command and environment. */
+    save(name: string, command: string, env: Record<string, string>): Promise<McpServer[]>
   }
   dialog: {
     /** Native directory picker; resolves null when cancelled. */
@@ -182,6 +184,7 @@ export const CHANNELS = {
   mcpList: 'mcp:list',
   mcpSetEnabled: 'mcp:setEnabled',
   mcpInstall: 'mcp:install',
+  mcpSave: 'mcp:save',
 
   dialogChooseDirectory: 'dialog:chooseDirectory',
 } as const

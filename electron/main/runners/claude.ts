@@ -167,7 +167,16 @@ function toMcpConfig(servers: StartOptions['mcpServers']): Record<string, McpSer
   return Object.fromEntries(
     Object.entries(servers).map(([name, spec]): [string, McpServerConfig] => [
       name,
-      { type: 'stdio', command: spec.command, args: spec.args },
+      {
+        type: 'stdio',
+        command: spec.command,
+        args: spec.args,
+        // Merged over the inherited environment, so a server keeps PATH and
+        // friends while getting the token it was configured with.
+        ...(Object.keys(spec.env).length > 0
+          ? { env: { ...process.env, ...spec.env } as Record<string, string> }
+          : {}),
+      },
     ]),
   )
 }

@@ -38,7 +38,24 @@ export class McpStore {
   async install(name: string, command: string): Promise<McpServer[]> {
     if (this.servers.some((server) => server.name === name)) return this.servers
 
-    this.servers = [...this.servers, { name, command }]
+    this.servers = [...this.servers, { name, command, env: {} }]
+    await this.persist()
+    return this.servers
+  }
+
+  /**
+   * Replaces a server's launch settings. Unknown names are rejected rather
+   * than quietly created, so a rename cannot strand an agent's `mcp_servers`
+   * pointing at nothing.
+   */
+  async save(name: string, command: string, env: Record<string, string>): Promise<McpServer[]> {
+    if (!this.servers.some((server) => server.name === name)) {
+      throw new Error(`unknown MCP server "${name}"`)
+    }
+
+    this.servers = this.servers.map((server) =>
+      server.name === name ? { name, command, env: { ...env } } : server,
+    )
     await this.persist()
     return this.servers
   }
@@ -113,5 +130,17 @@ function normalize(entry: Partial<McpServer>): McpServer {
   return {
     name: typeof entry.name === 'string' ? entry.name : 'unknown',
     command: typeof entry.command === 'string' ? entry.command : '',
+    env: normalizeEnv(entry.env),
   }
+}
+
+/** Only string values survive; a number or object in the file is dropped. */
+function normalizeEnv(value: unknown): Record<string, string> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {}
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(
+      (pair): pair is [string, string] => typeof pair[1] === 'string',
+    ),
+  )
 }

@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { openDatabase, type Db } from '@main/db'
 import { McpStore } from '@main/store/mcp'
@@ -211,7 +211,7 @@ describe('McpStore', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()).toEqual([{ name: 'filesystem', command: 'npx fs' }])
+    expect(store.findAll()).toEqual([{ name: 'filesystem', command: 'npx fs', env: {} }])
   })
 
   test('fills in defaults for a partially written entry', async () => {
@@ -220,7 +220,7 @@ describe('McpStore', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()[0]).toEqual({ name: 'partial', command: '' })
+    expect(store.findAll()[0]).toEqual({ name: 'partial', command: '', env: {} })
   })
 
   test('drops the enabledFor list older files carry', async () => {
@@ -233,7 +233,7 @@ describe('McpStore', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()[0]).toEqual({ name: 'filesystem', command: 'npx fs' })
+    expect(store.findAll()[0]).toEqual({ name: 'filesystem', command: 'npx fs', env: {} })
   })
 
   test('rewriting the file does not persist enablement', async () => {
@@ -359,7 +359,7 @@ describe('McpStore.install', () => {
 
     const servers = await store.install('linear', 'npx server-linear')
 
-    expect(servers).toEqual([{ name: 'linear', command: 'npx server-linear' }])
+    expect(servers).toEqual([{ name: 'linear', command: 'npx server-linear', env: {} }])
   })
 
   test('persists to disk', async () => {
@@ -672,5 +672,76 @@ describe('withServer', () => {
     withServer(original, 'filesystem', true)
 
     expect(original).toEqual(['github'])
+  })
+})
+
+/* -------------------------------------------------- mcp: launch settings */
+
+describe('McpStore.save', () => {
+  test('replaces the launch command', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('linear', 'npx server-linear')
+
+    await store.save('linear', 'docker run linear-mcp', {})
+
+    expect(store.findAll()[0]?.command).toBe('docker run linear-mcp')
+  })
+
+  test('stores the environment a server needs', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('github', 'npx server-github')
+
+    await store.save('github', 'npx server-github', { GITHUB_TOKEN: 'ghp_abc' })
+
+    const reopened = new McpStore()
+    await reopened.load()
+    expect(reopened.findAll()[0]?.env).toEqual({ GITHUB_TOKEN: 'ghp_abc' })
+  })
+
+  test('refuses a server it does not know', async () => {
+    const store = new McpStore()
+    await store.load()
+
+    // Creating it here would strand agents whose mcp_servers names the old one.
+    await expect(store.save('ghost', 'npx ghost', {})).rejects.toThrow(/ghost/)
+  })
+
+  test('clearing the environment persists as empty, not as absent', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('github', 'npx server-github')
+    await store.save('github', 'npx server-github', { TOKEN: 'x' })
+
+    await store.save('github', 'npx server-github', {})
+
+    expect(store.findAll()[0]?.env).toEqual({})
+  })
+
+  test('does not alias the caller environment object', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('github', 'npx server-github')
+    const env = { TOKEN: 'x' }
+
+    await store.save('github', 'npx server-github', env)
+    env['TOKEN'] = 'mutated'
+
+    expect(store.findAll()[0]?.env).toEqual({ TOKEN: 'x' })
+  })
+
+  test('drops non-string values written into the file by hand', async () => {
+    // writeConfig is scoped to the load suite, so write it directly here.
+    await mkdir(dirname(mcpConfigPath()), { recursive: true })
+    await writeFile(
+      mcpConfigPath(),
+      JSON.stringify({ servers: [{ name: 'github', command: 'npx g', env: { OK: 'yes', BAD: 42 } }] }),
+      'utf8',
+    )
+    const store = new McpStore()
+    await store.load()
+
+    expect(store.findAll()[0]?.env).toEqual({ OK: 'yes' })
   })
 })

@@ -61,6 +61,8 @@ export interface StartOptions {
 export interface McpLaunchSpec {
   command: string
   args: string[]
+  /** Merged over the inherited environment when the server starts. */
+  env: Record<string, string>
 }
 
 /** How Roster answers a pending approval. */

@@ -55,6 +55,7 @@ export function anMcpServer(overrides: Partial<McpServer> = {}): McpServer {
   return {
     name: 'filesystem',
     command: 'npx @modelcontextprotocol/server-filesystem ~',
+    env: {},
     ...overrides,
   }
 }

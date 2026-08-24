@@ -604,26 +604,50 @@ describe('Skills — New skill and Reveal', () => {
 })
 
 describe('McpServers — Install', () => {
-  test('installs a registry entry and shows it as installed', async () => {
+  test('installing opens the editor rather than installing blind', async () => {
     const user = userEvent.setup()
-    installRosterApi({
-      mcp: {
-        install: vi.fn().mockResolvedValue([anMcpServer({ name: 'gitlab' })]),
-      },
-    })
+    installRosterApi()
     useRoster.setState({ mcpServers: [], agents: [] })
     render(<McpServers />)
 
     await user.click(screen.getByRole('tab', { name: 'Registry' }))
     await user.click(screen.getAllByRole('button', { name: 'Install' })[0]!)
 
+    // The command and its token are set before the first launch, not after
+    // it has already failed once.
+    const dialog = await screen.findByRole('dialog', { name: 'Configure github' })
+    expect(within(dialog).getByLabelText('Launch command')).toHaveValue(
+      'npx @modelcontextprotocol/server-github',
+    )
+    expect(window.roster.mcp.install).not.toHaveBeenCalled()
+  })
+
+  test('saving from the registry installs and then configures', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      mcp: { save: vi.fn().mockResolvedValue([anMcpServer({ name: 'github' })]) },
+    })
+    useRoster.setState({ mcpServers: [], agents: [] })
+    render(<McpServers />)
+
+    await user.click(screen.getByRole('tab', { name: 'Registry' }))
+    await user.click(screen.getAllByRole('button', { name: 'Install' })[0]!)
+    const dialog = await screen.findByRole('dialog', { name: 'Configure github' })
+    await user.click(within(dialog).getByRole('button', { name: 'Install' }))
+
+    // save() refuses a name it does not know, so install has to land first.
     await waitFor(() =>
       expect(window.roster.mcp.install).toHaveBeenCalledWith(
         'github',
         'npx @modelcontextprotocol/server-github',
       ),
     )
-    expect(useRoster.getState().mcpServers.map((s) => s.name)).toEqual(['gitlab'])
+    expect(window.roster.mcp.save).toHaveBeenCalledWith(
+      'github',
+      'npx @modelcontextprotocol/server-github',
+      {},
+    )
+    expect(useRoster.getState().mcpServers.map((s) => s.name)).toEqual(['github'])
   })
 })
 

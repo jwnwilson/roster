@@ -454,7 +454,7 @@ export class SessionManager {
         continue
       }
       const [command = '', ...args] = server.command.split(/\s+/)
-      resolved.push([name, { command, args }])
+      resolved.push([name, { command, args, env: server.env }])
     }
 
     return Object.fromEntries(resolved)

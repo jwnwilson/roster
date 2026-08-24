@@ -209,6 +209,11 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.mcpInstall, (_e, name: string, command: string) =>
     mcpStore.install(name, command),
   )
+  ipcMain.handle(
+    CHANNELS.mcpSave,
+    (_e, name: string, command: string, env: Record<string, string>) =>
+      mcpStore.save(name, command, env),
+  )
 
   ipcMain.handle(CHANNELS.dialogChooseDirectory, async (e, current?: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)

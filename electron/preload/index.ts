@@ -84,6 +84,7 @@ const api: RosterApi = {
     setEnabled: (server, agentId, enabled) =>
       ipcRenderer.invoke(CHANNELS.mcpSetEnabled, server, agentId, enabled),
     install: (name, command) => ipcRenderer.invoke(CHANNELS.mcpInstall, name, command),
+    save: (name, command, env) => ipcRenderer.invoke(CHANNELS.mcpSave, name, command, env),
   },
 
   dialog: {

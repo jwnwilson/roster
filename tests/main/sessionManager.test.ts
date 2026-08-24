@@ -71,8 +71,8 @@ const SKILLS: Skill[] = [
 ]
 
 const SERVERS: McpServer[] = [
-  { name: 'filesystem', command: 'npx server-filesystem ~' },
-  { name: 'github', command: 'npx server-github' },
+  { name: 'filesystem', command: 'npx server-filesystem ~', env: {} },
+  { name: 'github', command: 'npx server-github', env: {} },
 ]
 
 /** Turns a fixed event list into the async iterable a runner returns. */
@@ -505,6 +505,7 @@ describe('SessionManager — what the runner is given', () => {
     expect(options.mcpServers['filesystem']).toEqual({
       command: 'npx',
       args: ['server-filesystem', '~'],
+      env: {},
     })
   })
 
@@ -532,7 +533,7 @@ describe('SessionManager — what the runner is given', () => {
   test('skips a server the agent names that mcp.json does not define', async () => {
     // The regression this guards: enablement is agent.toml's alone, so an
     // unresolvable name must be dropped rather than crashing the turn.
-    const store = { findAll: () => [{ name: 'github', command: 'npx server-github' }] }
+    const store = { findAll: () => [{ name: 'github', command: 'npx server-github', env: {} }] }
     const solo = new SessionManager(
       { findAll: () => AGENTS, findById: (id: string) => AGENTS.find((a) => a.id === id) ?? null } as never,
       sessions,
