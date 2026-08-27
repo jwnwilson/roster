@@ -7,7 +7,7 @@ import { NewAgent } from '@/screens/NewAgent'
 import { Skills, relativeTime } from '@/screens/Skills'
 import { Sidebar } from '@/components/Sidebar'
 import { useRoster } from '@/state/store'
-import { anAgent, aRunner, aSkill, anMcpServer } from './factories'
+import { anAgent, aRunner, aSkill, aTask, anMcpServer } from './factories'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
@@ -35,12 +35,29 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: /^Skills/ })).toHaveTextContent('1')
   })
 
-  test('Tasks and Spend remain disabled placeholders', () => {
+  test('Spend remains a disabled placeholder', () => {
     render(<Sidebar />)
 
-    expect(screen.getByRole('button', { name: /Tasks/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Spend/ })).toBeDisabled()
-    expect(screen.getAllByText('soon')).toHaveLength(2)
+    expect(screen.getAllByText('soon')).toHaveLength(1)
+  })
+
+  test('Tasks is a real screen, counting what is on the board', () => {
+    useRoster.setState({ tasks: [aTask({ id: 'ROS-1' }), aTask({ id: 'ROS-2' })] })
+    render(<Sidebar />)
+
+    const tasks = screen.getByRole('button', { name: /Tasks/ })
+    expect(tasks).not.toBeDisabled()
+    expect(tasks).toHaveTextContent('2')
+  })
+
+  test('navigates to the board', async () => {
+    const user = userEvent.setup()
+    render(<Sidebar />)
+
+    await user.click(screen.getByRole('button', { name: /Tasks/ }))
+
+    expect(useRoster.getState().screen).toBe('tasks')
   })
 
   test('navigates between screens', async () => {

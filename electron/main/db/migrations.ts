@@ -66,4 +66,51 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE usage DROP COLUMN context_used;
   `,
+
+  // 4 — the shared task board. Projects are metadata only: a name, a colour
+  // and a description, referenced by tasks and sessions but owning neither.
+  `
+  CREATE TABLE projects (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    color       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_at  INTEGER NOT NULL
+  );
+
+  CREATE TABLE tasks (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL CHECK (status IN ('todo', 'in_progress', 'in_review', 'done')),
+    priority    TEXT NOT NULL CHECK (priority IN ('urgent', 'high', 'medium', 'low')),
+    assignee_id TEXT,
+    project_id  TEXT REFERENCES projects (id) ON DELETE SET NULL,
+    labels      TEXT NOT NULL DEFAULT '[]',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+
+  CREATE INDEX ix_tasks_status  ON tasks (status, updated_at);
+  CREATE INDEX ix_tasks_project ON tasks (project_id);
+
+  CREATE TABLE task_comments (
+    id         TEXT PRIMARY KEY,
+    task_id    TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+    author     TEXT NOT NULL,
+    tone       TEXT NOT NULL CHECK (tone IN ('you', 'agent')),
+    text       TEXT NOT NULL,
+    is_system  INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX ix_task_comments_task ON task_comments (task_id, created_at);
+
+  CREATE TABLE counters (
+    name  TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+  );
+
+  ALTER TABLE sessions ADD COLUMN project_id TEXT;
+  `,
 ]

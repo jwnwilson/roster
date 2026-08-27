@@ -4,10 +4,13 @@ import type {
   McpServer,
   Message,
   ModelInfo,
+  Project,
   RunnerStatus,
   Session,
   Skill,
   Status,
+  Task,
+  TaskComment,
   TranscriptLine,
   AgentUsage,
   Usage,
@@ -48,6 +51,8 @@ export interface RosterApi {
     usageByAgent(): Promise<Record<string, AgentUsage>>
     send(sessionId: string, prompt: string): Promise<void>
     cancel(sessionId: string): Promise<void>
+    /** Files the session under a project, or under none. */
+    setProject(sessionId: string, projectId: string | null): Promise<Session>
     respondToApproval(sessionId: string, approvalId: string, approved: boolean): Promise<void>
     pendingApprovals(sessionId: string): Promise<Approval[]>
     /** Live turn events: messages, status, usage, approvals. */
@@ -87,11 +92,67 @@ export interface RosterApi {
     /** Replaces a configured server's launch command and environment. */
     save(name: string, command: string, env: Record<string, string>): Promise<McpServer[]>
   }
+  projects: {
+    list(): Promise<Project[]>
+    create(input: NewProjectInput): Promise<Project>
+    update(id: string, patch: ProjectPatch): Promise<Project>
+    remove(id: string): Promise<void>
+  }
+  tasks: {
+    list(): Promise<Task[]>
+    create(input: NewTaskInput): Promise<Task>
+    /**
+     * The only way a task changes. The actor is decided in the main process,
+     * so a renderer cannot log a change as though an agent made it.
+     */
+    apply(taskId: string, change: TaskChange): Promise<Task>
+    remove(taskId: string): Promise<void>
+    comments(taskId: string): Promise<TaskComment[]>
+    comment(taskId: string, text: string): Promise<TaskComment>
+    /** Live board changes — including ones an agent made mid-turn. */
+    onEvent(listener: (event: TaskEventPayload) => void): () => void
+  }
   dialog: {
     /** Native directory picker; resolves null when cancelled. */
     chooseDirectory(current?: string): Promise<string | null>
   }
 }
+
+export interface NewProjectInput {
+  name: string
+  color: string
+  description?: string
+}
+
+export type ProjectPatch = Partial<Pick<Project, 'name' | 'color' | 'description'>>
+
+export interface NewTaskInput {
+  title: string
+  description?: string
+  status?: Task['status']
+  priority?: Task['priority']
+  assigneeId?: string | null
+  projectId?: string | null
+  labels?: string[]
+}
+
+/** One field of one task, changing. Mirrors the store's own TaskChange. */
+export type TaskChange =
+  | { field: 'status'; value: Task['status'] }
+  | { field: 'priority'; value: Task['priority'] }
+  | { field: 'assignee'; value: string | null }
+  | { field: 'project'; value: string | null }
+  | { field: 'title'; value: string }
+  | { field: 'description'; value: string }
+  | { field: 'addLabel'; value: string }
+  | { field: 'removeLabel'; value: string }
+
+export type TaskEventPayload =
+  | { type: 'task-created'; task: Task }
+  | { type: 'task-updated'; task: Task }
+  | { type: 'task-deleted'; taskId: string }
+  | { type: 'comment'; taskId: string; comment: TaskComment }
+  | { type: 'projects'; projects: Project[] }
 
 export interface AgentPatch {
   runner?: string
@@ -185,6 +246,21 @@ export const CHANNELS = {
   mcpSetEnabled: 'mcp:setEnabled',
   mcpInstall: 'mcp:install',
   mcpSave: 'mcp:save',
+
+  sessionsSetProject: 'sessions:setProject',
+
+  projectsList: 'projects:list',
+  projectsCreate: 'projects:create',
+  projectsUpdate: 'projects:update',
+  projectsDelete: 'projects:delete',
+
+  tasksList: 'tasks:list',
+  tasksCreate: 'tasks:create',
+  tasksApply: 'tasks:apply',
+  tasksDelete: 'tasks:delete',
+  tasksComments: 'tasks:comments',
+  tasksComment: 'tasks:comment',
+  tasksEvent: 'tasks:event', // broadcast, not invoke
 
   dialogChooseDirectory: 'dialog:chooseDirectory',
 } as const

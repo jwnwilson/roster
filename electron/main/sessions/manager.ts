@@ -6,10 +6,12 @@ import type { McpStore } from '../store/mcp'
 import type { SessionStore } from '../store/sessions'
 import type { SkillStore } from '../store/skills'
 import type { UsageStore } from '../store/usage'
+import type { TaskStore } from '../store/tasks'
+import type { ProjectStore } from '../store/projects'
 import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
-import { createRosterMcpServer } from '../runners/handoffTool'
+import { createRosterMcpServer, type TaskTools } from '../runners/handoffTool'
 import { describeActivity, THINKING } from './activity'
 
 /** Everything the manager emits so the renderer can follow a live turn. */
@@ -61,6 +63,12 @@ export class SessionManager {
     private readonly skills: SkillStore,
     private readonly mcp: McpStore,
     private readonly usage: UsageStore,
+    /**
+     * The shared task board. Optional because handing an agent the task
+     * tools is a separate concern from running a turn — a manager without
+     * one simply exposes no task tools.
+     */
+    private readonly board?: { tasks: TaskStore; projects: ProjectStore },
   ) {}
 
   subscribe(listener: (event: SessionEvent) => void): () => void {
@@ -192,6 +200,7 @@ export class SessionManager {
           },
         },
         agent.id,
+        this.taskToolsFor(agent),
       )
     }
 
@@ -423,6 +432,66 @@ export class SessionManager {
     const session = this.sessions.findById(sessionId)
     if (!session) return 'agent'
     return this.agents.findById(session.agentId)?.name ?? 'agent'
+  }
+
+  /**
+   * The board, bound to this agent.
+   *
+   * Every change routes through TaskStore.apply with the agent as the actor,
+   * so what an agent does to a task is logged and broadcast exactly as a
+   * person's drag would be. Absent when no task store was supplied, which is
+   * what keeps the manager usable in tests that do not care about tasks.
+   */
+  private taskToolsFor(agent: Agent): TaskTools | undefined {
+    const board = this.board
+    if (!board) return undefined
+    const { tasks, projects } = board
+
+    const actor = { name: agent.name, tone: 'agent' as const }
+
+    return {
+      list: () => tasks.findAll(),
+      find: (taskId) => tasks.findById(taskId),
+      comments: (taskId) => tasks.comments(taskId),
+      projectName: (projectId) => projects.findById(projectId)?.name ?? null,
+      agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
+      create: (input) =>
+        tasks.create({
+          title: input.title,
+          description: input.description,
+          priority: input.priority,
+          projectId: input.projectId,
+        }),
+      update: (taskId, patch) => {
+        // One call, one field at a time — so each change gets its own
+        // History line rather than one line standing for several.
+        let latest = tasks.findById(taskId)
+        if (patch.status !== undefined) {
+          latest = tasks.apply(taskId, { field: 'status', value: patch.status }, actor).task
+        }
+        if (patch.priority !== undefined) {
+          latest = tasks.apply(taskId, { field: 'priority', value: patch.priority }, actor).task
+        }
+        if (patch.assignee !== undefined) {
+          latest = tasks.apply(taskId, { field: 'assignee', value: patch.assignee }, actor).task
+        }
+        if (patch.addLabel !== undefined) {
+          latest = tasks.apply(taskId, { field: 'addLabel', value: patch.addLabel }, actor).task
+        }
+        if (patch.removeLabel !== undefined) {
+          latest = tasks.apply(
+            taskId,
+            { field: 'removeLabel', value: patch.removeLabel },
+            actor,
+          ).task
+        }
+        if (!latest) throw new Error(`unknown task "${taskId}"`)
+        return latest
+      },
+      comment: (taskId, text) => {
+        tasks.comment(taskId, { author: agent.name, tone: 'agent', text })
+      },
+    }
   }
 
   /** Only the skills this agent has enabled are exposed to its runner. */

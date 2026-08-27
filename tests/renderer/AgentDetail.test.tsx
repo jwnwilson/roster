@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { AgentDetail } from '@/screens/AgentDetail'
 import { useRoster } from '@/state/store'
 import type { Session } from '@shared/types'
-import { anAgent, aSession } from './factories'
+import { anAgent, aProject, aSession } from './factories'
 import { installRosterApi } from './rosterApi'
 
 // xterm needs a real canvas and devicePixelRatio, which jsdom does not
@@ -311,6 +311,83 @@ describe('AgentDetail — activity indicator', () => {
 
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument(),
+    )
+  })
+})
+
+describe('AgentDetail — filing a session under a project', () => {
+  const SESSION = aSession({ id: 's1', agentId: 'debugging', title: 'Pool leak' })
+
+  test('offers no picker until projects exist', async () => {
+    withSessions([SESSION])
+    render(<AgentDetail />)
+
+    await waitFor(() => expect(screen.getByText('Pool leak')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Session project')).not.toBeInTheDocument()
+  })
+
+  test('shows the session as unfiled by default', async () => {
+    withSessions([SESSION])
+    useRoster.setState({ projects: [aProject({ id: 'p1', name: 'API reliability' })] })
+    render(<AgentDetail />)
+
+    expect(await screen.findByLabelText('Session project')).toHaveValue('none')
+  })
+
+  test('shows the project a session is already filed under', async () => {
+    withSessions([{ ...SESSION, projectId: 'p1' }])
+    useRoster.setState({ projects: [aProject({ id: 'p1', name: 'API reliability' })] })
+    render(<AgentDetail />)
+
+    expect(await screen.findByLabelText('Session project')).toHaveValue('p1')
+  })
+
+  test('filing it writes through and updates the session', async () => {
+    const user = userEvent.setup()
+    const filed = { ...SESSION, projectId: 'p1' }
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([SESSION]),
+        setProject: vi.fn().mockResolvedValue(filed),
+      },
+    })
+    useRoster.setState({
+      sessions: { debugging: [SESSION] },
+      sess: { debugging: 's1' },
+      projects: [aProject({ id: 'p1', name: 'API reliability' })],
+    })
+    render(<AgentDetail />)
+
+    await user.selectOptions(await screen.findByLabelText('Session project'), 'p1')
+
+    await waitFor(() =>
+      expect(window.roster.sessions.setProject).toHaveBeenCalledWith('s1', 'p1'),
+    )
+    await waitFor(() =>
+      expect(useRoster.getState().sessions['debugging']?.[0]?.projectId).toBe('p1'),
+    )
+  })
+
+  test('unfiling sends null rather than the sentinel', async () => {
+    const user = userEvent.setup()
+    const filed = { ...SESSION, projectId: 'p1' }
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([filed]),
+        setProject: vi.fn().mockResolvedValue(SESSION),
+      },
+    })
+    useRoster.setState({
+      sessions: { debugging: [filed] },
+      sess: { debugging: 's1' },
+      projects: [aProject({ id: 'p1', name: 'API reliability' })],
+    })
+    render(<AgentDetail />)
+
+    await user.selectOptions(await screen.findByLabelText('Session project'), 'none')
+
+    await waitFor(() =>
+      expect(window.roster.sessions.setProject).toHaveBeenCalledWith('s1', null),
     )
   })
 })

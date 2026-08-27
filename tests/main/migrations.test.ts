@@ -124,3 +124,90 @@ describe('migration 3 — the stored context fraction goes', () => {
     old.close()
   })
 })
+
+describe('migration 4 — the task board', () => {
+  /** A database stopped at version 3, as an existing install would be. */
+  function atVersion3(): ReturnType<typeof openDatabase> {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < 3; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma('user_version = 3')
+    return old
+  }
+
+  test('adds the three board tables and the key counter', () => {
+    const names = (
+      db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as {
+        name: string
+      }[]
+    ).map((row) => row.name)
+
+    expect(names).toContain('projects')
+    expect(names).toContain('tasks')
+    expect(names).toContain('task_comments')
+    expect(names).toContain('counters')
+  })
+
+  test('gives sessions a project column', () => {
+    const columns = (db.pragma('table_info(sessions)') as { name: string }[]).map((c) => c.name)
+
+    expect(columns).toContain('project_id')
+  })
+
+  test('an existing install keeps its sessions, with no project yet', () => {
+    const old = atVersion3()
+    old.prepare(
+      `INSERT INTO sessions (id, agent_id, title, origin, status, created_at)
+       VALUES ('s1', 'debugging', 'Session leak on 504', 'you', 'done', 17)`,
+    ).run()
+
+    migrate(old)
+
+    expect(old.prepare('SELECT id, title, project_id FROM sessions').get()).toEqual({
+      id: 's1',
+      title: 'Session leak on 504',
+      project_id: null,
+    })
+    old.close()
+  })
+
+  test('a task refuses a status the board has no column for', () => {
+    expect(() =>
+      db
+        .prepare(
+          `INSERT INTO tasks (id, title, status, priority, labels, created_at, updated_at)
+           VALUES ('ROS-1', 'x', 'blocked', 'medium', '[]', 0, 0)`,
+        )
+        .run(),
+    ).toThrow()
+  })
+
+  test('deleting a project leaves its tasks behind, without a project', () => {
+    db.prepare(
+      `INSERT INTO projects (id, name, color, created_at) VALUES ('p1', 'P', 'a', 0)`,
+    ).run()
+    db.prepare(
+      `INSERT INTO tasks (id, title, status, priority, project_id, labels, created_at, updated_at)
+       VALUES ('ROS-1', 'x', 'todo', 'medium', 'p1', '[]', 0, 0)`,
+    ).run()
+
+    db.prepare("DELETE FROM projects WHERE id = 'p1'").run()
+
+    expect(db.prepare('SELECT project_id FROM tasks').get()).toEqual({ project_id: null })
+  })
+
+  test('deleting a task takes its thread with it', () => {
+    db.prepare(
+      `INSERT INTO tasks (id, title, status, priority, labels, created_at, updated_at)
+       VALUES ('ROS-1', 'x', 'todo', 'medium', '[]', 0, 0)`,
+    ).run()
+    db.prepare(
+      `INSERT INTO task_comments (id, task_id, author, tone, text, created_at)
+       VALUES ('c1', 'ROS-1', 'you', 'you', 'hi', 0)`,
+    ).run()
+
+    db.prepare("DELETE FROM tasks WHERE id = 'ROS-1'").run()
+
+    expect(db.prepare('SELECT COUNT(*) AS n FROM task_comments').get()).toEqual({ n: 0 })
+  })
+})

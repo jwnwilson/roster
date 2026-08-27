@@ -1,8 +1,22 @@
 import type { Agent, Session, TranscriptLine } from '@shared/types'
 import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
-import { agentStatus, useRoster, selectGridAgents, NO_LINES, NO_SESSIONS } from '@/state/store'
-import { PrimaryButton, ScreenHeader, StatusDot, TextInput } from '@/components/primitives'
+import {
+  ALL_PROJECTS,
+  agentStatus,
+  useRoster,
+  selectGridAgents,
+  sessionsInProject,
+  NO_LINES,
+  NO_SESSIONS,
+} from '@/state/store'
+import {
+  PrimaryButton,
+  ScreenHeader,
+  Select,
+  StatusDot,
+  TextInput,
+} from '@/components/primitives'
 import { formatCost, formatTokens } from '@/state/format'
 
 export function AgentsGrid() {
@@ -10,22 +24,34 @@ export function AgentsGrid() {
   const total = useRoster((s) => s.agents.length)
   const gridQuery = useRoster((s) => s.gridQuery)
   const setGridQuery = useRoster((s) => s.setGridQuery)
+  const projectFilter = useRoster((s) => s.gridProjectFilter)
+  const setProjectFilter = useRoster((s) => s.setGridProjectFilter)
+  const projects = useRoster(useShallow((s) => s.projects))
   const go = useRoster((s) => s.go)
 
   // A count, not an array: a fresh array here re-renders forever.
   const running = useRoster(
     (s) => agents.filter((agent) => agentStatus(s, agent) === 'running').length,
   )
-  const summary =
-    gridQuery.trim() === ''
-      ? `${total} configured · ${running} running`
-      : `${agents.length} of ${total} match`
+  const filtering = gridQuery.trim() !== '' || projectFilter !== ALL_PROJECTS
+  const summary = filtering
+    ? `${agents.length} of ${total} match`
+    : `${total} configured · ${running} running`
 
   return (
     <div className="flex h-screen flex-col">
       <ScreenHeader title="Agents">
         <span className="text-md text-dim">{summary}</span>
         <div className="ml-auto flex items-center gap-[8px]">
+          <Select
+            ariaLabel="Filter by project"
+            value={projectFilter}
+            onChange={setProjectFilter}
+            options={[
+              { value: ALL_PROJECTS, label: 'All projects' },
+              ...projects.map((project) => ({ value: project.id, label: project.name })),
+            ]}
+          />
           <TextInput
             ariaLabel="Filter agents"
             placeholder="Filter agents"
@@ -39,7 +65,7 @@ export function AgentsGrid() {
 
       <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
         {agents.length === 0 ? (
-          <EmptyState filtered={gridQuery.trim() !== ''} />
+          <EmptyState filtered={filtering} />
         ) : (
           <div className="grid min-h-full grid-cols-2 gap-[24px] [grid-auto-rows:minmax(268px,1fr)]">
             {agents.map((agent) => (
@@ -60,7 +86,12 @@ interface AgentCardProps {
 
 function AgentCard({ agent }: AgentCardProps) {
   const openAgent = useRoster((s) => s.openAgent)
-  const sessions = useRoster((s) => s.sessions[agent.id] ?? NO_SESSIONS)
+  const projectFilter = useRoster((s) => s.gridProjectFilter)
+  // The same predicate the card list used. If these two ever disagreed, a
+  // card would render with no chips in it.
+  const sessions = useRoster(
+    useShallow((s) => sessionsInProject(s.sessions[agent.id] ?? NO_SESSIONS, projectFilter)),
+  )
   const selected = useRoster((s) => s.sess[agent.id])
   const status = useRoster((s) => agentStatus(s, agent))
   const needsApproval = status === 'approval'
