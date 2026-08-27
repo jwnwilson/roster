@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { Agent, Approval, Message, Session, Usage } from '../../../shared/types'
+import { isBuiltinMcpServer, TASKS_SERVER } from '../../../shared/mcp'
 import type { AgentStore } from '../store/agents'
 import type { McpStore } from '../store/mcp'
 import type { SessionStore } from '../store/sessions'
@@ -11,7 +12,8 @@ import type { ProjectStore } from '../store/projects'
 import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
-import { createRosterMcpServer, type TaskTools } from '../runners/handoffTool'
+import { createRosterMcpServer } from '../runners/handoffTool'
+import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { describeActivity, THINKING } from './activity'
 
 /** Everything the manager emits so the renderer can follow a live turn. */
@@ -184,27 +186,36 @@ export class SessionManager {
     this.emit({ type: 'activity', sessionId, text: THINKING })
 
     // Only the Claude runner supports in-process MCP, so only it can be
-    // given the roster tools; other runners simply cannot hand off yet.
-    let rosterTools: unknown
+    // given Roster's own servers; other runners simply cannot hand off yet.
+    let inProcessMcpServers: Record<string, unknown> | undefined
     if (runner instanceof ClaudeRunner) {
       runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
-      rosterTools = await createRosterMcpServer(
-        {
-          listAgents: () => this.agents.findAll(),
-          openSession: ({ toAgentId, title, brief }) => {
-            const result = this.handOff({
-              fromAgentId: agent.id,
-              fromSessionId: sessionId,
-              toAgentId,
-              title,
-              brief,
-            })
-            return { sessionId: result.session.id, label: result.label }
+      inProcessMcpServers = {
+        roster: await createRosterMcpServer(
+          {
+            listAgents: () => this.agents.findAll(),
+            openSession: ({ toAgentId, title, brief }) => {
+              const result = this.handOff({
+                fromAgentId: agent.id,
+                fromSessionId: sessionId,
+                toAgentId,
+                title,
+                brief,
+              })
+              return { sessionId: result.session.id, label: result.label }
+            },
           },
-        },
-        agent.id,
-        this.taskToolsFor(agent),
-      )
+          agent.id,
+        ),
+      }
+
+      // The board is opt-in per agent, like any other MCP server. An agent
+      // that does not enable it is never given the tools at all, so there is
+      // nothing for it to be refused.
+      const tasks = this.taskToolsFor(agent)
+      if (tasks) {
+        inProcessMcpServers[TASKS_SERVER] = await createTasksMcpServer(tasks, agent.id)
+      }
     }
 
     try {
@@ -215,7 +226,7 @@ export class SessionManager {
         skillPaths: this.skillPathsFor(agent),
         mcpServers: this.mcpServersFor(agent),
         signal: run.abort.signal,
-        ...(rosterTools ? { rosterTools } : {}),
+        ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
         ...(session.runnerSessionId !== undefined ? { resumeFrom: session.runnerSessionId } : {}),
       })
 
@@ -451,12 +462,16 @@ export class SessionManager {
    *
    * Every change routes through TaskStore.apply with the agent as the actor,
    * so what an agent does to a task is logged and broadcast exactly as a
-   * person's drag would be. Absent when no task store was supplied, which is
-   * what keeps the manager usable in tests that do not care about tasks.
+   * person's drag would be.
+   *
+   * Absent when no task store was supplied, and absent when the agent has not
+   * enabled the built-in "tasks" server — that is the control over which
+   * agents may change the board.
    */
   private taskToolsFor(agent: Agent): TaskTools | undefined {
     const board = this.board
     if (!board) return undefined
+    if (!agent.mcpServers.includes(TASKS_SERVER)) return undefined
     const { tasks, projects } = board
 
     const actor = { name: agent.name, tone: 'agent' as const }
@@ -527,6 +542,9 @@ export class SessionManager {
 
     const resolved: [string, McpLaunchSpec][] = []
     for (const name of agent.mcpServers) {
+      // Built-ins run in-process; there is no command to launch.
+      if (isBuiltinMcpServer(name)) continue
+
       const server = configured.get(name)
       if (!server) {
         process.stderr.write(

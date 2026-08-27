@@ -562,6 +562,36 @@ describe('SessionManager — what the runner is given', () => {
     expect(options.mcpServers).toEqual({})
   })
 
+  test('does not try to launch a built-in as a subprocess', async () => {
+    // "tasks" runs in-process. Treating it as a normal entry would both warn
+    // about a missing mcp.json entry and try to spawn an empty command.
+    const written: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk))
+      return true
+    })
+    const board = [
+      { ...AGENTS[0]!, mcpServers: ['filesystem', 'tasks'] },
+      ...AGENTS.slice(1),
+    ]
+    const solo = new SessionManager(
+      { findAll: () => board, findById: (id: string) => board.find((a) => a.id === id) ?? null } as never,
+      sessions,
+      { findAll: () => SKILLS } as never,
+      { findAll: () => [{ name: 'filesystem', command: 'npx server-filesystem ~', env: {} }] } as never,
+      usage,
+    )
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = solo.create('debugging', 'x')
+    await solo.send(session.id, 'go')
+    spy.mockRestore()
+
+    const options = runnerStub.run.mock.calls[0]?.[1] as { mcpServers: Record<string, unknown> }
+    expect(Object.keys(options.mcpServers)).toEqual(['filesystem'])
+    expect(written.join('')).not.toContain('tasks')
+  })
+
   test('skips a server the agent names that mcp.json does not define', async () => {
     // The regression this guards: enablement is agent.toml's alone, so an
     // unresolvable name must be dropped rather than crashing the turn.

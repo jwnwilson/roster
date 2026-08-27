@@ -410,6 +410,16 @@ Each was raised and decided explicitly:
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.
 
+30. **The task board is an MCP server, listed and enabled per agent.** Roster runs it
+    in-process rather than launching it, but it appears in the Installed list beside the
+    servers from `mcp.json` and is switched on per agent the same way — by name, in that
+    agent's `mcp_servers`. Which agents may change the board is a real decision, and the
+    MCP screen is already where per-agent tool access is granted; a second mechanism
+    would be a second place it could be wrong. Handoff stays ungated: it opens sessions
+    inside Roster and changes nothing a person owns. Built-ins are never written into
+    `mcp.json`, have no launch command or environment, and cannot be shadowed by an
+    entry of the same name.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

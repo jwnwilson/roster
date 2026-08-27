@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Agent } from '@shared/types'
-import type { TaskTools } from '@main/runners/handoffTool'
+import type { TaskTools } from '@main/runners/taskTools'
 
 const runnerStub = {
   id: 'claude',
@@ -22,12 +22,15 @@ vi.mock('@main/runners/registry', () => ({
 }))
 
 /**
- * The SDK's MCP factory needs a runtime the tests do not have, so it is
- * stubbed — and the stub is also how we get hold of the TaskTools the
+ * The SDK's MCP factories need a runtime the tests do not have, so both are
+ * stubbed — and the task stub is also how we get hold of the TaskTools the
  * manager builds, which is the thing actually worth testing.
  */
-const createRosterMcpServer = vi.fn().mockResolvedValue({ fake: 'mcp' })
+const createRosterMcpServer = vi.fn().mockResolvedValue({ fake: 'roster' })
 vi.mock('@main/runners/handoffTool', () => ({ createRosterMcpServer }))
+
+const createTasksMcpServer = vi.fn().mockResolvedValue({ fake: 'tasks' })
+vi.mock('@main/runners/taskTools', () => ({ createTasksMcpServer }))
 
 const { openDatabase } = await import('@main/db')
 const { SessionStore } = await import('@main/store/sessions')
@@ -47,7 +50,7 @@ const AGENTS: Agent[] = [
     cwdLabel: '~/work/api',
     systemPrompt: '',
     skills: [],
-    mcpServers: [],
+    mcpServers: ['tasks'],
     status: 'idle',
   },
   {
@@ -59,6 +62,19 @@ const AGENTS: Agent[] = [
     cwdLabel: '~/work/api',
     systemPrompt: '',
     skills: [],
+    mcpServers: ['tasks'],
+    status: 'idle',
+  },
+  {
+    id: 'estimation',
+    name: 'Estimation Agent',
+    runner: 'claude',
+    model: 'claude-haiku-4-5',
+    cwd: '/work/api',
+    cwdLabel: '~/work/api',
+    systemPrompt: '',
+    skills: [],
+    // Deliberately without the board.
     mcpServers: [],
     status: 'idle',
   },
@@ -92,6 +108,7 @@ beforeEach(async () => {
   )
 
   createRosterMcpServer.mockClear()
+  createTasksMcpServer.mockClear()
   runnerStub.run.mockReset()
   runnerStub.run.mockImplementation(async function* () {
     yield { kind: 'done', runnerSessionId: 'r1' }
@@ -108,8 +125,8 @@ async function taskTools(): Promise<TaskTools> {
   const session = manager.create('debugging', 'Work')
   await manager.send(session.id, 'go')
 
-  const call = createRosterMcpServer.mock.calls[0]
-  const tools = call?.[2] as TaskTools | undefined
+  const call = createTasksMcpServer.mock.calls[0]
+  const tools = call?.[0] as TaskTools | undefined
   if (!tools) throw new Error('the manager passed no task tools')
   return tools
 }
@@ -133,7 +150,18 @@ describe('the task tools an agent is given', () => {
     const session = bare.create('debugging', 'Work')
     await bare.send(session.id, 'go')
 
-    expect(createRosterMcpServer.mock.calls[0]?.[2]).toBeUndefined()
+    expect(createTasksMcpServer).not.toHaveBeenCalled()
+  })
+
+  test('are absent when the agent has not enabled the tasks server', async () => {
+    // The board exists and the agent runs on Claude; it simply was not given
+    // the server, so there are no task tools to refuse it.
+    const session = manager.create('estimation', 'Work')
+    await manager.send(session.id, 'go')
+
+    expect(createTasksMcpServer).not.toHaveBeenCalled()
+    // Handoff is not gated, so that server is still built.
+    expect(createRosterMcpServer).toHaveBeenCalled()
   })
 
   test('list the board', async () => {
@@ -149,7 +177,7 @@ describe('the task tools an agent is given', () => {
     const tools = await taskTools()
 
     expect(tools.find(task.id)?.title).toBe('One')
-    expect(tools.comments(task.id).map((c) => c.text)).toEqual(['a note'])
+    expect(tools.comments(task.id).map((entry) => entry.text)).toEqual(['a note'])
   })
 
   test('return nothing for a task that does not exist', async () => {

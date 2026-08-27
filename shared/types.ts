@@ -261,6 +261,14 @@ export interface McpServer {
    * start them but never authenticate them.
    */
   env: Record<string, string>
+  /**
+   * Roster runs this one itself, in-process. There is no command to launch
+   * and no environment to set, so the only thing to decide is which agents
+   * may use it. See shared/mcp.ts.
+   */
+  builtin?: boolean
+  /** What the server is for. Only built-ins carry one; the rest show their command. */
+  description?: string
 }
 
 export interface RegistryEntry {

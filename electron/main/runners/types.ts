@@ -46,11 +46,12 @@ export interface StartOptions {
   /** MCP servers enabled for this agent, keyed by name. */
   mcpServers: Record<string, McpLaunchSpec>
   /**
-   * An in-process MCP server exposing Roster's own tools, so the agent can
-   * hand work to another agent. Only runners that support in-process MCP
-   * receive it.
+   * MCP servers Roster runs itself rather than launching — handoff, and the
+   * task board when the agent has it enabled. Keyed by the name the agent
+   * sees in its tool namespace. Only runners that support in-process MCP
+   * receive these.
    */
-  rosterTools?: unknown
+  inProcessMcpServers?: Record<string, unknown>
   /** Resume the CLI's own session rather than starting fresh. */
   resumeFrom?: string
   /** Resume, but branch into a new session — the handoff primitive. */

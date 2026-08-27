@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { McpServer } from '../../../shared/types'
+import { BUILTIN_MCP_SERVERS, isBuiltinMcpServer } from '../../../shared/mcp'
 import type { Disposable } from './agents'
 import { mcpConfigPath } from './paths'
 
@@ -30,17 +31,27 @@ export class McpStore {
     }
   }
 
+  /**
+   * Every server an agent can be given, built-ins first.
+   *
+   * Roster's own in-process servers are listed here rather than beside them
+   * so there is one list to enable from and one place enablement is read —
+   * the file only ever holds the servers Roster has to launch.
+   */
   findAll(): McpServer[] {
-    return this.servers
+    return [...BUILTINS, ...this.servers]
   }
 
   /** Adds a server from the registry. Installing an existing one is a no-op. */
   async install(name: string, command: string): Promise<McpServer[]> {
-    if (this.servers.some((server) => server.name === name)) return this.servers
+    // A built-in's name is taken: an mcp.json entry shadowing it would put
+    // two different servers under one name in every agent's `mcp_servers`.
+    if (isBuiltinMcpServer(name)) throw new Error(`"${name}" is built into Roster`)
+    if (this.servers.some((server) => server.name === name)) return this.findAll()
 
     this.servers = [...this.servers, { name, command, env: {} }]
     await this.persist()
-    return this.servers
+    return this.findAll()
   }
 
   /**
@@ -49,6 +60,7 @@ export class McpStore {
    * pointing at nothing.
    */
   async save(name: string, command: string, env: Record<string, string>): Promise<McpServer[]> {
+    if (isBuiltinMcpServer(name)) throw new Error(`"${name}" is built into Roster`)
     if (!this.servers.some((server) => server.name === name)) {
       throw new Error(`unknown MCP server "${name}"`)
     }
@@ -57,7 +69,7 @@ export class McpStore {
       server.name === name ? { name, command, env: { ...env } } : server,
     )
     await this.persist()
-    return this.servers
+    return this.findAll()
   }
 
   private async persist(): Promise<void> {
@@ -86,7 +98,7 @@ export class McpStore {
         if (pending) clearTimeout(pending)
         pending = setTimeout(() => {
           void this.load().then(() => {
-            for (const listener of this.listeners) listener(this.servers)
+            for (const listener of this.listeners) listener(this.findAll())
           })
         }, 80)
       })
@@ -105,6 +117,18 @@ export class McpStore {
     this.stopWatching()
   }
 }
+
+/**
+ * Built-ins as the UI sees them: no command, no environment, nothing to
+ * configure but which agents may use them.
+ */
+const BUILTINS: McpServer[] = BUILTIN_MCP_SERVERS.map((server) => ({
+  name: server.name,
+  command: '',
+  env: {},
+  builtin: true,
+  description: server.description,
+}))
 
 /**
  * The agent's `mcp_servers` with one server added or removed.

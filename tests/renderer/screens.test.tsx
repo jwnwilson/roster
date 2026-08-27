@@ -245,6 +245,49 @@ describe('McpServers', () => {
     expect(window.roster.mcp.setEnabled).toHaveBeenCalledWith('filesystem', 'debugging', false)
   })
 
+  test('a built-in is listed with what it does, not a launch command', () => {
+    useRoster.setState({
+      mcpServers: [
+        anMcpServer({
+          name: 'tasks',
+          command: '',
+          builtin: true,
+          description: 'Read and change tasks on the shared board.',
+        }),
+      ],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
+    })
+    render(<McpServers />)
+
+    expect(screen.getByText('tasks')).toBeInTheDocument()
+    expect(screen.getByText('Built in')).toBeInTheDocument()
+    expect(screen.getByText('Read and change tasks on the shared board.')).toBeInTheDocument()
+  })
+
+  test('a built-in has nothing to configure, so it does not open the editor', () => {
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'tasks', command: '', builtin: true, description: 'The board.' })],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
+    })
+    render(<McpServers />)
+
+    // There is no command and no environment; save would be refused anyway.
+    expect(screen.queryByRole('button', { name: 'Configure tasks' })).not.toBeInTheDocument()
+  })
+
+  test('a built-in is still enabled per agent, like any other server', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'tasks', command: '', builtin: true, description: 'The board.' })],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
+    })
+    render(<McpServers />)
+
+    await user.click(screen.getByRole('button', { name: 'Debugging' }))
+
+    expect(window.roster.mcp.setEnabled).toHaveBeenCalledWith('tasks', 'debugging', true)
+  })
+
   test('re-reads the agents, since enablement lives in agent.toml', async () => {
     const user = userEvent.setup()
     installRosterApi({
