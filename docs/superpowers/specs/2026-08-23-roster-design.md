@@ -420,6 +420,14 @@ Each was raised and decided explicitly:
     `mcp.json`, have no launch command or environment, and cannot be shadowed by an
     entry of the same name.
 
+31. **A tool row's expanded panel shows the call, not just the output.** The handoff
+    says expanding shows the output; for `AskUserQuestion` that is one line — whether it
+    was answered — while the question and its options exist nowhere else, since the
+    collapsed row is a single truncated line. The panel now labels Arguments above
+    Output, and the tool event carries the full input alongside the one-line summary.
+    Only when the summary is not already the whole call: a one-field call like Read's
+    path gets no Arguments block, because repeating the row above it is noise.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

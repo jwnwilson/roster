@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
-import { normalizeClaudeMessage } from './normalizeClaude'
+import { normalizeClaudeMessage, summariseQuestions } from './normalizeClaude'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
 import { TASK_TOOL_NAMES } from './taskTools'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
@@ -187,6 +187,12 @@ export function describeCommand(toolName: string, input: Record<string, unknown>
     const value = input[key]
     if (typeof value === 'string' && value !== '') return value
   }
+
+  // A question tool has no command; what is being asked is the thing worth
+  // reading before allowing it, and the bare tool name says nothing.
+  const asked = summariseQuestions(input['questions'])
+  if (asked !== null) return asked
+
   return toolName
 }
 

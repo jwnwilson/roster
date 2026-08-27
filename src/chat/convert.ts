@@ -61,7 +61,15 @@ export function toThreadMessage(message: Message): ThreadMessageLike {
               : { result: message.output, isError: message.isError }),
           },
         ],
-        metadata: { custom: { header: headerFor(message), durationMs: message.durationMs } },
+        // assistant-ui's tool-call part carries only argsText, so the full
+        // call rides alongside the duration in the message's own metadata.
+        metadata: {
+          custom: {
+            header: headerFor(message),
+            durationMs: message.durationMs,
+            input: message.input,
+          },
+        },
       }
 
     case 'spawn':

@@ -123,7 +123,14 @@ export interface TextMessage extends BaseMessage {
 export interface ToolMessage extends BaseMessage {
   kind: 'tool'
   tool: string
+  /** One line, for the collapsed row. See summariseArgs. */
   args: string
+  /**
+   * Everything the tool was called with, as JSON, when that is more than the
+   * summary. A question's options live only here. Absent for a tool whose
+   * arguments the summary already shows in full.
+   */
+  input?: string
   output: string
   isError: boolean
   /** Milliseconds; formatted as "1.2s" at render time. */

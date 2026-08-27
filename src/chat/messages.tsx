@@ -50,12 +50,14 @@ interface ToolBodyProps {
   id: string
   tool: string
   args: string
+  /** The full call, when the summary on the row is not all of it. */
+  input?: string
   output: string
   isError: boolean
   durationMs?: number
 }
 
-export function ToolBody({ id, tool, args, output, isError, durationMs }: ToolBodyProps) {
+export function ToolBody({ id, tool, args, input, output, isError, durationMs }: ToolBodyProps) {
   const open = useRoster((s) => s.openTools[id] ?? false)
   const toggleTool = useRoster((s) => s.toggleTool)
   const running = output === '' && !isError
@@ -81,12 +83,57 @@ export function ToolBody({ id, tool, args, output, isError, durationMs }: ToolBo
         </span>
       </button>
       {open ? (
-        <pre className="m-0 border-t border-line bg-well px-[12px] py-[10px] font-mono text-base leading-[1.6] whitespace-pre-wrap text-muted-2">
-          {output === '' ? 'no output' : output}
-        </pre>
+        <div className="border-t border-line bg-well px-[12px] py-[10px]">
+          {input === undefined ? null : (
+            <>
+              <ToolSectionLabel>Arguments</ToolSectionLabel>
+              <ToolPre>{prettyArgs(input)}</ToolPre>
+            </>
+          )}
+          <ToolSectionLabel className={input === undefined ? '' : 'mt-[10px]'}>
+            Output
+          </ToolSectionLabel>
+          <ToolPre>{output === '' ? 'no output' : output}</ToolPre>
+        </div>
       ) : null}
     </div>
   )
+}
+
+function ToolSectionLabel({ children, className = '' }: { children: string; className?: string }) {
+  return (
+    <div
+      className={`text-2xs font-semibold uppercase tracking-[0.07em] text-faint-2 ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function ToolPre({ children }: { children: string }) {
+  return (
+    <pre className="m-0 font-mono text-base leading-[1.6] whitespace-pre-wrap text-muted-2">
+      {children}
+    </pre>
+  )
+}
+
+/**
+ * The call as something worth expanding to.
+ *
+ * The collapsed row is one truncated line, so for a tool whose arguments are
+ * a structure — a question and its options, a patch, a filter — that line is
+ * all anyone ever sees of them. Indenting the JSON is what makes the rest
+ * readable; anything that is not JSON is passed through.
+ */
+export function prettyArgs(args: string): string {
+  try {
+    const parsed: unknown = JSON.parse(args)
+    if (typeof parsed !== 'object' || parsed === null) return args
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return args
+  }
 }
 
 export function SpawnBody({ message }: { message: SpawnMessage }) {

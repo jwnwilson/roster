@@ -265,6 +265,7 @@ export class SessionManager {
           kind: 'tool',
           tool: event.name,
           args: event.args,
+          ...(event.input !== undefined ? { input: event.input } : {}),
           output: '',
           isError: false,
         })

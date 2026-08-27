@@ -218,6 +218,13 @@ describe('describeCommand', () => {
     expect(describeCommand('WebSearch', { detail: 42 })).toBe('WebSearch')
   })
 
+  test('names what a question tool is asking, since it has no command', () => {
+    // "AskUserQuestion" on the banner says nothing about what is being asked.
+    const input = { questions: [{ question: 'Which cache backend?', options: [] }] }
+
+    expect(describeCommand('AskUserQuestion', input)).toBe('Which cache backend?')
+  })
+
   test('ignores an empty field rather than showing a blank banner', () => {
     expect(describeCommand('Bash', { command: '' })).toBe('Bash')
   })

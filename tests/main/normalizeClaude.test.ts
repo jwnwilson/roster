@@ -62,6 +62,39 @@ describe('normalizeClaudeMessage — assistant turns', () => {
     ])
   })
 
+  test('carries the whole call when the row cannot show all of it', () => {
+    // A question's options exist nowhere else: the row is one line, and the
+    // output is only whether it was answered.
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_1',
+            name: 'AskUserQuestion',
+            input: { questions: [{ question: 'Which backend?', options: [{ label: 'Redis' }] }] },
+          },
+        ],
+      },
+    }
+
+    expect(normalizeClaudeMessage(message)).toEqual([
+      {
+        kind: 'tool',
+        id: 'toolu_1',
+        name: 'AskUserQuestion',
+        args: 'Which backend?',
+        input: '{"questions":[{"question":"Which backend?","options":[{"label":"Redis"}]}]}',
+      },
+    ])
+  })
+
+  test('carries nothing extra when one field is the whole call', () => {
+    // Read's path is already on the row; an Arguments block would repeat it.
+    expect(normalizeClaudeMessage(TOOL_USE)[0]).not.toHaveProperty('input')
+  })
+
   test('drops empty text deltas', () => {
     const message = { type: 'assistant', message: { content: [{ type: 'text', text: '' }] } }
     expect(normalizeClaudeMessage(message)).toEqual([])
@@ -173,6 +206,42 @@ describe('summariseArgs', () => {
     ['already a string', 'already a string'],
   ])('summarises %o as its most telling field', (input, expected) => {
     expect(summariseArgs(input)).toBe(expected)
+  })
+
+  test('shows what a question tool is asking, not its JSON', () => {
+    // The regression: option labels and descriptions get inlined ahead of the
+    // question, so the truncated row shows everything except the question.
+    const input = {
+      questions: [
+        {
+          question: 'Which cache backend?',
+          header: 'Cache',
+          multiSelect: false,
+          options: [
+            { label: 'Redis', description: 'Distributed, for multi-instance deployments' },
+            { label: 'In-memory', description: 'Fast, single instance only' },
+          ],
+        },
+      ],
+    }
+
+    expect(summariseArgs(input)).toBe('Which cache backend?')
+  })
+
+  test('counts the questions it could not fit', () => {
+    const input = { questions: [{ question: 'Which backend?' }, { question: 'Which region?' }] }
+
+    expect(summariseArgs(input)).toBe('Which backend? (+1 more)')
+  })
+
+  test('falls back to JSON when a questions array holds nothing askable', () => {
+    expect(summariseArgs({ questions: [{ header: 'Cache' }] })).toBe(
+      '{"questions":[{"header":"Cache"}]}',
+    )
+  })
+
+  test('falls back to JSON when questions is empty', () => {
+    expect(summariseArgs({ questions: [] })).toBe('{"questions":[]}')
   })
 
   test('falls back to compact JSON when no field stands out', () => {

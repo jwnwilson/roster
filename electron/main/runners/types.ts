@@ -8,8 +8,12 @@ import type { ModelInfo, RunnerId, RunnerStatus } from '../../../shared/types'
 export type RunnerEvent =
   /** A chunk of assistant prose. */
   | { kind: 'text'; delta: string }
-  /** The agent decided to call a tool. */
-  | { kind: 'tool'; id: string; name: string; args: string }
+  /**
+   * The agent decided to call a tool. `args` is the one line the collapsed
+   * row shows; `input` is everything it was called with, for the expanded
+   * panel — a question's options only exist there.
+   */
+  | { kind: 'tool'; id: string; name: string; args: string; input?: string }
   /** That tool finished. */
   | { kind: 'result'; id: string; output: string; isError: boolean }
   /** The CLI is blocked waiting for the user to allow or deny an action. */

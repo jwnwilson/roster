@@ -93,6 +93,9 @@ function RosterMessage() {
   const durationMs = useAuiState(
     (s) => (s.message.metadata?.custom as { durationMs?: number } | undefined)?.durationMs,
   )
+  const toolInput = useAuiState(
+    (s) => (s.message.metadata?.custom as { input?: string } | undefined)?.input,
+  )
 
   return (
     <MessagePrimitive.Root className="flex max-w-[720px] flex-col gap-[7px]">
@@ -112,6 +115,7 @@ function RosterMessage() {
                   args={part.argsText ?? ''}
                   output={typeof part.result === 'string' ? part.result : ''}
                   isError={part.isError === true}
+                  {...(toolInput !== undefined ? { input: toolInput } : {})}
                   {...(durationMs !== undefined ? { durationMs } : {})}
                 />
               )

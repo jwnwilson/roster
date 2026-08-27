@@ -79,7 +79,10 @@ function fromAssistant(message: Record<string, unknown>, streaming: boolean): Ru
       const id = asString(block['id'])
       const name = asString(block['name'])
       if (id === null || name === null) continue
-      events.push({ kind: 'tool', id, name, args: summariseArgs(block['input']) })
+      const input = block['input']
+      const args = summariseArgs(input)
+      const full = fullInput(input, args)
+      events.push({ kind: 'tool', id, name, args, ...(full !== null ? { input: full } : {}) })
     }
   }
 
@@ -161,15 +164,59 @@ function describeFailure(message: Record<string, unknown>): string {
 export function summariseArgs(input: unknown): string {
   if (input === undefined || input === null) return ''
   if (typeof input === 'string') return input
+  if (!isRecord(input)) return stringify(input)
 
-  if (isRecord(input)) {
-    // Bash and the file tools carry one field that is the whole story.
-    for (const key of ['command', 'file_path', 'path', 'pattern', 'query', 'url']) {
-      const value = input[key]
-      if (typeof value === 'string' && value !== '') return value
-    }
+  // Bash and the file tools carry one field that is the whole story.
+  for (const key of ['command', 'file_path', 'path', 'pattern', 'query', 'url']) {
+    const value = input[key]
+    if (typeof value === 'string' && value !== '') return value
   }
 
+  const asked = summariseQuestions(input['questions'])
+  if (asked !== null) return asked
+
+  return stringify(input)
+}
+
+/**
+ * What a question tool is asking, in one line.
+ *
+ * Without this the row is the raw JSON — every option label and description
+ * inlined ahead of the question itself, so the one thing worth reading is
+ * off the end of a truncated line.
+ */
+export function summariseQuestions(value: unknown): string | null {
+  if (!Array.isArray(value) || value.length === 0) return null
+
+  const first = value[0]
+  if (!isRecord(first)) return null
+
+  const question = asString(first['question'])
+  if (question === null || question === '') return null
+
+  const rest = value.length - 1
+  return rest === 0 ? question : `${question} (+${rest} more)`
+}
+
+/**
+ * The whole call, when the summary is not already the whole story.
+ *
+ * A one-field call — Read's file path, Grep's pattern — is fully shown on the
+ * row already, and repeating it under an "Arguments" heading is noise. Only a
+ * call carrying more than the row can say is worth expanding to.
+ */
+function fullInput(input: unknown, summary: string): string | null {
+  if (!isRecord(input)) return null
+
+  const keys = Object.keys(input)
+  if (keys.length === 0) return null
+  if (keys.length === 1 && input[keys[0]!] === summary) return null
+
+  const detail = stringify(input)
+  return detail === '' ? null : detail
+}
+
+function stringify(input: unknown): string {
   try {
     return JSON.stringify(input) ?? ''
   } catch {
