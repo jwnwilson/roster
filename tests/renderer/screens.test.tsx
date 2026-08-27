@@ -192,6 +192,76 @@ describe('relativeTime', () => {
 
 /* --------------------------------------------------------------------- mcp */
 
+describe('Skills — adding one you already have', () => {
+  beforeEach(() => {
+    useRoster.setState({ skills: [] })
+  })
+
+  test('asks for a folder and links it', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue('/repo/pr-triage') },
+      skills: {
+        link: vi.fn().mockResolvedValue(aSkill({ name: 'pr-triage', path: '/skills/pr-triage' })),
+        list: vi.fn().mockResolvedValue([]),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Add skill' }))
+
+    await waitFor(() =>
+      expect(window.roster.skills.link).toHaveBeenCalledWith('/repo/pr-triage'),
+    )
+  })
+
+  test('links nothing when the picker is cancelled', async () => {
+    const user = userEvent.setup()
+    installRosterApi({ dialog: { chooseDirectory: vi.fn().mockResolvedValue(null) } })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Add skill' }))
+
+    await waitFor(() => expect(window.roster.skills.link).not.toHaveBeenCalled())
+  })
+
+  test('says why when the folder is not a skill', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue('/repo/src') },
+      skills: {
+        link: vi.fn().mockRejectedValue(new Error('src has no SKILL.md, so it is not a skill')),
+        list: vi.fn().mockResolvedValue([]),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Add skill' }))
+
+    expect(await screen.findByText(/has no SKILL\.md/)).toBeInTheDocument()
+  })
+
+  test('marks a linked skill, since editing it edits the original', () => {
+    useRoster.setState({
+      skills: [aSkill({ name: 'pr-triage', linkedFrom: '/repo/pr-triage', files: ['SKILL.md'] })],
+    })
+    render(<Skills />)
+
+    expect(screen.getByLabelText('linked')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Remove linked skill pr-triage' }),
+    ).toBeInTheDocument()
+  })
+
+  test('a skill of your own is not marked and still says Delete', () => {
+    useRoster.setState({ skills: [aSkill({ name: 'mine', files: ['SKILL.md'] })] })
+    render(<Skills />)
+
+    expect(screen.queryByLabelText('linked')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete skill mine' })).toBeInTheDocument()
+  })
+})
+
 describe('the project filter', () => {
   beforeEach(() => {
     useRoster.setState({

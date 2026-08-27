@@ -95,6 +95,30 @@ export function Skills() {
   }
 
   /**
+   * Adds a skill the user already has somewhere else.
+   *
+   * The folder is linked rather than copied, so it stays the file they were
+   * already editing — a copy would go stale the moment either side moved.
+   */
+  async function addSkill(): Promise<void> {
+    const chosen = await window.roster.dialog.chooseDirectory()
+    if (chosen === null) return
+
+    setBusy(true)
+    setError(null)
+
+    try {
+      const linked = await window.roster.skills.link(chosen)
+      setSkills(await window.roster.skills.list())
+      setOpenPath(`${linked.path}/SKILL.md`)
+    } catch (cause) {
+      setError(messageFor(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
    * Creates inside the row whose icon was clicked, so the target is whatever
    * the user pointed at rather than whichever file happens to be open.
    */
@@ -168,6 +192,7 @@ export function Skills() {
         <span className="font-mono text-md text-dim">~/roster/skills</span>
         <div className="ml-auto flex gap-[8px]">
           <GhostButton onClick={() => void reveal()}>Reveal in Finder</GhostButton>
+          <GhostButton onClick={() => void addSkill()}>Add skill</GhostButton>
           <PrimaryButton onClick={() => void createSkill()}>
             {busy ? 'Creating…' : 'New skill'}
           </PrimaryButton>
@@ -342,7 +367,13 @@ function TreeRowView({
   onDelete,
 }: TreeRowViewProps) {
   // A skill row deletes the whole skill; anything else deletes just itself.
-  const deleteLabel = row.depth === 0 ? `Delete skill ${row.name}` : `Delete ${row.name}`
+  // A linked one is only unlinked — the folder it points at is untouched.
+  const isLinkedSkill = row.depth === 0 && row.skill.linkedFrom !== undefined
+  const deleteLabel = isLinkedSkill
+    ? `Remove linked skill ${row.name}`
+    : row.depth === 0
+      ? `Delete skill ${row.name}`
+      : `Delete ${row.name}`
 
   return (
     <div
@@ -359,7 +390,12 @@ function TreeRowView({
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-[7px] border-0 bg-transparent py-[5px] text-left"
       >
         <span
-          aria-hidden
+          // The link marker takes the icon's own slot rather than a pill
+          // beside the name: the tree is narrow, and a pill cost the name
+          // most of its width.
+          role={isLinkedSkill ? 'img' : undefined}
+          aria-label={isLinkedSkill ? 'linked' : undefined}
+          aria-hidden={isLinkedSkill ? undefined : true}
           className="flex h-[13px] w-[13px] flex-none items-center justify-center"
           style={{
             color: row.isDir
@@ -369,12 +405,12 @@ function TreeRowView({
                 : 'var(--color-off)',
           }}
         >
-          {row.isDir ? <FolderIcon /> : <FileIcon />}
+          {isLinkedSkill ? <LinkIcon /> : row.isDir ? <FolderIcon /> : <FileIcon />}
         </span>
         <span
           // The icon costs a little label width, so a truncated name stays
           // readable on hover rather than being lost.
-          title={row.name}
+          title={isLinkedSkill ? `${row.name} — linked from ${row.skill.linkedFrom}` : row.name}
           className={`truncate text-lg ${row.isDir ? 'font-ui text-ink-3' : 'font-mono text-muted'} ${isOpen ? 'text-ink' : ''}`}
         >
           {row.name}
@@ -460,6 +496,20 @@ function FolderIcon() {
         stroke="currentColor"
         strokeWidth="1.2"
         strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+/** A chain link: this folder is somewhere else on disk. */
+function LinkIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d="M6.4 9.6 9.6 6.4M6.9 4.3l1.4-1.4a2.6 2.6 0 0 1 3.7 3.7l-1.4 1.4M9.1 11.7l-1.4 1.4a2.6 2.6 0 0 1-3.7-3.7l1.4-1.4"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
       />
     </svg>
   )

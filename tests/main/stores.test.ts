@@ -807,3 +807,146 @@ describe('McpStore — built-in servers', () => {
     await expect(store.save(TASKS_SERVER, 'npx something', {})).rejects.toThrow(/built into Roster/)
   })
 })
+
+/* --------------------------------------------------- skills: linked in */
+
+describe('SkillStore.link', () => {
+  /** A skill folder outside the library, as someone's repo would have it. */
+  async function aSkillFolderAt(path: string): Promise<string> {
+    await mkdir(path, { recursive: true })
+    await writeFile(join(path, 'SKILL.md'), '# Ported\n', 'utf8')
+    return path
+  }
+
+  test('adds the folder without copying it', async () => {
+    const source = await aSkillFolderAt(join(home, 'repo', 'pr-triage'))
+    const store = new SkillStore()
+    await store.load()
+
+    const linked = await store.link(source)
+
+    expect(linked.name).toBe('pr-triage')
+    expect(linked.linkedFrom).toBe(source)
+    // Reading through the link is reading the original file.
+    expect(await store.read(join(linked.path, 'SKILL.md'))).toBe('# Ported\n')
+  })
+
+  test('edits through the link reach the original', async () => {
+    const source = await aSkillFolderAt(join(home, 'repo', 'pr-triage'))
+    const store = new SkillStore()
+    await store.load()
+    const linked = await store.link(source)
+
+    await store.write(join(linked.path, 'SKILL.md'), '# Edited\n')
+
+    // The whole point of linking rather than copying.
+    expect(await readFile(join(source, 'SKILL.md'), 'utf8')).toBe('# Edited\n')
+  })
+
+  test('lists a linked skill alongside the real ones', async () => {
+    const source = await aSkillFolderAt(join(home, 'repo', 'pr-triage'))
+    const store = new SkillStore()
+    await store.load()
+    await store.create('local one')
+    await store.link(source)
+
+    expect(store.findAll().map((skill) => skill.name)).toEqual(['local-one', 'pr-triage'])
+  })
+
+  test('refuses a folder that is not a skill', async () => {
+    const notASkill = join(home, 'repo', 'src')
+    await mkdir(notASkill, { recursive: true })
+    const store = new SkillStore()
+    await store.load()
+
+    await expect(store.link(notASkill)).rejects.toThrow(/SKILL\.md/)
+  })
+
+  test('refuses somewhere there is nothing', async () => {
+    const store = new SkillStore()
+    await store.load()
+
+    await expect(store.link(join(home, 'ghost'))).rejects.toThrow(/nothing at/)
+  })
+
+  test('refuses a file', async () => {
+    const file = join(home, 'notes.md')
+    await mkdir(dirname(file), { recursive: true })
+    await writeFile(file, 'x', 'utf8')
+    const store = new SkillStore()
+    await store.load()
+
+    await expect(store.link(file)).rejects.toThrow(/not a folder/)
+  })
+
+  test('refuses the library itself, which would make load walk in circles', async () => {
+    const store = new SkillStore()
+    await store.load()
+    const own = await store.create('mine')
+
+    await expect(store.link(own.path)).rejects.toThrow(/already in the skill library/)
+  })
+
+  test('refuses the same folder twice, naming what it is already called', async () => {
+    const source = await aSkillFolderAt(join(home, 'repo', 'pr-triage'))
+    const store = new SkillStore()
+    await store.load()
+    await store.link(source)
+
+    await expect(store.link(source)).rejects.toThrow(/already added as "pr-triage"/)
+  })
+
+  test('suffixes a name the library already uses', async () => {
+    const source = await aSkillFolderAt(join(home, 'repo', 'pr-triage'))
+    const store = new SkillStore()
+    await store.load()
+    await store.create('pr triage')
+
+    expect((await store.link(source)).name).toBe('pr-triage-2')
+  })
+
+  test('removing a linked skill removes the link, not the folder', async () => {
+    const source = await aSkillFolderAt(join(home, 'repo', 'pr-triage'))
+    const trashed: string[] = []
+    const store = new SkillStore(async (path) => {
+      trashed.push(path)
+    })
+    await store.load()
+    await store.link(source)
+
+    await store.removeSkill('pr-triage')
+
+    expect(store.findAll()).toHaveLength(0)
+    // Trashing a link is ambiguous at best; taking the user's own repo folder
+    // with it is the failure this guards.
+    expect(trashed).toEqual([])
+    expect(await readFile(join(source, 'SKILL.md'), 'utf8')).toBe('# Ported\n')
+  })
+
+  test('a real skill still goes to the Trash', async () => {
+    const trashed: string[] = []
+    const store = new SkillStore(async (path) => {
+      trashed.push(path)
+    })
+    await store.load()
+    const own = await store.create('mine')
+
+    await store.removeSkill('mine')
+
+    expect(trashed).toEqual([own.path])
+  })
+
+  test('a link whose target has gone is not listed', async () => {
+    const source = await aSkillFolderAt(join(home, 'repo', 'pr-triage'))
+    const store = new SkillStore()
+    await store.load()
+    await store.link(source)
+
+    await rm(join(home, 'repo'), { recursive: true, force: true })
+    await store.load()
+
+    // A dangling link is not a skill; listing it would offer files that are
+    // not there.
+    expect(store.findAll()).toEqual([])
+  })
+})

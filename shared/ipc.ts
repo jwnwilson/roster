@@ -71,6 +71,11 @@ export interface RosterApi {
     read(path: string): Promise<string>
     write(path: string, contents: string): Promise<void>
     create(name: string): Promise<Skill>
+    /**
+     * Adds a folder the user already has as a skill. Linked, not copied, so
+     * it stays the same file on disk.
+     */
+    link(directory: string): Promise<Skill>
     /** Creates a file inside a skill; resolves to its absolute path. */
     createFile(skillName: string, relativePath: string): Promise<string>
     createFolder(skillName: string, relativePath: string): Promise<string>
@@ -245,6 +250,7 @@ export const CHANNELS = {
   skillsRead: 'skills:read',
   skillsWrite: 'skills:write',
   skillsCreate: 'skills:create',
+  skillsLink: 'skills:link',
   skillsCreateFile: 'skills:createFile',
   skillsCreateFolder: 'skills:createFolder',
   skillsRemove: 'skills:remove',

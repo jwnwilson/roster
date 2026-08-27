@@ -444,6 +444,15 @@ Each was raised and decided explicitly:
     every agent. Picking a project is a statement about what you are looking at, not
     about which screen you are on.
 
+34. **A skill you already have is linked, not copied.** "Add skill" takes a folder from
+    the native picker and symlinks it into `~/roster/skills`, so Roster's editor edits
+    the real file and the runner is handed the real path. A copy would go stale the
+    moment either side changed, and skills people already have tend to live in a repo
+    they keep working on. The folder must contain a SKILL.md, cannot be inside the
+    library, and cannot be added twice. `load()` follows the link and skips a dangling
+    one; removing a linked skill unlinks it rather than trashing it, and the confirm
+    dialog says so — trashing a link would take the user's own folder with it.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

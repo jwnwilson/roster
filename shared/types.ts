@@ -249,8 +249,14 @@ export interface TaskComment {
  * ---------------------------------------------------------------------- */
 export interface Skill {
   name: string
-  /** Absolute path to the skill folder. */
+  /** Absolute path to the skill folder, inside the library. */
   path: string
+  /**
+   * Where the folder really is, when the skill was added from elsewhere.
+   * Roster links rather than copies, so editing through Roster edits the
+   * user's own file and removing the skill only removes the link.
+   */
+  linkedFrom?: string
   files: string[]
   lastEditedMs: number
 }

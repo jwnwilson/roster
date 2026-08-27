@@ -202,6 +202,7 @@ export function registerIpc(): void {
   )
 
   ipcMain.handle(CHANNELS.skillsCreate, (_e, name: string) => skillStore.create(name))
+  ipcMain.handle(CHANNELS.skillsLink, (_e, directory: string) => skillStore.link(directory))
   ipcMain.handle(CHANNELS.skillsCreateFile, (_e, skill: string, path: string) =>
     skillStore.createFile(skill, path),
   )
@@ -225,10 +226,17 @@ export function registerIpc(): void {
   )
 
   ipcMain.handle(CHANNELS.skillsRemoveSkill, async (e, skill: string) => {
+    // A linked skill lives in a folder of the user's own; removing it removes
+    // only the link, so the dialog must not threaten their files.
+    const linked = skillStore.findAll().find((s) => s.name === skill)?.linkedFrom
+
     const confirmed = await confirmDelete(
       e,
       skill,
-      'The whole skill and everything in it moves to the Trash. Agents using it will lose it.',
+      linked === undefined
+        ? 'The whole skill and everything in it moves to the Trash. Agents using it will lose it.'
+        : `Only the link is removed — ${linked} stays where it is. Agents using it will lose it.`,
+      linked === undefined ? 'Delete' : 'Remove',
     )
     if (!confirmed) return false
     await skillStore.removeSkill(skill)
@@ -312,14 +320,15 @@ async function confirmDelete(
   event: Electron.IpcMainInvokeEvent,
   name: string,
   detail: string,
+  verb = 'Delete',
 ): Promise<boolean> {
   const win = BrowserWindow.fromWebContents(event.sender)
   const options: Electron.MessageBoxOptions = {
     type: 'warning',
-    buttons: ['Cancel', 'Delete'],
+    buttons: ['Cancel', verb],
     defaultId: 0,
     cancelId: 0,
-    message: `Delete "${name}"?`,
+    message: `${verb} "${name}"?`,
     detail,
   }
 
