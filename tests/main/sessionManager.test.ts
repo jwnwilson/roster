@@ -371,6 +371,38 @@ describe('SessionManager.send — tools', () => {
     expect(tool).toMatchObject({ output: '1 passed in 8.31s', isError: false })
   })
 
+  test('times the call, so the row can say how long it took', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'tool', id: 't1', name: 'Bash', args: 'pytest -k leak' },
+        { kind: 'result', id: 't1', output: '1 passed', isError: false },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const tool = sessions.messages(session.id).find((m) => m.kind === 'tool')
+    // The design puts a duration at the right of every tool row; without
+    // this the field stays undefined and the row renders blank there.
+    expect(tool).toHaveProperty('durationMs')
+    expect((tool as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  test('leaves a call still running without a duration', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([{ kind: 'tool', id: 't1', name: 'Bash', args: 'sleep 10' }]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    // The row shows "…" until the result lands; a duration would claim it
+    // had finished.
+    const tool = sessions.messages(session.id).find((m) => m.kind === 'tool')
+    expect((tool as { durationMs?: number }).durationMs).toBeUndefined()
+  })
+
   test('persists a failed tool result as an error', async () => {
     runnerStub.run.mockImplementation(
       streamOf([

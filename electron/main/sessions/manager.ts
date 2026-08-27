@@ -38,6 +38,8 @@ interface ActiveRun {
   abort: AbortController
   /** Tool messages awaiting their result, keyed by the runner's tool id. */
   toolMessages: Map<string, Message>
+  /** When each of those calls started, so its row can report how long it took. */
+  toolStartedAt: Map<string, number>
   /** Approvals raised during this run. */
   approvals: Map<string, Approval>
   runnerId: string
@@ -169,6 +171,7 @@ export class SessionManager {
     const run: ActiveRun = {
       abort: new AbortController(),
       toolMessages: new Map(),
+      toolStartedAt: new Map(),
       approvals: new Map(),
       runnerId: agent.runner,
       pendingText: '',
@@ -255,6 +258,7 @@ export class SessionManager {
           isError: false,
         })
         run.toolMessages.set(event.id, message)
+        run.toolStartedAt.set(event.id, Date.now())
         this.emit({
           type: 'activity',
           sessionId,
@@ -267,9 +271,17 @@ export class SessionManager {
         const message = run.toolMessages.get(event.id)
         if (!message || message.kind !== 'tool') return
 
-        // The tool row was written when the call started; fill in its result.
-        const updated: Message = { ...message, output: event.output, isError: event.isError }
+        // The tool row was written when the call started; fill in its result
+        // and how long it took, which the row shows on its right.
+        const startedAt = run.toolStartedAt.get(event.id)
+        const updated: Message = {
+          ...message,
+          output: event.output,
+          isError: event.isError,
+          ...(startedAt !== undefined ? { durationMs: Date.now() - startedAt } : {}),
+        }
         run.toolMessages.delete(event.id)
+        run.toolStartedAt.delete(event.id)
         this.sessions.update(updated)
         this.emit({ type: 'message-updated', sessionId, message: updated })
         // Back to thinking unless another tool is still running.
