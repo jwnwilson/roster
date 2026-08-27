@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import type { Status } from '@shared/types'
 import { statusColor } from '@shared/status'
 
@@ -223,5 +223,141 @@ export function ToggleChip({
       />
       {label}
     </button>
+  )
+}
+
+interface SelectOption<T extends string> {
+  value: T
+  label: string
+}
+
+interface SelectProps<T extends string> {
+  options: readonly SelectOption<T>[]
+  value: T
+  onChange: (value: T) => void
+  ariaLabel: string
+  className?: string
+}
+
+/**
+ * The handoff's styled dropdown: a real `<select>` with the app's chrome and
+ * its own chevron, since the native one cannot be themed.
+ *
+ * Native rather than a custom popover on purpose — keyboard handling, type-
+ * ahead and screen-reader semantics all come for free, and the design asks
+ * for a select rather than a menu.
+ */
+export function Select<T extends string>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  className = '',
+}: SelectProps<T>) {
+  return (
+    <div className={`relative ${className}`}>
+      <select
+        value={value}
+        aria-label={ariaLabel}
+        onChange={(e) => onChange(e.target.value as T)}
+        className="w-full cursor-pointer appearance-none rounded-chip border border-line-input bg-card py-[5px] pr-[26px] pl-[10px] font-ui text-md text-ink-3 outline-none hover:border-line-hover-strong focus:border-accent-line"
+        data-hoverable
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1/2 right-[9px] -translate-y-1/2 text-[9px] text-dim"
+      >
+        ▾
+      </span>
+    </div>
+  )
+}
+
+interface ModalProps {
+  /** Names the dialog for screen readers. */
+  label: string
+  onClose: () => void
+  header: ReactNode
+  footer?: ReactNode
+  children: ReactNode
+  /** The design uses 520px for forms and 800px for the task detail. */
+  maxWidth?: number
+  /** The task modal is a fixed-height two-column layout, not a form. */
+  fixedHeight?: boolean
+}
+
+/**
+ * The overlay every modal in the app shares.
+ *
+ * Extracted once there were five of these: the scrim, the backdrop-click
+ * check, Escape, and the header/body/footer bands were being retyped each
+ * time, and had already drifted — one modal closed on Escape and another
+ * did not.
+ */
+export function Modal({
+  label,
+  onClose,
+  header,
+  footer,
+  children,
+  maxWidth = 520,
+  fixedHeight = false,
+}: ModalProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+      className="fixed inset-0 z-40 flex items-center justify-center px-[24px] py-[32px]"
+      style={{ background: 'rgba(6,7,10,0.66)' }}
+      onClick={(e) => {
+        // Only the backdrop itself closes — a click that started inside the
+        // card and drifted out must not.
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div
+        className="flex w-full flex-col overflow-hidden rounded-modal border border-line-card bg-app shadow-[0_24px_60px_rgba(0,0,0,0.5)]"
+        style={{
+          maxWidth,
+          ...(fixedHeight ? { height: 'min(680px, 100%)' } : { maxHeight: '100%' }),
+        }}
+      >
+        <header className="flex flex-none items-center gap-[10px] border-b border-line px-[18px] py-[13px]">
+          {header}
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="ml-auto cursor-pointer border-0 bg-transparent p-0 font-ui text-[15px] leading-none text-dim hover:text-ink"
+            data-hoverable
+          >
+            ×
+          </button>
+        </header>
+
+        {children}
+
+        {footer ? (
+          <footer className="flex flex-none items-center gap-[10px] border-t border-line bg-sunken px-[18px] py-[13px]">
+            {footer}
+          </footer>
+        ) : null}
+      </div>
+    </div>
   )
 }

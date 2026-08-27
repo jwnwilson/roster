@@ -121,6 +121,12 @@ electron/preload/       contextBridge → window.roster
 src/                    React renderer — screens/, chat/, terminal/, state/
 ```
 
+**The task board is shared with the agents.** Tasks and projects live in SQLite, and a
+Claude-runner agent gets `list_tasks`, `read_task`, `update_task`, `comment_on_task` and
+`create_task` alongside the handoff tools. Every change — an agent's and yours — goes
+through one store method, so a card an agent moves logs the same History line a card you
+dragged does, and the board updates live either way.
+
 **Two sources of truth, deliberately.** Agent configuration lives in `agent.toml`
 files on disk, so it is readable, diffable, and editable outside the app — a file
 watcher reflects external edits back into the UI without a restart. Everything
@@ -139,7 +145,7 @@ writing a normalizer and, ideally, recording a fixture from a real run.
   skills/<name>/SKILL.md   the shared skill library, nested files and all
   workspace/               default working directory for seeded agents
   mcp.json                 MCP servers: launch command and environment
-  roster.db                sessions, messages, approvals, usage
+  roster.db                sessions, messages, approvals, usage, tasks, projects
 ```
 
 ## Running against a local model
@@ -205,7 +211,11 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
 - The composer's attachment chip is decorative — attachments are not wired to real files.
 - **Handoff is Claude-only.** It works through an in-process MCP server, which only the
   Claude runner supports. Other runners can be handed *to*, but cannot hand off.
-- Tasks and Spend are disabled placeholders, as in the original design.
+- **Spend is still a disabled placeholder**, as in the original design. Tasks is not — it
+  is a working board (see below).
+- **Only the Claude runner can touch the task board.** The task tools ride the same
+  in-process MCP server handoff does, so Codex and custom runners can be assigned a task
+  but cannot pick one up or comment on it themselves.
 - **Only the Claude runner uses MCP servers.** Codex and custom runners drop the
   config silently — an agent on those runners can name servers in its
   `mcp_servers` and nothing will start them.

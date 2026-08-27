@@ -1,5 +1,6 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { TASKS_SERVER } from '../../../shared/mcp'
 import { serializeAgentToml, type AgentConfig } from './agentToml'
 import { agentDir, agentTomlPath, agentsDir, rosterHome, skillsDir } from './paths'
 
@@ -11,6 +12,10 @@ import { agentDir, agentTomlPath, agentsDir, rosterHome, skillsDir } from './pat
  * Working directories point at `~/roster/workspace` rather than the handoff's
  * `~/work/api`, which does not exist on a new machine. Deliberately not the
  * user's home: an approved write would otherwise land directly in it.
+ *
+ * All four start with the built-in task board enabled, so a fresh install has
+ * a board agents can actually work. Turning it off per agent is what the MCP
+ * screen is for.
  */
 function seedAgents(workspace: string): AgentConfig[] {
   return [
@@ -23,7 +28,7 @@ function seedAgents(workspace: string): AgentConfig[] {
       systemPrompt:
         'You design before you build. Compare at least two shapes, state the trade-off in one sentence each, and record the decision as an ADR in docs/adr. Hand implementation work to other agents rather than editing source yourself.',
       skills: ['adr-writer', 'estimate-breakdown'],
-      mcpServers: ['filesystem', 'github'],
+      mcpServers: ['filesystem', 'github', TASKS_SERVER],
     },
     {
       id: 'debugging',
@@ -34,7 +39,7 @@ function seedAgents(workspace: string): AgentConfig[] {
       systemPrompt:
         'Reproduce before you fix. Write the failing test first, commit it alone, then patch. Never force-push without asking. Keep changes scoped to the files named in the request.',
       skills: ['repro-harness', 'stack-triage'],
-      mcpServers: ['filesystem'],
+      mcpServers: ['filesystem', TASKS_SERVER],
     },
     {
       id: 'review',
@@ -45,7 +50,7 @@ function seedAgents(workspace: string): AgentConfig[] {
       systemPrompt:
         'Review for correctness first, style last. Separate blocking notes from nits and quote the line you are reacting to. If the change lacks a test, say so before anything else.',
       skills: ['pr-review', 'stack-triage'],
-      mcpServers: ['filesystem', 'github'],
+      mcpServers: ['filesystem', 'github', TASKS_SERVER],
     },
     {
       id: 'estimation',
@@ -56,7 +61,7 @@ function seedAgents(workspace: string): AgentConfig[] {
       systemPrompt:
         'Break work down until every task is a day or less. Flag unowned tasks and cross-team dependencies explicitly. Give ranges, not single numbers.',
       skills: ['estimate-breakdown'],
-      mcpServers: [],
+      mcpServers: [TASKS_SERVER],
     },
   ]
 }

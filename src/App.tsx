@@ -5,6 +5,7 @@ import { AgentsGrid } from './screens/AgentsGrid'
 import { McpServers } from './screens/McpServers'
 import { NewAgent } from './screens/NewAgent'
 import { Skills } from './screens/Skills'
+import { Tasks } from './screens/Tasks'
 import { useRoster } from './state/store'
 
 export function App() {
@@ -14,6 +15,9 @@ export function App() {
   const setTranscripts = useRoster((s) => s.setTranscripts)
   const setAllSessions = useRoster((s) => s.setAllSessions)
   const setAgentUsage = useRoster((s) => s.setAgentUsage)
+  const setProjects = useRoster((s) => s.setProjects)
+  const setTasks = useRoster((s) => s.setTasks)
+  const applyTaskEvent = useRoster((s) => s.applyTaskEvent)
   const loaded = useRoster((s) => s.loaded)
   const screen = useRoster((s) => s.screen)
 
@@ -21,21 +25,34 @@ export function App() {
     let cancelled = false
 
     async function load(): Promise<void> {
-      const [agents, runners, skills, mcpServers, transcripts, sessions, agentUsage] =
-        await Promise.all([
-          window.roster.agents.list(),
-          window.roster.runners.list(),
-          window.roster.skills.list(),
-          window.roster.mcp.list(),
-          window.roster.sessions.recentByAgent(),
-          window.roster.sessions.listAll(),
-          window.roster.sessions.usageByAgent(),
-        ])
+      const [
+        agents,
+        runners,
+        skills,
+        mcpServers,
+        transcripts,
+        sessions,
+        agentUsage,
+        projects,
+        tasks,
+      ] = await Promise.all([
+        window.roster.agents.list(),
+        window.roster.runners.list(),
+        window.roster.skills.list(),
+        window.roster.mcp.list(),
+        window.roster.sessions.recentByAgent(),
+        window.roster.sessions.listAll(),
+        window.roster.sessions.usageByAgent(),
+        window.roster.projects.list(),
+        window.roster.tasks.list(),
+      ])
       if (cancelled) return
       hydrate({ agents, runners, skills, mcpServers })
       setTranscripts(transcripts)
       setAllSessions(sessions)
       setAgentUsage(agentUsage)
+      setProjects(projects)
+      setTasks(tasks)
     }
 
     void load()
@@ -56,12 +73,26 @@ export function App() {
       }
     })
 
+    // Board changes, including ones an agent made partway through a turn.
+    const stopTasks = window.roster.tasks.onEvent(applyTaskEvent)
+
     return () => {
       cancelled = true
       stopAgents()
       stopSessions()
+      stopTasks()
     }
-  }, [hydrate, setAgents, applySessionEvent, setTranscripts, setAllSessions, setAgentUsage])
+  }, [
+    hydrate,
+    setAgents,
+    applySessionEvent,
+    setTranscripts,
+    setAllSessions,
+    setAgentUsage,
+    setProjects,
+    setTasks,
+    applyTaskEvent,
+  ])
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-app font-ui text-xl text-ink">
@@ -89,6 +120,8 @@ function Screen({ screen }: ScreenProps) {
       return <McpServers />
     case 'new':
       return <NewAgent />
+    case 'tasks':
+      return <Tasks />
   }
 }
 

@@ -18,6 +18,7 @@ interface SessionRow {
   from_label: string | null
   status: Status
   runner_session_id: string | null
+  project_id: string | null
   created_at: number
 }
 
@@ -61,6 +62,8 @@ export class SessionStore {
       title: input.title,
       origin: input.origin,
       status: 'idle',
+      // A new session belongs to no project until somebody files it.
+      projectId: null,
       createdAt: Date.now(),
       ...(input.from
         ? {
@@ -142,6 +145,21 @@ export class SessionStore {
 
   rename(id: string, title: string): void {
     this.db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(title, id)
+  }
+
+  /**
+   * Files this session's work under a project, or under none.
+   *
+   * Nothing infers this — an agent's cwd does not imply a project, since the
+   * roster's own agents share directories. Somebody says so, from the config
+   * rail, and that is the only way a session gets one.
+   */
+  setProject(id: string, projectId: string | null): Session {
+    this.db.prepare('UPDATE sessions SET project_id = ? WHERE id = ?').run(projectId, id)
+
+    const session = this.findById(id)
+    if (!session) throw new Error(`unknown session "${id}"`)
+    return session
   }
 
   delete(id: string): void {
@@ -319,6 +337,7 @@ function toSession(row: SessionRow): Session {
         }
       : {}),
     ...(row.runner_session_id !== null ? { runnerSessionId: row.runner_session_id } : {}),
+    projectId: row.project_id,
   }
 }
 

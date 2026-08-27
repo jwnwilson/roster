@@ -83,6 +83,14 @@
           <div style="font-weight:600; letter-spacing:-0.01em;">Agents</div>
           <div style="font-size:12px; color:#6d707d;">{{ gridSummary }}</div>
           <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+            <div style="position:relative;">
+              <select value="{{ gridProjectFilterValue }}" onChange="{{ setGridProjectFilter }}" style="appearance:none; -webkit-appearance:none; padding:5px 26px 5px 10px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#c8cad4; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;">
+                <sc-for list="{{ gridProjectFilterOptions }}" as="pf" hint-placeholder-count="3">
+                  <option value="{{ pf.value }}">{{ pf.label }}</option>
+                </sc-for>
+              </select>
+              <div style="position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+            </div>
             <input type="text" value="{{ gridQuery }}" onChange="{{ setGridQuery }}" placeholder="Filter agents" style="width:200px; padding:5px 10px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
             <div onClick="{{ goNew }}" style="padding:5px 11px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">New agent</div>
           </div>
@@ -555,6 +563,404 @@
       </div>
     </sc-if>
 
+    <!-- TASKS -->
+    <sc-if value="{{ isTasks }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; height:100vh;">
+        <div style="height:44px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #1e2027;">
+          <div style="font-weight:600;">Tasks</div>
+          <div style="font-size:12px; color:#6d707d;">{{ taskSummary }}</div>
+          <div style="position:relative; margin-left:auto;">
+            <select value="{{ projectFilterValue }}" onChange="{{ setProjectFilter }}" style="appearance:none; -webkit-appearance:none; padding:6px 26px 6px 10px; border:1px solid #1e2027; border-radius:6px; background:#15161c; color:#c8cad4; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#33363f;">
+              <sc-for list="{{ projectFilterOptions }}" as="pf" hint-placeholder-count="3">
+                <option value="{{ pf.value }}">{{ pf.label }}</option>
+              </sc-for>
+            </select>
+            <div style="position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+          </div>
+          <div onClick="{{ openProjectsModal }}" style="padding:6px 11px; border:1px solid #1e2027; border-radius:6px; font-size:12px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#33363f;">Projects</div>
+          <input type="text" value="{{ taskQuery }}" onChange="{{ setTaskQuery }}" placeholder="Filter tasks" style="width:200px; padding:6px 10px; border:1px solid #1e2027; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+          <div onClick="{{ openNewTask }}" style="padding:5px 11px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">New task</div>
+        </div>
+
+        <div style="flex:1; min-height:0; display:flex; gap:14px; padding:16px 18px; overflow-x:auto;">
+          <sc-for list="{{ taskColumns }}" as="col" hint-placeholder-count="4">
+            <div onDragOver="{{ col.onDragOver }}" onDrop="{{ col.onDrop }}" style="flex:1; min-width:220px; display:flex; flex-direction:column; background:#0d0e12; border:1px solid #1e2027; border-radius:10px; overflow:hidden;">
+              <div style="flex:none; display:flex; align-items:center; gap:8px; padding:11px 13px; border-bottom:1px solid #1e2027;">
+                <div style="width:6px;height:6px;border-radius:50%;background:{{ col.dot }};"></div>
+                <div style="font-weight:600; font-size:12.5px;">{{ col.label }}</div>
+                <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:11px; color:#5f6270;">{{ col.count }}</div>
+              </div>
+              <div style="flex:1; min-height:0; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:8px;">
+                <sc-for list="{{ col.items }}" as="t" hint-placeholder-count="3">
+                  <div draggable="true" onDragStart="{{ t.dragStart }}" onClick="{{ t.open }}" style="border:1px solid #1e2027; border-left:2px solid {{ t.priorityColor }}; background:#15161c; border-radius:8px; padding:10px 11px; cursor:pointer; display:flex; flex-direction:column; gap:8px;" style-hover="border-color:#33363f;">
+                    <div style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#5f6270;">{{ t.id }}</div>
+                    <div style="font-size:12.5px; line-height:1.4; color:#e6e6ea;">{{ t.title }}</div>
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                      <sc-for list="{{ t.labels }}" as="lbl" hint-placeholder-count="2">
+                        <div style="padding:2px 7px; border-radius:10px; background:#1a1c23; font-size:10px; color:#8f93a3;">{{ lbl }}</div>
+                      </sc-for>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <div style="flex:none; width:18px;height:18px;border-radius:6px;background:{{ t.assigneeBg }};border:1px solid {{ t.assigneeTone }}; display:flex; align-items:center; justify-content:center; font-size:8.5px; font-weight:600; color:#c8cad4;">{{ t.assigneeInitials }}</div>
+                      <sc-if value="{{ t.hasProject }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex; align-items:center; gap:5px; font-size:10.5px; color:#8f93a3;">
+                          <div style="width:6px;height:6px;border-radius:50%;background:{{ t.projectColor }};"></div>
+                          <div>{{ t.projectName }}</div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ t.hasComments }}" hint-placeholder-val="{{ false }}">
+                        <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#4f5260;">{{ t.commentLabel }}</div>
+                      </sc-if>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- TASK DETAIL MODAL -->
+    <sc-if value="{{ hasOpenTask }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ taskModal.close }}" style="position:fixed; inset:0; z-index:40; background:rgba(6,7,10,0.66); display:flex; align-items:center; justify-content:center; padding:32px 24px;">
+        <div onClick="{{ stopClick }}" style="width:100%; max-width:800px; height:min(680px, 100%); display:flex; flex-direction:column; background:#111216; border:1px solid #262933; border-radius:12px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,0.5);">
+          <div style="flex:none; display:flex; align-items:center; gap:10px; padding:13px 18px; border-bottom:1px solid #1e2027;">
+            <div style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#5f6270;">{{ taskModal.id }}</div>
+            <div onClick="{{ taskModal.close }}" style="margin-left:auto; font-size:15px; color:#6d707d; cursor:pointer; line-height:1;" style-hover="color:#e6e6ea;">×</div>
+          </div>
+
+          <div style="flex:1; min-height:0; display:flex;">
+            <div style="flex:1; min-width:0; overflow-y:auto; padding:20px 22px; display:flex; flex-direction:column; gap:18px;">
+              <sc-if value="{{ taskModal.editingTitleNot }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ taskModal.startEditTitle }}" style="font-weight:600; font-size:19px; letter-spacing:-0.01em; line-height:1.3; cursor:text; border-radius:6px; padding:3px 6px; margin:-3px -6px;" style-hover="background:#171420;">{{ taskModal.title }}</div>
+              </sc-if>
+              <sc-if value="{{ taskModal.editingTitle }}" hint-placeholder-val="{{ false }}">
+                <input type="text" autoFocus="{{ true }}" value="{{ taskModal.titleDraft }}" onChange="{{ taskModal.setTitleDraft }}" onBlur="{{ taskModal.saveTitle }}" onKeyDown="{{ taskModal.titleKeyDown }}" style="width:100%; font-weight:600; font-size:19px; letter-spacing:-0.01em; line-height:1.3; padding:3px 6px; margin:-3px -6px; border:1px solid #3a3050; border-radius:6px; background:#171420; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; outline:none;" />
+              </sc-if>
+
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Description</div>
+                <sc-if value="{{ taskModal.editingDescriptionNot }}" hint-placeholder-val="{{ true }}">
+                  <div onClick="{{ taskModal.startEditDescription }}" style="min-height:160px; padding:4px 2px; display:flex; flex-direction:column; gap:4px; cursor:text;">
+                    <sc-for list="{{ taskModal.mdLines }}" as="ln" hint-placeholder-count="4">
+                      <sc-if value="{{ ln.isH1 }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:17px; font-weight:600; color:#e6e6ea; margin-top:4px;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isH2 }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:15px; font-weight:600; color:#e6e6ea; margin-top:3px;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isH3 }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:13.5px; font-weight:600; color:#e6e6ea;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isLi }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex; gap:9px; font-size:13px; line-height:1.6; color:#c8cad4;">
+                          <div style="flex:none; color:#585b67;">•</div>
+                          <div>
+                            <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                              <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isP }}" hint-placeholder-val="{{ true }}">
+                        <div style="font-size:13px; line-height:1.6; color:#c8cad4; text-wrap:pretty;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isBlank }}" hint-placeholder-val="{{ false }}">
+                        <div style="height:6px;"></div>
+                      </sc-if>
+                    </sc-for>
+                    <sc-if value="{{ taskModal.descriptionEmpty }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-size:13px; color:#585b67;">No description. Click to add one.</div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ taskModal.editingDescription }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <textarea autoFocus="{{ true }}" value="{{ taskModal.descDraft }}" onChange="{{ taskModal.setDescDraft }}" rows="10" placeholder="Write a description… supports Markdown: # heading, **bold**, `code`, - list item" style="width:100%; min-height:180px; resize:vertical; padding:12px 14px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#d2d4dd; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.65; outline:none;" style-focus="border-color:#3a3050; background:#171420"></textarea>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <div style="font-size:11px; color:#585b67;">Markdown supported — headings, **bold**, `code`, lists</div>
+                      <div onClick="{{ taskModal.cancelEditDescription }}" style="margin-left:auto; padding:6px 12px; border:1px solid #262933; border-radius:7px; font-size:12px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Cancel</div>
+                      <div onClick="{{ taskModal.saveDescription }}" style="padding:6px 12px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">Save</div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="height:1px; background:#1e2027;"></div>
+
+              <div style="display:flex; flex-direction:column; gap:14px;">
+                <div style="display:flex; gap:2px; padding:2px; background:#15161c; border:1px solid #24262f; border-radius:7px; width:fit-content;">
+                  <div onClick="{{ taskModal.setCommentsTab }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ taskModal.commentsTabFg }}; background:{{ taskModal.commentsTabBg }};">Comments</div>
+                  <div onClick="{{ taskModal.setHistoryTab }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ taskModal.historyTabFg }}; background:{{ taskModal.historyTabBg }};">History</div>
+                </div>
+                <sc-if value="{{ taskModal.isCommentsTab }}" hint-placeholder-val="{{ true }}">
+                  <sc-for list="{{ taskModal.comments }}" as="c" hint-placeholder-count="2">
+                    <div style="display:flex; flex-direction:column; gap:5px;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="font-size:11.5px; font-weight:600; color:{{ c.tone }};">{{ c.author }}</div>
+                        <div style="font-size:11px; color:#4f5260; font-family:'JetBrains Mono',monospace;">{{ c.time }}</div>
+                      </div>
+                      <div style="font-size:13px; line-height:1.55; color:#d2d4dd; text-wrap:pretty; white-space:pre-wrap;">{{ c.text }}</div>
+                    </div>
+                  </sc-for>
+                </sc-if>
+                <sc-if value="{{ taskModal.isHistoryTab }}" hint-placeholder-val="{{ false }}">
+                  <sc-for list="{{ taskModal.history }}" as="h" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:baseline; gap:8px; font-size:11.5px; color:#5a5d69;">
+                      <div style="color:#8f93a3; font-weight:500;">{{ h.author }}</div>
+                      <div>{{ h.text }}</div>
+                      <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; color:#4f5260;">{{ h.time }}</div>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ taskModal.hasHistoryNot }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:12px; color:#585b67;">No changes yet.</div>
+                  </sc-if>
+                </sc-if>
+              </div>
+
+              <sc-if value="{{ taskModal.isCommentsTab }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex; gap:9px; padding-top:4px;">
+                  <input type="text" value="{{ taskModal.newComment }}" onChange="{{ taskModal.setNewComment }}" placeholder="Add a comment…" style="flex:1; padding:8px 11px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+                  <div onClick="{{ taskModal.addComment }}" style="padding:8px 14px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12.5px; cursor:pointer; white-space:nowrap;" style-hover="background:#8f74ff;">Comment</div>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="width:196px; flex:none; border-left:1px solid #1e2027; background:#0d0e12; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:16px;">
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Status</div>
+                <div style="position:relative;">
+                  <select value="{{ taskModal.statusValue }}" onChange="{{ taskModal.setStatus }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ taskModal.statusOptions }}" as="op" hint-placeholder-count="4">
+                      <option value="{{ op.key }}">{{ op.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Assignee</div>
+                <div style="position:relative;">
+                  <input type="text" value="{{ taskModal.assigneeQuery }}" onFocus="{{ taskModal.startAssigneeEdit }}" onChange="{{ taskModal.setAssigneeQuery }}" onBlur="{{ taskModal.blurAssignee }}" placeholder="Unassigned" style="width:100%; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+                  <sc-if value="{{ taskModal.hasAssignee }}" hint-placeholder-val="{{ false }}">
+                    <div onClick="{{ taskModal.clearAssignee }}" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); width:14px; height:14px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6d707d; font-size:12px; line-height:1;" style-hover="background:#26283a; color:#e6e6ea;">×</div>
+                  </sc-if>
+                </div>
+                <sc-if value="{{ taskModal.assigneeEditing }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute; top:100%; left:0; right:0; margin-top:3px; background:#15161c; border:1px solid #262933; border-radius:7px; overflow:hidden; z-index:5; box-shadow:0 8px 20px rgba(0,0,0,0.4);">
+                    <sc-for list="{{ taskModal.assigneeSuggestions }}" as="sug" hint-placeholder-count="3">
+                      <div onMouseDown="{{ sug.pick }}" style="padding:6px 9px; font-size:12px; color:#c8cad4; cursor:pointer;" style-hover="background:#1c1e26;">{{ sug.label }}</div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Priority</div>
+                <div style="position:relative;">
+                  <select value="{{ taskModal.priorityValue }}" onChange="{{ taskModal.setPriorityVal }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ taskModal.priorityOptions }}" as="p" hint-placeholder-count="4">
+                      <option value="{{ p.value }}">{{ p.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Project</div>
+                <div style="position:relative;">
+                  <select value="{{ taskModal.projectValue }}" onChange="{{ taskModal.setProject }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ taskModal.projectOptions }}" as="po" hint-placeholder-count="3">
+                      <option value="{{ po.value }}">{{ po.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <div style="font-size:11px; color:#6d707d;">Labels</div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                  <sc-for list="{{ taskModal.labels }}" as="lbl" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:center; gap:5px; padding:3px 5px 3px 8px; border-radius:20px; background:#1a1c23; font-size:11px; color:#9a9daa;">
+                      <div>{{ lbl.name }}</div>
+                      <div onClick="{{ lbl.remove }}" style="width:13px; height:13px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6d707d; font-size:11px; line-height:1;" style-hover="background:#26283a; color:#e6e6ea;">−</div>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ taskModal.addingLabel }}" hint-placeholder-val="{{ false }}">
+                    <input type="text" autoFocus="{{ true }}" value="{{ taskModal.newLabelText }}" onChange="{{ taskModal.setNewLabelText }}" onBlur="{{ taskModal.submitLabel }}" onKeyDown="{{ taskModal.labelKeyDown }}" placeholder="Label" style="width:80px; padding:3px 8px; border:1px solid #3a3050; border-radius:20px; background:#171420; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:11px; outline:none;" />
+                  </sc-if>
+                  <sc-if value="{{ taskModal.addingLabelNot }}" hint-placeholder-val="{{ true }}">
+                    <div onClick="{{ taskModal.startAddLabel }}" style="display:flex; align-items:center; justify-content:center; gap:4px; padding:3px 9px; border-radius:20px; border:1px dashed #2a2d38; font-size:11px; color:#6d707d; cursor:pointer;" style-hover="border-color:#55596a; color:#e6e6ea;">+ Add</div>
+                  </sc-if>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- NEW TASK MODAL -->
+    <sc-if value="{{ hasNewTaskModal }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ newTaskModal.cancel }}" style="position:fixed; inset:0; z-index:40; background:rgba(6,7,10,0.66); display:flex; align-items:center; justify-content:center; padding:40px 24px;">
+        <div onClick="{{ stopClick }}" style="width:100%; max-width:520px; max-height:100%; display:flex; flex-direction:column; background:#111216; border:1px solid #262933; border-radius:12px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,0.5);">
+          <div style="flex:none; display:flex; align-items:center; gap:10px; padding:13px 18px; border-bottom:1px solid #1e2027;">
+            <div style="font-weight:600; font-size:13.5px;">New task</div>
+            <div onClick="{{ newTaskModal.cancel }}" style="margin-left:auto; font-size:15px; color:#6d707d; cursor:pointer; line-height:1;" style-hover="color:#e6e6ea;">×</div>
+          </div>
+
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:18px;">
+            <div style="display:flex; flex-direction:column; gap:7px;">
+              <div style="font-size:12px; color:#9a9daa; font-weight:500;">Title</div>
+              <input type="text" value="{{ newTaskModal.title }}" onChange="{{ newTaskModal.setTitle }}" placeholder="What needs to get done?" style="width:100%; padding:9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:13px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:7px;">
+              <div style="font-size:12px; color:#9a9daa; font-weight:500;">Description</div>
+              <textarea value="{{ newTaskModal.description }}" onChange="{{ newTaskModal.setDescription }}" rows="4" placeholder="Add more detail…" style="width:100%; resize:vertical; padding:11px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#d2d4dd; font-family:'Instrument Sans',sans-serif; font-size:12.5px; line-height:1.6; outline:none;" style-focus="border-color:#3a3050; background:#171420"></textarea>
+            </div>
+
+            <div style="display:flex; gap:16px;">
+              <div style="flex:1; display:flex; flex-direction:column; gap:7px;">
+                <div style="font-size:12px; color:#9a9daa; font-weight:500;">Assignee</div>
+                <div style="position:relative;">
+                  <select value="{{ newTaskModal.assigneeValue }}" onChange="{{ newTaskModal.setAssignee }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:9px 28px 9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ newTaskModal.assigneeOptions }}" as="a" hint-placeholder-count="6">
+                      <option value="{{ a.value }}">{{ a.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:11px; top:50%; transform:translateY(-50%); font-size:10px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; gap:7px;">
+                <div style="font-size:12px; color:#9a9daa; font-weight:500;">Priority</div>
+                <div style="position:relative;">
+                  <select value="{{ newTaskModal.priorityValue }}" onChange="{{ newTaskModal.setPriorityVal }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:9px 28px 9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ newTaskModal.priorityOptions }}" as="p" hint-placeholder-count="4">
+                      <option value="{{ p.value }}">{{ p.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:11px; top:50%; transform:translateY(-50%); font-size:10px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:7px;">
+              <div style="font-size:12px; color:#9a9daa; font-weight:500;">Project</div>
+              <div style="position:relative;">
+                <select value="{{ newTaskModal.projectValue }}" onChange="{{ newTaskModal.setProject }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:9px 28px 9px 12px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                  <sc-for list="{{ newTaskModal.projectOptions }}" as="po" hint-placeholder-count="3">
+                    <option value="{{ po.value }}">{{ po.label }}</option>
+                  </sc-for>
+                </select>
+                <div style="position:absolute; right:11px; top:50%; transform:translateY(-50%); font-size:10px; color:#6d707d; pointer-events:none;">▾</div>
+              </div>
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:7px;">
+              <div style="font-size:12px; color:#9a9daa; font-weight:500;">Labels</div>
+              <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+                <sc-for list="{{ newTaskModal.labels }}" as="lbl" hint-placeholder-count="0">
+                  <div style="display:flex; align-items:center; gap:6px; padding:4px 6px 4px 10px; border-radius:20px; background:#1a1c23; font-size:11.5px; color:#9a9daa;">
+                    <div>{{ lbl.name }}</div>
+                    <div onClick="{{ lbl.remove }}" style="width:14px; height:14px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6d707d; font-size:12px; line-height:1;" style-hover="background:#26283a; color:#e6e6ea;">−</div>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ newTaskModal.addingLabel }}" hint-placeholder-val="{{ false }}">
+                  <input type="text" autoFocus="{{ true }}" value="{{ newTaskModal.newLabelText }}" onChange="{{ newTaskModal.setNewLabelText }}" onBlur="{{ newTaskModal.submitLabel }}" onKeyDown="{{ newTaskModal.labelKeyDown }}" placeholder="Label name" style="width:110px; padding:4px 9px; border:1px solid #3a3050; border-radius:20px; background:#171420; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:11.5px; outline:none;" />
+                </sc-if>
+                <sc-if value="{{ newTaskModal.addingLabelNot }}" hint-placeholder-val="{{ true }}">
+                  <div onClick="{{ newTaskModal.startAddLabel }}" style="display:flex; align-items:center; justify-content:center; gap:5px; padding:4px 10px; border-radius:20px; border:1px dashed #2a2d38; font-size:11.5px; color:#6d707d; cursor:pointer;" style-hover="border-color:#55596a; color:#e6e6ea;">+ Add label</div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:none; display:flex; align-items:center; gap:10px; padding:13px 18px; border-top:1px solid #1e2027; background:#0f1015;">
+            <div onClick="{{ newTaskModal.cancel }}" style="margin-left:auto; padding:7px 13px; border:1px solid #262933; border-radius:7px; font-size:12.5px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Cancel</div>
+            <div onClick="{{ newTaskModal.create }}" style="padding:7px 15px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12.5px; cursor:pointer;" style-hover="background:#8f74ff;">Create task</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- PROJECTS MODAL -->
+    <sc-if value="{{ hasProjectsModal }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ projectsModal.close }}" style="position:fixed; inset:0; z-index:40; background:rgba(6,7,10,0.66); display:flex; align-items:center; justify-content:center; padding:40px 24px;">
+        <div onClick="{{ stopClick }}" style="width:100%; max-width:520px; max-height:100%; display:flex; flex-direction:column; background:#111216; border:1px solid #262933; border-radius:12px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,0.5);">
+          <div style="flex:none; display:flex; align-items:center; gap:10px; padding:13px 18px; border-bottom:1px solid #1e2027;">
+            <div style="font-weight:600; font-size:13.5px;">Projects</div>
+            <div onClick="{{ projectsModal.close }}" style="margin-left:auto; font-size:15px; color:#6d707d; cursor:pointer; line-height:1;" style-hover="color:#e6e6ea;">×</div>
+          </div>
+
+          <div style="flex:1; min-height:0; overflow-y:auto; padding:14px 18px; display:flex; flex-direction:column; gap:10px;">
+            <sc-for list="{{ projectsModal.items }}" as="p" hint-placeholder-count="3">
+              <div style="border:1px solid #1e2027; border-radius:9px; padding:11px 13px; display:flex; flex-direction:column; gap:9px;">
+                <sc-if value="{{ p.notEditing }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex; align-items:center; gap:9px;">
+                    <div style="width:8px;height:8px;border-radius:50%;background:{{ p.color }}; flex:none;"></div>
+                    <div style="font-size:13px; font-weight:600;">{{ p.name }}</div>
+                    <div style="font-family:'JetBrains Mono',monospace; font-size:10.5px; color:#5f6270;">{{ p.taskCount }} tasks</div>
+                    <div onClick="{{ p.startEdit }}" style="margin-left:auto; padding:3px 9px; border:1px solid #24262f; border-radius:5px; font-size:11px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#55596a;">Edit</div>
+                    <div onClick="{{ p.remove }}" style="padding:3px 9px; border:1px solid #24262f; border-radius:5px; font-size:11px; color:#c2553f; cursor:pointer;" style-hover="border-color:#c2553f;">Delete</div>
+                  </div>
+                  <div style="font-size:12px; color:#8f93a3; line-height:1.5;">{{ p.description }}</div>
+                </sc-if>
+                <sc-if value="{{ p.editing }}" hint-placeholder-val="{{ false }}">
+                  <input type="text" value="{{ p.draftName }}" onChange="{{ p.setDraftName }}" placeholder="Project name" style="width:100%; padding:7px 10px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+                  <textarea value="{{ p.draftDescription }}" onChange="{{ p.setDraftDescription }}" rows="2" placeholder="Description" style="width:100%; resize:vertical; padding:8px 10px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#d2d4dd; font-family:'Instrument Sans',sans-serif; font-size:12px; line-height:1.5; outline:none;" style-focus="border-color:#3a3050; background:#171420"></textarea>
+                  <div style="display:flex; gap:6px;">
+                    <sc-for list="{{ p.colorSwatches }}" as="sw" hint-placeholder-count="6">
+                      <div onClick="{{ sw.pick }}" style="width:18px; height:18px; border-radius:50%; background:{{ sw.color }}; cursor:pointer; border:2px solid transparent;" style-hover="border-color:#3a3d47;"></div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex; gap:8px; justify-content:flex-end;">
+                    <div onClick="{{ p.cancel }}" style="padding:5px 11px; border:1px solid #262933; border-radius:6px; font-size:11.5px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Cancel</div>
+                    <div onClick="{{ p.save }}" style="padding:5px 12px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:11.5px; cursor:pointer;" style-hover="background:#8f74ff;">Save</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+
+            <sc-if value="{{ projectsModal.createNotOpen }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ projectsModal.startCreate }}" style="display:flex; align-items:center; justify-content:center; gap:6px; padding:9px; border-radius:9px; border:1px dashed #2a2d38; font-size:12.5px; color:#6d707d; cursor:pointer;" style-hover="border-color:#55596a; color:#e6e6ea;">+ New project</div>
+            </sc-if>
+            <sc-if value="{{ projectsModal.createOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px solid #262933; border-radius:9px; padding:12px 13px; display:flex; flex-direction:column; gap:9px;">
+                <input type="text" autoFocus="{{ true }}" value="{{ projectsModal.newName }}" onChange="{{ projectsModal.setNewName }}" placeholder="Project name" style="width:100%; padding:7px 10px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+                <textarea value="{{ projectsModal.newDescription }}" onChange="{{ projectsModal.setNewDescription }}" rows="2" placeholder="Description" style="width:100%; resize:vertical; padding:8px 10px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#d2d4dd; font-family:'Instrument Sans',sans-serif; font-size:12px; line-height:1.5; outline:none;" style-focus="border-color:#3a3050; background:#171420"></textarea>
+                <div style="display:flex; gap:6px;">
+                  <sc-for list="{{ projectsModal.newColorSwatches }}" as="sw" hint-placeholder-count="6">
+                    <div onClick="{{ sw.pick }}" style="width:18px; height:18px; border-radius:50%; background:{{ sw.color }}; cursor:pointer; border:2px solid transparent;" style-hover="border-color:#3a3d47;"></div>
+                  </sc-for>
+                </div>
+                <div style="display:flex; gap:8px; justify-content:flex-end;">
+                  <div onClick="{{ projectsModal.cancelCreate }}" style="padding:5px 11px; border:1px solid #262933; border-radius:6px; font-size:11.5px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Cancel</div>
+                  <div onClick="{{ projectsModal.create }}" style="padding:5px 12px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:11.5px; cursor:pointer;" style-hover="background:#8f74ff;">Create</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
     <!-- NEW AGENT -->
     <sc-if value="{{ isNew }}" hint-placeholder-val="{{ false }}">
       <div style="height:100vh; overflow-y:auto; display:flex; justify-content:center; padding:56px 24px 80px;">
@@ -755,22 +1161,22 @@ const AGENT_SKILLS = {
 
 const SESSIONS = {
   arch: [
-    {id:'arch-1', title:'Multi-region session store', origin:'you', status:'running'}
+    {id:'arch-1', title:'Multi-region session store', origin:'you', status:'running', project:'proj-migration'}
   ],
   debug: [
-    {id:'debug-1', title:'Session leak on 504', origin:'agent', from:'Architect', status:'approval'},
-    {id:'debug-2', title:'Flaky auth test', origin:'you', status:'idle'},
-    {id:'debug-3', title:'Migration dry-run', origin:'agent', from:'Architect', status:'running'}
+    {id:'debug-1', title:'Session leak on 504', origin:'agent', from:'Architect', status:'approval', project:'proj-reliability'},
+    {id:'debug-2', title:'Flaky auth test', origin:'you', status:'idle', project:'proj-reliability'},
+    {id:'debug-3', title:'Migration dry-run', origin:'agent', from:'Architect', status:'running', project:'proj-migration'}
   ],
   review: [
-    {id:'review-1', title:'PR #482 · pool release', origin:'agent', from:'Debugging', status:'done'},
-    {id:'review-2', title:'Style pass on api/', origin:'you', status:'idle'}
+    {id:'review-1', title:'PR #482 · pool release', origin:'agent', from:'Debugging', status:'done', project:'proj-reliability'},
+    {id:'review-2', title:'Style pass on api/', origin:'you', status:'idle', project:'proj-reliability'}
   ],
   interview: [
-    {id:'interview-1', title:'Backend loop — 4 transcripts', origin:'you', status:'idle'}
+    {id:'interview-1', title:'Backend loop — 4 transcripts', origin:'you', status:'idle', project:'proj-hiring'}
   ],
   estimate: [
-    {id:'estimate-1', title:'Q3 roadmap sizing', origin:'you', status:'idle'}
+    {id:'estimate-1', title:'Q3 roadmap sizing', origin:'you', status:'idle', project:'proj-planning'}
   ]
 };
 
@@ -882,6 +1288,108 @@ const TERM_FALLBACK = [
   {p:' ', tone:MU, fg:'#8f93a3', text:'shell ready — no commands run in this session yet'}
 ];
 
+const TASK_STATUSES = [
+  {key:'todo', label:'To Do'},
+  {key:'in_progress', label:'In Progress'},
+  {key:'in_review', label:'In Review'},
+  {key:'done', label:'Done'}
+];
+
+const STATUS_COLORS = {todo:'#6d707d', in_progress:V, in_review:AM, done:GR};
+
+function parseRuns(text) {
+  const runs = [];
+  const re = /(\*\*([^*]+)\*\*|`([^`]+)`)/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m.index > last) runs.push({text: text.slice(last, m.index)});
+    if (m[2] !== undefined) runs.push({text: m[2], bold:true});
+    else runs.push({text: m[3], code:true});
+    last = m.index + m[0].length;
+  }
+  if (last < text.length || runs.length === 0) runs.push({text: text.slice(last)});
+  return runs.map(r => ({
+    text: r.text,
+    weight: r.bold ? '700' : '400',
+    family: r.code ? "'JetBrains Mono',monospace" : 'inherit',
+    bg: r.code ? '#1a1c23' : 'transparent',
+    pad: r.code ? '1px 5px' : '0'
+  }));
+}
+
+function parseMarkdown(text) {
+  return (text || '').split('\n').map(line => {
+    let type = 'p', runs;
+    if (/^### /.test(line)) { type = 'h3'; runs = parseRuns(line.slice(4)); }
+    else if (/^## /.test(line)) { type = 'h2'; runs = parseRuns(line.slice(3)); }
+    else if (/^# /.test(line)) { type = 'h1'; runs = parseRuns(line.slice(2)); }
+    else if (/^[-*] /.test(line)) { type = 'li'; runs = parseRuns(line.slice(2)); }
+    else if (line.trim() === '') { type = 'blank'; runs = []; }
+    else { runs = parseRuns(line); }
+    return {type, runs, isH1:type==='h1', isH2:type==='h2', isH3:type==='h3', isLi:type==='li', isBlank:type==='blank', isP:type==='p'};
+  });
+}
+
+const PRIORITY = {
+  urgent:{label:'Urgent', color:'#c2553f'},
+  high:{label:'High', color:AM},
+  medium:{label:'Medium', color:V},
+  low:{label:'Low', color:'#4f5260'}
+};
+
+const TASKS = [
+  {id:'ROS-108', title:'Add concurrent index for sessions.region migration', description:'The dry run showed a ~4s lock building the index on sessions.region at staging volume. Production needs a concurrent index build instead of the default migration.', status:'todo', assignee:null, priority:'medium', labels:['migration','db'], comments:[]},
+  {id:'ROS-109', title:'Investigate flaky auth test', description:'tests/test_auth.py::test_refresh_window fails about 1 in 20 CI runs. The refresh window is compared against wall clock — likely a second-boundary race.', status:'todo', assignee:null, priority:'high', labels:['bug','tests'], comments:[]},
+  {id:'ROS-110', title:'Write ADR template for cross-region failover', description:'Standardize the ADR format so failover designs are comparable across services.', status:'todo', assignee:'arch', priority:'low', labels:['docs'], comments:[]},
+
+  {id:'ROS-105', title:'Migration dry-run against staging copy', description:'Run the 014 migration against a copy of staging and report row counts before and after, plus lock duration.', status:'in_progress', assignee:'debug', priority:'medium', labels:['migration'], comments:[
+    {author:'Debugging Agent', tone:'agent', time:'Mon', text:'Picked up this task.', system:true},
+    {author:'Debugging Agent', tone:'agent', time:'Mon', text:'Dry run is clean. Index build locks sessions for about 4s at staging volume — wants a concurrent index in prod. Still counting rows.'}
+  ]},
+  {id:'ROS-106', title:'Score backend interview transcripts', description:'Score four backend-loop transcripts against hiring/rubric.md and quote evidence for every score.', status:'in_progress', assignee:'interview', priority:'medium', labels:['hiring'], comments:[
+    {author:'Interview Agent', tone:'agent', time:'Yesterday', text:'Picked up this task.', system:true}
+  ]},
+  {id:'ROS-107', title:'Break Q3 roadmap into estimable tasks', description:'Split the Q3 roadmap into day-or-less tasks. Flag unowned tasks and cross-team dependencies explicitly.', status:'in_progress', assignee:'estimate', priority:'medium', labels:['planning'], comments:[
+    {author:'Estimation Agent', tone:'agent', time:'Monday', text:'Six epics, 41 tasks so far. Three tasks have no owner and two depend on the multi-region work landing first.'}
+  ]},
+
+  {id:'ROS-101', title:'Fix connection pool leak on 504', description:'Pool never releases the connection when the upstream returns 504. Add a try/finally around the handler and a regression test.', status:'in_review', assignee:'debug', priority:'urgent', labels:['bug','api'], comments:[
+    {author:'you', tone:'you', time:'Mon', text:'Reproduces about every 90s under sustained 504s — please prioritize.'},
+    {author:'Debugging Agent', tone:'agent', time:'Mon', text:'Picked up this task.', system:true},
+    {author:'Debugging Agent', tone:'agent', time:'Mon', text:'Patch on fix/session-leak: try/finally plus the regression test. Moved to review — waiting on approval to force-push.', system:true}
+  ]},
+  {id:'ROS-102', title:'Style pass on api/ handlers', description:'Read through api/ and note where handlers drift from house style.', status:'in_review', assignee:'review', priority:'low', labels:['style'], comments:[
+    {author:'Review Agent', tone:'agent', time:'09:12', text:'Mostly consistent. Exceptions: three handlers return dicts instead of models, and logger names in api/routes are inconsistent.'}
+  ]},
+  {id:'ROS-103', title:'ADR-014: multi-region session store', description:'Document the sticky-session vs. token-replay comparison and the decision to use token replay.', status:'in_review', assignee:'arch', priority:'high', labels:['docs','architecture'], comments:[
+    {author:'Architect Agent', tone:'agent', time:'Mon', text:'Replay wins — no cross-region affinity, and failover becomes a routing change rather than a data migration. Draft is up for review.'}
+  ]},
+
+  {id:'ROS-95', title:'Review PR #482 — pool release fix', description:'Review fix/session-leak, 3 files +81 −22. Focus on the error paths.', status:'done', assignee:'review', priority:'high', labels:['bug'], comments:[
+    {author:'Review Agent', tone:'agent', time:'14:18', text:'Two blocking notes and one nit, both addressed. Approved.'}
+  ]},
+  {id:'ROS-96', title:'Freeze fixture clock for refresh window test', description:'test_refresh_window compares against wall clock — freeze it in the fixture so second-boundary crossings stop flipping the assertion.', status:'done', assignee:'debug', priority:'medium', labels:['tests'], comments:[
+    {author:'Debugging Agent', tone:'agent', time:'Tue', text:'Froze the clock in the fixture. Reran 200x locally with no failures.'}
+  ]},
+  {id:'ROS-97', title:'Score Q2 hiring loop', description:'Score the Q2 backend hiring loop transcripts.', status:'done', assignee:'interview', priority:'low', labels:['hiring'], comments:[]}
+];
+
+const PROJECT_COLORS = ['#7c5cff','#d9a04a','#4fa86a','#5b9bd9','#c2553f','#8f93a3'];
+
+const PROJECTS = [
+  {id:'proj-migration', name:'Multi-region migration', color:'#7c5cff', description:'Move session storage to a token-replay model across regions.'},
+  {id:'proj-reliability', name:'API reliability', color:'#c2553f', description:'Close out connection-handling bugs and flaky tests in the API layer.'},
+  {id:'proj-hiring', name:'Hiring loop', color:'#4fa86a', description:'Score and route backend candidate transcripts.'},
+  {id:'proj-planning', name:'Q3 planning', color:'#5b9bd9', description:'Break the roadmap into estimable, owned tasks.'}
+];
+
+const TASK_PROJECTS = {
+  'ROS-105':'proj-migration', 'ROS-108':'proj-migration', 'ROS-103':'proj-migration', 'ROS-110':'proj-migration',
+  'ROS-101':'proj-reliability', 'ROS-102':'proj-reliability', 'ROS-109':'proj-reliability', 'ROS-95':'proj-reliability', 'ROS-96':'proj-reliability',
+  'ROS-106':'proj-hiring', 'ROS-97':'proj-hiring',
+  'ROS-107':'proj-planning'
+};
+
 class Component extends DCLogic {
   state = {
     screen:'grid', agentId:'debug', mode:'chat', layout:'a',
@@ -890,7 +1398,15 @@ class Component extends DCLogic {
     provider:'Anthropic', model:'claude-sonnet-4-6', editOpen:false, overrides:{}, agentSkills:{}, draft:null, prompts:{},
     newPrompt:'',
     picked:{'repro-harness':true,'stack-triage':true},
-    mcpOn:{}, typed:'pytest tests/test_pool.py -k leak'
+    mcpOn:{}, typed:'pytest tests/test_pool.py -k leak',
+    openTaskId:null, taskStatus:{}, taskAssignee:{}, taskPriority:{}, taskComments:{}, newComment:'', taskQuery:'', draggingTaskId:null,
+    taskLabels:{}, addingLabel:false, newLabelText:'', taskAssigneeEditing:false, taskAssigneeQuery:'', taskTab:'comments',
+    extraTasks:[], taskDescriptions:{}, editingDescription:false, descDraft:'',
+    taskTitles:{}, editingTitle:false, titleDraft:'',
+    newTaskOpen:false, newTaskTitle:'', newTaskDescription:'', newTaskAssignee:'unassigned', newTaskPriority:'medium', newTaskLabels:[], newTaskAddingLabel:false, newTaskLabelText:'',
+    extraProjects:[], deletedProjects:{}, projectEdits:{}, taskProjectOverrides:{}, newTaskProject:'none',
+    projectFilter:'all', projectsModalOpen:false, editingProjectId:null, projectDraft:null, projectCreateOpen:false, newProjectDraft:{name:'', color:PROJECT_COLORS[0], description:''},
+    gridProjectFilter:'all'
   };
 
   scrollRef = React.createRef();
@@ -921,12 +1437,19 @@ class Component extends DCLogic {
     const curPrompt = (s.prompts || {})[cur.id] !== undefined ? s.prompts[cur.id] : (AGENT_PROMPTS[cur.id] || '');
     const draft = s.draft || {provider:ov.provider, model:ov.model, skills:curSkillMap, mcp:curMcpMap, prompt:curPrompt};
     const chatPrimary = s.layout === 'a';
+    const ALL_TASKS = TASKS.concat(s.extraTasks || []);
+    const ALL_PROJECTS = PROJECTS.concat(s.extraProjects || [])
+      .filter(p => !s.deletedProjects[p.id])
+      .map(p => ({...p, ...(s.projectEdits[p.id] || {})}));
+    const projectById = (id) => ALL_PROJECTS.find(p => p.id === id);
+    const effProjectId = (t) => s.taskProjectOverrides[t.id] !== undefined ? s.taskProjectOverrides[t.id] : (TASK_PROJECTS[t.id] || null);
+    const setTaskProject = (t, projId) => this.setState(p => ({taskProjectOverrides: {...p.taskProjectOverrides, [t.id]: projId}}));
 
     const nav = [
       {key:'grid', label:'Agents', meta:'5', dot:'#8f93a3'},
       {key:'skills', label:'Skills', meta:'4', dot:'#8f93a3'},
       {key:'mcp', label:'MCP servers', meta:'4', dot:'#8f93a3'},
-      {key:'tasks', label:'Tasks', meta:'soon', dot:'#33363f'},
+      {key:'tasks', label:'Tasks', meta:String(ALL_TASKS.length), dot:'#8f93a3'},
       {key:'spend', label:'Spend', meta:'soon', dot:'#33363f'}
     ].map(n => ({
       ...n,
@@ -937,13 +1460,17 @@ class Component extends DCLogic {
 
     const tileOrder = ['arch','debug','interview','review','estimate'];
     const gq = (s.gridQuery || '').toLowerCase();
+    const gridProjFilter = s.gridProjectFilter || 'all';
     const tiles = tileOrder
       .map(id => AGENTS.find(a => a.id === id))
       .filter(a => a.name.toLowerCase().includes(gq) || (SESSIONS[a.id] || []).some(x => x.title.toLowerCase().includes(gq)))
+      .filter(a => gridProjFilter === 'all' || (SESSIONS[a.id] || []).some(x => x.project === gridProjFilter))
       .map(a => ({
       ...a,
       tone: TONES[a.status],
-      sessions: (SESSIONS[a.id] || []).map(x => ({
+      sessions: (SESSIONS[a.id] || [])
+        .filter(x => gridProjFilter === 'all' || x.project === gridProjFilter)
+        .map(x => ({
         title: x.title,
         glyph: x.origin === 'agent' ? '↳' : '•',
         tone: TONES[x.status],
@@ -1077,7 +1604,277 @@ class Component extends DCLogic {
       };
     });
 
+    const effStatus = (t) => s.taskStatus[t.id] || t.status;
+    const effAssignee = (t) => s.taskAssignee[t.id] !== undefined ? s.taskAssignee[t.id] : t.assignee;
+    const effPriority = (t) => s.taskPriority[t.id] || t.priority;
+    const effComments = (t) => [...(t.comments || []), ...((s.taskComments || {})[t.id] || [])];
+    const effLabels = (t) => s.taskLabels[t.id] || t.labels;
+    const effDescription = (t) => s.taskDescriptions[t.id] !== undefined ? s.taskDescriptions[t.id] : t.description;
+    const effTitle = (t) => s.taskTitles[t.id] !== undefined ? s.taskTitles[t.id] : t.title;
+    const saveTitle = (t) => {
+      const v = (s.titleDraft || '').trim();
+      if (v) this.setState(p => ({taskTitles: {...p.taskTitles, [t.id]: v}, editingTitle:false}));
+      else this.set({editingTitle:false});
+    };
+    const logHistory = (p, t, text) => ({taskComments: {...p.taskComments, [t.id]: [...(p.taskComments[t.id] || []), {author:'You', tone:'you', time:'now', text, system:true}]}});
+    const removeLabel = (t, name) => this.setState(p => ({
+      taskLabels: {...p.taskLabels, [t.id]: effLabels(t).filter(l => l !== name)},
+      ...logHistory(p, t, 'Removed label ' + name + '.')
+    }));
+    const addLabel = (t) => {
+      const name = (s.newLabelText || '').trim();
+      if (!name) { this.set({addingLabel:false}); return; }
+      const cur = effLabels(t);
+      const next = cur.includes(name) ? cur : [...cur, name];
+      this.setState(p => ({taskLabels: {...p.taskLabels, [t.id]: next}, newLabelText:'', addingLabel:false, ...logHistory(p, t, 'Added label ' + name + '.')}));
+    };
+    const agentById = (id) => AGENTS.find(a => a.id === id);
+
+    const moveTask = (t, newStatus) => {
+      const asg = effAssignee(t);
+      const author = asg ? agentById(asg).name : 'You';
+      const label = TASK_STATUSES.find(x => x.key === newStatus).label;
+      this.setState(p => ({
+        taskStatus: {...p.taskStatus, [t.id]: newStatus},
+        taskComments: {...p.taskComments, [t.id]: [...(p.taskComments[t.id] || []), {author, tone: asg ? 'agent' : 'you', time:'now', text: author + ' moved this to ' + label + '.', system:true}]}
+      }));
+    };
+
+    const assignTask = (t, agentId) => {
+      const label = agentId ? agentById(agentId).name : 'Unassigned';
+      this.setState(p => {
+        const comments = [...(p.taskComments[t.id] || [])];
+        comments.push(agentId
+          ? {author:label, tone:'agent', time:'now', text: label + ' picked up this task.', system:true}
+          : {author:'You', tone:'you', time:'now', text:'Unassigned.', system:true});
+        const patch = {taskAssignee: {...p.taskAssignee, [t.id]: agentId}, taskComments: {...p.taskComments, [t.id]: comments}};
+        if (agentId && effStatus(t) === 'todo') patch.taskStatus = {...p.taskStatus, [t.id]:'in_progress'};
+        return patch;
+      });
+    };
+
+    const setPriority = (t, key) => this.setState(p => ({taskPriority: {...p.taskPriority, [t.id]: key}, ...logHistory(p, t, 'Changed priority to ' + PRIORITY[key].label + '.')}));
+
+    const addComment = (t) => {
+      const text = (s.newComment || '').trim();
+      if (!text) return;
+      this.setState(p => ({
+        taskComments: {...p.taskComments, [t.id]: [...(p.taskComments[t.id] || []), {author:'you', tone:'you', time:'now', text}]},
+        newComment:''
+      }));
+    };
+
+    const taskQ = (s.taskQuery || '').toLowerCase();
+    const filteredTasks = ALL_TASKS
+      .filter(t => t.title.toLowerCase().includes(taskQ) || t.id.toLowerCase().includes(taskQ))
+      .filter(t => (s.projectFilter || 'all') === 'all' || effProjectId(t) === s.projectFilter);
+
+    const taskColumns = TASK_STATUSES.map(col => {
+      const items = filteredTasks.filter(t => effStatus(t) === col.key).map(t => {
+        const asg = effAssignee(t);
+        const ag = asg ? agentById(asg) : null;
+        const pr = PRIORITY[effPriority(t)];
+        const cCount = effComments(t).length;
+        const proj = projectById(effProjectId(t));
+        return {
+          id:t.id, title:effTitle(t), priorityColor:pr.color, labels:effLabels(t),
+          hasProject: !!proj, projectName: proj ? proj.name : '', projectColor: proj ? proj.color : 'transparent',
+          assigneeInitials: ag ? ag.name.split(' ')[0].slice(0,2).toUpperCase() : '—',
+          assigneeTone: ag ? TONES[ag.status] : '#33363f',
+          assigneeBg: ag ? '#1c1e26' : 'transparent',
+          hasComments: cCount > 0,
+          commentLabel: cCount + (cCount === 1 ? ' comment' : ' comments'),
+          open: () => this.set({openTaskId:t.id}),
+          dragStart: () => this.setState({draggingTaskId:t.id})
+        };
+      });
+      return {
+        key:col.key, label:col.label, dot:STATUS_COLORS[col.key], count:items.length, items,
+        onDragOver: (e) => e.preventDefault(),
+        onDrop: (e) => {
+          e.preventDefault();
+          const id = this.state.draggingTaskId;
+          const tk = ALL_TASKS.find(x => x.id === id);
+          if (tk) moveTask(tk, col.key);
+          this.setState({draggingTaskId:null});
+        }
+      };
+    });
+
+    const activeTask = ALL_TASKS.find(t => t.id === s.openTaskId) || ALL_TASKS[0];
+    const activeAsg = effAssignee(activeTask);
+    const activeStatus = effStatus(activeTask);
+    const activePriority = effPriority(activeTask);
+    const taskModal = {
+      id: activeTask.id, title: effTitle(activeTask), description: effDescription(activeTask),
+      editingTitle: !!s.editingTitle,
+      titleDraft: s.editingTitle ? (s.titleDraft || '') : effTitle(activeTask),
+      startEditTitle: () => this.set({editingTitle:true, titleDraft: effTitle(activeTask)}),
+      setTitleDraft: (e) => this.set({titleDraft: e.target.value}),
+      saveTitle: () => saveTitle(activeTask),
+      titleKeyDown: (e) => { if (e.key === 'Enter') saveTitle(activeTask); if (e.key === 'Escape') this.set({editingTitle:false}); },
+      mdLines: parseMarkdown(effDescription(activeTask)),
+      descriptionEmpty: effDescription(activeTask).trim().length === 0,
+      editingDescription: !!s.editingDescription, editingDescriptionNot: !s.editingDescription,
+      startEditDescription: () => this.set({editingDescription:true, descDraft: effDescription(activeTask)}),
+      descDraft: s.descDraft || '',
+      setDescDraft: (e) => this.set({descDraft: e.target.value}),
+      saveDescription: () => this.setState(p => ({taskDescriptions:{...p.taskDescriptions, [activeTask.id]:p.descDraft}, editingDescription:false})),
+      cancelEditDescription: () => this.set({editingDescription:false}),
+      labels: effLabels(activeTask).map(name => ({name, remove: () => removeLabel(activeTask, name)})),
+      addingLabel: !!s.addingLabel, addingLabelNot: !s.addingLabel,
+      startAddLabel: () => this.set({addingLabel:true, newLabelText:''}),
+      newLabelText: s.newLabelText || '',
+      setNewLabelText: (e) => this.set({newLabelText: e.target.value}),
+      submitLabel: () => addLabel(activeTask),
+      labelKeyDown: (e) => { if (e.key === 'Enter') addLabel(activeTask); if (e.key === 'Escape') this.set({addingLabel:false, newLabelText:''}); },
+      cancelAddLabel: () => this.set({addingLabel:false, newLabelText:''}),
+      statusValue: activeStatus,
+      setStatus: (e) => moveTask(activeTask, e.target.value),
+      statusOptions: TASK_STATUSES.map(c => ({key:c.key, label:c.label})),
+      assigneeEditing: !!s.taskAssigneeEditing,
+      hasAssignee: !s.taskAssigneeEditing && !!activeAsg,
+      clearAssignee: (e) => { e.stopPropagation(); assignTask(activeTask, null); },
+      assigneeQuery: s.taskAssigneeEditing ? (s.taskAssigneeQuery || '') : (activeAsg ? agentById(activeAsg).name : ''),
+      startAssigneeEdit: () => this.set({taskAssigneeEditing:true, taskAssigneeQuery: activeAsg ? agentById(activeAsg).name : ''}),
+      setAssigneeQuery: (e) => this.set({taskAssigneeQuery: e.target.value}),
+      blurAssignee: () => { setTimeout(() => this.set({taskAssigneeEditing:false}), 120); },
+      assigneeSuggestions: [{id:null, name:'Unassigned'}].concat(AGENTS)
+        .filter(a => a.name.toLowerCase().includes((s.taskAssigneeQuery || '').toLowerCase()))
+        .map(a => ({
+          label:a.name,
+          pick: (e) => { e.preventDefault(); assignTask(activeTask, a.id); this.setState({taskAssigneeEditing:false, taskAssigneeQuery:''}); }
+        })),
+      priorityValue: activePriority,
+      priorityOptions: Object.keys(PRIORITY).map(k => ({value:k, label:PRIORITY[k].label})),
+      setPriorityVal: (e) => setPriority(activeTask, e.target.value),
+      projectValue: effProjectId(activeTask) || 'none',
+      projectOptions: [{value:'none', label:'No project'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),
+      setProject: (e) => setTaskProject(activeTask, e.target.value === 'none' ? null : e.target.value),
+      tab: s.taskTab || 'comments',
+      isCommentsTab: (s.taskTab || 'comments') === 'comments',
+      isHistoryTab: s.taskTab === 'history',
+      commentsTabBg: (s.taskTab || 'comments') === 'comments' ? '#26283a' : 'transparent',
+      commentsTabFg: (s.taskTab || 'comments') === 'comments' ? '#e6e6ea' : '#8f93a3',
+      historyTabBg: s.taskTab === 'history' ? '#26283a' : 'transparent',
+      historyTabFg: s.taskTab === 'history' ? '#e6e6ea' : '#8f93a3',
+      setCommentsTab: () => this.set({taskTab:'comments'}),
+      setHistoryTab: () => this.set({taskTab:'history'}),
+      comments: effComments(activeTask).filter(c => !c.system).map(c => ({
+        author:c.author, time:c.time, text:c.text, tone: c.tone === 'you' ? '#8f93a3' : V
+      })),
+      history: effComments(activeTask).filter(c => c.system).map(c => ({author:c.author, time:c.time, text:c.text})),
+      hasHistory: effComments(activeTask).filter(c => c.system).length > 0,
+      hasHistoryNot: effComments(activeTask).filter(c => c.system).length === 0,
+      newComment: s.newComment || '',
+      setNewComment: (e) => this.set({newComment: e.target.value}),
+      addComment: () => addComment(activeTask),
+      close: () => this.setState({openTaskId:null, newComment:''}),
+      editingTitleNot: !s.editingTitle
+    };
+
+    const removeNewLabel = (name) => this.setState(p => ({newTaskLabels: p.newTaskLabels.filter(l => l !== name)}));
+    const addNewLabel = () => {
+      const name = (s.newTaskLabelText || '').trim();
+      if (!name) { this.set({newTaskAddingLabel:false}); return; }
+      this.setState(p => ({newTaskLabels: p.newTaskLabels.includes(name) ? p.newTaskLabels : [...p.newTaskLabels, name], newTaskLabelText:'', newTaskAddingLabel:false}));
+    };
+    const createTask = () => {
+      const title = (s.newTaskTitle || '').trim();
+      if (!title) return;
+      const id = 'ROS-' + (200 + (s.extraTasks || []).length);
+      const task = {
+        id, title, description: s.newTaskDescription || '',
+        status: 'todo',
+        assignee: s.newTaskAssignee === 'unassigned' ? null : s.newTaskAssignee,
+        priority: s.newTaskPriority || 'medium',
+        labels: s.newTaskLabels || [],
+        comments: []
+      };
+      const projId = s.newTaskProject === 'none' ? null : s.newTaskProject;
+      this.setState(p => ({
+        extraTasks: [...p.extraTasks, task], newTaskOpen:false,
+        taskProjectOverrides: projId ? {...p.taskProjectOverrides, [id]: projId} : p.taskProjectOverrides
+      }));
+    };
+    const newTaskModal = {
+      title: s.newTaskTitle || '', setTitle: (e) => this.set({newTaskTitle: e.target.value}),
+      description: s.newTaskDescription || '', setDescription: (e) => this.set({newTaskDescription: e.target.value}),
+      assigneeValue: s.newTaskAssignee || 'unassigned',
+      assigneeOptions: [{value:'unassigned', label:'Unassigned'}].concat(AGENTS.map(a => ({value:a.id, label:a.name}))),
+      setAssignee: (e) => this.set({newTaskAssignee: e.target.value}),
+      priorityValue: s.newTaskPriority || 'medium',
+      priorityOptions: Object.keys(PRIORITY).map(k => ({value:k, label:PRIORITY[k].label})),
+      setPriorityVal: (e) => this.set({newTaskPriority: e.target.value}),
+      projectValue: s.newTaskProject || 'none',
+      projectOptions: [{value:'none', label:'No project'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),
+      setProject: (e) => this.set({newTaskProject: e.target.value}),
+      labels: (s.newTaskLabels || []).map(name => ({name, remove: () => removeNewLabel(name)})),
+      addingLabel: !!s.newTaskAddingLabel, addingLabelNot: !s.newTaskAddingLabel,
+      startAddLabel: () => this.set({newTaskAddingLabel:true, newTaskLabelText:''}),
+      newLabelText: s.newTaskLabelText || '', setNewLabelText: (e) => this.set({newTaskLabelText: e.target.value}),
+      submitLabel: addNewLabel,
+      labelKeyDown: (e) => { if (e.key === 'Enter') addNewLabel(); if (e.key === 'Escape') this.set({newTaskAddingLabel:false, newTaskLabelText:''}); },
+      cancel: () => this.set({newTaskOpen:false}),
+      create: createTask
+    };
+
+    const startEditProject = (p) => this.set({editingProjectId: p.id, projectDraft: {name:p.name, color:p.color, description:p.description}, projectCreateOpen:false});
+    const saveProjectEdit = () => {
+      const id = s.editingProjectId;
+      const draft = s.projectDraft;
+      if (!draft || !(draft.name || '').trim()) { this.set({editingProjectId:null, projectDraft:null}); return; }
+      this.setState(p => ({projectEdits: {...p.projectEdits, [id]: {name: draft.name.trim(), color: draft.color, description: draft.description}}, editingProjectId:null, projectDraft:null}));
+    };
+    const deleteProject = (id) => this.setState(p => ({deletedProjects: {...p.deletedProjects, [id]: true}}));
+    const createProject = () => {
+      const d = s.newProjectDraft;
+      if (!d || !(d.name || '').trim()) return;
+      const id = 'proj-custom-' + Date.now();
+      const proj = {id, name:d.name.trim(), color:d.color, description:d.description || ''};
+      this.setState(p => ({extraProjects: [...p.extraProjects, proj], projectCreateOpen:false, newProjectDraft:{name:'', color:PROJECT_COLORS[0], description:''}}));
+    };
+
+    const projectsModal = {
+      close: () => this.set({projectsModalOpen:false}),
+      items: ALL_PROJECTS.map(p => ({
+        id:p.id, name:p.name, color:p.color, description:p.description,
+        taskCount: ALL_TASKS.filter(t => effProjectId(t) === p.id).length,
+        editing: s.editingProjectId === p.id,
+        notEditing: s.editingProjectId !== p.id,
+        draftName: s.editingProjectId === p.id ? (s.projectDraft ? s.projectDraft.name : '') : '',
+        setDraftName: (e) => this.setState(pr => ({projectDraft: {...pr.projectDraft, name: e.target.value}})),
+        draftDescription: s.editingProjectId === p.id ? (s.projectDraft ? s.projectDraft.description : '') : '',
+        setDraftDescription: (e) => this.setState(pr => ({projectDraft: {...pr.projectDraft, description: e.target.value}})),
+        colorSwatches: PROJECT_COLORS.map(c => ({
+          color:c,
+          isActive: !!(s.projectDraft && s.projectDraft.color === c),
+          pick: () => this.setState(pr => ({projectDraft: {...pr.projectDraft, color: c}}))
+        })),
+        startEdit: () => startEditProject(p),
+        save: saveProjectEdit,
+        cancel: () => this.set({editingProjectId:null, projectDraft:null}),
+        remove: () => deleteProject(p.id)
+      })),
+      createOpen: !!s.projectCreateOpen,
+      createNotOpen: !s.projectCreateOpen,
+      startCreate: () => this.set({projectCreateOpen:true, editingProjectId:null, newProjectDraft:{name:'', color:PROJECT_COLORS[0], description:''}}),
+      newName: s.newProjectDraft.name,
+      setNewName: (e) => this.setState(p => ({newProjectDraft: {...p.newProjectDraft, name: e.target.value}})),
+      newDescription: s.newProjectDraft.description,
+      setNewDescription: (e) => this.setState(p => ({newProjectDraft: {...p.newProjectDraft, description: e.target.value}})),
+      newColorSwatches: PROJECT_COLORS.map(c => ({
+        color:c, isActive: s.newProjectDraft.color === c,
+        pick: () => this.setState(p => ({newProjectDraft: {...p.newProjectDraft, color: c}}))
+      })),
+      cancelCreate: () => this.set({projectCreateOpen:false}),
+      create: createProject
+    };
+
     return {
+      gridProjectFilterValue: gridProjFilter,
+      gridProjectFilterOptions: [{value:'all', label:'All projects'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),
+      setGridProjectFilter: (e) => this.set({gridProjectFilter: e.target.value}),
       nav,
       scrollRef: this.scrollRef,
       gridQuery: s.gridQuery || '',
@@ -1103,6 +1900,19 @@ class Component extends DCLogic {
       isSkills: s.screen === 'skills',
       isMcp: s.screen === 'mcp',
       isNew: s.screen === 'new',
+      isTasks: s.screen === 'tasks',
+      taskQuery: s.taskQuery || '',
+      setTaskQuery: (e) => this.set({taskQuery: e.target.value}),
+      taskSummary: ALL_TASKS.length + ' tasks · ' + ALL_TASKS.filter(t => effStatus(t) === 'in_review').length + ' in review',
+      taskColumns, hasOpenTask: !!s.openTaskId, taskModal,
+      stopClick: (e) => e.stopPropagation(),
+      openNewTask: () => this.set({newTaskOpen:true, newTaskTitle:'', newTaskDescription:'', newTaskAssignee:'unassigned', newTaskPriority:'medium', newTaskLabels:[], newTaskProject:'none'}),
+      newTaskModal, hasNewTaskModal: !!s.newTaskOpen,
+      projectFilterValue: s.projectFilter || 'all',
+      projectFilterOptions: [{value:'all', label:'All projects'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),
+      setProjectFilter: (e) => this.set({projectFilter: e.target.value}),
+      openProjectsModal: () => this.set({projectsModalOpen:true, editingProjectId:null, projectCreateOpen:false}),
+      hasProjectsModal: !!s.projectsModalOpen, projectsModal,
 
       editOpen: !!s.editOpen,
       openEdit: () => this.set({editOpen:true, draft:{provider:ov.provider, model:ov.model, skills:{...curSkillMap}, mcp:{...curMcpMap}, prompt:curPrompt}}),

@@ -222,3 +222,58 @@ describe('describeCommand', () => {
     expect(describeCommand('Bash', { command: '' })).toBe('Bash')
   })
 })
+
+describe('in-process tool allowlists', () => {
+  // A tool that is registered but not allowlisted does not fail loudly — it
+  // silently blocks on the approval gate, which is how the task tools shipped
+  // unusable the first time. Both servers get the same check.
+
+  test('the handoff server registers exactly the tools it allowlists', async () => {
+    const { ROSTER_TOOL_NAMES, createRosterMcpServer } = await import('@main/runners/handoffTool')
+
+    const server = (await createRosterMcpServer(
+      { listAgents: () => [], openSession: () => ({ sessionId: 's', label: 'l' }) },
+      'me',
+    )) as { instance?: { _registeredTools?: Record<string, unknown> } }
+
+    const registered = Object.keys(server.instance?._registeredTools ?? {})
+    expect(registered).toHaveLength(ROSTER_TOOL_NAMES.length)
+    for (const name of registered) {
+      expect(ROSTER_TOOL_NAMES).toContain(`mcp__roster__${name}`)
+    }
+  })
+
+  test('the task server registers exactly the tools it allowlists', async () => {
+    const { TASK_TOOL_NAMES, createTasksMcpServer } = await import('@main/runners/taskTools')
+
+    const server = (await createTasksMcpServer(
+      {
+        list: () => [],
+        find: () => null,
+        comments: () => [],
+        projectName: () => null,
+        agentName: () => null,
+        create: () => ({}) as never,
+        update: () => ({}) as never,
+        comment: () => {},
+      },
+      'me',
+    )) as { instance?: { _registeredTools?: Record<string, unknown> } }
+
+    const registered = Object.keys(server.instance?._registeredTools ?? {})
+    expect(registered).toHaveLength(TASK_TOOL_NAMES.length)
+    for (const name of registered) {
+      expect(TASK_TOOL_NAMES).toContain(`mcp__tasks__${name}`)
+    }
+  })
+
+  test('the runner allowlists every tool from both servers', async () => {
+    const { ROSTER_TOOL_NAMES } = await import('@main/runners/handoffTool')
+    const { TASK_TOOL_NAMES } = await import('@main/runners/taskTools')
+
+    // Namespaces must not collide: an agent with both enabled sees one flat
+    // tool list, and a duplicate name there is ambiguous.
+    const all = [...ROSTER_TOOL_NAMES, ...TASK_TOOL_NAMES]
+    expect(new Set(all).size).toBe(all.length)
+  })
+})

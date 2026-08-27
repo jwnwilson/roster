@@ -9,6 +9,8 @@ import { SkillStore } from '@main/store/skills'
 import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
 import { agentsDir, mcpConfigPath, skillsDir } from '@main/store/paths'
+import { TASKS_SERVER } from '@shared/mcp'
+import type { McpServer } from '@shared/types'
 
 let home: string
 
@@ -184,6 +186,14 @@ describe('SkillStore', () => {
 
 /* -------------------------------------------------------------------- mcp */
 
+/**
+ * Just the servers mcp.json holds. findAll also lists Roster's built-ins,
+ * which have their own suite; these tests are about the file.
+ */
+function configured(store: McpStore): McpServer[] {
+  return store.findAll().filter((server) => server.builtin !== true)
+}
+
 describe('McpStore', () => {
   async function writeConfig(body: unknown): Promise<void> {
     await mkdir(home, { recursive: true })
@@ -193,7 +203,7 @@ describe('McpStore', () => {
   test('treats a missing file as no servers rather than crashing', async () => {
     const store = new McpStore()
     await store.load()
-    expect(store.findAll()).toEqual([])
+    expect(configured(store)).toEqual([])
   })
 
   test('treats a corrupt file as no servers rather than crashing', async () => {
@@ -202,7 +212,7 @@ describe('McpStore', () => {
 
     const store = new McpStore()
     await store.load()
-    expect(store.findAll()).toEqual([])
+    expect(configured(store)).toEqual([])
   })
 
   test('reads servers and how to launch them', async () => {
@@ -211,7 +221,7 @@ describe('McpStore', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()).toEqual([{ name: 'filesystem', command: 'npx fs', env: {} }])
+    expect(configured(store)).toEqual([{ name: 'filesystem', command: 'npx fs', env: {} }])
   })
 
   test('fills in defaults for a partially written entry', async () => {
@@ -220,7 +230,7 @@ describe('McpStore', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()[0]).toEqual({ name: 'partial', command: '', env: {} })
+    expect(configured(store)[0]).toEqual({ name: 'partial', command: '', env: {} })
   })
 
   test('drops the enabledFor list older files carry', async () => {
@@ -233,7 +243,7 @@ describe('McpStore', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()[0]).toEqual({ name: 'filesystem', command: 'npx fs', env: {} })
+    expect(configured(store)[0]).toEqual({ name: 'filesystem', command: 'npx fs', env: {} })
   })
 
   test('rewriting the file does not persist enablement', async () => {
@@ -359,7 +369,9 @@ describe('McpStore.install', () => {
 
     const servers = await store.install('linear', 'npx server-linear')
 
-    expect(servers).toEqual([{ name: 'linear', command: 'npx server-linear', env: {} }])
+    expect(servers.filter((server) => server.builtin !== true)).toEqual([
+      { name: 'linear', command: 'npx server-linear', env: {} },
+    ])
   })
 
   test('persists to disk', async () => {
@@ -369,7 +381,7 @@ describe('McpStore.install', () => {
 
     const reopened = new McpStore()
     await reopened.load()
-    expect(reopened.findAll().map((s) => s.name)).toEqual(['linear'])
+    expect(configured(reopened).map((s) => s.name)).toEqual(['linear'])
   })
 
   test('installing an existing server does not duplicate or clobber it', async () => {
@@ -379,9 +391,9 @@ describe('McpStore.install', () => {
 
     await store.install('linear', 'a-different-command')
 
-    expect(store.findAll()).toHaveLength(1)
+    expect(configured(store)).toHaveLength(1)
     // The command someone already tuned must survive.
-    expect(store.findAll()[0]?.command).toBe('npx server-linear')
+    expect(configured(store)[0]?.command).toBe('npx server-linear')
   })
 })
 
@@ -685,7 +697,7 @@ describe('McpStore.save', () => {
 
     await store.save('linear', 'docker run linear-mcp', {})
 
-    expect(store.findAll()[0]?.command).toBe('docker run linear-mcp')
+    expect(configured(store)[0]?.command).toBe('docker run linear-mcp')
   })
 
   test('stores the environment a server needs', async () => {
@@ -697,7 +709,7 @@ describe('McpStore.save', () => {
 
     const reopened = new McpStore()
     await reopened.load()
-    expect(reopened.findAll()[0]?.env).toEqual({ GITHUB_TOKEN: 'ghp_abc' })
+    expect(configured(reopened)[0]?.env).toEqual({ GITHUB_TOKEN: 'ghp_abc' })
   })
 
   test('refuses a server it does not know', async () => {
@@ -716,7 +728,7 @@ describe('McpStore.save', () => {
 
     await store.save('github', 'npx server-github', {})
 
-    expect(store.findAll()[0]?.env).toEqual({})
+    expect(configured(store)[0]?.env).toEqual({})
   })
 
   test('does not alias the caller environment object', async () => {
@@ -728,7 +740,7 @@ describe('McpStore.save', () => {
     await store.save('github', 'npx server-github', env)
     env['TOKEN'] = 'mutated'
 
-    expect(store.findAll()[0]?.env).toEqual({ TOKEN: 'x' })
+    expect(configured(store)[0]?.env).toEqual({ TOKEN: 'x' })
   })
 
   test('drops non-string values written into the file by hand', async () => {
@@ -742,6 +754,56 @@ describe('McpStore.save', () => {
     const store = new McpStore()
     await store.load()
 
-    expect(store.findAll()[0]?.env).toEqual({ OK: 'yes' })
+    expect(configured(store)[0]?.env).toEqual({ OK: 'yes' })
+  })
+})
+
+/* ----------------------------------------------------- mcp: built-ins */
+
+describe('McpStore — built-in servers', () => {
+  test('lists the task board even with no mcp.json at all', async () => {
+    const store = new McpStore()
+    await store.load()
+
+    const builtin = store.findAll().find((server) => server.name === TASKS_SERVER)
+    expect(builtin?.builtin).toBe(true)
+    // Nothing to launch and nothing to authenticate: Roster runs it in-process.
+    expect(builtin?.command).toBe('')
+    expect(builtin?.description).toBeTruthy()
+  })
+
+  test('lists built-ins before the servers from the file', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('linear', 'npx server-linear')
+
+    expect(store.findAll().map((server) => server.name)).toEqual([TASKS_SERVER, 'linear'])
+  })
+
+  test('never writes a built-in into mcp.json', async () => {
+    const store = new McpStore()
+    await store.load()
+    await store.install('linear', 'npx server-linear')
+
+    const written = JSON.parse(await readFile(mcpConfigPath(), 'utf8')) as {
+      servers: { name: string }[]
+    }
+    expect(written.servers.map((server) => server.name)).toEqual(['linear'])
+  })
+
+  test('refuses to install over a built-in name', async () => {
+    const store = new McpStore()
+    await store.load()
+
+    // Two different servers under one name would make every agent's
+    // mcp_servers ambiguous.
+    await expect(store.install(TASKS_SERVER, 'npx something')).rejects.toThrow(/built into Roster/)
+  })
+
+  test('refuses to configure a built-in', async () => {
+    const store = new McpStore()
+    await store.load()
+
+    await expect(store.save(TASKS_SERVER, 'npx something', {})).rejects.toThrow(/built into Roster/)
   })
 })

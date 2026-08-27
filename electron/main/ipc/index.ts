@@ -3,7 +3,11 @@ import {
   CHANNELS,
   type AgentPatch,
   type NewAgentInput,
+  type NewProjectInput,
+  type NewTaskInput,
+  type ProjectPatch,
   type PtySize,
+  type TaskChange,
 } from '../../../shared/ipc'
 import type { RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
@@ -13,18 +17,26 @@ import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/regi
 import { SessionManager } from '../sessions/manager'
 import { AgentStore } from '../store/agents'
 import { McpStore, withServer } from '../store/mcp'
+import { ProjectStore } from '../store/projects'
 import { SessionStore } from '../store/sessions'
+import { TaskStore } from '../store/tasks'
 import { SkillStore } from '../store/skills'
 import { UsageStore } from '../store/usage'
 import { databasePath, mcpConfigPath, rosterHome } from '../store/paths'
 import { join } from 'node:path'
 import { seedIfEmpty } from '../store/seed'
+import { seedBoardIfEmpty } from '../store/seedBoard'
 
 let runners = new Map<string, RunnerStatus>()
 let db: Db | null = null
 let sessionStore: SessionStore | null = null
 let usageStore: UsageStore | null = null
+let projectStore: ProjectStore | null = null
+let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
+
+/** Everything the renderer asks for is done by the person at the keyboard. */
+const YOU = { name: 'You', tone: 'you' } as const
 
 const agentStore = new AgentStore(() => runners)
 const skillStore = new SkillStore()
@@ -46,6 +58,16 @@ function requireManager(): SessionManager {
 function requireSessions(): SessionStore {
   if (!sessionStore) throw new Error('session store is not initialised')
   return sessionStore
+}
+
+function requireProjects(): ProjectStore {
+  if (!projectStore) throw new Error('project store is not initialised')
+  return projectStore
+}
+
+function requireTasks(): TaskStore {
+  if (!taskStore) throw new Error('task store is not initialised')
+  return taskStore
 }
 
 export async function initStores(): Promise<void> {
@@ -75,9 +97,25 @@ export async function initStores(): Promise<void> {
   db = openDatabase(databasePath())
   sessionStore = new SessionStore(db)
   usageStore = new UsageStore(db)
-  manager = new SessionManager(agentStore, sessionStore, skillStore, mcpStore, usageStore)
+  projectStore = new ProjectStore(db)
+  // Agent ids resolve to display names through the agent store, since agents
+  // live in agent.toml rather than in this database.
+  taskStore = new TaskStore(db, (id) => agentStore.findById(id)?.name ?? null)
+  seedBoardIfEmpty(projectStore, taskStore, agentStore.findAll())
+
+  manager = new SessionManager(
+    agentStore,
+    sessionStore,
+    skillStore,
+    mcpStore,
+    usageStore,
+    { tasks: taskStore, projects: projectStore },
+  )
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
+  // One bridge, so a task an agent changes mid-turn reaches the board the
+  // same way one the user dragged does.
+  taskStore.subscribe((event) => broadcast(CHANNELS.tasksEvent, event))
   ptyManager.onData((sessionId, data) => broadcast(CHANNELS.ptyData, { sessionId, data }))
   ptyManager.onExit((sessionId, code) => broadcast(CHANNELS.ptyExit, { sessionId, code }))
   agentStore.watch((agents) => {
@@ -214,6 +252,37 @@ export function registerIpc(): void {
     CHANNELS.mcpSave,
     (_e, name: string, command: string, env: Record<string, string>) =>
       mcpStore.save(name, command, env),
+  )
+
+  ipcMain.handle(CHANNELS.sessionsSetProject, (_e, sessionId: string, projectId: string | null) =>
+    requireSessions().setProject(sessionId, projectId),
+  )
+
+  ipcMain.handle(CHANNELS.projectsList, () => requireProjects().findAll())
+  ipcMain.handle(CHANNELS.projectsCreate, (_e, input: NewProjectInput) =>
+    requireProjects().create(input),
+  )
+  ipcMain.handle(CHANNELS.projectsUpdate, (_e, id: string, patch: ProjectPatch) =>
+    requireProjects().update(id, patch),
+  )
+  ipcMain.handle(CHANNELS.projectsDelete, (_e, id: string) => {
+    requireProjects().delete(id)
+    // Deleting a project changes every card that referenced it, so the board
+    // needs the new list as well as the detached tasks.
+    broadcast(CHANNELS.tasksEvent, { type: 'projects', projects: requireProjects().findAll() })
+  })
+
+  ipcMain.handle(CHANNELS.tasksList, () => requireTasks().findAll())
+  ipcMain.handle(CHANNELS.tasksCreate, (_e, input: NewTaskInput) => requireTasks().create(input))
+  ipcMain.handle(CHANNELS.tasksApply, (_e, taskId: string, change: TaskChange) => {
+    // The actor is decided here, never sent from the renderer — otherwise a
+    // change could be logged as though an agent had made it.
+    return requireTasks().apply(taskId, change, YOU).task
+  })
+  ipcMain.handle(CHANNELS.tasksDelete, (_e, taskId: string) => requireTasks().delete(taskId))
+  ipcMain.handle(CHANNELS.tasksComments, (_e, taskId: string) => requireTasks().comments(taskId))
+  ipcMain.handle(CHANNELS.tasksComment, (_e, taskId: string, text: string) =>
+    requireTasks().comment(taskId, { author: YOU.name, tone: YOU.tone, text }),
   )
 
   ipcMain.handle(CHANNELS.dialogChooseDirectory, async (e, current?: string) => {

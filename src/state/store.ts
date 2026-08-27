@@ -5,19 +5,29 @@ import type {
   Approval,
   McpServer,
   Message,
+  Project,
   RunnerStatus,
   Session,
   Skill,
   Status,
+  Task,
+  TaskComment,
+  TaskStatus,
   TranscriptLine,
   Usage,
 } from '@shared/types'
-import type { SessionEventPayload } from '@shared/ipc'
+import type { SessionEventPayload, TaskEventPayload } from '@shared/ipc'
 import { rollUpAgentStatus } from '@shared/status'
+import { TASK_STATUSES } from '@shared/types'
+import { messageFor } from '@/lib/errors'
 
-export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new'
+export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks'
 export type PaneMode = 'chat' | 'terminal'
 export type McpTab = 'installed' | 'registry'
+export type TaskTab = 'comments' | 'history'
+
+/** The project filter's "no filter" value, in both the grid and the board. */
+export const ALL_PROJECTS = 'all'
 
 /** Staged edits from the Edit modal, committed to the agent only on Save. */
 export interface Draft {
@@ -51,6 +61,10 @@ interface RosterState {
   agentUsage: Record<string, AgentUsage>
   /** agentId -> the last few lines of its most recent session. */
   transcripts: Record<string, TranscriptLine[]>
+  projects: Project[]
+  tasks: Task[]
+  /** taskId -> its thread, loaded when the task is opened. */
+  taskComments: Record<string, TaskComment[]>
   loaded: boolean
 
   /* ---- navigation --------------------------------------------------- */
@@ -67,6 +81,17 @@ interface RosterState {
   gridQuery: string
   editOpen: boolean
   draft: Draft | null
+
+  /* ---- Tasks board -------------------------------------------------- */
+  /** The task whose detail modal is open. */
+  openTaskId: string | null
+  taskQuery: string
+  taskTab: TaskTab
+  /** ALL_PROJECTS, or a project id. */
+  projectFilter: string
+  gridProjectFilter: string
+  projectsOpen: boolean
+  newTaskOpen: boolean
 
   /* ---- New Agent form ---------------------------------------------- */
   newRunner: string
@@ -85,6 +110,11 @@ interface RosterState {
   setAllSessions(sessions: Record<string, Session[]>): void
   setMcpServers(servers: McpServer[]): void
   setSkills(skills: Skill[]): void
+  setProjects(projects: Project[]): void
+  setTasks(tasks: Task[]): void
+  setTaskComments(taskId: string, comments: TaskComment[]): void
+  /** Applies one live board change from the main process. */
+  applyTaskEvent(event: TaskEventPayload): void
   /** Applies one live event from the main process. */
   applySessionEvent(event: SessionEventPayload): void
 
@@ -97,6 +127,14 @@ interface RosterState {
   toggleTool(id: string): void
   setQuery(value: string): void
   setGridQuery(value: string): void
+  setTaskQuery(value: string): void
+  setTaskTab(tab: TaskTab): void
+  setProjectFilter(value: string): void
+  setGridProjectFilter(value: string): void
+  openTask(taskId: string): void
+  closeTask(): void
+  setProjectsOpen(open: boolean): void
+  setNewTaskOpen(open: boolean): void
 
   openEdit(): void
   cancelEdit(): void
@@ -123,6 +161,9 @@ export const useRoster = create<RosterState>((set, get) => ({
   usage: {},
   agentUsage: {},
   transcripts: {},
+  projects: [],
+  tasks: [],
+  taskComments: {},
   loaded: false,
 
   screen: 'grid',
@@ -136,6 +177,14 @@ export const useRoster = create<RosterState>((set, get) => ({
   gridQuery: '',
   editOpen: false,
   draft: null,
+
+  openTaskId: null,
+  taskQuery: '',
+  taskTab: 'comments',
+  projectFilter: ALL_PROJECTS,
+  gridProjectFilter: ALL_PROJECTS,
+  projectsOpen: false,
+  newTaskOpen: false,
 
   newRunner: 'claude',
   newModel: '',
@@ -156,8 +205,13 @@ export const useRoster = create<RosterState>((set, get) => ({
   setAllSessions: (sessions) => set({ sessions }),
   setMcpServers: (mcpServers) => set({ mcpServers }),
   setSkills: (skills) => set({ skills }),
+  setProjects: (projects) => set({ projects }),
+  setTasks: (tasks) => set({ tasks }),
+  setTaskComments: (taskId, comments) =>
+    set((s) => ({ taskComments: { ...s.taskComments, [taskId]: comments } })),
 
   applySessionEvent: (event) => set((s) => reduceSessionEvent(s, event)),
+  applyTaskEvent: (event) => set((s) => reduceTaskEvent(s, event)),
 
   go: (screen) => set({ screen }),
 
@@ -177,6 +231,17 @@ export const useRoster = create<RosterState>((set, get) => ({
   toggleTool: (id) => set((s) => ({ openTools: { ...s.openTools, [id]: !s.openTools[id] } })),
   setQuery: (query) => set({ query }),
   setGridQuery: (gridQuery) => set({ gridQuery }),
+  setTaskQuery: (taskQuery) => set({ taskQuery }),
+  setTaskTab: (taskTab) => set({ taskTab }),
+  setProjectFilter: (projectFilter) => set({ projectFilter }),
+  setGridProjectFilter: (gridProjectFilter) => set({ gridProjectFilter }),
+
+  // Every task opens on Comments: History is a record you go looking for,
+  // not the first thing you want to read.
+  openTask: (openTaskId) => set({ openTaskId, taskTab: 'comments' }),
+  closeTask: () => set({ openTaskId: null }),
+  setProjectsOpen: (projectsOpen) => set({ projectsOpen }),
+  setNewTaskOpen: (newTaskOpen) => set({ newTaskOpen }),
 
   /** Snapshots the agent's live config into a draft; nothing is committed yet. */
   openEdit: () => {
@@ -237,15 +302,115 @@ export function selectSidebarAgents(state: RosterState): Agent[] {
   return state.agents.filter((a) => a.name.toLowerCase().includes(q))
 }
 
+/**
+ * The sessions a project filter leaves visible.
+ *
+ * Exported because the grid needs the same answer twice — once to decide
+ * whether a card shows at all, once to decide which chips it shows. Two
+ * copies of this predicate would eventually disagree, and a card would
+ * render with no chips in it.
+ */
+export function sessionsInProject(
+  sessions: readonly Session[],
+  projectFilter: string,
+): readonly Session[] {
+  if (projectFilter === ALL_PROJECTS) return sessions
+  return sessions.filter((session) => session.projectId === projectFilter)
+}
+
 export function selectGridAgents(state: RosterState): Agent[] {
   const q = state.gridQuery.trim().toLowerCase()
-  if (q === '') return state.agents
+  const project = state.gridProjectFilter
 
   return state.agents.filter((agent) => {
+    const sessions = state.sessions[agent.id] ?? NO_SESSIONS
+
+    // An agent belongs to a project only through its sessions — it has no
+    // project of its own, so one with none is filtered out entirely.
+    if (sessionsInProject(sessions, project).length === 0 && project !== ALL_PROJECTS) {
+      return false
+    }
+
+    if (q === '') return true
     if (agent.name.toLowerCase().includes(q)) return true
-    const sessions = state.sessions[agent.id] ?? []
-    return sessions.some((s) => s.title.toLowerCase().includes(q))
+    return sessionsInProject(sessions, project).some((s) =>
+      s.title.toLowerCase().includes(q),
+    )
   })
+}
+
+/* ---------------------------------------------------------------------
+ * The task board.
+ * ------------------------------------------------------------------ */
+
+export const NO_COMMENTS: readonly TaskComment[] = Object.freeze([])
+
+/** Tasks left by the board's text filter and its project filter. */
+export function selectFilteredTasks(state: RosterState): Task[] {
+  const q = state.taskQuery.trim().toLowerCase()
+  const project = state.projectFilter
+
+  return state.tasks.filter((task) => {
+    if (project !== ALL_PROJECTS && task.projectId !== project) return false
+    if (q === '') return true
+    // The key is searchable too: "ROS-101" is how people refer to a task.
+    return task.title.toLowerCase().includes(q) || task.id.toLowerCase().includes(q)
+  })
+}
+
+/** Groups tasks into the four columns, in board order. */
+export function columnsFor(tasks: readonly Task[]): Record<TaskStatus, Task[]> {
+  const columns: Record<TaskStatus, Task[]> = {
+    todo: [],
+    in_progress: [],
+    in_review: [],
+    done: [],
+  }
+  for (const task of tasks) columns[task.status].push(task)
+  return columns
+}
+
+export function selectOpenTask(state: RosterState): Task | null {
+  return state.tasks.find((task) => task.id === state.openTaskId) ?? null
+}
+
+export function projectById(state: RosterState, id: string | null): Project | null {
+  if (id === null) return null
+  return state.projects.find((project) => project.id === id) ?? null
+}
+
+/** What a drop landed on: a column, or the column of the card under it. */
+export function columnOf(overId: string | number, tasks: readonly Task[]): TaskStatus | null {
+  const id = String(overId)
+  if ((TASK_STATUSES as readonly string[]).includes(id)) return id as TaskStatus
+  return tasks.find((task) => task.id === id)?.status ?? null
+}
+
+function withTaskStatus(tasks: readonly Task[], taskId: string, status: TaskStatus): Task[] {
+  return tasks.map((task) => (task.id === taskId ? { ...task, status } : task))
+}
+
+/**
+ * Moves a card between columns.
+ *
+ * The card moves before the write lands and goes back if it fails — a card
+ * that hangs where it was dropped reads as a broken drag, and one that moves
+ * and silently stays moved after a failed write is a lie. Resolves an error
+ * message, or null when it worked.
+ */
+export async function moveTask(taskId: string, status: TaskStatus): Promise<string | null> {
+  const previous = useRoster.getState().tasks.find((task) => task.id === taskId)
+  if (!previous || previous.status === status) return null
+
+  useRoster.setState((s) => ({ tasks: withTaskStatus(s.tasks, taskId, status) }))
+
+  try {
+    await window.roster.tasks.apply(taskId, { field: 'status', value: status })
+    return null
+  } catch (cause) {
+    useRoster.setState((s) => ({ tasks: withTaskStatus(s.tasks, taskId, previous.status) }))
+    return messageFor(cause)
+  }
 }
 
 export function selectCurrentAgent(state: RosterState): Agent | null {
@@ -326,6 +491,55 @@ export function reduceSessionEvent(
         },
       }
     }
+  }
+}
+
+/**
+ * Live board changes. Pure, so it can be tested without React or IPC — and
+ * because these arrive from agents as well as from our own writes, the same
+ * event has to be safe to apply twice.
+ */
+export function reduceTaskEvent(
+  state: RosterState,
+  event: TaskEventPayload,
+): Partial<RosterState> {
+  switch (event.type) {
+    case 'task-created':
+      // Our own create already put it in the list; don't add it twice.
+      if (state.tasks.some((task) => task.id === event.task.id)) return {}
+      return { tasks: [...state.tasks, event.task] }
+
+    case 'task-updated':
+      return {
+        tasks: state.tasks.map((task) => (task.id === event.task.id ? event.task : task)),
+      }
+
+    case 'task-deleted':
+      return {
+        tasks: state.tasks.filter((task) => task.id !== event.taskId),
+        // Nothing left to show, so close the modal rather than leave it
+        // pointing at a task that no longer exists.
+        ...(state.openTaskId === event.taskId ? { openTaskId: null } : {}),
+        taskComments: withoutKey(state.taskComments, event.taskId),
+      }
+
+    case 'comment': {
+      const existing = state.taskComments[event.taskId]
+      // A thread that was never opened has nothing to append to — it will
+      // be read in full when it is.
+      if (existing === undefined) return {}
+      if (existing.some((comment) => comment.id === event.comment.id)) return {}
+
+      return {
+        taskComments: {
+          ...state.taskComments,
+          [event.taskId]: [...existing, event.comment],
+        },
+      }
+    }
+
+    case 'projects':
+      return { projects: event.projects }
   }
 }
 

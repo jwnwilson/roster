@@ -3,7 +3,14 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { HandoffMessage, Message, SpawnMessage } from '@shared/types'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
-import { HandoffBody, SpawnBody, ToolBody, formatDuration, formatTime } from '@/chat/messages'
+import {
+  HandoffBody,
+  SpawnBody,
+  TextBody,
+  ToolBody,
+  formatDuration,
+  formatTime,
+} from '@/chat/messages'
 import { useRoster } from '@/state/store'
 import { installRosterApi } from './rosterApi'
 
@@ -266,5 +273,71 @@ describe('formatting', () => {
 
   test('timestamps render as a wall clock time', () => {
     expect(formatTime(AT)).toMatch(/\d{1,2}:\d{2}/)
+  })
+})
+
+
+describe('TextBody — Markdown in chat', () => {
+  test('renders a fenced code block rather than printing its backticks', () => {
+    // What an agent actually replies with. The prototype's demo prose had
+    // no fences; a real one does on almost every turn.
+    const { container } = render(
+      <TextBody text={'The command printed:\n\n```\nhello from roster\n```'} />,
+    )
+
+    expect(container.querySelector('pre')?.textContent).toContain('hello from roster')
+    expect(container.textContent).not.toContain('```')
+  })
+
+  test('renders inline code, bold and lists', () => {
+    const { container } = render(
+      <TextBody text={'Run `pytest` **now**\n\n- first\n- second'} />,
+    )
+
+    expect(container.querySelector('code')?.textContent).toBe('pytest')
+    expect(container.querySelector('strong')?.textContent).toBe('now')
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  test('renders headings an agent uses to structure a long answer', () => {
+    render(<TextBody text={'## Findings\n\nThe pool leaks.'} />)
+
+    expect(screen.getByRole('heading', { level: 2, name: 'Findings' })).toBeInTheDocument()
+  })
+
+  test('still shows plain prose as plain prose', () => {
+    const { container } = render(<TextBody text="Reproduced it on the second run." />)
+
+    expect(container.textContent).toBe('Reproduced it on the second run.')
+  })
+
+  test('keeps paragraphs apart, which is what preserving newlines was for', () => {
+    const { container } = render(<TextBody text={'First para.\n\nSecond para.'} />)
+
+    expect(container.querySelectorAll('p')).toHaveLength(2)
+  })
+
+  test('does not execute HTML an agent emits', () => {
+    const { container } = render(
+      <TextBody text={'<img src=x onerror="window.pwned=1">done'} />,
+    )
+
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.textContent).toContain('done')
+  })
+
+  test('renders a partial fence mid-stream without throwing', () => {
+    // Prose arrives token by token, so an unclosed fence is a normal
+    // intermediate state rather than an error.
+    expect(() => render(<TextBody text={'Here you go:\n\n```\nhalf a fen'} />)).not.toThrow()
+  })
+})
+
+describe('SpawnBody — Markdown in the brief', () => {
+  test('renders the handing-off agent\'s Markdown, not its source', () => {
+    const brief = { ...SPAWN, text: 'Focus on `api/routes` first.' }
+    const { container } = render(<SpawnBody message={brief as SpawnMessage} />)
+
+    expect(container.querySelector('code')?.textContent).toBe('api/routes')
   })
 })

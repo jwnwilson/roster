@@ -17,6 +17,19 @@ export interface RosterTools {
   }
 }
 
+/**
+ * Every tool this server registers, as the SDK namespaces them.
+ *
+ * Exported so the runner's allowlist cannot drift from what is actually
+ * registered — these are affordances of the app rather than actions on the
+ * user's machine, so they are auto-approved, and a tool missing from here
+ * silently blocks on the approval gate instead.
+ */
+export const ROSTER_TOOL_NAMES = [
+  'mcp__roster__list_agents',
+  'mcp__roster__open_session',
+] as const
+
 export const OPEN_SESSION_SCHEMA = {
   agent_id: z.string().describe('The id of the agent to hand work to.'),
   title: z.string().describe('A short title for the session, shown on its tab.'),
@@ -81,7 +94,11 @@ export async function createRosterMcpServer(
     },
   )
 
-  return createSdkMcpServer({ name: 'roster', version: '1.0.0', tools: [listAgents, openSession] })
+  return createSdkMcpServer({
+    name: 'roster',
+    version: '1.0.0',
+    tools: [listAgents, openSession],
+  })
 }
 
 function firstLine(prompt: string): string {

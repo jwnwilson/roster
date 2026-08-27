@@ -64,6 +64,32 @@
   --color-done: #4fa86a;
   --color-error: #c2553f;
 
+  /* ---- tasks --------------------------------------------------------- *
+   * Handoff § "Task-specific tokens". Every value but --color-project-3
+   * already exists above under another name, so these alias rather than
+   * redefine: one hex, one place to change it.
+   * ------------------------------------------------------------------- */
+
+  /* priority accent — the task card's 2px left border */
+  --color-priority-urgent: var(--color-error);
+  --color-priority-high: var(--color-amber);
+  --color-priority-medium: var(--color-accent);
+  --color-priority-low: var(--color-faint-2);
+
+  /* kanban column status dots */
+  --color-todo: var(--color-dim);
+  --color-in-progress: var(--color-accent);
+  --color-in-review: var(--color-amber);
+  /* "done" is --color-done, already defined above */
+
+  /* the Projects modal's swatch picker */
+  --color-project-0: var(--color-accent);
+  --color-project-1: var(--color-amber);
+  --color-project-2: var(--color-done);
+  --color-project-3: #5b9bd9;
+  --color-project-4: var(--color-error);
+  --color-project-5: var(--color-muted-2);
+
   /* ---- typography ---------------------------------------------------- */
   --font-ui: 'Instrument Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
@@ -84,6 +110,7 @@
   --spacing-rail: 260px;
   --spacing-tree: 196px;
   --spacing-meta: 188px;
+  --spacing-task-rail: 196px; /* task detail's right rail — handoff §6 */
   --spacing-header: 44px;
   --spacing-statusbar: 38px;
 

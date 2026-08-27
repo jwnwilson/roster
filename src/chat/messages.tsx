@@ -1,6 +1,7 @@
 import type { HandoffLink, HandoffMessage, SessionRef, SpawnMessage } from '@shared/types'
 import { statusColor } from '@shared/status'
 import { useRoster } from '@/state/store'
+import { Markdown } from '@/components/Markdown'
 
 /* -------------------------------------------------------------------------
  * Message renderers.
@@ -32,10 +33,17 @@ export function MessageHeader({ who, time, isUser = false }: MessageHeaderProps)
 
 /* ---- bodies ----------------------------------------------------------- */
 
+/**
+ * Chat prose, rendered as Markdown.
+ *
+ * The handoff specifies plain text preserving newlines, which is what the
+ * prototype's hand-written demo messages needed. Real agents write Markdown
+ * — fenced code, links, lists — and printing the backticks verbatim is not
+ * what either side meant. Same renderer the task board uses, so a fence
+ * looks the same wherever an agent wrote it.
+ */
 export function TextBody({ text }: { text: string }) {
-  return (
-    <p className="m-0 text-2xl leading-[1.62] whitespace-pre-wrap text-ink-2">{text}</p>
-  )
+  return <Markdown>{text}</Markdown>
 }
 
 interface ToolBodyProps {
@@ -84,7 +92,7 @@ export function ToolBody({ id, tool, args, output, isError, durationMs }: ToolBo
 export function SpawnBody({ message }: { message: SpawnMessage }) {
   return (
     <div className="flex flex-col items-start gap-[8px] border-l-2 border-accent-line py-[2px] pl-[13px]">
-      <p className="m-0 text-2xl leading-[1.62] text-[#b3b6c2]">{message.text}</p>
+      <Markdown>{message.text}</Markdown>
       {message.to ? <BackPill target={message.to} /> : null}
     </div>
   )

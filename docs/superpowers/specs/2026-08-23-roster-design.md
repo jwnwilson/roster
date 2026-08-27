@@ -123,9 +123,12 @@ args = ["--output-format", "json", "-p", "{prompt}"]
 A file watcher reflects external edits back into the UI; Save writes the file.
 
 SQLite tables: `sessions` (id, agent_id, title, origin, from_agent_id,
-runner_session_id, status), `messages` (id, session_id, kind, role, content JSON,
-created_at), `approvals` (id, session_id, tool_name, command, status, decided_at),
-`usage` (session_id, input_tokens, output_tokens, cost_usd).
+runner_session_id, status, project_id), `messages` (id, session_id, kind, role, content
+JSON, created_at), `approvals` (id, session_id, tool_name, command, status, decided_at),
+`usage` (session_id, input_tokens, output_tokens, cost_usd), plus the board:
+`projects` (id, name, color, description), `tasks` (id, title, description, status,
+priority, assignee_id, project_id, labels JSON), `task_comments` (id, task_id, author,
+tone, text, is_system), and `counters`, which is what makes a task key durable.
 
 `origin` and `from_agent_id` are what render the `↳` glyph and the spawn/handoff
 messages. `runner_session_id` is what `resume` and `fork` are keyed on.
@@ -142,6 +145,8 @@ store/
   messages.ts    SQLite    findBySession, append
   approvals.ts   SQLite    pending, resolve
   usage.ts       SQLite    forSession, accumulate
+  tasks.ts       SQLite    findAll, create, apply, comment, comments, subscribe
+  projects.ts    SQLite    findAll, create, update, delete
   agents.ts      TOML      findAll, findById, update, watch
   skills.ts      FS dir    findAll, readFile, writeFile, watch
   mcp.ts         JSON      findAll, setEnabled, watch
@@ -177,14 +182,15 @@ interface WatchedStore<T> extends Store<T> {
 }
 ```
 
-`agents`, `skills`, and `mcp` are `WatchedStore`; the SQLite four are plain `Store`. This
+`agents`, `skills`, and `mcp` are `WatchedStore`; the SQLite stores are plain `Store`,
+with one exception — `tasks`, which agents write as well as Roster (see §13). This
 is what makes the Edit modal's "changes are written back to agent.toml" true in both
 directions — external edits reach the UI without a restart.
 
 ## 6. Screens and state
 
-Five screens per the handoff: Agents Grid (default), Agent Detail, Skills, MCP Servers,
-New Agent. Tasks and Spend stay disabled placeholders.
+Six screens per the handoff: Agents Grid (default), Agent Detail, Skills, MCP Servers,
+New Agent, and Tasks. Spend stays a disabled placeholder.
 
 Zustand store mirrors the handoff's State Management section exactly: `screen`,
 `agentId`, `mode`, `sess` (agentId -> sessionId), `mcpTab`, `openTools`, `query`,
@@ -307,9 +313,11 @@ Each was raised and decided explicitly:
 9. **Prices are shown only where Roster knows them.** The Claude table is data Roster
    owns; Codex publishes no prices, so that column is left empty rather than invented.
    Codex's model list is read from the CLI's own cache.
-10. **Handoff is Claude-only for now.** It is implemented as an in-process MCP server
-    exposing `list_agents` and `open_session`, which only the Claude runner supports.
-    Codex and custom runners can be handed *to*, but cannot yet hand off.
+10. **Handoff and the task tools are Claude-only for now.** Both are implemented on one
+    in-process MCP server — `list_agents` and `open_session`, plus `list_tasks`,
+    `read_task`, `update_task`, `comment_on_task` and `create_task` — which only the
+    Claude runner supports. Codex and custom runners can be handed *to* and assigned a
+    task, but cannot hand off or work the board themselves.
 11. **The skills tree uses folder and file icons, not the handoff's dots.** The
     handoff separates them by the radius of a 5px dot — `1.5px` against `50%` —
     which reads as noise at that size. Shape now carries the distinction and colour
@@ -334,10 +342,83 @@ Each was raised and decided explicitly:
     close — in the app's own status palette rather than macOS's saturated one,
     which would shout beside everything else in the chrome. Colour is never
     the only signal: each keeps its `aria-label` and gains a tooltip.
-15. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+15. **Tasks ships; Spend does not.** §6 originally said both stayed placeholders. The
+    board is now real, backed by SQLite, with the projects the handoff's data model
+    already named.
+16. **`TaskStore` carries a change subscription**, unlike the other SQLite stores. §5's
+    "Roster is the only writer, so a row cannot change underneath it" stops being true
+    the moment an agent holds the task tools, so this store publishes its changes and
+    the IPC layer bridges them to the renderer — the same shape `SessionManager` uses.
+17. **History attributes a move to whoever made it**, not to the task's assignee as the
+    prototype does. Roster knows who acted — a drag is the user, a tool call is the
+    agent — where the prototype had to guess from the assignee field.
+18. **Two dependencies beyond the handoff's suggested stack**, both raised before use:
+    `@dnd-kit/core` + `@dnd-kit/sortable` for the board, and `react-markdown` +
+    `remark-gfm` for task descriptions. dnd-kit was chosen over native HTML5 drag for
+    keyboard dragging; react-markdown over the prototype's line parser because agents
+    write these descriptions and will emit fences, tables and links the parser would
+    print as literal text. Raw HTML stays disabled for the same reason.
+19. **`Modal` and `Select` primitives extracted.** Three modals became six, and the
+    overlay chrome had already drifted — `EditAgentModal` closed on Escape and
+    `McpServerModal` did not. Both now share one shell, which fixes that. `Select` is a
+    real `<select>`, as the handoff specifies, so keyboard and screen-reader behaviour
+    come for free.
+20. **Task keys are `ROS-<n>` from a durable counter**, not per-project prefixes and not
+    a row count. Deleting ROS-3 must not hand the next task the same key, or two History
+    logs referring to it mean different things.
+21. **Sessions carry a hand-assigned `projectId`**, set from a picker in the Agent Detail
+    config rail. The handoff shows the Agents Grid project filter but never says where a
+    session's project comes from, and nothing can infer it — the handoff's own roster has
+    four agents sharing `~/work/api`, so a cwd says nothing about which piece of work a
+    session is.
+22. **A task card is a `div` with `role="button"`, not a `<button>`.** Enter opens the
+    task and Space lifts it for a keyboard drag; a native button activates on Space too,
+    which would fight the drag sensor for the same key.
+23. **The board has no status bar.** The handoff specifies the decorative footer for the
+    Agents Grid only.
+
+24. **The grid's status bar totals the roster, not "the session".** The handoff puts a
+    tokens/cost readout at the right of that bar and labels it `session`, but no session
+    is current on the Agents Grid — the prototype's figure was static demo text. It now
+    sums what every agent has spent, which is the honest figure at that altitude.
+25. **The skills editor is a highlighted textarea, not a read-only code view.** The
+    handoff specifies a line-numbered, markdown-coloured view; the real file is editable,
+    and a `<textarea>` cannot colour its own contents. The colour is a `<pre>` and the
+    textarea sits transparently over it, so the 46px gutter and the header/code/list
+    colouring are as specified while the file stays editable. Nothing is hidden or
+    reflowed — backticks stay visible, because this is an editor and what you see has to
+    be what is on disk.
+
+26. **The task detail's assignee opens on an empty query.** The prototype pre-fills the
+    field with the current assignee's name, which then filters the suggestion list down
+    to that one agent — putting "Unassigned" and every other agent out of reach of the
+    control meant to offer them. The name still shows whenever the field is closed.
+
+27. **Chat messages render Markdown.** §2 specifies a plain-text body that preserves
+    newlines, which is what the prototype's hand-written demo prose needed. Real agents
+    write Markdown on almost every turn — fenced code, headings, lists — and a live turn
+    showed the backticks printing verbatim. Bodies now go through the same renderer the
+    task board uses, so a fence looks the same wherever an agent wrote it. Raw HTML stays
+    disabled, as it is there. Requested explicitly after the drift was reported.
+28. **Tool rows report how long the call took.** The field was plumbed through the
+    renderer but never written; the manager now stamps each call on start and fills the
+    duration in when its result lands. A call still running stays undefined, so its row
+    keeps showing `…` rather than claiming it had finished.
+
+29. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
     executes a script against the built app's real DOM and IPC. It exercises the actual
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.
+
+30. **The task board is an MCP server, listed and enabled per agent.** Roster runs it
+    in-process rather than launching it, but it appears in the Installed list beside the
+    servers from `mcp.json` and is switched on per agent the same way — by name, in that
+    agent's `mcp_servers`. Which agents may change the board is a real decision, and the
+    MCP screen is already where per-agent tool access is granted; a second mechanism
+    would be a second place it could be wrong. Handoff stays ungated: it opens sessions
+    inside Roster and changes nothing a person owns. Built-ins are never written into
+    `mcp.json`, have no launch command or environment, and cannot be shadowed by an
+    entry of the same name.
 
 ## 14. Build order
 

@@ -3,6 +3,8 @@ import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { normalizeClaudeMessage } from './normalizeClaude'
+import { ROSTER_TOOL_NAMES } from './handoffTool'
+import { TASK_TOOL_NAMES } from './taskTools'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
 
 /**
@@ -16,9 +18,6 @@ const MODELS: ModelInfo[] = [
   { id: 'claude-sonnet-5', price: '$3 / $15' },
   { id: 'claude-haiku-4-5', price: '$1 / $5' },
 ]
-
-/** Roster's own MCP tools, namespaced as the SDK exposes them. */
-const ROSTER_TOOLS = ['mcp__roster__list_agents', 'mcp__roster__open_session']
 
 interface PendingApproval {
   resolve(decision: ApprovalDecision): void
@@ -71,20 +70,21 @@ export class ClaudeRunner implements Runner {
         // Prose arrives token by token rather than a paragraph at a time.
         includePartialMessages: true,
         // Roster's own tools are affordances of the app, not actions on the
-        // user's machine — asking permission to look at the roster or open a
-        // session would be friction with nothing behind it.
-        allowedTools: ROSTER_TOOLS,
+        // user's machine — asking permission to look at the roster, open a
+        // session or move a card would be friction with nothing behind it.
+        // Who may touch the board is decided by whether the "tasks" server is
+        // registered for this agent at all, not by this gate.
+        allowedTools: [...ROSTER_TOOL_NAMES, ...TASK_TOOL_NAMES],
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
         ...(options.skillPaths.length > 0 ? { additionalDirectories: options.skillPaths } : {}),
-        ...(Object.keys(options.mcpServers).length > 0 || options.rosterTools
+        ...(Object.keys(options.mcpServers).length > 0 ||
+        Object.keys(options.inProcessMcpServers ?? {}).length > 0
           ? {
               mcpServers: {
                 ...toMcpConfig(options.mcpServers),
-                ...(options.rosterTools
-                  ? { roster: options.rosterTools as McpServerConfig }
-                  : {}),
+                ...(options.inProcessMcpServers as Record<string, McpServerConfig> | undefined),
               },
             }
           : {}),

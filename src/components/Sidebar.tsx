@@ -5,7 +5,7 @@ import { Logo } from './Logo'
 import { StatusDot } from './primitives'
 
 interface NavItem {
-  key: Screen | 'tasks' | 'spend'
+  key: Screen | 'spend'
   label: string
   disabled?: boolean
 }
@@ -14,7 +14,7 @@ const NAV: NavItem[] = [
   { key: 'grid', label: 'Agents' },
   { key: 'skills', label: 'Skills' },
   { key: 'mcp', label: 'MCP servers' },
-  { key: 'tasks', label: 'Tasks', disabled: true },
+  { key: 'tasks', label: 'Tasks' },
   { key: 'spend', label: 'Spend', disabled: true },
 ]
 
@@ -27,13 +27,14 @@ export function Sidebar() {
   const allAgents = useRoster((s) => s.agents)
   const skills = useRoster((s) => s.skills)
   const mcpServers = useRoster((s) => s.mcpServers)
+  const tasks = useRoster((s) => s.tasks)
   const agents = useRoster(useShallow(selectSidebarAgents))
 
   const counts: Record<string, string> = {
     grid: String(allAgents.length),
     skills: String(skills.length),
     mcp: String(mcpServers.length),
-    tasks: 'soon',
+    tasks: String(tasks.length),
     spend: 'soon',
   }
 

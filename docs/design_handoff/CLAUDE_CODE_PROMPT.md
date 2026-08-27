@@ -4,7 +4,7 @@ Paste this in to kick off the build:
 
 ---
 
-I'm building Roster, a desktop app for managing a roster of AI coding agents (each with a provider/model, working directory, skills, and MCP servers), chatting with them, watching their terminals, approving risky actions, and letting agents hand off sessions to each other.
+I'm building Roster, a desktop app for managing a roster of AI coding agents (each with a provider/model, working directory, skills, and MCP servers), chatting with them, watching their terminals, approving risky actions, and letting agents hand off sessions to each other. It also has a shared Linear-style Tasks kanban board (grouped by project) that agents and humans both use to pick up and track work.
 
 I have a full design handoff in `design_handoff_roster/`:
 - `README.md` — screens, layout, design tokens (colors, type, spacing), interactions, and state shape
@@ -27,7 +27,8 @@ Read the README and the prototype first, then set up the project and build it.
 1. Scaffold the shell (Tauri/Electron + React + Tailwind) with the sidebar + routing between the 5 screens, static first.
 2. Wire real state management and the Agents Grid against a small in-memory/mock data layer matching the README's data model.
 3. Build Agent Detail (chat pane first, then terminal via xterm.js + real pty, then the config rail and edit modal).
-4. Build Skills and MCP Servers screens against real filesystem/config reads.
-5. Wire actual model calls so chat is live, then approval-gating for risky tool calls.
+4. Build the Tasks board (kanban columns, task detail modal with Markdown description + Comments/History tabs, Projects CRUD modal) against the same data layer.
+5. Build Skills and MCP Servers screens against real filesystem/config reads.
+6. Wire actual model calls so chat is live, then approval-gating for risky tool calls, then let agents create/update/comment on tasks as part of their tool loop.
 
 Ask me before introducing any dependency not listed above, and before deviating from the visual spec in the README.

@@ -371,6 +371,38 @@ describe('SessionManager.send — tools', () => {
     expect(tool).toMatchObject({ output: '1 passed in 8.31s', isError: false })
   })
 
+  test('times the call, so the row can say how long it took', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([
+        { kind: 'tool', id: 't1', name: 'Bash', args: 'pytest -k leak' },
+        { kind: 'result', id: 't1', output: '1 passed', isError: false },
+      ]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const tool = sessions.messages(session.id).find((m) => m.kind === 'tool')
+    // The design puts a duration at the right of every tool row; without
+    // this the field stays undefined and the row renders blank there.
+    expect(tool).toHaveProperty('durationMs')
+    expect((tool as { durationMs: number }).durationMs).toBeGreaterThanOrEqual(0)
+  })
+
+  test('leaves a call still running without a duration', async () => {
+    runnerStub.run.mockImplementation(
+      streamOf([{ kind: 'tool', id: 't1', name: 'Bash', args: 'sleep 10' }]),
+    )
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    // The row shows "…" until the result lands; a duration would claim it
+    // had finished.
+    const tool = sessions.messages(session.id).find((m) => m.kind === 'tool')
+    expect((tool as { durationMs?: number }).durationMs).toBeUndefined()
+  })
+
   test('persists a failed tool result as an error', async () => {
     runnerStub.run.mockImplementation(
       streamOf([
@@ -528,6 +560,36 @@ describe('SessionManager — what the runner is given', () => {
 
     const options = runnerStub.run.mock.calls[0]?.[1] as { mcpServers: Record<string, unknown> }
     expect(options.mcpServers).toEqual({})
+  })
+
+  test('does not try to launch a built-in as a subprocess', async () => {
+    // "tasks" runs in-process. Treating it as a normal entry would both warn
+    // about a missing mcp.json entry and try to spawn an empty command.
+    const written: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk))
+      return true
+    })
+    const board = [
+      { ...AGENTS[0]!, mcpServers: ['filesystem', 'tasks'] },
+      ...AGENTS.slice(1),
+    ]
+    const solo = new SessionManager(
+      { findAll: () => board, findById: (id: string) => board.find((a) => a.id === id) ?? null } as never,
+      sessions,
+      { findAll: () => SKILLS } as never,
+      { findAll: () => [{ name: 'filesystem', command: 'npx server-filesystem ~', env: {} }] } as never,
+      usage,
+    )
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = solo.create('debugging', 'x')
+    await solo.send(session.id, 'go')
+    spy.mockRestore()
+
+    const options = runnerStub.run.mock.calls[0]?.[1] as { mcpServers: Record<string, unknown> }
+    expect(Object.keys(options.mcpServers)).toEqual(['filesystem'])
+    expect(written.join('')).not.toContain('tasks')
   })
 
   test('skips a server the agent names that mcp.json does not define', async () => {

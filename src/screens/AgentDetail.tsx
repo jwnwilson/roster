@@ -5,9 +5,12 @@ import { statusColor } from '@shared/status'
 import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
-import { SectionLabel, Segmented, StatusDot } from '@/components/primitives'
+import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
 import { agentStatus, NO_SESSIONS, selectCurrentAgent, useRoster, type PaneMode } from '@/state/store'
+
+/** The "no project" option value, distinct from a real project id. */
+const NO_PROJECT = 'none'
 
 const MODES = [
   { value: 'chat' as const, label: 'Chat' },
@@ -407,6 +410,57 @@ function SessionCard() {
           </>
         )}
       </div>
+
+      <SessionProject sessionId={activeId} />
     </section>
+  )
+}
+
+/**
+ * Which project this session's work belongs to.
+ *
+ * Nothing infers it — the roster's own agents share working directories, so
+ * a cwd says nothing about which piece of work a session is. This is the one
+ * place a session gets a project, and it is what the Agents Grid filter
+ * reads.
+ */
+function SessionProject({ sessionId }: { sessionId: string }) {
+  const projects = useRoster(useShallow((s) => s.projects))
+  const agentId = useRoster((s) => s.agentId)
+  const current = useRoster((s) =>
+    (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
+      (session) => session.id === sessionId,
+    ),
+  )
+
+  if (projects.length === 0) return null
+
+  async function choose(value: string): Promise<void> {
+    const projectId = value === NO_PROJECT ? null : value
+    const updated = await window.roster.sessions.setProject(sessionId, projectId)
+
+    useRoster.setState((s) => ({
+      sessions: Object.fromEntries(
+        Object.entries(s.sessions).map(([id, list]) => [
+          id,
+          list.map((session) => (session.id === updated.id ? updated : session)),
+        ]),
+      ),
+    }))
+  }
+
+  return (
+    <div className="flex flex-col gap-[7px]">
+      <span className="text-base text-dim">Project</span>
+      <Select
+        ariaLabel="Session project"
+        value={current?.projectId ?? NO_PROJECT}
+        onChange={(value) => void choose(value)}
+        options={[
+          { value: NO_PROJECT, label: 'No project' },
+          ...projects.map((project) => ({ value: project.id, label: project.name })),
+        ]}
+      />
+    </div>
   )
 }

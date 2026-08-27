@@ -92,21 +92,33 @@ function Installed({ onEdit }: EditsServers) {
           className="relative flex flex-col gap-[11px] rounded-[9px] border border-line bg-card px-[15px] py-[13px] hover:border-line-hover"
           data-hoverable
         >
-          <button
-            type="button"
-            aria-label={`Configure ${server.name}`}
-            onClick={() => onEdit({ name: server.name, command: server.command, installing: false })}
-            className="flex cursor-pointer items-center gap-[10px] border-0 bg-transparent p-0 text-left after:absolute after:inset-0 after:content-['']"
-          >
-            <ServerGlyph name={server.name} />
-            <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
-            <span className="truncate font-mono text-sm text-dim-2">{server.command}</span>
-            <span className="ml-auto flex-none text-base text-dim">
-              {countEnabled(agents, server.name) === 1
-                ? '1 agent'
-                : `${countEnabled(agents, server.name)} agents`}
-            </span>
-          </button>
+          {server.builtin ? (
+            // Nothing to configure — no command, no environment. The card is
+            // here for the chips below it, so it is not a button.
+            <div className="flex items-center gap-[10px]">
+              <ServerGlyph name={server.name} />
+              <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
+              <span className="flex-none rounded-chip border border-line-input px-[7px] py-[1px] text-xs text-dim">
+                Built in
+              </span>
+              <span className="truncate text-sm text-dim-2">{server.description}</span>
+              <AgentCount agents={agents} server={server.name} />
+            </div>
+          ) : (
+            <button
+              type="button"
+              aria-label={`Configure ${server.name}`}
+              onClick={() =>
+                onEdit({ name: server.name, command: server.command, installing: false })
+              }
+              className="flex cursor-pointer items-center gap-[10px] border-0 bg-transparent p-0 text-left after:absolute after:inset-0 after:content-['']"
+            >
+              <ServerGlyph name={server.name} />
+              <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
+              <span className="truncate font-mono text-sm text-dim-2">{server.command}</span>
+              <AgentCount agents={agents} server={server.name} />
+            </button>
+          )}
 
           <div className="relative z-[1] flex flex-wrap gap-[7px]">
             {agents.map((agent) => {
@@ -143,6 +155,15 @@ function Installed({ onEdit }: EditsServers) {
 /** How many agents name this server in their `mcp_servers`. */
 function countEnabled(agents: Agent[], server: string): number {
   return agents.filter((agent) => agent.mcpServers.includes(server)).length
+}
+
+function AgentCount({ agents, server }: { agents: Agent[]; server: string }) {
+  const count = countEnabled(agents, server)
+  return (
+    <span className="ml-auto flex-none text-base text-dim">
+      {count === 1 ? '1 agent' : `${count} agents`}
+    </span>
+  )
 }
 
 /** The launch command Roster writes when installing from the registry. */

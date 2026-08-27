@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { AgentsGrid } from '@/screens/AgentsGrid'
 import { useRoster } from '@/state/store'
-import { anAgent, aSession } from './factories'
+import { anAgent, aProject, aSession } from './factories'
 
 const INITIAL = useRoster.getState()
 
@@ -328,5 +328,139 @@ describe('AgentsGrid — spend', () => {
 
     expect(screen.getByText('1.0k tok')).toBeInTheDocument()
     expect(screen.getByText('2.0k tok')).toBeInTheDocument()
+  })
+})
+
+describe('AgentsGrid — project filter', () => {
+  const PROJECTS = [
+    aProject({ id: 'p1', name: 'API reliability' }),
+    aProject({ id: 'p2', name: 'Q3 planning' }),
+  ]
+
+  beforeEach(() => {
+    useRoster.setState({
+      projects: PROJECTS,
+      agents: [
+        anAgent({ id: 'debugging', name: 'Debugging Agent' }),
+        anAgent({ id: 'estimation', name: 'Estimation Agent' }),
+      ],
+      sessions: {
+        debugging: [
+          aSession({ id: 'd1', agentId: 'debugging', title: 'Pool leak', projectId: 'p1' }),
+          aSession({ id: 'd2', agentId: 'debugging', title: 'Roadmap split', projectId: 'p2' }),
+        ],
+        estimation: [
+          aSession({ id: 'e1', agentId: 'estimation', title: 'Estimates', projectId: 'p2' }),
+        ],
+      },
+    })
+  })
+
+  test('offers every project plus an all-projects option', () => {
+    render(<AgentsGrid />)
+
+    const select = screen.getByLabelText('Filter by project')
+    expect(within(select).getByText('All projects')).toBeInTheDocument()
+    expect(within(select).getByText('API reliability')).toBeInTheDocument()
+    expect(within(select).getByText('Q3 planning')).toBeInTheDocument()
+  })
+
+  test('shows every agent until a project is picked', () => {
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('Debugging Agent')).toBeInTheDocument()
+    expect(screen.getByText('Estimation Agent')).toBeInTheDocument()
+  })
+
+  test('hides an agent with no session in the chosen project', async () => {
+    const user = userEvent.setup()
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+
+    expect(screen.getByText('Debugging Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Estimation Agent')).not.toBeInTheDocument()
+  })
+
+  test('narrows the chips on a card it keeps, not just the cards', async () => {
+    const user = userEvent.setup()
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+
+    // A card that survives the filter but still lists every session would
+    // be lying about what it is showing.
+    expect(screen.getByText('Pool leak')).toBeInTheDocument()
+    expect(screen.queryByText('Roadmap split')).not.toBeInTheDocument()
+  })
+
+  test('hides an agent whose sessions have no project at all', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({
+      sessions: {
+        debugging: [aSession({ id: 'd1', agentId: 'debugging', projectId: null })],
+      },
+    })
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+
+    expect(screen.queryByText('Debugging Agent')).not.toBeInTheDocument()
+  })
+
+  test('switches the summary to a match count while filtering by project', async () => {
+    const user = userEvent.setup()
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+
+    expect(screen.getByText('1 of 2 match')).toBeInTheDocument()
+  })
+
+  test('combines with the text filter rather than replacing it', async () => {
+    const user = userEvent.setup()
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p2')
+    await user.type(screen.getByLabelText('Filter agents'), 'estimation')
+
+    expect(screen.getByText('Estimation Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Debugging Agent')).not.toBeInTheDocument()
+  })
+
+  test('says nothing matched rather than offering to create an agent', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ sessions: {} })
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+
+    expect(screen.getByText('No agents match that filter.')).toBeInTheDocument()
+  })
+})
+
+describe('AgentsGrid — status bar', () => {
+  test('carries the handoff note about agent-opened sessions', () => {
+    render(<AgentsGrid />)
+    expect(screen.getByText('session opened by another agent')).toBeInTheDocument()
+  })
+
+  test('totals what the whole roster has spent', () => {
+    useRoster.setState({
+      agentUsage: {
+        architect: { tokens: 200_000, costUsd: 2.5 },
+        debugging: { tokens: 212_000, costUsd: 1.37 },
+      },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('roster 412.0k tok · $3.87')).toBeInTheDocument()
+  })
+
+  test('reads as zero rather than blank when nothing has run', () => {
+    useRoster.setState({ agentUsage: {} })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('roster 0 tok · $0.00')).toBeInTheDocument()
   })
 })

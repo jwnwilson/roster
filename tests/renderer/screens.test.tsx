@@ -7,7 +7,7 @@ import { NewAgent } from '@/screens/NewAgent'
 import { Skills, relativeTime } from '@/screens/Skills'
 import { Sidebar } from '@/components/Sidebar'
 import { useRoster } from '@/state/store'
-import { anAgent, aRunner, aSkill, anMcpServer } from './factories'
+import { anAgent, aRunner, aSkill, aTask, anMcpServer } from './factories'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
@@ -35,12 +35,29 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: /^Skills/ })).toHaveTextContent('1')
   })
 
-  test('Tasks and Spend remain disabled placeholders', () => {
+  test('Spend remains a disabled placeholder', () => {
     render(<Sidebar />)
 
-    expect(screen.getByRole('button', { name: /Tasks/ })).toBeDisabled()
     expect(screen.getByRole('button', { name: /Spend/ })).toBeDisabled()
-    expect(screen.getAllByText('soon')).toHaveLength(2)
+    expect(screen.getAllByText('soon')).toHaveLength(1)
+  })
+
+  test('Tasks is a real screen, counting what is on the board', () => {
+    useRoster.setState({ tasks: [aTask({ id: 'ROS-1' }), aTask({ id: 'ROS-2' })] })
+    render(<Sidebar />)
+
+    const tasks = screen.getByRole('button', { name: /Tasks/ })
+    expect(tasks).not.toBeDisabled()
+    expect(tasks).toHaveTextContent('2')
+  })
+
+  test('navigates to the board', async () => {
+    const user = userEvent.setup()
+    render(<Sidebar />)
+
+    await user.click(screen.getByRole('button', { name: /Tasks/ }))
+
+    expect(useRoster.getState().screen).toBe('tasks')
   })
 
   test('navigates between screens', async () => {
@@ -226,6 +243,49 @@ describe('McpServers', () => {
     await user.click(screen.getAllByRole('button', { name: 'Debugging' })[0]!)
 
     expect(window.roster.mcp.setEnabled).toHaveBeenCalledWith('filesystem', 'debugging', false)
+  })
+
+  test('a built-in is listed with what it does, not a launch command', () => {
+    useRoster.setState({
+      mcpServers: [
+        anMcpServer({
+          name: 'tasks',
+          command: '',
+          builtin: true,
+          description: 'Read and change tasks on the shared board.',
+        }),
+      ],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
+    })
+    render(<McpServers />)
+
+    expect(screen.getByText('tasks')).toBeInTheDocument()
+    expect(screen.getByText('Built in')).toBeInTheDocument()
+    expect(screen.getByText('Read and change tasks on the shared board.')).toBeInTheDocument()
+  })
+
+  test('a built-in has nothing to configure, so it does not open the editor', () => {
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'tasks', command: '', builtin: true, description: 'The board.' })],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
+    })
+    render(<McpServers />)
+
+    // There is no command and no environment; save would be refused anyway.
+    expect(screen.queryByRole('button', { name: 'Configure tasks' })).not.toBeInTheDocument()
+  })
+
+  test('a built-in is still enabled per agent, like any other server', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'tasks', command: '', builtin: true, description: 'The board.' })],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
+    })
+    render(<McpServers />)
+
+    await user.click(screen.getByRole('button', { name: 'Debugging' }))
+
+    expect(window.roster.mcp.setEnabled).toHaveBeenCalledWith('tasks', 'debugging', true)
   })
 
   test('re-reads the agents, since enablement lives in agent.toml', async () => {

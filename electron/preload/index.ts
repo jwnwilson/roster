@@ -5,6 +5,7 @@ import {
   type PtySize,
   type RosterApi,
   type SessionEventPayload,
+  type TaskEventPayload,
 } from '../../shared/ipc'
 import type { Agent } from '../../shared/types'
 
@@ -46,6 +47,8 @@ const api: RosterApi = {
     usageByAgent: () => ipcRenderer.invoke(CHANNELS.sessionsUsageByAgent),
     send: (sessionId, prompt) => ipcRenderer.invoke(CHANNELS.sessionsSend, sessionId, prompt),
     cancel: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsCancel, sessionId),
+    setProject: (sessionId, projectId) =>
+      ipcRenderer.invoke(CHANNELS.sessionsSetProject, sessionId, projectId),
     respondToApproval: (sessionId, approvalId, approved) =>
       ipcRenderer.invoke(CHANNELS.sessionsRespondToApproval, sessionId, approvalId, approved),
     pendingApprovals: (sessionId) =>
@@ -85,6 +88,23 @@ const api: RosterApi = {
       ipcRenderer.invoke(CHANNELS.mcpSetEnabled, server, agentId, enabled),
     install: (name, command) => ipcRenderer.invoke(CHANNELS.mcpInstall, name, command),
     save: (name, command, env) => ipcRenderer.invoke(CHANNELS.mcpSave, name, command, env),
+  },
+
+  projects: {
+    list: () => ipcRenderer.invoke(CHANNELS.projectsList),
+    create: (input) => ipcRenderer.invoke(CHANNELS.projectsCreate, input),
+    update: (id, patch) => ipcRenderer.invoke(CHANNELS.projectsUpdate, id, patch),
+    remove: (id) => ipcRenderer.invoke(CHANNELS.projectsDelete, id),
+  },
+
+  tasks: {
+    list: () => ipcRenderer.invoke(CHANNELS.tasksList),
+    create: (input) => ipcRenderer.invoke(CHANNELS.tasksCreate, input),
+    apply: (taskId, change) => ipcRenderer.invoke(CHANNELS.tasksApply, taskId, change),
+    remove: (taskId) => ipcRenderer.invoke(CHANNELS.tasksDelete, taskId),
+    comments: (taskId) => ipcRenderer.invoke(CHANNELS.tasksComments, taskId),
+    comment: (taskId, text) => ipcRenderer.invoke(CHANNELS.tasksComment, taskId, text),
+    onEvent: (listener) => subscribe<TaskEventPayload>(CHANNELS.tasksEvent, listener),
   },
 
   dialog: {
