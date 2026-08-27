@@ -394,7 +394,18 @@ Each was raised and decided explicitly:
     to that one agent — putting "Unassigned" and every other agent out of reach of the
     control meant to offer them. The name still shows whenever the field is closed.
 
-27. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+27. **Chat messages render Markdown.** §2 specifies a plain-text body that preserves
+    newlines, which is what the prototype's hand-written demo prose needed. Real agents
+    write Markdown on almost every turn — fenced code, headings, lists — and a live turn
+    showed the backticks printing verbatim. Bodies now go through the same renderer the
+    task board uses, so a fence looks the same wherever an agent wrote it. Raw HTML stays
+    disabled, as it is there. Requested explicitly after the drift was reported.
+28. **Tool rows report how long the call took.** The field was plumbed through the
+    renderer but never written; the manager now stamps each call on start and fills the
+    duration in when its result lands. A call still running stays undefined, so its row
+    keeps showing `…` rather than claiming it had finished.
+
+29. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
     executes a script against the built app's real DOM and IPC. It exercises the actual
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.
