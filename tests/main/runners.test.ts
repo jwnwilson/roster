@@ -222,3 +222,36 @@ describe('describeCommand', () => {
     expect(describeCommand('Bash', { command: '' })).toBe('Bash')
   })
 })
+
+describe('roster tool allowlist', () => {
+  test('covers every tool the roster MCP server registers', async () => {
+    const { ROSTER_TOOL_NAMES, createRosterMcpServer } = await import('@main/runners/handoffTool')
+
+    const server = (await createRosterMcpServer(
+      { listAgents: () => [], openSession: () => ({ sessionId: 's', label: 'l' }) },
+      'me',
+      {
+        list: () => [],
+        find: () => null,
+        comments: () => [],
+        projectName: () => null,
+        agentName: () => null,
+        create: () => ({}) as never,
+        update: () => ({}) as never,
+        comment: () => {},
+      },
+    )) as { instance?: { _registeredTools?: Record<string, unknown> } }
+
+    const registered = Object.keys(server.instance?._registeredTools ?? {})
+    // Every tool, not just some: a server that quietly stopped registering
+    // the task tools would otherwise still pass.
+    expect(registered).toHaveLength(ROSTER_TOOL_NAMES.length)
+
+    // A tool that is registered but not allowlisted does not fail loudly —
+    // it silently blocks on the approval gate, which is how the task tools
+    // shipped unusable the first time.
+    for (const name of registered) {
+      expect(ROSTER_TOOL_NAMES).toContain(`mcp__roster__${name}`)
+    }
+  })
+})

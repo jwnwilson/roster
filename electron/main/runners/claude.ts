@@ -3,6 +3,7 @@ import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { normalizeClaudeMessage } from './normalizeClaude'
+import { ROSTER_TOOL_NAMES } from './handoffTool'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
 
 /**
@@ -16,9 +17,6 @@ const MODELS: ModelInfo[] = [
   { id: 'claude-sonnet-5', price: '$3 / $15' },
   { id: 'claude-haiku-4-5', price: '$1 / $5' },
 ]
-
-/** Roster's own MCP tools, namespaced as the SDK exposes them. */
-const ROSTER_TOOLS = ['mcp__roster__list_agents', 'mcp__roster__open_session']
 
 interface PendingApproval {
   resolve(decision: ApprovalDecision): void
@@ -73,7 +71,7 @@ export class ClaudeRunner implements Runner {
         // Roster's own tools are affordances of the app, not actions on the
         // user's machine — asking permission to look at the roster or open a
         // session would be friction with nothing behind it.
-        allowedTools: ROSTER_TOOLS,
+        allowedTools: [...ROSTER_TOOL_NAMES],
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
