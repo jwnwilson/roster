@@ -389,7 +389,12 @@ Each was raised and decided explicitly:
     reflowed — backticks stay visible, because this is an editor and what you see has to
     be what is on disk.
 
-26. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+26. **The task detail's assignee opens on an empty query.** The prototype pre-fills the
+    field with the current assignee's name, which then filters the suggestion list down
+    to that one agent — putting "Unassigned" and every other agent out of reach of the
+    control meant to offer them. The name still shows whenever the field is closed.
+
+27. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
     executes a script against the built app's real DOM and IPC. It exercises the actual
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.

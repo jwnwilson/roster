@@ -12,11 +12,11 @@ import type { TaskChange } from '@shared/ipc'
 import { Markdown } from '@/components/Markdown'
 import { Modal, SectionLabel, Segmented, Select } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
-import { NO_COMMENTS, selectOpenTask, useRoster, type TaskTab } from '@/state/store'
+import { NO_COMMENTS, agentStatus, selectOpenTask, useRoster, type TaskTab } from '@/state/store'
+import { AssigneeField } from '@/components/AssigneeField'
 import { LabelChips } from './TaskFields'
 
 const NO_PROJECT = 'none'
-const UNASSIGNED = 'unassigned'
 
 export function TaskDetailModal() {
   const task = useRoster(selectOpenTask)
@@ -24,6 +24,13 @@ export function TaskDetailModal() {
   const setTaskComments = useRoster((s) => s.setTaskComments)
   const agents = useRoster(useShallow((s) => s.agents))
   const projects = useRoster(useShallow((s) => s.projects))
+  // A map, not a function: a selector returning a fresh closure re-renders
+  // forever under zustand v5, exactly as store.ts warns.
+  const statuses = useRoster(
+    useShallow((s) =>
+      Object.fromEntries(s.agents.map((agent) => [agent.id, agentStatus(s, agent)])),
+    ),
+  )
   const thread = useRoster(useShallow((s) => (task ? (s.taskComments[task.id] ?? NO_COMMENTS) : NO_COMMENTS)))
 
   const [error, setError] = useState<string | null>(null)
@@ -89,7 +96,7 @@ export function TaskDetailModal() {
           {error ? <p className="m-0 text-md text-error">{error}</p> : null}
         </div>
 
-        <aside className="flex w-meta flex-none flex-col gap-[16px] overflow-y-auto border-l border-line bg-rail p-[14px]">
+        <aside className="flex w-task-rail flex-none flex-col gap-[16px] overflow-y-auto border-l border-line bg-rail p-[14px]">
           <Rail label="Status">
             <Select
               ariaLabel="Status"
@@ -114,16 +121,11 @@ export function TaskDetailModal() {
           </Rail>
 
           <Rail label="Assignee">
-            <Select
-              ariaLabel="Assignee"
-              value={task.assigneeId ?? UNASSIGNED}
-              onChange={(value) =>
-                void apply({ field: 'assignee', value: value === UNASSIGNED ? null : value })
-              }
-              options={[
-                { value: UNASSIGNED, label: 'Unassigned' },
-                ...agents.map((agent) => ({ value: agent.id, label: agent.name })),
-              ]}
+            <AssigneeField
+              agents={agents}
+              value={task.assigneeId}
+              statuses={statuses}
+              onChange={(value) => void apply({ field: 'assignee', value })}
             />
           </Rail>
 

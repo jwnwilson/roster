@@ -159,7 +159,7 @@ describe('TaskDetailModal — the rail', () => {
 
     expect(await screen.findByLabelText('Status')).toHaveValue('in_review')
     expect(screen.getByLabelText('Priority')).toHaveValue('urgent')
-    expect(screen.getByLabelText('Assignee')).toHaveValue('unassigned')
+    expect(screen.getByLabelText('Assignee')).toHaveValue('')
     expect(screen.getByLabelText('Project')).toHaveValue('none')
   })
 
@@ -176,18 +176,28 @@ describe('TaskDetailModal — the rail', () => {
     })
   })
 
-  test('assigning sends the agent id, and unassigning sends null', async () => {
+  test('assigning by picking a suggestion sends the agent id', async () => {
     const user = userEvent.setup()
     const api = installRosterApi({ tasks: { apply: vi.fn().mockResolvedValue(TASK) } })
     render(<TaskDetailModal />)
 
-    await user.selectOptions(await screen.findByLabelText('Assignee'), 'debugging')
+    await user.click(await screen.findByLabelText('Assignee'))
+    await user.click(screen.getByRole('option', { name: /Debugging Agent/ }))
+
     expect(api.tasks.apply).toHaveBeenCalledWith('ROS-101', {
       field: 'assignee',
       value: 'debugging',
     })
+  })
 
-    await user.selectOptions(screen.getByLabelText('Assignee'), 'unassigned')
+  test('picking Unassigned sends null', async () => {
+    const user = userEvent.setup()
+    const api = installRosterApi({ tasks: { apply: vi.fn().mockResolvedValue(TASK) } })
+    render(<TaskDetailModal />)
+
+    await user.click(await screen.findByLabelText('Assignee'))
+    await user.click(screen.getByRole('option', { name: /Unassigned/ }))
+
     expect(api.tasks.apply).toHaveBeenCalledWith('ROS-101', {
       field: 'assignee',
       value: null,

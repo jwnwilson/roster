@@ -110,6 +110,7 @@
   --spacing-rail: 260px;
   --spacing-tree: 196px;
   --spacing-meta: 188px;
+  --spacing-task-rail: 196px; /* task detail's right rail — handoff §6 */
   --spacing-header: 44px;
   --spacing-statusbar: 38px;
 
