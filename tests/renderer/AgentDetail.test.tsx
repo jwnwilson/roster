@@ -152,6 +152,53 @@ describe('AgentDetail — approval banner', () => {
   })
 })
 
+describe('AgentDetail — approving a plan', () => {
+  const PLAN = {
+    id: 'a1',
+    sessionId: 's1',
+    toolName: 'ExitPlanMode',
+    command: '## Fix the connection pool leak',
+    status: 'pending' as const,
+    createdAt: 0,
+  }
+
+  beforeEach(() => {
+    withSessions([aSession({ id: 's1', status: 'approval' })])
+    useRoster.setState({ approvals: { s1: [PLAN] }, planMode: { s1: true } })
+  })
+
+  test('reads as a plan rather than as a command to run', async () => {
+    render(<AgentDetail />)
+
+    expect(await screen.findByText(/agent has a plan/)).toBeInTheDocument()
+    expect(screen.getByText('## Fix the connection pool leak')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start work' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Keep planning' })).toBeInTheDocument()
+  })
+
+  test('starting work takes the session out of plan mode', async () => {
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Start work' }))
+
+    // Otherwise the next turn would still refuse to edit, and the agent would
+    // re-plan the work it was just told to start.
+    expect(window.roster.sessions.respondToApproval).toHaveBeenCalledWith('s1', 'a1', true)
+    expect(useRoster.getState().planMode['s1']).toBe(false)
+  })
+
+  test('keeping planning leaves plan mode on', async () => {
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Keep planning' }))
+
+    expect(window.roster.sessions.respondToApproval).toHaveBeenCalledWith('s1', 'a1', false)
+    expect(useRoster.getState().planMode['s1']).toBe(true)
+  })
+})
+
 describe('AgentDetail — config rail', () => {
   test('lists the agent configuration', async () => {
     render(<AgentDetail />)

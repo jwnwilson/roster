@@ -35,9 +35,17 @@ interface ComposerProps {
   agentName: string
   skillsLine: string
   disabled: boolean
+  planMode: boolean
+  onTogglePlanMode: () => void
 }
 
-export function Composer({ agentName, skillsLine, disabled }: ComposerProps) {
+export function Composer({
+  agentName,
+  skillsLine,
+  disabled,
+  planMode,
+  onTogglePlanMode,
+}: ComposerProps) {
   return (
     <div className="flex-none border-t border-line bg-sunken px-[26px] pt-[12px] pb-[16px]">
       <ComposerPrimitive.Root className="flex flex-col gap-[9px] rounded-[9px] border border-line-card bg-card px-[12px] py-[10px]">
@@ -58,9 +66,28 @@ export function Composer({ agentName, skillsLine, disabled }: ComposerProps) {
 
         <div className="flex items-center gap-[8px]">
           <span className="truncate font-mono text-sm text-faint">{skillsLine}</span>
+          <button
+            type="button"
+            aria-pressed={planMode}
+            title="Research and propose a plan; make no edits this turn"
+            onClick={onTogglePlanMode}
+            className={`ml-auto flex flex-none cursor-pointer items-center gap-[6px] rounded-chip border px-[10px] py-[4px] font-ui text-md ${
+              planMode
+                ? 'border-accent-line bg-accent-surface text-accent-text'
+                : 'border-line-input bg-transparent text-muted-2 hover:border-line-hover'
+            }`}
+            data-hoverable
+          >
+            <span
+              aria-hidden
+              className="h-[5px] w-[5px] rounded-full"
+              style={{ background: planMode ? 'var(--color-accent)' : 'var(--color-off)' }}
+            />
+            Plan
+          </button>
           <ComposerPrimitive.Send
             disabled={disabled}
-            className="ml-auto cursor-pointer rounded-chip border-0 bg-accent px-[12px] py-[4px] font-ui text-md font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-40"
+            className="flex-none cursor-pointer rounded-chip border-0 bg-accent px-[12px] py-[4px] font-ui text-md font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-40"
           >
             Send
           </ComposerPrimitive.Send>

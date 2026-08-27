@@ -3,7 +3,7 @@
 - [x] Ensure the % of token window logic is working correctly
 - [x] Extend LLMs to work with local llms, brainstorm best approach here ollama or MLX
 - [x] Fix UX bug with a question tool call not being readable
-- [ ] Add plan mode for agents in session UI
+- [x] Add plan mode for agents in session UI
 - [ ] Project filter should be consistent between agent grid and project page
 - [ ] Add "Add Skill" button which will add a skill from a user defined directory
 - [ ] Plan for having memory for agents across sessions when they are working on projects

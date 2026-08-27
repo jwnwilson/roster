@@ -130,6 +130,13 @@ export function prettyArgs(args: string): string {
   try {
     const parsed: unknown = JSON.parse(args)
     if (typeof parsed !== 'object' || parsed === null) return args
+
+    // One text field — a plan, a file body — reads as itself. As JSON its
+    // every newline would come back as a literal \n.
+    const keys = Object.keys(parsed as Record<string, unknown>)
+    const only = keys.length === 1 ? (parsed as Record<string, unknown>)[keys[0]!] : null
+    if (typeof only === 'string') return only
+
     return JSON.stringify(parsed, null, 2)
   } catch {
     return args

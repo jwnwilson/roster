@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
-import { normalizeClaudeMessage, summariseQuestions } from './normalizeClaude'
+import { normalizeClaudeMessage, summarisePlan, summariseQuestions } from './normalizeClaude'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
 import { TASK_TOOL_NAMES } from './taskTools'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
@@ -66,7 +66,10 @@ export class ClaudeRunner implements Runner {
         // Roster owns permissions, not the user's global Claude Code config,
         // so its own allowlist is the one that applies.
         settingSources: [],
-        permissionMode: 'default',
+        // Plan mode is the SDK's own: it refuses every edit for the turn and
+        // the agent ends by proposing a plan, which reaches Roster as an
+        // ExitPlanMode approval like any other gated tool.
+        permissionMode: options.planMode === true ? 'plan' : 'default',
         // Prose arrives token by token rather than a paragraph at a time.
         includePartialMessages: true,
         // Roster's own tools are affordances of the app, not actions on the
@@ -192,6 +195,11 @@ export function describeCommand(toolName: string, input: Record<string, unknown>
   // reading before allowing it, and the bare tool name says nothing.
   const asked = summariseQuestions(input['questions'])
   if (asked !== null) return asked
+
+  // Exiting plan mode is an approval too: what is being approved is the plan,
+  // so the banner leads with its heading rather than the tool's name.
+  const planned = summarisePlan(input['plan'])
+  if (planned !== null) return planned
 
   return toolName
 }

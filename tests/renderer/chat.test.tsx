@@ -79,6 +79,8 @@ function pane(overrides: Partial<Parameters<typeof AssistantChatPane>[0]> = {}) 
       isStreaming={false}
       streamingText="Debugging Agent is working…"
       skillsLine="skills: repro-harness"
+      planMode={false}
+      onTogglePlanMode={vi.fn()}
       onSend={vi.fn()}
       onCancel={vi.fn()}
       {...overrides}
@@ -380,6 +382,30 @@ describe('SpawnBody — Markdown in the brief', () => {
   })
 })
 
+describe('the Plan toggle', () => {
+  test('is off by default and says so to assistive tech', () => {
+    render(pane())
+
+    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('reports the press rather than deciding for itself', async () => {
+    const user = userEvent.setup()
+    const onTogglePlanMode = vi.fn()
+    render(pane({ onTogglePlanMode }))
+
+    await user.click(screen.getByRole('button', { name: 'Plan' }))
+
+    expect(onTogglePlanMode).toHaveBeenCalledTimes(1)
+  })
+
+  test('shows as pressed when the session is planning', () => {
+    render(pane({ planMode: true }))
+
+    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
 describe('prettyArgs', () => {
   test('indents a JSON object so its fields can be read', () => {
     expect(prettyArgs('{"a":1}')).toBe('{\n  "a": 1\n}')
@@ -397,5 +423,10 @@ describe('prettyArgs', () => {
 
   test('passes malformed JSON through rather than losing it', () => {
     expect(prettyArgs('{"a":')).toBe('{"a":')
+  })
+
+  test('shows a lone text field as itself, not as an escaped JSON string', () => {
+    // A plan's newlines would otherwise come back as literal \n.
+    expect(prettyArgs('{"plan":"## Fix it\\n\\n1. step"}')).toBe('## Fix it\n\n1. step')
   })
 })

@@ -428,6 +428,15 @@ Each was raised and decided explicitly:
     Only when the summary is not already the whole call: a one-field call like Read's
     path gets no Arguments block, because repeating the row above it is noise.
 
+32. **Plan mode is a per-turn choice, made in the composer.** A "Plan" toggle beside
+    Send puts the next turn in the SDK's plan mode: the agent researches and proposes
+    but refuses every edit. Per session rather than per agent, and in the store rather
+    than agent.toml, because planning one piece of work says nothing about the session
+    in the tab beside it. The plan arrives as an ExitPlanMode approval, so the banner
+    leads with the plan's heading and reads "Start work" / "Keep planning" rather than
+    "Approve" / "Deny"; starting work clears plan mode, or the next turn would refuse
+    to do the work just approved.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

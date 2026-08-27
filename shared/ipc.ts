@@ -49,7 +49,7 @@ export interface RosterApi {
     usage(sessionId: string): Promise<Usage | null>
     /** Token and cost totals per agent, for the grid cards. */
     usageByAgent(): Promise<Record<string, AgentUsage>>
-    send(sessionId: string, prompt: string): Promise<void>
+    send(sessionId: string, prompt: string, options?: SendOptions): Promise<void>
     cancel(sessionId: string): Promise<void>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
@@ -116,6 +116,15 @@ export interface RosterApi {
     /** Native directory picker; resolves null when cancelled. */
     chooseDirectory(current?: string): Promise<string | null>
   }
+}
+
+/** Per-turn choices, decided at send time rather than in agent.toml. */
+export interface SendOptions {
+  /**
+   * Research and propose only. The runner refuses edits for the whole turn
+   * and the agent ends by proposing a plan, which arrives as an approval.
+   */
+  planMode?: boolean
 }
 
 export interface NewProjectInput {

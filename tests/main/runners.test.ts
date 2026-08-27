@@ -218,6 +218,12 @@ describe('describeCommand', () => {
     expect(describeCommand('WebSearch', { detail: 42 })).toBe('WebSearch')
   })
 
+  test('names the plan being approved, not the tool that presents it', () => {
+    expect(describeCommand('ExitPlanMode', { plan: '## Fix the leak\n\nsteps' })).toBe(
+      '## Fix the leak',
+    )
+  })
+
   test('names what a question tool is asking, since it has no command', () => {
     // "AskUserQuestion" on the banner says nothing about what is being asked.
     const input = { questions: [{ question: 'Which cache backend?', options: [] }] }

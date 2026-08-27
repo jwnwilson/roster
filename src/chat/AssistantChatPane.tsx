@@ -18,6 +18,8 @@ interface AssistantChatPaneProps {
   isStreaming: boolean
   streamingText: string
   skillsLine: string
+  planMode: boolean
+  onTogglePlanMode: () => void
   onSend: (prompt: string) => void
   onCancel: () => void
 }
@@ -37,6 +39,8 @@ export function AssistantChatPane({
   isStreaming,
   streamingText,
   skillsLine,
+  planMode,
+  onTogglePlanMode,
   onSend,
   onCancel,
 }: AssistantChatPaneProps) {
@@ -76,7 +80,13 @@ export function AssistantChatPane({
           {isStreaming ? <StreamingRow text={streamingText} onCancel={onCancel} /> : null}
         </ThreadPrimitive.Viewport>
 
-        <Composer agentName={agentName} skillsLine={skillsLine} disabled={isStreaming} />
+        <Composer
+          agentName={agentName}
+          skillsLine={skillsLine}
+          disabled={isStreaming}
+          planMode={planMode}
+          onTogglePlanMode={onTogglePlanMode}
+        />
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   )

@@ -7,6 +7,7 @@ import {
   type NewTaskInput,
   type ProjectPatch,
   type PtySize,
+  type SendOptions,
   type TaskChange,
 } from '../../../shared/ipc'
 import type { RunnerStatus } from '../../../shared/types'
@@ -166,8 +167,10 @@ export function registerIpc(): void {
     usageStore?.forSession(sessionId) ?? null,
   )
   ipcMain.handle(CHANNELS.sessionsUsageByAgent, () => usageStore?.byAgent() ?? {})
-  ipcMain.handle(CHANNELS.sessionsSend, (_e, sessionId: string, prompt: string) =>
-    requireManager().send(sessionId, prompt),
+  ipcMain.handle(
+    CHANNELS.sessionsSend,
+    (_e, sessionId: string, prompt: string, options?: SendOptions) =>
+      requireManager().send(sessionId, prompt, options ?? {}),
   )
   ipcMain.handle(CHANNELS.sessionsCancel, (_e, sessionId: string) =>
     requireManager().cancel(sessionId),

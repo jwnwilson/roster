@@ -16,6 +16,12 @@ import { createRosterMcpServer } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { describeActivity, THINKING } from './activity'
 
+/** Per-turn choices the caller makes, rather than the agent's configuration. */
+export interface SendOptions {
+  /** Research and propose only; see StartOptions.planMode. */
+  planMode?: boolean
+}
+
 /** Everything the manager emits so the renderer can follow a live turn. */
 export type SessionEvent =
   | { type: 'message'; sessionId: string; message: Message }
@@ -151,7 +157,7 @@ export class SessionManager {
 
   /* ---- running a turn --------------------------------------------------- */
 
-  async send(sessionId: string, prompt: string): Promise<void> {
+  async send(sessionId: string, prompt: string, options: SendOptions = {}): Promise<void> {
     if (this.active.has(sessionId)) throw new Error('this session is already running')
 
     const session = this.sessions.findById(sessionId)
@@ -226,6 +232,7 @@ export class SessionManager {
         skillPaths: this.skillPathsFor(agent),
         mcpServers: this.mcpServersFor(agent),
         signal: run.abort.signal,
+        ...(options.planMode === true ? { planMode: true } : {}),
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
         ...(session.runnerSessionId !== undefined ? { resumeFrom: session.runnerSessionId } : {}),
       })

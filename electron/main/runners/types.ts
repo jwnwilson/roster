@@ -56,6 +56,11 @@ export interface StartOptions {
    * receive these.
    */
   inProcessMcpServers?: Record<string, unknown>
+  /**
+   * Research and propose, do not act. The runner refuses edits for the whole
+   * turn and the agent presents a plan instead, which arrives as an approval.
+   */
+  planMode?: boolean
   /** Resume the CLI's own session rather than starting fresh. */
   resumeFrom?: string
   /** Resume, but branch into a new session — the handoff primitive. */

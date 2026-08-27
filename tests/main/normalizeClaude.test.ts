@@ -90,6 +90,22 @@ describe('normalizeClaudeMessage — assistant turns', () => {
     ])
   })
 
+  test('carries the plan in full, since the row shows only its heading', () => {
+    const message = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 't1', name: 'ExitPlanMode', input: { plan: '## Do it\n\nstep' } },
+        ],
+      },
+    }
+
+    expect(normalizeClaudeMessage(message)[0]).toMatchObject({
+      args: '## Do it',
+      input: '{"plan":"## Do it\\n\\nstep"}',
+    })
+  })
+
   test('carries nothing extra when one field is the whole call', () => {
     // Read's path is already on the row; an Arguments block would repeat it.
     expect(normalizeClaudeMessage(TOOL_USE)[0]).not.toHaveProperty('input')
@@ -242,6 +258,16 @@ describe('summariseArgs', () => {
 
   test('falls back to JSON when questions is empty', () => {
     expect(summariseArgs({ questions: [] })).toBe('{"questions":[]}')
+  })
+
+  test('leads a plan with its heading, since a plan is not one line', () => {
+    const plan = '## Fix the pool leak\n\n1. Reproduce with a failing test\n2. Patch release()'
+
+    expect(summariseArgs({ plan })).toBe('## Fix the pool leak')
+  })
+
+  test('skips blank lines when a plan opens with one', () => {
+    expect(summariseArgs({ plan: '\n\n  ## Heading  \n rest' })).toBe('## Heading')
   })
 
   test('falls back to compact JSON when no field stands out', () => {

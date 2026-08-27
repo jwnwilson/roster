@@ -175,6 +175,9 @@ export function summariseArgs(input: unknown): string {
   const asked = summariseQuestions(input['questions'])
   if (asked !== null) return asked
 
+  const planned = summarisePlan(input['plan'])
+  if (planned !== null) return planned
+
   return stringify(input)
 }
 
@@ -210,10 +213,26 @@ function fullInput(input: unknown, summary: string): string | null {
 
   const keys = Object.keys(input)
   if (keys.length === 0) return null
+  // One field the row already shows in full. A plan is one field too, but the
+  // row shows only its heading, so it still has somewhere to expand to.
   if (keys.length === 1 && input[keys[0]!] === summary) return null
 
   const detail = stringify(input)
   return detail === '' ? null : detail
+}
+
+/**
+ * A plan's opening line — usually its heading.
+ *
+ * ExitPlanMode carries the whole plan as Markdown, which is neither a command
+ * nor one line. The row takes the heading; the plan itself is readable in the
+ * expanded panel.
+ */
+export function summarisePlan(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+
+  const first = value.split('\n').find((line) => line.trim() !== '')
+  return first === undefined ? null : first.trim()
 }
 
 function stringify(input: unknown): string {
