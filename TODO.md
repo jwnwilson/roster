@@ -6,4 +6,4 @@
 - [x] Add plan mode for agents in session UI
 - [x] Project filter should be consistent between agent grid and project page
 - [x] Add "Add Skill" button which will add a skill from a user defined directory
-- [ ] Plan for having memory for agents across sessions when they are working on projects
+- [x] Plan for having memory for agents across sessions when they are working on projects — docs/superpowers/specs/2026-08-28-project-memory.md
