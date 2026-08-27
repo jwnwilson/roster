@@ -2,3 +2,5 @@
 - [x] Add ability to configure MCP servers via modal matching new skill style clicking on them in the installed list or via the registry
 - [x] Ensure the % of token window logic is working correctly
 - [ ] Extend LLMs to work with local llms, brainstorm best approach here ollama or MLX
+- [ ] Plan for having memory for agents across sessions when they are working on projects
+- [ ] Add plan mode for agents

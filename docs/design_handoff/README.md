@@ -28,10 +28,11 @@ on outer shell); each screen manages its own internal scrolling.
 - **Left sidebar** — 216px fixed width, `#0d0e12` background, 1px `#1e2027` right border.
   - Header (44px): 16×16px rounded-5px purple square logo (`#7c5cff`), "Roster" wordmark
     (600 weight), 3 small 9px window-control dots right-aligned.
-  - Nav list: 5 items (Agents, Skills, MCP servers, Tasks*, Spend*) — *Tasks/Spend are
-    disabled/"soon" placeholders (dim dot `#33363f`, meta text "soon"). Each row: 5px dot
-    + label (500 weight) + right-aligned meta count, 6px/8px padding, 6px radius, hover
-    `#1a1c23`, active state bg `#1c1e26` fg `#e6e6ea`.
+  - Nav list: 5 items (Agents, Skills, MCP servers, Tasks, Spend*) — *Spend is a
+    disabled/"soon" placeholder (dim dot `#33363f`, meta text "soon"); Tasks is fully
+    functional, meta shows live task count. Each row: 5px dot + label (500 weight) +
+    right-aligned meta count, 6px/8px padding, 6px radius, hover `#1a1c23`, active
+    state bg `#1c1e26` fg `#e6e6ea`.
   - "Roster" section label (10.5px uppercase, letter-spacing 0.07em, `#585b67`) + agent
     count (monospace, `#4f5260`).
   - Search input: full width, 6px/9px padding, 1px `#1e2027` border, 6px radius, bg
@@ -46,8 +47,11 @@ on outer shell); each screen manages its own internal scrolling.
 ### 1. Agents Grid (default screen)
 - **Purpose**: overview of all agents as cards; entry point to agent detail.
 - **Header** (44px): "Agents" title, live summary text ("5 configured · 1 running" or
-  filtered match count), right-aligned filter input (200px) + "New agent" button
-  (purple `#7c5cff`, white text, 600 weight, 6px radius, hover `#8f74ff`).
+  filtered match count), right-aligned project-filter dropdown (styled select, "All
+  projects" + one entry per project), filter input (200px), "New agent" button
+  (purple `#7c5cff`, white text, 600 weight, 6px radius, hover `#8f74ff`). Picking a
+  project narrows both which agent cards show (only agents with a session in that
+  project) and which session chips appear within each visible card.
 - **Grid**: 2-column CSS grid, `minmax(268px,1fr)` row height, 24px gap, 18px page
   padding, scrolls independently.
 - **Agent card** (`#15161c` bg, 1px `#1e2027` border — amber `#4a3a1e` when status is
@@ -212,10 +216,67 @@ Needed state (see prototype's `state` object for exact shape):
 
 Data model backing the demo (would come from a real backend/local store):
 agents (id, name, model, provider, status, cwd, tokens, cost, recent transcript
-lines), sessions per agent (id, title, origin, status), messages per session (text /
-tool-call / spawn / handoff), terminal lines per session, MCP servers (name, launch
-command, which agents have it enabled), skill library (name, file count, per-agent
-assignment), and per-agent system prompts.
+lines), sessions per agent (id, title, origin, status, project id), messages per
+session (text / tool-call / spawn / handoff), terminal lines per session, MCP
+servers (name, launch command, which agents have it enabled), skill library (name,
+file count, per-agent assignment), per-agent system prompts, projects (id, name,
+color, description), and tasks (id, title, description (Markdown), status, assignee
+agent id or null, priority, labels, project id or null, comments, history log).
+
+### 6. Tasks (Linear-style kanban)
+- **Purpose**: a shared task board — humans and agents both create, pick up, and
+  progress tasks; this is how work gets assigned and tracked outside of chat.
+- **Header** (44px): "Tasks" title, live summary ("N tasks · N in review"),
+  project-filter dropdown ("All projects" + one per project), "Projects" button
+  (bordered) opening the Projects modal, filter input (200px), "New task" button
+  (purple, opens the New Task modal).
+- **Board**: 4 fixed columns — To Do, In Progress, In Review, Done — each a
+  `#0d0e12` panel (1px `#1e2027` border, 10px radius) with a header (status dot +
+  label + monospace count) and a vertically scrolling card list. Columns are HTML5
+  drag targets (`onDragOver`/`onDrop`); cards are `draggable` and set `draggingTaskId`
+  on drag-start — dropping on a column moves the task to that status and appends a
+  History entry.
+- **Task card**: `#15161c` bg, 1px `#1e2027` border with a 2px left accent colored by
+  priority, 8px radius. Contents: task id (monospace, `#5f6270`), title (12.5px),
+  label chips (10px, `#1a1c23` bg), and a footer row — 18×18px assignee avatar
+  (initials, ring colored by agent status, empty ring `#33363f` when unassigned),
+  project dot+name (10.5px, `#8f93a3`) when the task has a project, and a trailing
+  comment count (monospace, only shown when >0).
+- **Task detail modal** (opened by clicking a card): wide two-column layout, 800px
+  max-width, Linear-style.
+  - **Left panel** (flex, scrolling): id in the header bar; large click-to-edit title
+    (19px, click turns it into an input, Enter/blur saves, Escape cancels); a big
+    description area that renders Markdown (`#`/`##`/`###` headings, `**bold**`,
+    `` `code` ``, `- ` list items) — clicking it switches to a raw-markdown textarea
+    (monospace, autofocus) with Cancel/Save; below that a **Comments / History**
+    segmented tab (same visual treatment as the chat/terminal toggle) — Comments is
+    a plain reverse-chron thread with an add-comment input pinned under it, History
+    is a separate auto-generated log (status changes, (re)assignment, label add/
+    remove, priority change) so those events never pollute the comment thread.
+  - **Right rail** (196px, `#0d0e12`, bordered-left): small styled `<select>` fields
+    (custom chevron, dark bg, matches modal chrome) for Status and Priority; Project
+    is also a small select ("No project" + one per project); Assignee is a type-to-
+    filter autocomplete text input (typing filters a suggestion dropdown of agent
+    names + "Unassigned", picking one assigns and closes the list) with an inline
+    "×" clear button (centered in the input) shown whenever someone's assigned;
+    Labels show as removable pill chips (each with a "−" remove control) plus a
+    dashed "+ Add" chip that opens an inline text input (Enter confirms, Escape/blur
+    cancels).
+  - Clicking the modal's backdrop (not the card itself) closes it, same as the New
+    Task and Projects modals.
+  - Assigning an agent auto-logs "{agent} picked up this task." to History and moves
+    a To Do task to In Progress; any status/priority/label/assignee change logs its
+    own History line attributed to the acting agent or "You".
+- **New Task modal**: same chrome as the task detail modal's editing controls —
+  title input, description textarea, Assignee/Priority/Project as small selects,
+  labels with the same add/remove chip pattern, Cancel/"Create task" footer.
+- **Projects modal** (opened via the "Projects" header button): list of existing
+  projects, each row showing a color dot, name, live task count, and Edit/Delete
+  controls; Edit expands the row in place into name + description fields plus a row
+  of color swatches (6-color palette) with Cancel/Save; a dashed "+ New project"
+  row at the bottom opens the same field set for creating one. Deleting a project
+  removes it from the board's filter and project-select lists (tasks keep their
+  reference but it simply won't resolve to a visible project any more).
 
 ## Design Tokens
 
@@ -254,6 +315,14 @@ assignment), and per-agent system prompts.
 - `rosterBlink`: 1–1.1s step blink for streaming indicator dot and terminal cursor
 - Hover transitions are instant color/background swaps (no explicit transition timing
   authored — recommend ~120ms ease in implementation)
+
+**Task-specific tokens**
+- Priority accent (task card left border / priority select): urgent `#c2553f`, high
+  `#d9a04a`, medium `#7c5cff`, low `#4f5260`
+- Kanban column status dots: To Do `#6d707d`, In Progress `#7c5cff`, In Review
+  `#d9a04a`, Done `#4fa86a`
+- Project color palette (swatch picker in the Projects modal): `#7c5cff`, `#d9a04a`,
+  `#4fa86a`, `#5b9bd9`, `#c2553f`, `#8f93a3`
 
 ## Assets
 No external images or icons — all glyphs are plain characters (•, ↳, ›, ×, ▸/▾) and
