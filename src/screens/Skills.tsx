@@ -4,6 +4,7 @@ import { statusColor } from '@shared/status'
 import { GhostButton, PrimaryButton, ScreenHeader, SectionLabel } from '@/components/primitives'
 import { useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
+import { CodeEditor } from '@/components/CodeEditor'
 
 /** A row in the file tree: a skill folder or one of its files. */
 interface TreeRow {
@@ -244,12 +245,10 @@ export function Skills() {
           {error ? (
             <p className="m-0 px-[20px] py-[14px] text-md text-error">{error}</p>
           ) : (
-            <textarea
+            <CodeEditor
               value={contents}
-              aria-label="Skill file contents"
-              onChange={(e) => setContents(e.target.value)}
-              spellCheck={false}
-              className="min-h-0 flex-1 resize-none border-0 bg-transparent px-[20px] py-[14px] font-mono text-lg leading-[1.75] text-ink-2 outline-none"
+              onChange={setContents}
+              ariaLabel="Skill file contents"
             />
           )}
         </div>

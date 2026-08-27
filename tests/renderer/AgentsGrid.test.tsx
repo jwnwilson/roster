@@ -438,3 +438,29 @@ describe('AgentsGrid — project filter', () => {
     expect(screen.getByText('No agents match that filter.')).toBeInTheDocument()
   })
 })
+
+describe('AgentsGrid — status bar', () => {
+  test('carries the handoff note about agent-opened sessions', () => {
+    render(<AgentsGrid />)
+    expect(screen.getByText('session opened by another agent')).toBeInTheDocument()
+  })
+
+  test('totals what the whole roster has spent', () => {
+    useRoster.setState({
+      agentUsage: {
+        architect: { tokens: 200_000, costUsd: 2.5 },
+        debugging: { tokens: 212_000, costUsd: 1.37 },
+      },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('roster 412.0k tok · $3.87')).toBeInTheDocument()
+  })
+
+  test('reads as zero rather than blank when nothing has run', () => {
+    useRoster.setState({ agentUsage: {} })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('roster 0 tok · $0.00')).toBeInTheDocument()
+  })
+})

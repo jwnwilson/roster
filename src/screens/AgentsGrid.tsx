@@ -267,6 +267,21 @@ function EmptyState({ filtered }: EmptyStateProps) {
 }
 
 function StatusBar() {
+  // The handoff puts a tokens/cost readout at the right of this bar. It
+  // labels it "session", but no session is current on the grid — the honest
+  // figure at this altitude is what the whole roster has spent.
+  const totals = useRoster(
+    useShallow((s) =>
+      Object.values(s.agentUsage).reduce(
+        (sum, usage) => ({
+          tokens: sum.tokens + usage.tokens,
+          costUsd: sum.costUsd + usage.costUsd,
+        }),
+        { tokens: 0, costUsd: 0 },
+      ),
+    ),
+  )
+
   return (
     <footer className="flex h-statusbar flex-none items-center gap-[12px] border-t border-line bg-rail px-[18px]">
       <span className="flex items-center gap-[6px] text-base text-[#5a5d69]">
@@ -274,6 +289,10 @@ function StatusBar() {
           ↳
         </span>
         session opened by another agent
+      </span>
+
+      <span className="ml-auto font-mono text-xs text-dim-2">
+        roster {formatTokens(totals.tokens)} · {formatCost(totals.costUsd)}
       </span>
     </footer>
   )

@@ -377,7 +377,19 @@ Each was raised and decided explicitly:
 23. **The board has no status bar.** The handoff specifies the decorative footer for the
     Agents Grid only.
 
-24. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
+24. **The grid's status bar totals the roster, not "the session".** The handoff puts a
+    tokens/cost readout at the right of that bar and labels it `session`, but no session
+    is current on the Agents Grid — the prototype's figure was static demo text. It now
+    sums what every agent has spent, which is the honest figure at that altitude.
+25. **The skills editor is a highlighted textarea, not a read-only code view.** The
+    handoff specifies a line-numbered, markdown-coloured view; the real file is editable,
+    and a `<textarea>` cannot colour its own contents. The colour is a `<pre>` and the
+    textarea sits transparently over it, so the 46px gutter and the header/code/list
+    colouring are as specified while the file stays editable. Nothing is hidden or
+    reflowed — backticks stay visible, because this is an editor and what you see has to
+    be what is on disk.
+
+26. **E2E runs through a dev-only harness, not Playwright.** `ROSTER_SCRIPT=<file>`
     executes a script against the built app's real DOM and IPC. It exercises the actual
     Electron main process, which is what the risky code lives in, and needs no browser
     driver. Playwright remains an option if browser-level fidelity is ever needed.
