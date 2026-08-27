@@ -15,7 +15,8 @@ import {
 import { SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { TASK_STATUSES, type Task, type TaskStatus } from '@shared/types'
 import { taskStatusColor, taskStatusLabel } from '@shared/tasks'
-import { PrimaryButton, ScreenHeader, Select, TextInput } from '@/components/primitives'
+import { PrimaryButton, ScreenHeader, TextInput } from '@/components/primitives'
+import { ProjectFilter } from '@/components/ProjectFilter'
 import { TaskCard, TaskCardBody, type TaskCardProps } from '@/components/TaskCard'
 import {
   ALL_PROJECTS,
@@ -38,8 +39,6 @@ export function Tasks() {
   const taskQuery = useRoster((s) => s.taskQuery)
   const setTaskQuery = useRoster((s) => s.setTaskQuery)
   const projectFilter = useRoster((s) => s.projectFilter)
-  const setProjectFilter = useRoster((s) => s.setProjectFilter)
-  const projects = useRoster(useShallow((s) => s.projects))
   const openTaskId = useRoster((s) => s.openTaskId)
   const projectsOpen = useRoster((s) => s.projectsOpen)
   const newTaskOpen = useRoster((s) => s.newTaskOpen)
@@ -92,15 +91,7 @@ export function Tasks() {
       <ScreenHeader title="Tasks">
         <span className="text-md text-dim">{summary}</span>
         <div className="ml-auto flex items-center gap-[8px]">
-          <Select
-            ariaLabel="Filter by project"
-            value={projectFilter}
-            onChange={setProjectFilter}
-            options={[
-              { value: ALL_PROJECTS, label: 'All projects' },
-              ...projects.map((project) => ({ value: project.id, label: project.name })),
-            ]}
-          />
+          <ProjectFilter />
           <button
             type="button"
             onClick={() => setProjectsOpen(true)}

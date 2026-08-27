@@ -64,7 +64,6 @@ export function ProjectsModal() {
         // A filter pointing at a project that no longer exists would show an
         // empty board with no way to tell why.
         ...(s.projectFilter === project.id ? { projectFilter: ALL_PROJECTS } : {}),
-        ...(s.gridProjectFilter === project.id ? { gridProjectFilter: ALL_PROJECTS } : {}),
       }))
       await reload()
     } catch (cause) {

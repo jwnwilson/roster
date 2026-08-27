@@ -5,9 +5,11 @@ import { EditAgentModal } from '@/screens/EditAgentModal'
 import { McpServers } from '@/screens/McpServers'
 import { NewAgent } from '@/screens/NewAgent'
 import { Skills, relativeTime } from '@/screens/Skills'
+import { Tasks } from '@/screens/Tasks'
+import { AgentsGrid } from '@/screens/AgentsGrid'
 import { Sidebar } from '@/components/Sidebar'
-import { useRoster } from '@/state/store'
-import { anAgent, aRunner, aSkill, aTask, anMcpServer } from './factories'
+import { ALL_PROJECTS, useRoster } from '@/state/store'
+import { anAgent, aProject, aRunner, aSkill, aTask, anMcpServer } from './factories'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
@@ -189,6 +191,58 @@ describe('relativeTime', () => {
 })
 
 /* --------------------------------------------------------------------- mcp */
+
+describe('the project filter', () => {
+  beforeEach(() => {
+    useRoster.setState({
+      projects: [aProject({ id: 'p1', name: 'Roster API' })],
+      projectFilter: ALL_PROJECTS,
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent' })],
+      sessions: {},
+      tasks: [],
+    })
+  })
+
+  test('is one filter, so choosing on the board holds on the grid', async () => {
+    const user = userEvent.setup()
+    const board = render(<Tasks />)
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+    board.unmount()
+
+    render(<AgentsGrid />)
+
+    // The two screens kept separate state once; picking a project on one left
+    // the other showing everything.
+    expect(screen.getByLabelText('Filter by project')).toHaveValue('p1')
+  })
+
+  test('and choosing on the grid holds on the board', async () => {
+    const user = userEvent.setup()
+    const grid = render(<AgentsGrid />)
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+    grid.unmount()
+
+    render(<Tasks />)
+
+    expect(screen.getByLabelText('Filter by project')).toHaveValue('p1')
+  })
+
+  test('offers the same options on both screens', () => {
+    const board = render(<Tasks />)
+    const onBoard = Array.from(
+      screen.getByLabelText('Filter by project').querySelectorAll('option'),
+    ).map((option) => option.textContent)
+    board.unmount()
+
+    render(<AgentsGrid />)
+    const onGrid = Array.from(
+      screen.getByLabelText('Filter by project').querySelectorAll('option'),
+    ).map((option) => option.textContent)
+
+    expect(onGrid).toEqual(onBoard)
+    expect(onGrid).toEqual(['All projects', 'Roster API'])
+  })
+})
 
 describe('McpServers', () => {
   beforeEach(() => {

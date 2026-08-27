@@ -437,6 +437,13 @@ Each was raised and decided explicitly:
     "Approve" / "Deny"; starting work clears plan mode, or the next turn would refuse
     to do the work just approved.
 
+33. **One project filter for the whole app.** The board and the grid render the same
+    `ProjectFilter` over the same `projectFilter` state, so choosing a project on one
+    holds on the other. They started as two identical-looking controls over separate
+    state, which read as a bug: picking a project on the board left the grid showing
+    every agent. Picking a project is a statement about what you are looking at, not
+    about which screen you are on.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

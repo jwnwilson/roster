@@ -178,14 +178,14 @@ describe('ProjectsModal — deleting', () => {
   test('clears a filter that pointed at it', async () => {
     const user = userEvent.setup()
     // An unreachable filter would show an empty board with no way to tell why.
-    useRoster.setState({ projectFilter: 'p1', gridProjectFilter: 'p1' })
+    useRoster.setState({ projectFilter: 'p1' })
     render(<ProjectsModal />)
 
     await user.click(screen.getAllByRole('button', { name: 'Delete' })[0] as HTMLElement)
 
     await waitFor(() => {
       expect(useRoster.getState().projectFilter).toBe(ALL_PROJECTS)
-      expect(useRoster.getState().gridProjectFilter).toBe(ALL_PROJECTS)
+      expect(useRoster.getState().projectFilter).toBe(ALL_PROJECTS)
     })
   })
 

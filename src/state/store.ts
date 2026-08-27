@@ -95,9 +95,14 @@ interface RosterState {
   openTaskId: string | null
   taskQuery: string
   taskTab: TaskTab
-  /** ALL_PROJECTS, or a project id. */
+  /**
+   * ALL_PROJECTS, or a project id.
+   *
+   * One filter for the whole app, not one per screen: picking a project is a
+   * statement about what you are looking at, and it should still hold when
+   * you move from the board to the grid.
+   */
   projectFilter: string
-  gridProjectFilter: string
   projectsOpen: boolean
   newTaskOpen: boolean
 
@@ -140,7 +145,6 @@ interface RosterState {
   setTaskQuery(value: string): void
   setTaskTab(tab: TaskTab): void
   setProjectFilter(value: string): void
-  setGridProjectFilter(value: string): void
   openTask(taskId: string): void
   closeTask(): void
   setProjectsOpen(open: boolean): void
@@ -193,7 +197,6 @@ export const useRoster = create<RosterState>((set, get) => ({
   taskQuery: '',
   taskTab: 'comments',
   projectFilter: ALL_PROJECTS,
-  gridProjectFilter: ALL_PROJECTS,
   projectsOpen: false,
   newTaskOpen: false,
 
@@ -249,7 +252,6 @@ export const useRoster = create<RosterState>((set, get) => ({
   setTaskQuery: (taskQuery) => set({ taskQuery }),
   setTaskTab: (taskTab) => set({ taskTab }),
   setProjectFilter: (projectFilter) => set({ projectFilter }),
-  setGridProjectFilter: (gridProjectFilter) => set({ gridProjectFilter }),
 
   // Every task opens on Comments: History is a record you go looking for,
   // not the first thing you want to read.
@@ -335,7 +337,7 @@ export function sessionsInProject(
 
 export function selectGridAgents(state: RosterState): Agent[] {
   const q = state.gridQuery.trim().toLowerCase()
-  const project = state.gridProjectFilter
+  const project = state.projectFilter
 
   return state.agents.filter((agent) => {
     const sessions = state.sessions[agent.id] ?? NO_SESSIONS
