@@ -42,6 +42,8 @@ export function AgentDetail() {
 function AgentDetailBody({ agent }: { agent: Agent }) {
   const go = useRoster((s) => s.go)
   const mode = useRoster((s) => s.mode)
+  const planMode = useRoster((s) => s.planMode)
+  const togglePlanMode = useRoster((s) => s.togglePlanMode)
   const setMode = useRoster((s) => s.setMode)
   const sessions = useRoster(useShallow((s) => s.sessions[agent.id] ?? NO_SESSIONS))
   const activeId = useRoster((s) => s.sess[agent.id])
@@ -99,6 +101,14 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
 
   const active = sessions.find((s) => s.id === activeId) ?? null
   const pending = approvals[0] ?? null
+  // A question is answered in the transcript, so the banner would be a second
+  // control over the same approval — and its Approve means "did not answer".
+  const asking = pending?.questions ?? null
+
+  function respondToQuestion(answers: Record<string, string>): void {
+    if (!pending || !activeId) return
+    void window.roster.sessions.respondToApproval(activeId, pending.id, true, answers)
+  }
 
   async function newSession(): Promise<void> {
     const created = await window.roster.sessions.create(agent.id)
@@ -149,7 +159,9 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
         onNew={() => void newSession()}
       />
 
-      {pending && activeId ? <ApprovalBanner sessionId={activeId} approval={pending} /> : null}
+      {pending && activeId && asking === null ? (
+        <ApprovalBanner sessionId={activeId} approval={pending} />
+      ) : null}
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
@@ -163,7 +175,20 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               isStreaming={streaming}
               streamingText={activity ?? `${agent.name} is working…`}
               skillsLine={`skills: ${agent.skills.join(', ') || 'none'}`}
-              onSend={(prompt) => void window.roster.sessions.send(active.id, prompt)}
+              {...(asking !== null && pending?.sessionId === active.id
+                ? { questions: asking }
+                : {})}
+              onAnswer={respondToQuestion}
+              // Allowed, not denied: the tool's own answer for this is that
+              // nobody replied, which is truer than an error.
+              onSkipQuestions={() => respondToQuestion({})}
+              planMode={planMode[active.id] === true}
+              onTogglePlanMode={() => togglePlanMode(active.id)}
+              onSend={(prompt) =>
+                void window.roster.sessions.send(active.id, prompt, {
+                  planMode: planMode[active.id] === true,
+                })
+              }
               onCancel={() => void window.roster.sessions.cancel(active.id)}
             />
           ) : (
@@ -238,17 +263,34 @@ interface ApprovalBannerProps {
   approval: Approval
 }
 
+/** The tool an agent calls to present its plan and leave plan mode. */
+const EXIT_PLAN_MODE = 'ExitPlanMode'
+
 function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
+  const setPlanMode = useRoster((s) => s.setPlanMode)
+  const isPlan = approval.toolName === EXIT_PLAN_MODE
+
   function respond(approved: boolean): void {
     void window.roster.sessions.respondToApproval(sessionId, approval.id, approved)
+    // Approving the plan is the moment the agent is meant to start work, so
+    // the next turn must not refuse to edit. Denying keeps planning.
+    if (isPlan && approved) setPlanMode(sessionId, false)
   }
 
   return (
     <div className="flex flex-none items-center gap-[12px] border-b border-amber-line bg-amber-surface px-[18px] py-[10px]">
       <span aria-hidden className="h-[6px] w-[6px] flex-none rounded-full bg-amber" />
-      <p className="m-0 text-lg text-amber-text">
-        Waiting on you — agent wants to run{' '}
-        <span className="font-mono">{approval.command}</span>
+      <p className="m-0 truncate text-lg text-amber-text">
+        {isPlan ? (
+          <>
+            Waiting on you — agent has a plan: <span className="font-mono">{approval.command}</span>
+          </>
+        ) : (
+          <>
+            Waiting on you — agent wants to run{' '}
+            <span className="font-mono">{approval.command}</span>
+          </>
+        )}
       </p>
       <div className="ml-auto flex gap-[7px]">
         <button
@@ -257,7 +299,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
           className="cursor-pointer rounded-chip border border-line-hover-strong bg-transparent px-[11px] py-[4px] font-ui text-md text-ink-4 hover:border-[#55596a]"
           data-hoverable
         >
-          Deny
+          {isPlan ? 'Keep planning' : 'Deny'}
         </button>
         <button
           type="button"
@@ -265,7 +307,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
           className="cursor-pointer rounded-chip border-0 bg-amber px-[11px] py-[4px] font-ui text-md font-semibold text-amber-ink hover:bg-amber-hover"
           data-hoverable
         >
-          Approve
+          {isPlan ? 'Start work' : 'Approve'}
         </button>
       </div>
     </div>

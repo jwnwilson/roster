@@ -123,7 +123,14 @@ export interface TextMessage extends BaseMessage {
 export interface ToolMessage extends BaseMessage {
   kind: 'tool'
   tool: string
+  /** One line, for the collapsed row. See summariseArgs. */
   args: string
+  /**
+   * Everything the tool was called with, as JSON, when that is more than the
+   * summary. A question's options live only here. Absent for a tool whose
+   * arguments the summary already shows in full.
+   */
+  input?: string
   output: string
   isError: boolean
   /** Milliseconds; formatted as "1.2s" at render time. */
@@ -158,9 +165,34 @@ export interface Approval {
   toolName: string
   /** The exact command, shown in monospace in the banner. */
   command: string
+  /**
+   * Present when the agent is asking rather than acting.
+   *
+   * A question reaches Roster as a permission request: the tool carries an
+   * `answers` field the permission step is expected to fill in, so answering
+   * and allowing are the same act. Approvals with questions are answered in
+   * the transcript rather than allowed or denied in the banner.
+   */
+  questions?: Question[]
   status: 'pending' | 'approved' | 'denied'
   createdAt: number
   decidedAt?: number
+}
+
+export interface QuestionOption {
+  /** Shown on the button; one to five words. */
+  label: string
+  /** What choosing it means. */
+  description: string
+}
+
+export interface Question {
+  question: string
+  /** A short chip above the question, twelve characters or fewer. */
+  header: string
+  /** Several options may be chosen, rather than exactly one. */
+  multiSelect: boolean
+  options: QuestionOption[]
 }
 
 /* -------------------------------------------------------------------------
@@ -242,8 +274,14 @@ export interface TaskComment {
  * ---------------------------------------------------------------------- */
 export interface Skill {
   name: string
-  /** Absolute path to the skill folder. */
+  /** Absolute path to the skill folder, inside the library. */
   path: string
+  /**
+   * Where the folder really is, when the skill was added from elsewhere.
+   * Roster links rather than copies, so editing through Roster edits the
+   * user's own file and removing the skill only removes the link.
+   */
+  linkedFrom?: string
   files: string[]
   lastEditedMs: number
 }

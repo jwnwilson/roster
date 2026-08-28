@@ -49,11 +49,21 @@ export interface RosterApi {
     usage(sessionId: string): Promise<Usage | null>
     /** Token and cost totals per agent, for the grid cards. */
     usageByAgent(): Promise<Record<string, AgentUsage>>
-    send(sessionId: string, prompt: string): Promise<void>
+    send(sessionId: string, prompt: string, options?: SendOptions): Promise<void>
     cancel(sessionId: string): Promise<void>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
-    respondToApproval(sessionId: string, approvalId: string, approved: boolean): Promise<void>
+    /**
+     * Answers a pending approval. `answers` is only for a question: it is
+     * keyed by question text and reaches the tool as its own input, so
+     * answering and allowing are one call.
+     */
+    respondToApproval(
+      sessionId: string,
+      approvalId: string,
+      approved: boolean,
+      answers?: Record<string, string>,
+    ): Promise<void>
     pendingApprovals(sessionId: string): Promise<Approval[]>
     /** Live turn events: messages, status, usage, approvals. */
     onEvent(listener: (event: SessionEventPayload) => void): () => void
@@ -71,6 +81,11 @@ export interface RosterApi {
     read(path: string): Promise<string>
     write(path: string, contents: string): Promise<void>
     create(name: string): Promise<Skill>
+    /**
+     * Adds a folder the user already has as a skill. Linked, not copied, so
+     * it stays the same file on disk.
+     */
+    link(directory: string): Promise<Skill>
     /** Creates a file inside a skill; resolves to its absolute path. */
     createFile(skillName: string, relativePath: string): Promise<string>
     createFolder(skillName: string, relativePath: string): Promise<string>
@@ -116,6 +131,15 @@ export interface RosterApi {
     /** Native directory picker; resolves null when cancelled. */
     chooseDirectory(current?: string): Promise<string | null>
   }
+}
+
+/** Per-turn choices, decided at send time rather than in agent.toml. */
+export interface SendOptions {
+  /**
+   * Research and propose only. The runner refuses edits for the whole turn
+   * and the agent ends by proposing a plan, which arrives as an approval.
+   */
+  planMode?: boolean
 }
 
 export interface NewProjectInput {
@@ -236,6 +260,7 @@ export const CHANNELS = {
   skillsRead: 'skills:read',
   skillsWrite: 'skills:write',
   skillsCreate: 'skills:create',
+  skillsLink: 'skills:link',
   skillsCreateFile: 'skills:createFile',
   skillsCreateFolder: 'skills:createFolder',
   skillsRemove: 'skills:remove',

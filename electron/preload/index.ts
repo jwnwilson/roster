@@ -45,12 +45,19 @@ const api: RosterApi = {
     messages: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsMessages, sessionId),
     usage: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsUsage, sessionId),
     usageByAgent: () => ipcRenderer.invoke(CHANNELS.sessionsUsageByAgent),
-    send: (sessionId, prompt) => ipcRenderer.invoke(CHANNELS.sessionsSend, sessionId, prompt),
+    send: (sessionId, prompt, options) =>
+      ipcRenderer.invoke(CHANNELS.sessionsSend, sessionId, prompt, options),
     cancel: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsCancel, sessionId),
     setProject: (sessionId, projectId) =>
       ipcRenderer.invoke(CHANNELS.sessionsSetProject, sessionId, projectId),
-    respondToApproval: (sessionId, approvalId, approved) =>
-      ipcRenderer.invoke(CHANNELS.sessionsRespondToApproval, sessionId, approvalId, approved),
+    respondToApproval: (sessionId, approvalId, approved, answers) =>
+      ipcRenderer.invoke(
+        CHANNELS.sessionsRespondToApproval,
+        sessionId,
+        approvalId,
+        approved,
+        answers,
+      ),
     pendingApprovals: (sessionId) =>
       ipcRenderer.invoke(CHANNELS.sessionsPendingApprovals, sessionId),
     onEvent: (listener: (event: SessionEventPayload) => void) =>
@@ -72,6 +79,7 @@ const api: RosterApi = {
     read: (path) => ipcRenderer.invoke(CHANNELS.skillsRead, path),
     write: (path, contents) => ipcRenderer.invoke(CHANNELS.skillsWrite, path, contents),
     create: (name) => ipcRenderer.invoke(CHANNELS.skillsCreate, name),
+    link: (directory) => ipcRenderer.invoke(CHANNELS.skillsLink, directory),
     createFile: (skillName, relativePath) =>
       ipcRenderer.invoke(CHANNELS.skillsCreateFile, skillName, relativePath),
     createFolder: (skillName, relativePath) =>

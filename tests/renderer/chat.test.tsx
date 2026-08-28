@@ -10,6 +10,7 @@ import {
   ToolBody,
   formatDuration,
   formatTime,
+  prettyArgs,
 } from '@/chat/messages'
 import { useRoster } from '@/state/store'
 import { installRosterApi } from './rosterApi'
@@ -78,6 +79,10 @@ function pane(overrides: Partial<Parameters<typeof AssistantChatPane>[0]> = {}) 
       isStreaming={false}
       streamingText="Debugging Agent is working…"
       skillsLine="skills: repro-harness"
+      planMode={false}
+      onTogglePlanMode={vi.fn()}
+      onAnswer={vi.fn()}
+      onSkipQuestions={vi.fn()}
       onSend={vi.fn()}
       onCancel={vi.fn()}
       {...overrides}
@@ -103,6 +108,43 @@ describe('ToolBody', () => {
 
     await user.click(screen.getByRole('button'))
     expect(screen.getByText('1 passed')).toBeInTheDocument()
+  })
+
+  test('expanding shows the whole call, indented', async () => {
+    const user = userEvent.setup()
+    const input = JSON.stringify({
+      questions: [{ question: 'Which cache backend?', options: [{ label: 'Redis' }] }],
+    })
+    render(
+      <ToolBody
+        id="t1"
+        tool="AskUserQuestion"
+        args="Which cache backend?"
+        input={input}
+        output="no answer"
+        isError={false}
+      />,
+    )
+
+    await user.click(screen.getByRole('button'))
+
+    // The collapsed row is one truncated line, so this is the only place a
+    // question's options can be read at all.
+    expect(screen.getByText('Arguments')).toBeInTheDocument()
+    expect(screen.getByText(/"label": "Redis"/)).toBeInTheDocument()
+  })
+
+  test('a row whose summary is the whole call shows only the output', async () => {
+    const user = userEvent.setup()
+    // Bash: the command is already on the row, so there is no `input` and no
+    // Arguments heading repeating it.
+    render(<ToolBody id="t1" tool="Bash" args="git push" output="done" isError={false} />)
+
+    await user.click(screen.getByRole('button'))
+
+    expect(screen.queryByText('Arguments')).not.toBeInTheDocument()
+    expect(screen.getByText('Output')).toBeInTheDocument()
+    expect(screen.getAllByText('git push')).toHaveLength(1)
   })
 
   test('each tool call expands independently', async () => {
@@ -339,5 +381,54 @@ describe('SpawnBody — Markdown in the brief', () => {
     const { container } = render(<SpawnBody message={brief as SpawnMessage} />)
 
     expect(container.querySelector('code')?.textContent).toBe('api/routes')
+  })
+})
+
+describe('the Plan toggle', () => {
+  test('is off by default and says so to assistive tech', () => {
+    render(pane())
+
+    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  test('reports the press rather than deciding for itself', async () => {
+    const user = userEvent.setup()
+    const onTogglePlanMode = vi.fn()
+    render(pane({ onTogglePlanMode }))
+
+    await user.click(screen.getByRole('button', { name: 'Plan' }))
+
+    expect(onTogglePlanMode).toHaveBeenCalledTimes(1)
+  })
+
+  test('shows as pressed when the session is planning', () => {
+    render(pane({ planMode: true }))
+
+    expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-pressed', 'true')
+  })
+})
+
+describe('prettyArgs', () => {
+  test('indents a JSON object so its fields can be read', () => {
+    expect(prettyArgs('{"a":1}')).toBe('{\n  "a": 1\n}')
+  })
+
+  test('passes a plain command through untouched', () => {
+    expect(prettyArgs('pytest -k leak')).toBe('pytest -k leak')
+  })
+
+  test('leaves a bare JSON scalar alone rather than requoting it', () => {
+    // "42" parses, but reformatting it gains nothing and loses the original.
+    expect(prettyArgs('42')).toBe('42')
+    expect(prettyArgs('null')).toBe('null')
+  })
+
+  test('passes malformed JSON through rather than losing it', () => {
+    expect(prettyArgs('{"a":')).toBe('{"a":')
+  })
+
+  test('shows a lone text field as itself, not as an escaped JSON string', () => {
+    // A plan's newlines would otherwise come back as literal \n.
+    expect(prettyArgs('{"plan":"## Fix it\\n\\n1. step"}')).toBe('## Fix it\n\n1. step')
   })
 })

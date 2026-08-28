@@ -1,6 +1,10 @@
 - [x] Add logos to MCP servers
 - [x] Add ability to configure MCP servers via modal matching new skill style clicking on them in the installed list or via the registry
 - [x] Ensure the % of token window logic is working correctly
-- [ ] Extend LLMs to work with local llms, brainstorm best approach here ollama or MLX
-- [ ] Plan for having memory for agents across sessions when they are working on projects
-- [ ] Add plan mode for agents
+- [x] Extend LLMs to work with local llms, brainstorm best approach here ollama or MLX
+- [x] Fix UX bug with a question tool call not being readable
+- [x] Add plan mode for agents in session UI
+- [x] Project filter should be consistent between agent grid and project page
+- [x] Add "Add Skill" button which will add a skill from a user defined directory
+- [x] Plan for having memory for agents across sessions when they are working on projects — docs/superpowers/specs/2026-08-28-project-memory.md
+- [ ] Add ability to @ an agent in a task comment which will start a new session for this task with that agent or will send the message to an existing session. Track in the DB which sessions are attached to a task and add links to those sessions from the task.

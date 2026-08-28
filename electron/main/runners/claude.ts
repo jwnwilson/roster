@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
-import { normalizeClaudeMessage } from './normalizeClaude'
+import { normalizeClaudeMessage, summarisePlan } from './normalizeClaude'
+import { parseQuestions, summariseQuestions } from './questions'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
 import { TASK_TOOL_NAMES } from './taskTools'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
@@ -66,7 +67,10 @@ export class ClaudeRunner implements Runner {
         // Roster owns permissions, not the user's global Claude Code config,
         // so its own allowlist is the one that applies.
         settingSources: [],
-        permissionMode: 'default',
+        // Plan mode is the SDK's own: it refuses every edit for the turn and
+        // the agent ends by proposing a plan, which reaches Roster as an
+        // ExitPlanMode approval like any other gated tool.
+        permissionMode: options.planMode === true ? 'plan' : 'default',
         // Prose arrives token by token rather than a paragraph at a time.
         includePartialMessages: true,
         // Roster's own tools are affordances of the app, not actions on the
@@ -125,12 +129,14 @@ export class ClaudeRunner implements Runner {
   ): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> } | { behavior: 'deny'; message: string }> {
     const id = randomUUID()
 
+    const questions = parseQuestions(input['questions'])
+
     return new Promise((resolve) => {
       this.pending.set(id, {
         resolve: (decision) =>
           resolve(
             decision.approved
-              ? { behavior: 'allow', updatedInput: input }
+              ? { behavior: 'allow', updatedInput: withAnswers(input, decision.answers) }
               : { behavior: 'deny', message: decision.reason ?? 'Denied by the user' },
           ),
       })
@@ -140,6 +146,7 @@ export class ClaudeRunner implements Runner {
         id,
         toolName,
         command: describeCommand(toolName, input),
+        ...(questions !== null ? { questions } : {}),
       })
     })
   }
@@ -153,6 +160,22 @@ export class ClaudeRunner implements Runner {
     }
     this.pending.clear()
   }
+}
+
+/**
+ * The tool's own input with the user's answers filled in.
+ *
+ * A question tool reads its `answers` field back out of the input it was
+ * called with — the permission step is where they are meant to be added, so
+ * answering the question and allowing the call are one act. Everything else
+ * is passed through untouched.
+ */
+function withAnswers(
+  input: Record<string, unknown>,
+  answers: Record<string, string> | undefined,
+): Record<string, unknown> {
+  if (answers === undefined || Object.keys(answers).length === 0) return input
+  return { ...input, answers }
 }
 
 /** The SDK wants an AbortController; Roster's session layer owns the signal. */
@@ -187,6 +210,17 @@ export function describeCommand(toolName: string, input: Record<string, unknown>
     const value = input[key]
     if (typeof value === 'string' && value !== '') return value
   }
+
+  // A question tool has no command; what is being asked is the thing worth
+  // reading before allowing it, and the bare tool name says nothing.
+  const asked = summariseQuestions(input['questions'])
+  if (asked !== null) return asked
+
+  // Exiting plan mode is an approval too: what is being approved is the plan,
+  // so the banner leads with its heading rather than the tool's name.
+  const planned = summarisePlan(input['plan'])
+  if (planned !== null) return planned
+
   return toolName
 }
 

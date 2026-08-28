@@ -1,4 +1,4 @@
-import type { ModelInfo, RunnerId, RunnerStatus } from '../../../shared/types'
+import type { ModelInfo, Question, RunnerId, RunnerStatus } from '../../../shared/types'
 
 /**
  * A normalised event from any agent CLI. Each adapter translates its own
@@ -8,12 +8,25 @@ import type { ModelInfo, RunnerId, RunnerStatus } from '../../../shared/types'
 export type RunnerEvent =
   /** A chunk of assistant prose. */
   | { kind: 'text'; delta: string }
-  /** The agent decided to call a tool. */
-  | { kind: 'tool'; id: string; name: string; args: string }
+  /**
+   * The agent decided to call a tool. `args` is the one line the collapsed
+   * row shows; `input` is everything it was called with, for the expanded
+   * panel — a question's options only exist there.
+   */
+  | { kind: 'tool'; id: string; name: string; args: string; input?: string }
   /** That tool finished. */
   | { kind: 'result'; id: string; output: string; isError: boolean }
-  /** The CLI is blocked waiting for the user to allow or deny an action. */
-  | { kind: 'approval'; id: string; toolName: string; command: string }
+  /**
+   * The CLI is blocked waiting for the user to allow or deny an action —
+   * or, when `questions` is present, to answer rather than allow.
+   */
+  | {
+      kind: 'approval'
+      id: string
+      toolName: string
+      command: string
+      questions?: Question[]
+    }
   /** Running totals, not deltas. */
   | {
       kind: 'usage'
@@ -52,6 +65,11 @@ export interface StartOptions {
    * receive these.
    */
   inProcessMcpServers?: Record<string, unknown>
+  /**
+   * Research and propose, do not act. The runner refuses edits for the whole
+   * turn and the agent presents a plan instead, which arrives as an approval.
+   */
+  planMode?: boolean
   /** Resume the CLI's own session rather than starting fresh. */
   resumeFrom?: string
   /** Resume, but branch into a new session — the handoff primitive. */
@@ -70,6 +88,12 @@ export interface McpLaunchSpec {
 export interface ApprovalDecision {
   approved: boolean
   reason?: string
+  /**
+   * What the user chose, keyed by question text — the shape the question
+   * tool reads back. Allowing the call with these filled in is how an answer
+   * reaches the agent; allowing without them is how "they did not answer" does.
+   */
+  answers?: Record<string, string>
 }
 
 export interface Runner {

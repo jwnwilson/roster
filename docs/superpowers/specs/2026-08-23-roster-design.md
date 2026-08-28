@@ -420,6 +420,60 @@ Each was raised and decided explicitly:
     `mcp.json`, have no launch command or environment, and cannot be shadowed by an
     entry of the same name.
 
+31. **A tool row's expanded panel shows the call, not just the output.** The handoff
+    says expanding shows the output; for `AskUserQuestion` that is one line — whether it
+    was answered — while the question and its options exist nowhere else, since the
+    collapsed row is a single truncated line. The panel now labels Arguments above
+    Output, and the tool event carries the full input alongside the one-line summary.
+    Only when the summary is not already the whole call: a one-field call like Read's
+    path gets no Arguments block, because repeating the row above it is noise.
+
+32. **Plan mode is a per-turn choice, made in the composer.** A "Plan" toggle beside
+    Send puts the next turn in the SDK's plan mode: the agent researches and proposes
+    but refuses every edit. Per session rather than per agent, and in the store rather
+    than agent.toml, because planning one piece of work says nothing about the session
+    in the tab beside it. The plan arrives as an ExitPlanMode approval, so the banner
+    leads with the plan's heading and reads "Start work" / "Keep planning" rather than
+    "Approve" / "Deny"; starting work clears plan mode, or the next turn would refuse
+    to do the work just approved.
+
+33. **One project filter for the whole app.** The board and the grid render the same
+    `ProjectFilter` over the same `projectFilter` state, so choosing a project on one
+    holds on the other. They started as two identical-looking controls over separate
+    state, which read as a bug: picking a project on the board left the grid showing
+    every agent. Picking a project is a statement about what you are looking at, not
+    about which screen you are on.
+
+34. **A skill you already have is linked, not copied.** "Add skill" takes a folder from
+    the native picker and symlinks it into `~/roster/skills`, so Roster's editor edits
+    the real file and the runner is handed the real path. A copy would go stale the
+    moment either side changed, and skills people already have tend to live in a repo
+    they keep working on. The folder must contain a SKILL.md, cannot be inside the
+    library, and cannot be added twice. `load()` follows the link and skips a dangling
+    one; removing a linked skill unlinks it rather than trashing it, and the confirm
+    dialog says so — trashing a link would take the user's own folder with it.
+
+35. **A question is answered in the transcript, not allowed in the banner.** A question
+    tool reaches Roster as a permission request, and its input carries an `answers` field
+    the permission step is expected to fill in — so answering the question and allowing
+    the call are one act. `canUseTool` now resolves with
+    `{behavior: 'allow', updatedInput: {...input, answers}}`, keyed by question text.
+    The options are drawn where they were asked, because Approve/Deny is the wrong shape
+    for a question: allowing one with nothing filled in only tells the agent that nobody
+    replied. That is still reachable, as Skip. The banner is suppressed for an approval
+    carrying questions, so there are never two controls over the same decision. A single
+    single-select question answers on one click; anything more gathers first, or the
+    first click would answer the rest with silence. "Other" is offered per question
+    because the tool's own description promises the model it will be.
+
+    Options are one per row rather than wrapped chips: they are prose, not
+    labels, and side by side they formed a ragged grid that was hard to read
+    down. Each row carries a marker in the shape language the skill and MCP
+    chips already use — round for pick-one, square for pick-any — so the row
+    says what a click will do before it is clicked. The card is capped at
+    620px, since a full-width row puts a two-word label alone on a 1200px
+    line, and questions are ruled off from one another.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

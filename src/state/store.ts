@@ -77,6 +77,14 @@ interface RosterState {
 
   /* ---- transient UI ------------------------------------------------- */
   openTools: Record<string, boolean>
+  /**
+   * Sessions whose next turn runs in plan mode, keyed by session id.
+   *
+   * A per-turn choice rather than agent configuration, so it lives here and
+   * not in agent.toml — and per session, since planning one piece of work
+   * says nothing about the tab beside it.
+   */
+  planMode: Record<string, boolean>
   query: string
   gridQuery: string
   editOpen: boolean
@@ -87,9 +95,14 @@ interface RosterState {
   openTaskId: string | null
   taskQuery: string
   taskTab: TaskTab
-  /** ALL_PROJECTS, or a project id. */
+  /**
+   * ALL_PROJECTS, or a project id.
+   *
+   * One filter for the whole app, not one per screen: picking a project is a
+   * statement about what you are looking at, and it should still hold when
+   * you move from the board to the grid.
+   */
   projectFilter: string
-  gridProjectFilter: string
   projectsOpen: boolean
   newTaskOpen: boolean
 
@@ -125,12 +138,13 @@ interface RosterState {
   setMcpTab(tab: McpTab): void
 
   toggleTool(id: string): void
+  togglePlanMode(sessionId: string): void
+  setPlanMode(sessionId: string, on: boolean): void
   setQuery(value: string): void
   setGridQuery(value: string): void
   setTaskQuery(value: string): void
   setTaskTab(tab: TaskTab): void
   setProjectFilter(value: string): void
-  setGridProjectFilter(value: string): void
   openTask(taskId: string): void
   closeTask(): void
   setProjectsOpen(open: boolean): void
@@ -173,6 +187,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   mcpTab: 'installed',
 
   openTools: {},
+  planMode: {},
   query: '',
   gridQuery: '',
   editOpen: false,
@@ -182,7 +197,6 @@ export const useRoster = create<RosterState>((set, get) => ({
   taskQuery: '',
   taskTab: 'comments',
   projectFilter: ALL_PROJECTS,
-  gridProjectFilter: ALL_PROJECTS,
   projectsOpen: false,
   newTaskOpen: false,
 
@@ -229,12 +243,15 @@ export const useRoster = create<RosterState>((set, get) => ({
   setMcpTab: (mcpTab) => set({ mcpTab }),
 
   toggleTool: (id) => set((s) => ({ openTools: { ...s.openTools, [id]: !s.openTools[id] } })),
+  togglePlanMode: (sessionId) =>
+    set((s) => ({ planMode: { ...s.planMode, [sessionId]: !s.planMode[sessionId] } })),
+  setPlanMode: (sessionId, on) =>
+    set((s) => ({ planMode: { ...s.planMode, [sessionId]: on } })),
   setQuery: (query) => set({ query }),
   setGridQuery: (gridQuery) => set({ gridQuery }),
   setTaskQuery: (taskQuery) => set({ taskQuery }),
   setTaskTab: (taskTab) => set({ taskTab }),
   setProjectFilter: (projectFilter) => set({ projectFilter }),
-  setGridProjectFilter: (gridProjectFilter) => set({ gridProjectFilter }),
 
   // Every task opens on Comments: History is a record you go looking for,
   // not the first thing you want to read.
@@ -320,7 +337,7 @@ export function sessionsInProject(
 
 export function selectGridAgents(state: RosterState): Agent[] {
   const q = state.gridQuery.trim().toLowerCase()
-  const project = state.gridProjectFilter
+  const project = state.projectFilter
 
   return state.agents.filter((agent) => {
     const sessions = state.sessions[agent.id] ?? NO_SESSIONS

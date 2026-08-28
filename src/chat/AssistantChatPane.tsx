@@ -6,10 +6,11 @@ import {
   useAuiState,
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
-import type { HandoffMessage, Message, SpawnMessage } from '@shared/types'
+import type { HandoffMessage, Message, Question, SpawnMessage } from '@shared/types'
 import { toThreadMessage, type RosterHeader } from './convert'
 import { Composer, StreamingRow } from './Composer'
 import { HandoffBody, SpawnBody, TextBody, ToolBody, MessageHeader } from './messages'
+import { QuestionCard } from './QuestionCard'
 
 interface AssistantChatPaneProps {
   sessionId: string
@@ -18,6 +19,12 @@ interface AssistantChatPaneProps {
   isStreaming: boolean
   streamingText: string
   skillsLine: string
+  /** What the agent is waiting to be told, when it asked rather than acted. */
+  questions?: Question[]
+  onAnswer: (answers: Record<string, string>) => void
+  onSkipQuestions: () => void
+  planMode: boolean
+  onTogglePlanMode: () => void
   onSend: (prompt: string) => void
   onCancel: () => void
 }
@@ -37,6 +44,11 @@ export function AssistantChatPane({
   isStreaming,
   streamingText,
   skillsLine,
+  questions,
+  onAnswer,
+  onSkipQuestions,
+  planMode,
+  onTogglePlanMode,
   onSend,
   onCancel,
 }: AssistantChatPaneProps) {
@@ -74,9 +86,25 @@ export function AssistantChatPane({
           <ThreadPrimitive.Messages components={{ Message: RosterMessage }} />
 
           {isStreaming ? <StreamingRow text={streamingText} onCancel={onCancel} /> : null}
+
+          {/* Below the transcript, where the question was asked — not in the
+              banner, which has room for one line and two buttons. */}
+          {questions ? (
+            <QuestionCard
+              questions={questions}
+              onAnswer={onAnswer}
+              onSkip={onSkipQuestions}
+            />
+          ) : null}
         </ThreadPrimitive.Viewport>
 
-        <Composer agentName={agentName} skillsLine={skillsLine} disabled={isStreaming} />
+        <Composer
+          agentName={agentName}
+          skillsLine={skillsLine}
+          disabled={isStreaming}
+          planMode={planMode}
+          onTogglePlanMode={onTogglePlanMode}
+        />
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   )
@@ -92,6 +120,9 @@ function RosterMessage() {
   )
   const durationMs = useAuiState(
     (s) => (s.message.metadata?.custom as { durationMs?: number } | undefined)?.durationMs,
+  )
+  const toolInput = useAuiState(
+    (s) => (s.message.metadata?.custom as { input?: string } | undefined)?.input,
   )
 
   return (
@@ -112,6 +143,7 @@ function RosterMessage() {
                   args={part.argsText ?? ''}
                   output={typeof part.result === 'string' ? part.result : ''}
                   isError={part.isError === true}
+                  {...(toolInput !== undefined ? { input: toolInput } : {})}
                   {...(durationMs !== undefined ? { durationMs } : {})}
                 />
               )

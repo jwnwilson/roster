@@ -562,6 +562,21 @@ describe('SessionManager — what the runner is given', () => {
     expect(options.mcpServers).toEqual({})
   })
 
+  test('asks the runner for plan mode only when the turn was sent that way', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go', { planMode: true })
+    expect(runnerStub.run.mock.calls[0]?.[1]).toMatchObject({ planMode: true })
+
+    runnerStub.run.mockClear()
+    runnerStub.run.mockImplementation(streamOf([]))
+    await manager.send(session.id, 'go again')
+    // Absent, not false: plan mode is a per-turn choice, and the next turn
+    // starts from nothing rather than inheriting the last one.
+    expect(runnerStub.run.mock.calls[0]?.[1]).not.toHaveProperty('planMode')
+  })
+
   test('does not try to launch a built-in as a subprocess', async () => {
     // "tasks" runs in-process. Treating it as a normal entry would both warn
     // about a missing mcp.json entry and try to spawn an empty command.

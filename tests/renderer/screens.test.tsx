@@ -5,9 +5,11 @@ import { EditAgentModal } from '@/screens/EditAgentModal'
 import { McpServers } from '@/screens/McpServers'
 import { NewAgent } from '@/screens/NewAgent'
 import { Skills, relativeTime } from '@/screens/Skills'
+import { Tasks } from '@/screens/Tasks'
+import { AgentsGrid } from '@/screens/AgentsGrid'
 import { Sidebar } from '@/components/Sidebar'
-import { useRoster } from '@/state/store'
-import { anAgent, aRunner, aSkill, aTask, anMcpServer } from './factories'
+import { ALL_PROJECTS, useRoster } from '@/state/store'
+import { anAgent, aProject, aRunner, aSkill, aTask, anMcpServer } from './factories'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
@@ -189,6 +191,128 @@ describe('relativeTime', () => {
 })
 
 /* --------------------------------------------------------------------- mcp */
+
+describe('Skills — adding one you already have', () => {
+  beforeEach(() => {
+    useRoster.setState({ skills: [] })
+  })
+
+  test('asks for a folder and links it', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue('/repo/pr-triage') },
+      skills: {
+        link: vi.fn().mockResolvedValue(aSkill({ name: 'pr-triage', path: '/skills/pr-triage' })),
+        list: vi.fn().mockResolvedValue([]),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Add skill' }))
+
+    await waitFor(() =>
+      expect(window.roster.skills.link).toHaveBeenCalledWith('/repo/pr-triage'),
+    )
+  })
+
+  test('links nothing when the picker is cancelled', async () => {
+    const user = userEvent.setup()
+    installRosterApi({ dialog: { chooseDirectory: vi.fn().mockResolvedValue(null) } })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Add skill' }))
+
+    await waitFor(() => expect(window.roster.skills.link).not.toHaveBeenCalled())
+  })
+
+  test('says why when the folder is not a skill', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue('/repo/src') },
+      skills: {
+        link: vi.fn().mockRejectedValue(new Error('src has no SKILL.md, so it is not a skill')),
+        list: vi.fn().mockResolvedValue([]),
+      },
+    })
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Add skill' }))
+
+    expect(await screen.findByText(/has no SKILL\.md/)).toBeInTheDocument()
+  })
+
+  test('marks a linked skill, since editing it edits the original', () => {
+    useRoster.setState({
+      skills: [aSkill({ name: 'pr-triage', linkedFrom: '/repo/pr-triage', files: ['SKILL.md'] })],
+    })
+    render(<Skills />)
+
+    expect(screen.getByLabelText('linked')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Remove linked skill pr-triage' }),
+    ).toBeInTheDocument()
+  })
+
+  test('a skill of your own is not marked and still says Delete', () => {
+    useRoster.setState({ skills: [aSkill({ name: 'mine', files: ['SKILL.md'] })] })
+    render(<Skills />)
+
+    expect(screen.queryByLabelText('linked')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete skill mine' })).toBeInTheDocument()
+  })
+})
+
+describe('the project filter', () => {
+  beforeEach(() => {
+    useRoster.setState({
+      projects: [aProject({ id: 'p1', name: 'Roster API' })],
+      projectFilter: ALL_PROJECTS,
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent' })],
+      sessions: {},
+      tasks: [],
+    })
+  })
+
+  test('is one filter, so choosing on the board holds on the grid', async () => {
+    const user = userEvent.setup()
+    const board = render(<Tasks />)
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+    board.unmount()
+
+    render(<AgentsGrid />)
+
+    // The two screens kept separate state once; picking a project on one left
+    // the other showing everything.
+    expect(screen.getByLabelText('Filter by project')).toHaveValue('p1')
+  })
+
+  test('and choosing on the grid holds on the board', async () => {
+    const user = userEvent.setup()
+    const grid = render(<AgentsGrid />)
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+    grid.unmount()
+
+    render(<Tasks />)
+
+    expect(screen.getByLabelText('Filter by project')).toHaveValue('p1')
+  })
+
+  test('offers the same options on both screens', () => {
+    const board = render(<Tasks />)
+    const onBoard = Array.from(
+      screen.getByLabelText('Filter by project').querySelectorAll('option'),
+    ).map((option) => option.textContent)
+    board.unmount()
+
+    render(<AgentsGrid />)
+    const onGrid = Array.from(
+      screen.getByLabelText('Filter by project').querySelectorAll('option'),
+    ).map((option) => option.textContent)
+
+    expect(onGrid).toEqual(onBoard)
+    expect(onGrid).toEqual(['All projects', 'Roster API'])
+  })
+})
 
 describe('McpServers', () => {
   beforeEach(() => {

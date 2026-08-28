@@ -13,10 +13,10 @@ import {
 import {
   PrimaryButton,
   ScreenHeader,
-  Select,
   StatusDot,
   TextInput,
 } from '@/components/primitives'
+import { ProjectFilter } from '@/components/ProjectFilter'
 import { formatCost, formatTokens } from '@/state/format'
 
 export function AgentsGrid() {
@@ -24,9 +24,7 @@ export function AgentsGrid() {
   const total = useRoster((s) => s.agents.length)
   const gridQuery = useRoster((s) => s.gridQuery)
   const setGridQuery = useRoster((s) => s.setGridQuery)
-  const projectFilter = useRoster((s) => s.gridProjectFilter)
-  const setProjectFilter = useRoster((s) => s.setGridProjectFilter)
-  const projects = useRoster(useShallow((s) => s.projects))
+  const projectFilter = useRoster((s) => s.projectFilter)
   const go = useRoster((s) => s.go)
 
   // A count, not an array: a fresh array here re-renders forever.
@@ -43,15 +41,7 @@ export function AgentsGrid() {
       <ScreenHeader title="Agents">
         <span className="text-md text-dim">{summary}</span>
         <div className="ml-auto flex items-center gap-[8px]">
-          <Select
-            ariaLabel="Filter by project"
-            value={projectFilter}
-            onChange={setProjectFilter}
-            options={[
-              { value: ALL_PROJECTS, label: 'All projects' },
-              ...projects.map((project) => ({ value: project.id, label: project.name })),
-            ]}
-          />
+          <ProjectFilter />
           <TextInput
             ariaLabel="Filter agents"
             placeholder="Filter agents"
@@ -86,7 +76,7 @@ interface AgentCardProps {
 
 function AgentCard({ agent }: AgentCardProps) {
   const openAgent = useRoster((s) => s.openAgent)
-  const projectFilter = useRoster((s) => s.gridProjectFilter)
+  const projectFilter = useRoster((s) => s.projectFilter)
   // The same predicate the card list used. If these two ever disagreed, a
   // card would render with no chips in it.
   const sessions = useRoster(
