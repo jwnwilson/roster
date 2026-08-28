@@ -101,6 +101,14 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
 
   const active = sessions.find((s) => s.id === activeId) ?? null
   const pending = approvals[0] ?? null
+  // A question is answered in the transcript, so the banner would be a second
+  // control over the same approval — and its Approve means "did not answer".
+  const asking = pending?.questions ?? null
+
+  function respondToQuestion(answers: Record<string, string>): void {
+    if (!pending || !activeId) return
+    void window.roster.sessions.respondToApproval(activeId, pending.id, true, answers)
+  }
 
   async function newSession(): Promise<void> {
     const created = await window.roster.sessions.create(agent.id)
@@ -151,7 +159,9 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
         onNew={() => void newSession()}
       />
 
-      {pending && activeId ? <ApprovalBanner sessionId={activeId} approval={pending} /> : null}
+      {pending && activeId && asking === null ? (
+        <ApprovalBanner sessionId={activeId} approval={pending} />
+      ) : null}
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
@@ -165,6 +175,13 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               isStreaming={streaming}
               streamingText={activity ?? `${agent.name} is working…`}
               skillsLine={`skills: ${agent.skills.join(', ') || 'none'}`}
+              {...(asking !== null && pending?.sessionId === active.id
+                ? { questions: asking }
+                : {})}
+              onAnswer={respondToQuestion}
+              // Allowed, not denied: the tool's own answer for this is that
+              // nobody replied, which is truer than an error.
+              onSkipQuestions={() => respondToQuestion({})}
               planMode={planMode[active.id] === true}
               onTogglePlanMode={() => togglePlanMode(active.id)}
               onSend={(prompt) =>

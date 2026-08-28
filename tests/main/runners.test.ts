@@ -6,7 +6,7 @@ import type { Agent } from '@shared/types'
 import { CustomRunner } from '@main/runners/custom'
 import { CodexRunner } from '@main/runners/codex'
 import { getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
-import { describeCommand } from '@main/runners/claude'
+import { ClaudeRunner, describeCommand } from '@main/runners/claude'
 import type { RunnerEvent, StartOptions } from '@main/runners/types'
 
 let dir: string
@@ -233,6 +233,94 @@ describe('describeCommand', () => {
 
   test('ignores an empty field rather than showing a blank banner', () => {
     expect(describeCommand('Bash', { command: '' })).toBe('Bash')
+  })
+})
+
+describe('answering a question through the approval gate', () => {
+  const QUESTIONS = [
+    {
+      question: 'Which cache backend?',
+      header: 'Cache',
+      multiSelect: false,
+      options: [{ label: 'Redis', description: 'Distributed' }, { label: 'None', description: '' }],
+    },
+  ]
+
+  /** requestApproval is private; the gate is what this suite is about. */
+  function gateOf(runner: ClaudeRunner) {
+    return (
+      runner as unknown as {
+        requestApproval(
+          toolName: string,
+          input: Record<string, unknown>,
+        ): Promise<Record<string, unknown>>
+      }
+    ).requestApproval.bind(runner)
+  }
+
+  function raise(input: Record<string, unknown>, toolName = 'AskUserQuestion') {
+    const runner = new ClaudeRunner()
+    const raised: { id: string; questions?: unknown }[] = []
+    runner.onApprovalNeeded = (event) => raised.push(event)
+
+    const settled = gateOf(runner)(toolName, input)
+    return { runner, raised, settled }
+  }
+
+  test('the approval carries the questions, so the UI can draw them', () => {
+    const { raised } = raise({ questions: QUESTIONS })
+
+    expect(raised[0]?.questions).toEqual(QUESTIONS)
+  })
+
+  test('an ordinary tool raises an approval with no questions on it', () => {
+    const { raised } = raise({ command: 'git push' }, 'Bash')
+
+    expect(raised[0]).not.toHaveProperty('questions')
+  })
+
+  test('answers reach the tool as its own input, not as a denial', async () => {
+    const { runner, raised, settled } = raise({ questions: QUESTIONS })
+
+    runner.respondToApproval(raised[0]!.id, {
+      approved: true,
+      answers: { 'Which cache backend?': 'Redis' },
+    })
+
+    // The tool reads its answers back out of the input it was called with, so
+    // allowing the call and answering the question are one act.
+    expect(await settled).toEqual({
+      behavior: 'allow',
+      updatedInput: { questions: QUESTIONS, answers: { 'Which cache backend?': 'Redis' } },
+    })
+  })
+
+  test('skipping allows the call untouched, so the tool says nobody answered', async () => {
+    const { runner, raised, settled } = raise({ questions: QUESTIONS })
+
+    runner.respondToApproval(raised[0]!.id, { approved: true, answers: {} })
+
+    // Not a denial: "the user did not answer" is truer than an error.
+    expect(await settled).toEqual({ behavior: 'allow', updatedInput: { questions: QUESTIONS } })
+  })
+
+  test('an ordinary approval is unchanged by all this', async () => {
+    const { runner, raised, settled } = raise({ command: 'git push' }, 'Bash')
+
+    runner.respondToApproval(raised[0]!.id, { approved: true })
+
+    expect(await settled).toEqual({
+      behavior: 'allow',
+      updatedInput: { command: 'git push' },
+    })
+  })
+
+  test('a denial still denies, and says why', async () => {
+    const { runner, raised, settled } = raise({ questions: QUESTIONS })
+
+    runner.respondToApproval(raised[0]!.id, { approved: false, reason: 'no thanks' })
+
+    expect(await settled).toEqual({ behavior: 'deny', message: 'no thanks' })
   })
 })
 

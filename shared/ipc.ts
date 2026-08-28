@@ -53,7 +53,17 @@ export interface RosterApi {
     cancel(sessionId: string): Promise<void>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
-    respondToApproval(sessionId: string, approvalId: string, approved: boolean): Promise<void>
+    /**
+     * Answers a pending approval. `answers` is only for a question: it is
+     * keyed by question text and reaches the tool as its own input, so
+     * answering and allowing are one call.
+     */
+    respondToApproval(
+      sessionId: string,
+      approvalId: string,
+      approved: boolean,
+      answers?: Record<string, string>,
+    ): Promise<void>
     pendingApprovals(sessionId: string): Promise<Approval[]>
     /** Live turn events: messages, status, usage, approvals. */
     onEvent(listener: (event: SessionEventPayload) => void): () => void

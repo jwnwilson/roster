@@ -152,6 +152,72 @@ describe('AgentDetail — approval banner', () => {
   })
 })
 
+describe('AgentDetail — answering a question', () => {
+  const ASKING = {
+    id: 'a1',
+    sessionId: 's1',
+    toolName: 'AskUserQuestion',
+    command: 'Which cache backend?',
+    questions: [
+      {
+        question: 'Which cache backend?',
+        header: 'Cache',
+        multiSelect: false,
+        options: [
+          { label: 'Redis', description: 'Distributed' },
+          { label: 'None', description: 'Skip it' },
+        ],
+      },
+    ],
+    status: 'pending' as const,
+    createdAt: 0,
+  }
+
+  beforeEach(() => {
+    withSessions([aSession({ id: 's1', status: 'approval' })])
+    useRoster.setState({ approvals: { s1: [ASKING] } })
+  })
+
+  test('the options are in the transcript, not the banner', async () => {
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: /Redis/ })).toBeInTheDocument()
+    // Approve/Deny is the wrong shape for a question — approving without an
+    // answer only tells the agent nobody replied.
+    expect(screen.queryByText(/Waiting on you/)).not.toBeInTheDocument()
+  })
+
+  test('clicking an option answers the pending approval', async () => {
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: /Redis/ }))
+
+    expect(window.roster.sessions.respondToApproval).toHaveBeenCalledWith('s1', 'a1', true, {
+      'Which cache backend?': 'Redis',
+    })
+  })
+
+  test('Skip allows the call with nothing filled in', async () => {
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Skip' }))
+
+    expect(window.roster.sessions.respondToApproval).toHaveBeenCalledWith('s1', 'a1', true, {})
+  })
+
+  test('an approval with no questions still uses the banner', async () => {
+    useRoster.setState({
+      approvals: { s1: [{ ...ASKING, toolName: 'Bash', command: 'git push', questions: undefined }] },
+    })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText(/Waiting on you/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Redis/ })).not.toBeInTheDocument()
+  })
+})
+
 describe('AgentDetail — approving a plan', () => {
   const PLAN = {
     id: 'a1',

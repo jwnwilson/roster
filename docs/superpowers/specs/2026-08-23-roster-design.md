@@ -453,6 +453,19 @@ Each was raised and decided explicitly:
     one; removing a linked skill unlinks it rather than trashing it, and the confirm
     dialog says so — trashing a link would take the user's own folder with it.
 
+35. **A question is answered in the transcript, not allowed in the banner.** A question
+    tool reaches Roster as a permission request, and its input carries an `answers` field
+    the permission step is expected to fill in — so answering the question and allowing
+    the call are one act. `canUseTool` now resolves with
+    `{behavior: 'allow', updatedInput: {...input, answers}}`, keyed by question text.
+    The options are drawn where they were asked, because Approve/Deny is the wrong shape
+    for a question: allowing one with nothing filled in only tells the agent that nobody
+    replied. That is still reachable, as Skip. The banner is suppressed for an approval
+    carrying questions, so there are never two controls over the same decision. A single
+    single-select question answers on one click; anything more gathers first, or the
+    first click would answer the rest with silence. "Other" is offered per question
+    because the tool's own description promises the model it will be.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

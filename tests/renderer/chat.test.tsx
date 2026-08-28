@@ -81,6 +81,8 @@ function pane(overrides: Partial<Parameters<typeof AssistantChatPane>[0]> = {}) 
       skillsLine="skills: repro-harness"
       planMode={false}
       onTogglePlanMode={vi.fn()}
+      onAnswer={vi.fn()}
+      onSkipQuestions={vi.fn()}
       onSend={vi.fn()}
       onCancel={vi.fn()}
       {...overrides}

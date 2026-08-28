@@ -177,8 +177,17 @@ export function registerIpc(): void {
   )
   ipcMain.handle(
     CHANNELS.sessionsRespondToApproval,
-    (_e, sessionId: string, approvalId: string, approved: boolean) =>
-      requireManager().respondToApproval(sessionId, approvalId, { approved }),
+    (
+      _e,
+      sessionId: string,
+      approvalId: string,
+      approved: boolean,
+      answers?: Record<string, string>,
+    ) =>
+      requireManager().respondToApproval(sessionId, approvalId, {
+        approved,
+        ...(answers !== undefined ? { answers } : {}),
+      }),
   )
   ipcMain.handle(CHANNELS.sessionsPendingApprovals, (_e, sessionId: string) =>
     requireManager().pendingApprovals(sessionId),

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
-import { normalizeClaudeMessage, summarisePlan, summariseQuestions } from './normalizeClaude'
+import { normalizeClaudeMessage, summarisePlan } from './normalizeClaude'
+import { parseQuestions, summariseQuestions } from './questions'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
 import { TASK_TOOL_NAMES } from './taskTools'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
@@ -128,12 +129,14 @@ export class ClaudeRunner implements Runner {
   ): Promise<{ behavior: 'allow'; updatedInput: Record<string, unknown> } | { behavior: 'deny'; message: string }> {
     const id = randomUUID()
 
+    const questions = parseQuestions(input['questions'])
+
     return new Promise((resolve) => {
       this.pending.set(id, {
         resolve: (decision) =>
           resolve(
             decision.approved
-              ? { behavior: 'allow', updatedInput: input }
+              ? { behavior: 'allow', updatedInput: withAnswers(input, decision.answers) }
               : { behavior: 'deny', message: decision.reason ?? 'Denied by the user' },
           ),
       })
@@ -143,6 +146,7 @@ export class ClaudeRunner implements Runner {
         id,
         toolName,
         command: describeCommand(toolName, input),
+        ...(questions !== null ? { questions } : {}),
       })
     })
   }
@@ -156,6 +160,22 @@ export class ClaudeRunner implements Runner {
     }
     this.pending.clear()
   }
+}
+
+/**
+ * The tool's own input with the user's answers filled in.
+ *
+ * A question tool reads its `answers` field back out of the input it was
+ * called with — the permission step is where they are meant to be added, so
+ * answering the question and allowing the call are one act. Everything else
+ * is passed through untouched.
+ */
+function withAnswers(
+  input: Record<string, unknown>,
+  answers: Record<string, string> | undefined,
+): Record<string, unknown> {
+  if (answers === undefined || Object.keys(answers).length === 0) return input
+  return { ...input, answers }
 }
 
 /** The SDK wants an AbortController; Roster's session layer owns the signal. */

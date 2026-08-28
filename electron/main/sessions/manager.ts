@@ -404,6 +404,7 @@ export class SessionManager {
       sessionId,
       toolName: event.toolName,
       command: event.command,
+      ...(event.questions !== undefined ? { questions: event.questions } : {}),
       status: 'pending',
       createdAt: Date.now(),
     }

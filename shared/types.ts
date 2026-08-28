@@ -165,9 +165,34 @@ export interface Approval {
   toolName: string
   /** The exact command, shown in monospace in the banner. */
   command: string
+  /**
+   * Present when the agent is asking rather than acting.
+   *
+   * A question reaches Roster as a permission request: the tool carries an
+   * `answers` field the permission step is expected to fill in, so answering
+   * and allowing are the same act. Approvals with questions are answered in
+   * the transcript rather than allowed or denied in the banner.
+   */
+  questions?: Question[]
   status: 'pending' | 'approved' | 'denied'
   createdAt: number
   decidedAt?: number
+}
+
+export interface QuestionOption {
+  /** Shown on the button; one to five words. */
+  label: string
+  /** What choosing it means. */
+  description: string
+}
+
+export interface Question {
+  question: string
+  /** A short chip above the question, twelve characters or fewer. */
+  header: string
+  /** Several options may be chosen, rather than exactly one. */
+  multiSelect: boolean
+  options: QuestionOption[]
 }
 
 /* -------------------------------------------------------------------------

@@ -1,3 +1,4 @@
+import { summariseQuestions } from './questions'
 import type { RunnerEvent } from './types'
 
 export interface NormalizeOptions {
@@ -182,23 +183,17 @@ export function summariseArgs(input: unknown): string {
 }
 
 /**
- * What a question tool is asking, in one line.
+ * A plan's opening line — usually its heading.
  *
- * Without this the row is the raw JSON — every option label and description
- * inlined ahead of the question itself, so the one thing worth reading is
- * off the end of a truncated line.
+ * ExitPlanMode carries the whole plan as Markdown, which is neither a command
+ * nor one line. The row takes the heading; the plan itself is readable in the
+ * expanded panel.
  */
-export function summariseQuestions(value: unknown): string | null {
-  if (!Array.isArray(value) || value.length === 0) return null
+export function summarisePlan(value: unknown): string | null {
+  if (typeof value !== 'string') return null
 
-  const first = value[0]
-  if (!isRecord(first)) return null
-
-  const question = asString(first['question'])
-  if (question === null || question === '') return null
-
-  const rest = value.length - 1
-  return rest === 0 ? question : `${question} (+${rest} more)`
+  const first = value.split('\n').find((line) => line.trim() !== '')
+  return first === undefined ? null : first.trim()
 }
 
 /**
@@ -219,20 +214,6 @@ function fullInput(input: unknown, summary: string): string | null {
 
   const detail = stringify(input)
   return detail === '' ? null : detail
-}
-
-/**
- * A plan's opening line — usually its heading.
- *
- * ExitPlanMode carries the whole plan as Markdown, which is neither a command
- * nor one line. The row takes the heading; the plan itself is readable in the
- * expanded panel.
- */
-export function summarisePlan(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-
-  const first = value.split('\n').find((line) => line.trim() !== '')
-  return first === undefined ? null : first.trim()
 }
 
 function stringify(input: unknown): string {

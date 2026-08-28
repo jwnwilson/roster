@@ -6,10 +6,11 @@ import {
   useAuiState,
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
-import type { HandoffMessage, Message, SpawnMessage } from '@shared/types'
+import type { HandoffMessage, Message, Question, SpawnMessage } from '@shared/types'
 import { toThreadMessage, type RosterHeader } from './convert'
 import { Composer, StreamingRow } from './Composer'
 import { HandoffBody, SpawnBody, TextBody, ToolBody, MessageHeader } from './messages'
+import { QuestionCard } from './QuestionCard'
 
 interface AssistantChatPaneProps {
   sessionId: string
@@ -18,6 +19,10 @@ interface AssistantChatPaneProps {
   isStreaming: boolean
   streamingText: string
   skillsLine: string
+  /** What the agent is waiting to be told, when it asked rather than acted. */
+  questions?: Question[]
+  onAnswer: (answers: Record<string, string>) => void
+  onSkipQuestions: () => void
   planMode: boolean
   onTogglePlanMode: () => void
   onSend: (prompt: string) => void
@@ -39,6 +44,9 @@ export function AssistantChatPane({
   isStreaming,
   streamingText,
   skillsLine,
+  questions,
+  onAnswer,
+  onSkipQuestions,
   planMode,
   onTogglePlanMode,
   onSend,
@@ -78,6 +86,16 @@ export function AssistantChatPane({
           <ThreadPrimitive.Messages components={{ Message: RosterMessage }} />
 
           {isStreaming ? <StreamingRow text={streamingText} onCancel={onCancel} /> : null}
+
+          {/* Below the transcript, where the question was asked — not in the
+              banner, which has room for one line and two buttons. */}
+          {questions ? (
+            <QuestionCard
+              questions={questions}
+              onAnswer={onAnswer}
+              onSkip={onSkipQuestions}
+            />
+          ) : null}
         </ThreadPrimitive.Viewport>
 
         <Composer
