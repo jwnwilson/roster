@@ -466,6 +466,14 @@ Each was raised and decided explicitly:
     first click would answer the rest with silence. "Other" is offered per question
     because the tool's own description promises the model it will be.
 
+    Options are one per row rather than wrapped chips: they are prose, not
+    labels, and side by side they formed a ragged grid that was hard to read
+    down. Each row carries a marker in the shape language the skill and MCP
+    chips already use — round for pick-one, square for pick-any — so the row
+    says what a click will do before it is clicked. The card is capped at
+    620px, since a full-width row puts a two-word label alone on a 1200px
+    line, and questions are ruled off from one another.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

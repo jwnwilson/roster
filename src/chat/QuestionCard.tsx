@@ -70,13 +70,22 @@ export function QuestionCard({ questions, onAnswer, onSkip }: QuestionCardProps)
   return (
     <section
       aria-label="Question from the agent"
-      className="flex flex-col gap-[14px] rounded-[9px] border border-accent-line bg-accent-surface-2 px-[15px] py-[13px]"
+      // Capped: full-width rows put a two-word label alone on a 1200px line.
+      className="flex w-full max-w-[620px] flex-col gap-[14px] rounded-[9px] border border-accent-line bg-accent-surface-2 px-[15px] py-[13px]"
     >
-      {questions.map((question) => {
+      {questions.map((question, index) => {
         const choice = choiceFor(question.question)
 
         return (
-          <div key={question.question} className="flex flex-col gap-[9px]">
+          <div
+            key={question.question}
+            // A rule between questions: with every option on its own row, one
+            // question's last option and the next one's chip otherwise read
+            // as the same list.
+            className={`flex flex-col gap-[9px] ${
+              index === 0 ? '' : 'border-t border-line pt-[14px]'
+            }`}
+          >
             <div className="flex items-baseline gap-[8px]">
               <span className="flex-none rounded-chip border border-accent-line bg-accent-surface px-[7px] py-[1px] font-ui text-2xs font-semibold tracking-[0.04em] text-accent-text uppercase">
                 {question.header}
@@ -88,7 +97,11 @@ export function QuestionCard({ questions, onAnswer, onSkip }: QuestionCardProps)
 
             <p className="m-0 text-lg leading-[1.5] text-ink">{question.question}</p>
 
-            <div className="flex flex-wrap gap-[7px]">
+            {/* One per row: options are prose, not chips, and side by side
+                they wrapped into a ragged grid that was hard to compare
+                down. Full width also gives each description room to sit
+                under its own label. */}
+            <div className="flex flex-col gap-[5px]">
               {question.options.map((option) => {
                 const on = choice.picked.includes(option.label)
                 return (
@@ -96,21 +109,23 @@ export function QuestionCard({ questions, onAnswer, onSkip }: QuestionCardProps)
                     key={option.label}
                     type="button"
                     aria-pressed={isOneClick ? undefined : on}
-                    title={option.description}
                     onClick={() => pick(question, option.label)}
-                    className={`flex max-w-full cursor-pointer flex-col items-start gap-[2px] rounded-field border px-[11px] py-[7px] text-left ${
+                    className={`flex w-full cursor-pointer items-start gap-[9px] rounded-field border px-[11px] py-[8px] text-left ${
                       on
                         ? 'border-accent bg-accent-surface text-ink'
                         : 'border-line-input bg-card text-ink-3 hover:border-line-hover-strong'
                     }`}
                     data-hoverable
                   >
-                    <span className="font-ui text-md font-medium">{option.label}</span>
-                    {option.description === '' ? null : (
-                      <span className="max-w-[320px] text-sm leading-[1.45] text-dim-2">
-                        {option.description}
-                      </span>
-                    )}
+                    <ChoiceDot on={on} multiSelect={question.multiSelect} />
+                    <span className="flex min-w-0 flex-col gap-[2px]">
+                      <span className="font-ui text-md font-medium">{option.label}</span>
+                      {option.description === '' ? null : (
+                        <span className="text-sm leading-[1.45] text-dim-2">
+                          {option.description}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 )
               })}
@@ -124,13 +139,14 @@ export function QuestionCard({ questions, onAnswer, onSkip }: QuestionCardProps)
                     ...(choice.otherOpen ? {} : { picked: [] }),
                   })
                 }
-                className={`cursor-pointer rounded-field border px-[11px] py-[7px] font-ui text-md ${
+                className={`flex w-full cursor-pointer items-center gap-[9px] rounded-field border border-dashed px-[11px] py-[8px] text-left font-ui text-md ${
                   choice.otherOpen
                     ? 'border-accent bg-accent-surface text-ink'
                     : 'border-line-dashed bg-transparent text-muted-2 hover:border-line-hover-strong'
                 }`}
                 data-hoverable
               >
+                <ChoiceDot on={choice.otherOpen} multiSelect={question.multiSelect} />
                 {OTHER}…
               </button>
             </div>
@@ -174,6 +190,38 @@ export function QuestionCard({ questions, onAnswer, onSkip }: QuestionCardProps)
         )}
       </div>
     </section>
+  )
+}
+
+/**
+ * The marker at the head of an option row.
+ *
+ * Round for pick-one, square for pick-any — the same shape language the
+ * skill and MCP chips already use, so the row says what a click will do
+ * before it is clicked.
+ */
+function ChoiceDot({ on, multiSelect }: { on: boolean; multiSelect: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={`mt-[4px] flex h-[11px] w-[11px] flex-none items-center justify-center border ${
+        multiSelect ? 'rounded-[3px]' : 'rounded-full'
+      } ${on ? 'border-accent bg-accent' : 'border-line-hover-strong bg-transparent'}`}
+    >
+      {!on ? null : multiSelect ? (
+        <svg width="7" height="7" viewBox="0 0 8 8" fill="none">
+          <path
+            d="M1.2 4.1 3 5.9l3.8-3.8"
+            stroke="white"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : (
+        <span className="h-[4px] w-[4px] rounded-full bg-white" />
+      )}
+    </span>
   )
 }
 
