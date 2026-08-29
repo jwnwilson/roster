@@ -196,6 +196,28 @@ const TASKS: SeedTask[] = [
       },
     ],
   },
+
+  // Two off the board, so the Backlog tab shows what it is for rather than
+  // an empty pane. Unassigned on purpose: nobody has picked these up.
+  {
+    title: 'Replay tokens instead of sticky sessions',
+    description:
+      'Sticky sessions pin a user to one region. Worth costing out a signed-token replay so any region can serve any request.\n\nNot started — needs a shape before it needs an estimate.',
+    status: 'backlog',
+    priority: 'low',
+    assignee: null,
+    project: 'migration',
+    labels: ['idea'],
+  },
+  {
+    title: 'Budget alerts per agent',
+    description: 'Warn when an agent passes a spend threshold, rather than finding out later.',
+    status: 'backlog',
+    priority: 'medium',
+    assignee: null,
+    project: 'planning',
+    labels: [],
+  },
 ]
 
 /**

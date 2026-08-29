@@ -474,6 +474,38 @@ Each was raised and decided explicitly:
     620px, since a full-width row puts a two-word label alone on a 1200px
     line, and questions are ruled off from one another.
 
+36. **The backlog shares the app's one project filter.** The handoff wires the backlog
+    sidebar's project dropdown to its own state, but the Backlog tab shows that control
+    and the header's at the same time, and two identical dropdowns holding different
+    values is the bug §33 exists to prevent. Both read and write `projectFilter`. The
+    search and priority filters beside it *are* backlog-only, because they have no twin
+    on screen and they narrow a different list.
+
+37. **"+ New backlog task" is solid, not dashed.** README prose calls it dashed;
+    `Roster.dc.html` and `screenshots/05-tasks-backlog.png` both draw it filled
+    `#7c5cff`. Where the pack disagrees with itself, the two visual artifacts win over
+    the one prose line.
+
+38. **Migration 5 rebuilds `task_comments` as well as `tasks`.** Widening a CHECK means
+    rebuilding the table, and renaming `tasks` aside rewrites the child's REFERENCES to
+    point at `tasks_old` — so dropping it fires `ON DELETE CASCADE` and takes every
+    comment and History line in the database with it (measured: 2 in, 0 out). None of
+    the usual escapes work from inside the runner's transaction: `foreign_keys` is
+    ignored there, `legacy_alter_table` does not prevent the rewrite, and
+    `defer_foreign_keys` defers checks but not actions. Rebuilding both tables is what
+    keeps the threads, and `tests/main/migrations.test.ts` fails loudly without it.
+
+39. **`Select` has a compact variant.** Two of them share the 220px backlog sidebar,
+    where "All priorities" does not fit at the usual size — which is why the handoff
+    specifies 11.5px there against 12px everywhere else.
+
+40. **Adding a task to the store is idempotent on both paths.** A task you create
+    arrives twice — once from the call that made it, once from the broadcast the main
+    process sends every window — and the broadcast wins the race, because it is emitted
+    before the IPC reply returns. Only the broadcast was guarded, so every task made
+    from the New Task modal appeared twice until the next reload. `withTask` is now
+    used by both.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

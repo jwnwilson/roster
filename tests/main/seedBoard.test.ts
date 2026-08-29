@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest'
+import { BOARD_STATUSES } from '@shared/types'
 import { openDatabase, type Db } from '@main/db'
 import { ProjectStore } from '@main/store/projects'
 import { TaskStore } from '@main/store/tasks'
@@ -33,8 +34,17 @@ describe('seedBoardIfEmpty', () => {
   test('puts work in every column, so the board is not one long To Do list', () => {
     seedBoardIfEmpty(projects, tasks, AGENTS)
 
-    const columns = new Set(tasks.findAll().map((task) => task.status))
-    expect(columns).toEqual(new Set(['todo', 'in_progress', 'in_review', 'done']))
+    const seeded = new Set(tasks.findAll().map((task) => task.status))
+    for (const column of BOARD_STATUSES) expect(seeded).toContain(column)
+  })
+
+  test('seeds the backlog too, so the tab is not an empty pane on a fresh install', () => {
+    seedBoardIfEmpty(projects, tasks, AGENTS)
+
+    const backlog = tasks.findAll().filter((task) => task.status === 'backlog')
+    expect(backlog.length).toBeGreaterThan(0)
+    // Nobody has picked these up — that is what makes them backlog.
+    expect(backlog.every((task) => task.assigneeId === null)).toBe(true)
   })
 
   test('files every seeded task under a project that exists', () => {

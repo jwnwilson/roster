@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { columnOf, moveTask, reduceTaskEvent, useRoster } from '@/state/store'
+import {
+  columnOf,
+  columnsFor,
+  moveTask,
+  reduceTaskEvent,
+  selectBacklogTasks,
+  selectFilteredTasks,
+  useRoster,
+  withTask,
+} from '@/state/store'
 import { aProject, aTask, aTaskComment } from './factories'
 import { installRosterApi } from './rosterApi'
 
@@ -27,7 +36,12 @@ describe('reduceTaskEvent — creation', () => {
     const task = aTask({ id: 'ROS-9' })
     useRoster.setState({ tasks: [task] })
 
-    expect(reduceTaskEvent(state(), { type: 'task-created', task })).toEqual({})
+    const patch = reduceTaskEvent(state(), { type: 'task-created', task })
+
+    // The outcome, not the shape of the patch: it hands back the very same
+    // array, so there is one task and nothing re-renders over it.
+    expect(patch.tasks).toEqual([task])
+    expect(patch.tasks).toBe(state().tasks)
   })
 })
 
@@ -204,5 +218,104 @@ describe('moveTask', () => {
 
     expect(await moveTask('ROS-404', 'done')).toBeNull()
     expect(api.tasks.apply).not.toHaveBeenCalled()
+  })
+})
+
+describe('a task we created ourselves arrives twice', () => {
+  const CREATED = aTask({ id: 'ROS-9', title: 'Just made' })
+
+  test('the broadcast landing first does not leave two of it', () => {
+    // The real order: the main process emits before the create call returns,
+    // so the modal's own add is the second one to land. Guarding only the
+    // broadcast — as this once did — showed every new task twice.
+    useRoster.setState({ tasks: [] })
+    useRoster.setState((s) => reduceTaskEvent(s, { type: 'task-created', task: CREATED }))
+
+    useRoster.setState((s) => ({ tasks: withTask(s.tasks, CREATED) }))
+
+    expect(useRoster.getState().tasks).toHaveLength(1)
+  })
+
+  test('and neither does our own add landing first', () => {
+    useRoster.setState({ tasks: [] })
+    useRoster.setState((s) => ({ tasks: withTask(s.tasks, CREATED) }))
+
+    useRoster.setState((s) => reduceTaskEvent(s, { type: 'task-created', task: CREATED }))
+
+    expect(useRoster.getState().tasks).toHaveLength(1)
+  })
+
+  test('a task that really is new is still added', () => {
+    useRoster.setState({ tasks: [aTask({ id: 'ROS-1' })] })
+
+    useRoster.setState((s) => ({ tasks: withTask(s.tasks, CREATED) }))
+
+    expect(useRoster.getState().tasks.map((t) => t.id)).toEqual(['ROS-1', 'ROS-9'])
+  })
+
+  test('a no-op keeps the same array, so nothing re-renders over it', () => {
+    const tasks = [CREATED]
+
+    expect(withTask(tasks, CREATED)).toBe(tasks)
+  })
+})
+
+describe('the board and the backlog divide the tasks between them', () => {
+  const TASKS = [
+    aTask({ id: 'ROS-1', title: 'On the board', status: 'todo', projectId: 'p1' }),
+    aTask({ id: 'ROS-2', title: 'An idea', status: 'backlog', priority: 'low', projectId: 'p1' }),
+    aTask({ id: 'ROS-3', title: 'Another idea', status: 'backlog', priority: 'urgent' }),
+  ]
+
+  beforeEach(() => {
+    useRoster.setState({ tasks: TASKS })
+  })
+
+  test('the board never shows backlog work', () => {
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1'])
+  })
+
+  test('the backlog shows only backlog work', () => {
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-2', 'ROS-3'])
+  })
+
+  test('the two searches are separate, since they search different lists', () => {
+    useRoster.setState({ taskQuery: 'On the board', backlogQuery: 'Another' })
+
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1'])
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-3'])
+  })
+
+  test('the backlog matches on the task key too', () => {
+    useRoster.setState({ backlogQuery: 'ros-3' })
+
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-3'])
+  })
+
+  test('the priority filter narrows the backlog', () => {
+    useRoster.setState({ backlogPriority: 'urgent' })
+
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-3'])
+  })
+
+  test('the project filter is the shared one, and reaches both lists', () => {
+    useRoster.setState({ projectFilter: 'p1' })
+
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1'])
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-2'])
+  })
+
+  test('grouping drops anything that is not a column, rather than throwing', () => {
+    // columnsFor indexes a four-key record by status; a backlog task that
+    // slipped past the filter would take the whole board down with it.
+    const columns = columnsFor(TASKS)
+
+    expect(columns.todo.map((t) => t.id)).toEqual(['ROS-1'])
+    expect(Object.keys(columns)).toEqual(['todo', 'in_progress', 'in_review', 'done'])
+  })
+
+  test('a backlog task is not a drop target, so nothing can be dropped onto it', () => {
+    expect(columnOf('ROS-2', TASKS)).toBeNull()
+    expect(columnOf('backlog', TASKS)).toBeNull()
   })
 })

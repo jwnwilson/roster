@@ -16,6 +16,7 @@ interface TaskStatusStyle {
 }
 
 const STATUS_STYLES: Record<TaskStatus, TaskStatusStyle> = {
+  backlog: { cssVar: 'var(--color-backlog)', label: 'Backlog' },
   todo: { cssVar: 'var(--color-todo)', label: 'To Do' },
   in_progress: { cssVar: 'var(--color-in-progress)', label: 'In Progress' },
   in_review: { cssVar: 'var(--color-in-review)', label: 'In Review' },
