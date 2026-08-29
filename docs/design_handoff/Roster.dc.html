@@ -566,10 +566,14 @@
     <!-- TASKS -->
     <sc-if value="{{ isTasks }}" hint-placeholder-val="{{ false }}">
       <div style="display:flex; flex-direction:column; height:100vh;">
-        <div style="height:44px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #1e2027;">
-          <div style="font-weight:600;">Tasks</div>
-          <div style="font-size:12px; color:#6d707d;">{{ taskSummary }}</div>
-          <div style="position:relative; margin-left:auto;">
+        <div style="height:44px; flex:none; display:flex; align-items:center; gap:8px; padding:0 18px; border-bottom:1px solid #1e2027; overflow:hidden;">
+          <div style="font-weight:600; flex:none;">Tasks</div>
+          <div style="display:flex; gap:2px; padding:2px; background:#15161c; border:1px solid #24262f; border-radius:7px; flex:none;">
+            <div onClick="{{ setBacklogTab }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ backlogTabFg }}; background:{{ backlogTabBg }}; white-space:nowrap;">Backlog</div>
+            <div onClick="{{ setBoardTab }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ boardTabFg }}; background:{{ boardTabBg }}; white-space:nowrap;">Board</div>
+          </div>
+          <div style="font-size:12px; color:#6d707d; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; flex:0 1 auto;">{{ taskSummary }}</div>
+          <div style="position:relative; margin-left:auto; flex:none;">
             <select value="{{ projectFilterValue }}" onChange="{{ setProjectFilter }}" style="appearance:none; -webkit-appearance:none; padding:6px 26px 6px 10px; border:1px solid #1e2027; border-radius:6px; background:#15161c; color:#c8cad4; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#33363f;">
               <sc-for list="{{ projectFilterOptions }}" as="pf" hint-placeholder-count="3">
                 <option value="{{ pf.value }}">{{ pf.label }}</option>
@@ -577,11 +581,12 @@
             </select>
             <div style="position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
           </div>
-          <div onClick="{{ openProjectsModal }}" style="padding:6px 11px; border:1px solid #1e2027; border-radius:6px; font-size:12px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#33363f;">Projects</div>
-          <input type="text" value="{{ taskQuery }}" onChange="{{ setTaskQuery }}" placeholder="Filter tasks" style="width:200px; padding:6px 10px; border:1px solid #1e2027; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
-          <div onClick="{{ openNewTask }}" style="padding:5px 11px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">New task</div>
+          <div onClick="{{ openProjectsModal }}" style="flex:none; padding:6px 11px; border:1px solid #1e2027; border-radius:6px; font-size:12px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#33363f;">Projects</div>
+          <input type="text" value="{{ taskQuery }}" onChange="{{ setTaskQuery }}" placeholder="Filter tasks" style="flex:0 1 140px; min-width:80px; padding:6px 10px; border:1px solid #1e2027; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+          <div onClick="{{ openNewTask }}" style="flex:none; padding:5px 11px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer; white-space:nowrap;" style-hover="background:#8f74ff;">New task</div>
         </div>
 
+        <sc-if value="{{ isBoardTab }}" hint-placeholder-val="{{ true }}">
         <div style="flex:1; min-height:0; display:flex; gap:14px; padding:16px 18px; overflow-x:auto;">
           <sc-for list="{{ taskColumns }}" as="col" hint-placeholder-count="4">
             <div onDragOver="{{ col.onDragOver }}" onDrop="{{ col.onDrop }}" style="flex:1; min-width:220px; display:flex; flex-direction:column; background:#0d0e12; border:1px solid #1e2027; border-radius:10px; overflow:hidden;">
@@ -618,10 +623,241 @@
             </div>
           </sc-for>
         </div>
+        </sc-if>
+
+        <sc-if value="{{ isBacklogTab }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1; min-height:0; display:flex;">
+          <div style="width:220px; flex:none; border-right:1px solid #1e2027; display:flex; flex-direction:column;">
+            <div style="flex:none; padding:10px 12px; border-bottom:1px solid #1e2027; display:flex; flex-direction:column; gap:8px;">
+              <input type="text" value="{{ backlogQuery }}" onChange="{{ setBacklogQuery }}" placeholder="Filter backlog" style="width:100%; padding:6px 9px; border:1px solid #1e2027; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+              <div style="display:flex; gap:6px;">
+                <div style="position:relative; flex:1;">
+                  <select value="{{ backlogProjectFilterValue }}" onChange="{{ setBacklogProjectFilter }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 22px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#c8cad4; font-family:'Instrument Sans',sans-serif; font-size:11.5px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;">
+                    <sc-for list="{{ backlogProjectFilterOptions }}" as="pf" hint-placeholder-count="3">
+                      <option value="{{ pf.value }}">{{ pf.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:7px; top:50%; transform:translateY(-50%); font-size:8px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+                <div style="position:relative; flex:1;">
+                  <select value="{{ backlogPriorityFilterValue }}" onChange="{{ setBacklogPriorityFilter }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 22px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#c8cad4; font-family:'Instrument Sans',sans-serif; font-size:11.5px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;">
+                    <sc-for list="{{ backlogPriorityFilterOptions }}" as="pf" hint-placeholder-count="4">
+                      <option value="{{ pf.value }}">{{ pf.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:7px; top:50%; transform:translateY(-50%); font-size:8px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div onClick="{{ openNewBacklogTask }}" style="padding:5px 0; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer; text-align:center;" style-hover="background:#8f74ff;">+ New backlog task</div>
+            </div>
+            <div style="flex:1; min-height:0; overflow-y:auto;">
+              <sc-for list="{{ backlogList }}" as="t" hint-placeholder-count="4">
+                <div onClick="{{ t.select }}" style="padding:10px 12px; border-bottom:1px solid #1a1c23; border-left:2px solid {{ t.priorityColor }}; cursor:pointer; background:{{ t.activeBg }};" style-hover="background:#171420;">
+                  <div style="font-family:'JetBrains Mono',monospace; font-size:10px; color:#5f6270; margin-bottom:3px;">{{ t.id }}</div>
+                  <div style="font-size:12.5px; color:#d2d4dd; line-height:1.4;">{{ t.title }}</div>
+                  <sc-if value="{{ t.hasProject }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex; align-items:center; gap:5px; margin-top:5px; font-size:10.5px; color:#8f93a3;">
+                      <div style="width:6px;height:6px;border-radius:50%;background:{{ t.projectColor }};"></div>
+                      <div>{{ t.projectName }}</div>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+              <sc-if value="{{ backlogListEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:24px 12px; font-size:12px; color:#585b67; text-align:center;">No backlog tasks.</div>
+              </sc-if>
+            </div>
+          </div>
+
+          <sc-if value="{{ hasBacklogPanel }}" hint-placeholder-val="{{ false }}">
+          <div style="flex:1; min-width:0; display:flex; overflow:hidden;">
+            <div style="flex:1; min-width:0; overflow-y:auto; overflow-x:hidden; padding:20px 22px; display:flex; flex-direction:column; gap:18px;">
+              <div style="font-family:'JetBrains Mono',monospace; font-size:11.5px; color:#5f6270;">{{ backlogPanel.id }}</div>
+              <sc-if value="{{ backlogPanel.editingTitleNot }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ backlogPanel.startEditTitle }}" style="font-weight:600; font-size:19px; letter-spacing:-0.01em; line-height:1.3; cursor:text; border-radius:6px; padding:3px 6px; margin:-3px -6px;" style-hover="background:#171420;">{{ backlogPanel.title }}</div>
+              </sc-if>
+              <sc-if value="{{ backlogPanel.editingTitle }}" hint-placeholder-val="{{ false }}">
+                <input type="text" autoFocus="{{ true }}" value="{{ backlogPanel.titleDraft }}" onChange="{{ backlogPanel.setTitleDraft }}" onBlur="{{ backlogPanel.saveTitle }}" onKeyDown="{{ backlogPanel.titleKeyDown }}" style="width:100%; font-weight:600; font-size:19px; letter-spacing:-0.01em; line-height:1.3; padding:3px 6px; margin:-3px -6px; border:1px solid #3a3050; border-radius:6px; background:#171420; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; outline:none;" />
+              </sc-if>
+
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">Description</div>
+                <sc-if value="{{ backlogPanel.editingDescriptionNot }}" hint-placeholder-val="{{ true }}">
+                  <div onClick="{{ backlogPanel.startEditDescription }}" style="min-height:120px; padding:4px 2px; display:flex; flex-direction:column; gap:4px; cursor:text;">
+                    <sc-for list="{{ backlogPanel.mdLines }}" as="ln" hint-placeholder-count="3">
+                      <sc-if value="{{ ln.isH1 }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:17px; font-weight:600; color:#e6e6ea; margin-top:4px;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isH2 }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:15px; font-weight:600; color:#e6e6ea; margin-top:3px;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isH3 }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:13.5px; font-weight:600; color:#e6e6ea;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isLi }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex; gap:9px; font-size:13px; line-height:1.6; color:#c8cad4;">
+                          <div style="flex:none; color:#585b67;">•</div>
+                          <div>
+                            <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                              <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                            </sc-for>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isP }}" hint-placeholder-val="{{ true }}">
+                        <div style="font-size:13px; line-height:1.6; color:#c8cad4; text-wrap:pretty;">
+                          <sc-for list="{{ ln.runs }}" as="r" hint-placeholder-count="1">
+                            <span style="font-weight:{{ r.weight }}; font-family:{{ r.family }}; background:{{ r.bg }}; border-radius:4px; padding:{{ r.pad }};">{{ r.text }}</span>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ ln.isBlank }}" hint-placeholder-val="{{ false }}">
+                        <div style="height:6px;"></div>
+                      </sc-if>
+                    </sc-for>
+                    <sc-if value="{{ backlogPanel.descriptionEmpty }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-size:13px; color:#585b67;">No description. Click to add one.</div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ backlogPanel.editingDescription }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <textarea autoFocus="{{ true }}" value="{{ backlogPanel.descDraft }}" onChange="{{ backlogPanel.setDescDraft }}" rows="8" placeholder="Write a description… supports Markdown: # heading, **bold**, `code`, - list item" style="width:100%; min-height:150px; resize:vertical; padding:12px 14px; border:1px solid #262933; border-radius:8px; background:#15161c; color:#d2d4dd; font-family:'JetBrains Mono',monospace; font-size:12.5px; line-height:1.65; outline:none;" style-focus="border-color:#3a3050; background:#171420"></textarea>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <div style="font-size:11px; color:#585b67;">Markdown supported — headings, **bold**, `code`, lists</div>
+                      <div onClick="{{ backlogPanel.cancelEditDescription }}" style="margin-left:auto; padding:6px 12px; border:1px solid #262933; border-radius:7px; font-size:12px; color:#c8cad4; cursor:pointer;" style-hover="border-color:#3a3d47;">Cancel</div>
+                      <div onClick="{{ backlogPanel.saveDescription }}" style="padding:6px 12px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">Save</div>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="height:1px; background:#1e2027;"></div>
+
+              <div style="display:flex; flex-direction:column; gap:14px;">
+                <div style="display:flex; gap:2px; padding:2px; background:#15161c; border:1px solid #24262f; border-radius:7px; width:fit-content;">
+                  <div onClick="{{ backlogPanel.setCommentsTab }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ backlogPanel.commentsTabFg }}; background:{{ backlogPanel.commentsTabBg }};">Comments</div>
+                  <div onClick="{{ backlogPanel.setHistoryTab }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ backlogPanel.historyTabFg }}; background:{{ backlogPanel.historyTabBg }};">History</div>
+                </div>
+                <sc-if value="{{ backlogPanel.isCommentsTab }}" hint-placeholder-val="{{ true }}">
+                  <sc-for list="{{ backlogPanel.comments }}" as="c" hint-placeholder-count="2">
+                    <div style="display:flex; flex-direction:column; gap:5px;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="font-size:11.5px; font-weight:600; color:{{ c.tone }};">{{ c.author }}</div>
+                        <div style="font-size:11px; color:#4f5260; font-family:'JetBrains Mono',monospace;">{{ c.time }}</div>
+                      </div>
+                      <div style="font-size:13px; line-height:1.55; color:#d2d4dd; text-wrap:pretty; white-space:pre-wrap;">{{ c.text }}</div>
+                    </div>
+                  </sc-for>
+                </sc-if>
+                <sc-if value="{{ backlogPanel.isHistoryTab }}" hint-placeholder-val="{{ false }}">
+                  <sc-for list="{{ backlogPanel.history }}" as="h" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:baseline; gap:8px; font-size:11.5px; color:#5a5d69;">
+                      <div style="color:#8f93a3; font-weight:500;">{{ h.author }}</div>
+                      <div>{{ h.text }}</div>
+                      <div style="margin-left:auto; font-family:'JetBrains Mono',monospace; color:#4f5260;">{{ h.time }}</div>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ backlogPanel.hasHistoryNot }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:12px; color:#585b67;">No changes yet.</div>
+                  </sc-if>
+                </sc-if>
+              </div>
+
+              <sc-if value="{{ backlogPanel.isCommentsTab }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex; flex-wrap:wrap; gap:9px; padding-top:4px;">
+                  <input type="text" value="{{ backlogPanel.newComment }}" onChange="{{ backlogPanel.setNewComment }}" placeholder="Add a comment…" style="flex:1 1 120px; min-width:0; padding:8px 11px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+                  <div onClick="{{ backlogPanel.addComment }}" style="flex:none; padding:8px 14px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12.5px; cursor:pointer; white-space:nowrap;" style-hover="background:#8f74ff;">Comment</div>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="width:196px; flex:none; border-left:1px solid #1e2027; background:#0d0e12; overflow-y:auto; padding:16px 14px; display:flex; flex-direction:column; gap:16px;">
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Status</div>
+                <div style="position:relative;">
+                  <select value="{{ backlogPanel.statusValue }}" onChange="{{ backlogPanel.setStatus }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ backlogPanel.statusOptions }}" as="op" hint-placeholder-count="5">
+                      <option value="{{ op.key }}">{{ op.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Assignee</div>
+                <div style="position:relative;">
+                  <input type="text" value="{{ backlogPanel.assigneeQuery }}" onFocus="{{ backlogPanel.startAssigneeEdit }}" onChange="{{ backlogPanel.setAssigneeQuery }}" onBlur="{{ backlogPanel.blurAssignee }}" placeholder="Unassigned" style="width:100%; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+                  <sc-if value="{{ backlogPanel.hasAssignee }}" hint-placeholder-val="{{ false }}">
+                    <div onClick="{{ backlogPanel.clearAssignee }}" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); width:14px; height:14px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6d707d; font-size:12px; line-height:1;" style-hover="background:#26283a; color:#e6e6ea;">×</div>
+                  </sc-if>
+                </div>
+                <sc-if value="{{ backlogPanel.assigneeEditing }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute; top:100%; left:0; right:0; margin-top:3px; background:#15161c; border:1px solid #262933; border-radius:7px; overflow:hidden; z-index:5; box-shadow:0 8px 20px rgba(0,0,0,0.4);">
+                    <sc-for list="{{ backlogPanel.assigneeSuggestions }}" as="sug" hint-placeholder-count="3">
+                      <div onMouseDown="{{ sug.pick }}" style="padding:6px 9px; font-size:12px; color:#c8cad4; cursor:pointer;" style-hover="background:#1c1e26;">{{ sug.label }}</div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Priority</div>
+                <div style="position:relative;">
+                  <select value="{{ backlogPanel.priorityValue }}" onChange="{{ backlogPanel.setPriorityVal }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ backlogPanel.priorityOptions }}" as="p" hint-placeholder-count="4">
+                      <option value="{{ p.value }}">{{ p.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:5px;">
+                <div style="font-size:11px; color:#6d707d;">Project</div>
+                <div style="position:relative;">
+                  <select value="{{ backlogPanel.projectValue }}" onChange="{{ backlogPanel.setProject }}" style="width:100%; appearance:none; -webkit-appearance:none; padding:5px 24px 5px 8px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;" style-focus="border-color:#3a3050; background:#171420">
+                    <sc-for list="{{ backlogPanel.projectOptions }}" as="po" hint-placeholder-count="3">
+                      <option value="{{ po.value }}">{{ po.label }}</option>
+                    </sc-for>
+                  </select>
+                  <div style="position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+                </div>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <div style="font-size:11px; color:#6d707d;">Labels</div>
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                  <sc-for list="{{ backlogPanel.labels }}" as="lbl" hint-placeholder-count="2">
+                    <div style="display:flex; align-items:center; gap:5px; padding:3px 5px 3px 8px; border-radius:20px; background:#1a1c23; font-size:11px; color:#9a9daa;">
+                      <div>{{ lbl.name }}</div>
+                      <div onClick="{{ lbl.remove }}" style="width:13px; height:13px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; color:#6d707d; font-size:11px; line-height:1;" style-hover="background:#26283a; color:#e6e6ea;">−</div>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ backlogPanel.addingLabel }}" hint-placeholder-val="{{ false }}">
+                    <input type="text" autoFocus="{{ true }}" value="{{ backlogPanel.newLabelText }}" onChange="{{ backlogPanel.setNewLabelText }}" onBlur="{{ backlogPanel.submitLabel }}" onKeyDown="{{ backlogPanel.labelKeyDown }}" placeholder="Label" style="width:80px; padding:3px 8px; border:1px solid #3a3050; border-radius:20px; background:#171420; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:11px; outline:none;" />
+                  </sc-if>
+                  <sc-if value="{{ backlogPanel.addingLabelNot }}" hint-placeholder-val="{{ true }}">
+                    <div onClick="{{ backlogPanel.startAddLabel }}" style="display:flex; align-items:center; justify-content:center; gap:4px; padding:3px 9px; border-radius:20px; border:1px dashed #2a2d38; font-size:11px; color:#6d707d; cursor:pointer;" style-hover="border-color:#55596a; color:#e6e6ea;">+ Add</div>
+                  </sc-if>
+                </div>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+        </div>
+        </sc-if>
       </div>
     </sc-if>
-
-    <!-- TASK DETAIL MODAL -->
     <sc-if value="{{ hasOpenTask }}" hint-placeholder-val="{{ false }}">
       <div onClick="{{ taskModal.close }}" style="position:fixed; inset:0; z-index:40; background:rgba(6,7,10,0.66); display:flex; align-items:center; justify-content:center; padding:32px 24px;">
         <div onClick="{{ stopClick }}" style="width:100%; max-width:800px; height:min(680px, 100%); display:flex; flex-direction:column; background:#111216; border:1px solid #262933; border-radius:12px; overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,0.5);">
@@ -736,9 +972,9 @@
               </div>
 
               <sc-if value="{{ taskModal.isCommentsTab }}" hint-placeholder-val="{{ true }}">
-                <div style="display:flex; gap:9px; padding-top:4px;">
-                  <input type="text" value="{{ taskModal.newComment }}" onChange="{{ taskModal.setNewComment }}" placeholder="Add a comment…" style="flex:1; padding:8px 11px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
-                  <div onClick="{{ taskModal.addComment }}" style="padding:8px 14px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12.5px; cursor:pointer; white-space:nowrap;" style-hover="background:#8f74ff;">Comment</div>
+                <div style="display:flex; flex-wrap:wrap; gap:9px; padding-top:4px;">
+                  <input type="text" value="{{ taskModal.newComment }}" onChange="{{ taskModal.setNewComment }}" placeholder="Add a comment…" style="flex:1 1 120px; min-width:0; padding:8px 11px; border:1px solid #262933; border-radius:7px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12.5px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
+                  <div onClick="{{ taskModal.addComment }}" style="flex:none; padding:8px 14px; border-radius:7px; background:#7c5cff; color:#fff; font-weight:600; font-size:12.5px; cursor:pointer; white-space:nowrap;" style-hover="background:#8f74ff;">Comment</div>
                 </div>
               </sc-if>
             </div>
@@ -956,6 +1192,67 @@
                 </div>
               </div>
             </sc-if>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- SPEND -->
+    <sc-if value="{{ isSpend }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex; flex-direction:column; height:100vh;">
+        <div style="height:44px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #1e2027;">
+          <div style="font-weight:600;">Spend</div>
+          <div style="font-size:12px; color:#6d707d;">{{ totalSpendLabel }} across all agents</div>
+        </div>
+        <div style="flex:1; min-height:0; overflow-y:auto; padding:20px 18px; display:flex; flex-direction:column; gap:28px; max-width:640px;">
+          <div style="display:flex; flex-direction:column; gap:16px;">
+            <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">By provider</div>
+            <sc-for list="{{ providerModelGroups }}" as="pr" hint-placeholder-count="2">
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div style="width:110px; flex:none; font-size:12.5px; color:#c8cad4; font-weight:600;">{{ pr.label }}</div>
+                  <div style="flex:1; height:8px; background:#15161c; border-radius:4px; overflow:hidden;">
+                    <div style="height:100%; width:{{ pr.pct }}%; background:{{ pr.color }}; border-radius:4px;"></div>
+                  </div>
+                  <div style="width:64px; flex:none; text-align:right; font-family:'JetBrains Mono',monospace; font-size:12px; color:#d9a04a;">{{ pr.formatted }}</div>
+                </div>
+                <sc-for list="{{ pr.models }}" as="m" hint-placeholder-count="2">
+                  <div style="display:flex; align-items:center; gap:12px; padding-left:20px;">
+                    <div style="width:150px; flex:none; font-family:'JetBrains Mono',monospace; font-size:11px; color:#8f93a3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ m.label }}</div>
+                    <div style="flex:1; height:6px; background:#15161c; border-radius:3px; overflow:hidden;">
+                      <div style="height:100%; width:{{ m.pct }}%; background:{{ m.color }}; border-radius:3px; opacity:0.75;"></div>
+                    </div>
+                    <div style="width:64px; flex:none; text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:#b98a3a;">{{ m.formatted }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">By agent</div>
+            <sc-for list="{{ spendByAgent }}" as="r" hint-placeholder-count="5">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:110px; flex:none; font-size:12.5px; color:#c8cad4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.label }}</div>
+                <div style="flex:1; height:8px; background:#15161c; border-radius:4px; overflow:hidden;">
+                  <div style="height:100%; width:{{ r.pct }}%; background:{{ r.color }}; border-radius:4px;"></div>
+                </div>
+                <div style="width:64px; flex:none; text-align:right; font-family:'JetBrains Mono',monospace; font-size:12px; color:#d9a04a;">{{ r.formatted }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:12px;">
+            <div style="font-size:10.5px; letter-spacing:0.07em; text-transform:uppercase; color:#585b67; font-weight:600;">By project</div>
+            <sc-for list="{{ spendByProject }}" as="r" hint-placeholder-count="4">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="width:110px; flex:none; font-size:12.5px; color:#c8cad4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ r.label }}</div>
+                <div style="flex:1; height:8px; background:#15161c; border-radius:4px; overflow:hidden;">
+                  <div style="height:100%; width:{{ r.pct }}%; background:{{ r.color }}; border-radius:4px;"></div>
+                </div>
+                <div style="width:64px; flex:none; text-align:right; font-family:'JetBrains Mono',monospace; font-size:12px; color:#d9a04a;">{{ r.formatted }}</div>
+              </div>
+            </sc-for>
           </div>
         </div>
       </div>
@@ -1295,6 +1592,8 @@ const TASK_STATUSES = [
   {key:'done', label:'Done'}
 ];
 
+const ALL_STATUSES = [{key:'backlog', label:'Backlog'}].concat(TASK_STATUSES);
+
 const STATUS_COLORS = {todo:'#6d707d', in_progress:V, in_review:AM, done:GR};
 
 function parseRuns(text) {
@@ -1406,7 +1705,8 @@ class Component extends DCLogic {
     newTaskOpen:false, newTaskTitle:'', newTaskDescription:'', newTaskAssignee:'unassigned', newTaskPriority:'medium', newTaskLabels:[], newTaskAddingLabel:false, newTaskLabelText:'',
     extraProjects:[], deletedProjects:{}, projectEdits:{}, taskProjectOverrides:{}, newTaskProject:'none',
     projectFilter:'all', projectsModalOpen:false, editingProjectId:null, projectDraft:null, projectCreateOpen:false, newProjectDraft:{name:'', color:PROJECT_COLORS[0], description:''},
-    gridProjectFilter:'all'
+    gridProjectFilter:'all',
+    tasksSubTab:'board', backlogSelectedId:null, backlogQuery:'', backlogProjectFilter:'all', backlogPriorityFilter:'all'
   };
 
   scrollRef = React.createRef();
@@ -1438,6 +1738,36 @@ class Component extends DCLogic {
     const draft = s.draft || {provider:ov.provider, model:ov.model, skills:curSkillMap, mcp:curMcpMap, prompt:curPrompt};
     const chatPrimary = s.layout === 'a';
     const ALL_TASKS = TASKS.concat(s.extraTasks || []);
+
+    const parseCost = (c) => parseFloat(String(c).replace('$','')) || 0;
+    const totalSpend = AGENTS.reduce((sum, a) => sum + parseCost(a.cost), 0);
+    const spendBars = (rows) => {
+      const max = Math.max(1e-6, ...rows.map(r => r.value));
+      return rows.sort((a,b) => b.value - a.value).map(r => ({...r, pct: Math.max(2, (r.value / max) * 100), formatted: '$' + r.value.toFixed(2)}));
+    };
+    const providerTotals = {};
+    AGENTS.forEach(a => { providerTotals[a.provider] = (providerTotals[a.provider] || 0) + parseCost(a.cost); });
+    const spendByProvider = spendBars(Object.keys(providerTotals).map(p => ({key:p, label:p, value:providerTotals[p], color:V})));
+    const modelTotals = {};
+    AGENTS.forEach(a => { modelTotals[a.model] = (modelTotals[a.model] || 0) + parseCost(a.cost); });
+    const spendByModel = spendBars(Object.keys(modelTotals).map(m => ({key:m, label:m, value:modelTotals[m], color:'#a78bfa'})));
+    const providerModelGroups = spendByProvider.map(pr => {
+      const models = {};
+      AGENTS.filter(a => a.provider === pr.key).forEach(a => { models[a.model] = (models[a.model] || 0) + parseCost(a.cost); });
+      return {...pr, models: spendBars(Object.keys(models).map(m => ({key:m, label:m, value:models[m], color:'#a78bfa'})))};
+    });
+    const spendByAgent = spendBars(AGENTS.map(a => ({key:a.id, label:a.name, value:parseCost(a.cost), color:TONES[a.status]})));
+    const projectTotals = {};
+    AGENTS.forEach(a => {
+      const sessList = SESSIONS[a.id] || [];
+      const perSession = sessList.length ? parseCost(a.cost) / sessList.length : 0;
+      if (!sessList.length) { projectTotals['none'] = (projectTotals['none'] || 0) + parseCost(a.cost); return; }
+      sessList.forEach(x => { const key = x.project || 'none'; projectTotals[key] = (projectTotals[key] || 0) + perSession; });
+    });
+    const spendByProject = spendBars(Object.keys(projectTotals).map(key => {
+      const proj = PROJECTS.concat(s.extraProjects || []).find(p => p.id === key);
+      return {key, label: proj ? proj.name : 'No project', value: projectTotals[key], color: proj ? proj.color : '#4f5260'};
+    }));
     const ALL_PROJECTS = PROJECTS.concat(s.extraProjects || [])
       .filter(p => !s.deletedProjects[p.id])
       .map(p => ({...p, ...(s.projectEdits[p.id] || {})}));
@@ -1450,7 +1780,7 @@ class Component extends DCLogic {
       {key:'skills', label:'Skills', meta:'4', dot:'#8f93a3'},
       {key:'mcp', label:'MCP servers', meta:'4', dot:'#8f93a3'},
       {key:'tasks', label:'Tasks', meta:String(ALL_TASKS.length), dot:'#8f93a3'},
-      {key:'spend', label:'Spend', meta:'soon', dot:'#33363f'}
+      {key:'spend', label:'Spend', meta:'$'+ totalSpend.toFixed(2), dot:'#d9a04a'}
     ].map(n => ({
       ...n,
       bg: s.screen === n.key ? '#1c1e26' : 'transparent',
@@ -1702,10 +2032,11 @@ class Component extends DCLogic {
     });
 
     const activeTask = ALL_TASKS.find(t => t.id === s.openTaskId) || ALL_TASKS[0];
-    const activeAsg = effAssignee(activeTask);
-    const activeStatus = effStatus(activeTask);
-    const activePriority = effPriority(activeTask);
-    const taskModal = {
+    const buildTaskPanel = (activeTask) => {
+      const activeAsg = effAssignee(activeTask);
+      const activeStatus = effStatus(activeTask);
+      const activePriority = effPriority(activeTask);
+      return {
       id: activeTask.id, title: effTitle(activeTask), description: effDescription(activeTask),
       editingTitle: !!s.editingTitle,
       titleDraft: s.editingTitle ? (s.titleDraft || '') : effTitle(activeTask),
@@ -1731,7 +2062,7 @@ class Component extends DCLogic {
       cancelAddLabel: () => this.set({addingLabel:false, newLabelText:''}),
       statusValue: activeStatus,
       setStatus: (e) => moveTask(activeTask, e.target.value),
-      statusOptions: TASK_STATUSES.map(c => ({key:c.key, label:c.label})),
+      statusOptions: ALL_STATUSES.map(c => ({key:c.key, label:c.label})),
       assigneeEditing: !!s.taskAssigneeEditing,
       hasAssignee: !s.taskAssigneeEditing && !!activeAsg,
       clearAssignee: (e) => { e.stopPropagation(); assignTask(activeTask, null); },
@@ -1769,9 +2100,30 @@ class Component extends DCLogic {
       newComment: s.newComment || '',
       setNewComment: (e) => this.set({newComment: e.target.value}),
       addComment: () => addComment(activeTask),
-      close: () => this.setState({openTaskId:null, newComment:''}),
       editingTitleNot: !s.editingTitle
+      };
     };
+
+    const taskModal = {...buildTaskPanel(activeTask), close: () => this.setState({openTaskId:null, newComment:''})};
+
+    const backlogQ = (s.backlogQuery || '').toLowerCase();
+    const backlogTasks = ALL_TASKS
+      .filter(t => effStatus(t) === 'backlog')
+      .filter(t => effTitle(t).toLowerCase().includes(backlogQ) || t.id.toLowerCase().includes(backlogQ))
+      .filter(t => (s.backlogProjectFilter || 'all') === 'all' || effProjectId(t) === s.backlogProjectFilter)
+      .filter(t => (s.backlogPriorityFilter || 'all') === 'all' || effPriority(t) === s.backlogPriorityFilter);
+    const backlogSelectedId = s.backlogSelectedId && backlogTasks.some(t => t.id === s.backlogSelectedId) ? s.backlogSelectedId : (backlogTasks[0] && backlogTasks[0].id);
+    const backlogActiveTask = backlogTasks.find(t => t.id === backlogSelectedId);
+    const backlogList = backlogTasks.map(t => {
+      const proj = projectById(effProjectId(t));
+      const pr = PRIORITY[effPriority(t)];
+      return {
+        id:t.id, title:effTitle(t), activeBg: t.id === backlogSelectedId ? '#171420' : 'transparent',
+        priorityColor:pr.color, hasProject: !!proj, projectName: proj ? proj.name : '', projectColor: proj ? proj.color : 'transparent',
+        select: () => this.set({backlogSelectedId: t.id})
+      };
+    });
+    const backlogPanel = backlogActiveTask ? buildTaskPanel(backlogActiveTask) : null;
 
     const removeNewLabel = (name) => this.setState(p => ({newTaskLabels: p.newTaskLabels.filter(l => l !== name)}));
     const addNewLabel = () => {
@@ -1785,7 +2137,7 @@ class Component extends DCLogic {
       const id = 'ROS-' + (200 + (s.extraTasks || []).length);
       const task = {
         id, title, description: s.newTaskDescription || '',
-        status: 'todo',
+        status: s.newTaskStatus || 'todo',
         assignee: s.newTaskAssignee === 'unassigned' ? null : s.newTaskAssignee,
         priority: s.newTaskPriority || 'medium',
         labels: s.newTaskLabels || [],
@@ -1794,7 +2146,8 @@ class Component extends DCLogic {
       const projId = s.newTaskProject === 'none' ? null : s.newTaskProject;
       this.setState(p => ({
         extraTasks: [...p.extraTasks, task], newTaskOpen:false,
-        taskProjectOverrides: projId ? {...p.taskProjectOverrides, [id]: projId} : p.taskProjectOverrides
+        taskProjectOverrides: projId ? {...p.taskProjectOverrides, [id]: projId} : p.taskProjectOverrides,
+        backlogSelectedId: task.status === 'backlog' ? id : p.backlogSelectedId
       }));
     };
     const newTaskModal = {
@@ -1901,12 +2254,33 @@ class Component extends DCLogic {
       isMcp: s.screen === 'mcp',
       isNew: s.screen === 'new',
       isTasks: s.screen === 'tasks',
+      isSpend: s.screen === 'spend',
+      totalSpendLabel: '$' + totalSpend.toFixed(2),
+      spendByProvider, spendByModel, providerModelGroups, spendByAgent, spendByProject,
       taskQuery: s.taskQuery || '',
       setTaskQuery: (e) => this.set({taskQuery: e.target.value}),
       taskSummary: ALL_TASKS.length + ' tasks · ' + ALL_TASKS.filter(t => effStatus(t) === 'in_review').length + ' in review',
       taskColumns, hasOpenTask: !!s.openTaskId, taskModal,
+      isBoardTab: (s.tasksSubTab || 'board') === 'board',
+      isBacklogTab: s.tasksSubTab === 'backlog',
+      boardTabBg: (s.tasksSubTab || 'board') === 'board' ? '#26283a' : 'transparent',
+      boardTabFg: (s.tasksSubTab || 'board') === 'board' ? '#e6e6ea' : '#8f93a3',
+      backlogTabBg: s.tasksSubTab === 'backlog' ? '#26283a' : 'transparent',
+      backlogTabFg: s.tasksSubTab === 'backlog' ? '#e6e6ea' : '#8f93a3',
+      setBoardTab: () => this.set({tasksSubTab:'board'}),
+      setBacklogTab: () => this.set({tasksSubTab:'backlog'}),
+      backlogList, hasBacklogPanel: !!backlogPanel, backlogPanel,
+      backlogListEmpty: backlogList.length === 0,
+      backlogQuery: s.backlogQuery || '', setBacklogQuery: (e) => this.set({backlogQuery: e.target.value}),
+      backlogProjectFilterValue: s.backlogProjectFilter || 'all',
+      backlogProjectFilterOptions: [{value:'all', label:'All projects'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),
+      setBacklogProjectFilter: (e) => this.set({backlogProjectFilter: e.target.value}),
+      backlogPriorityFilterValue: s.backlogPriorityFilter || 'all',
+      backlogPriorityFilterOptions: [{value:'all', label:'All priorities'}].concat(Object.keys(PRIORITY).map(k => ({value:k, label:PRIORITY[k].label}))),
+      setBacklogPriorityFilter: (e) => this.set({backlogPriorityFilter: e.target.value}),
+      openNewBacklogTask: () => this.set({newTaskOpen:true, newTaskTitle:'', newTaskDescription:'', newTaskAssignee:'unassigned', newTaskPriority:'medium', newTaskLabels:[], newTaskProject:'none', newTaskStatus:'backlog'}),
       stopClick: (e) => e.stopPropagation(),
-      openNewTask: () => this.set({newTaskOpen:true, newTaskTitle:'', newTaskDescription:'', newTaskAssignee:'unassigned', newTaskPriority:'medium', newTaskLabels:[], newTaskProject:'none'}),
+      openNewTask: () => this.set({newTaskOpen:true, newTaskTitle:'', newTaskDescription:'', newTaskAssignee:'unassigned', newTaskPriority:'medium', newTaskLabels:[], newTaskProject:'none', newTaskStatus:'todo'}),
       newTaskModal, hasNewTaskModal: !!s.newTaskOpen,
       projectFilterValue: s.projectFilter || 'all',
       projectFilterOptions: [{value:'all', label:'All projects'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),

@@ -28,11 +28,11 @@ on outer shell); each screen manages its own internal scrolling.
 - **Left sidebar** — 216px fixed width, `#0d0e12` background, 1px `#1e2027` right border.
   - Header (44px): 16×16px rounded-5px purple square logo (`#7c5cff`), "Roster" wordmark
     (600 weight), 3 small 9px window-control dots right-aligned.
-  - Nav list: 5 items (Agents, Skills, MCP servers, Tasks, Spend*) — *Spend is a
-    disabled/"soon" placeholder (dim dot `#33363f`, meta text "soon"); Tasks is fully
-    functional, meta shows live task count. Each row: 5px dot + label (500 weight) +
-    right-aligned meta count, 6px/8px padding, 6px radius, hover `#1a1c23`, active
-    state bg `#1c1e26` fg `#e6e6ea`.
+  - Nav list: 5 items (Agents, Skills, MCP servers, Tasks, Spend) — all fully
+    functional; Tasks' meta shows live task count, Spend's meta shows the running
+    total cost. Each row: 5px dot + label (500 weight) + right-aligned meta count,
+    6px/8px padding, 6px radius, hover `#1a1c23`, active state bg `#1c1e26` fg
+    `#e6e6ea`.
   - "Roster" section label (10.5px uppercase, letter-spacing 0.07em, `#585b67`) + agent
     count (monospace, `#4f5260`).
   - Search input: full width, 6px/9px padding, 1px `#1e2027` border, 6px radius, bg
@@ -171,8 +171,7 @@ but defined).
   buttons. Layout and components reuse the same patterns as the Edit modal's fields.
 
 ## Interactions & Behavior
-- Sidebar nav switches the main screen (`grid`/`skills`/`mcp`/`new`); Tasks and Spend
-  are non-functional placeholders in this version.
+- Sidebar nav switches the main screen (`grid`/`skills`/`mcp`/`new`/`tasks`/`spend`).
 - Sidebar agent list and grid cards both open Agent Detail; clicking a session chip on
   a card opens that specific session directly.
 - Session tab strip switches the active session per agent; chat auto-scrolls to bottom
@@ -270,6 +269,21 @@ agent id or null, priority, labels, project id or null, comments, history log).
 - **New Task modal**: same chrome as the task detail modal's editing controls —
   title input, description textarea, Assignee/Priority/Project as small selects,
   labels with the same add/remove chip pattern, Cancel/"Create task" footer.
+- **Backlog tab** (switcher next to the header title, Backlog shown left of Board):
+  a separate list view for tasks not yet ready to schedule — this is where ideas and
+  not-yet-prioritized work live, off the kanban board. Tasks only appear here while
+  their status is `backlog` (a 5th status, not shown as a kanban column); moving a
+  task's Status to To Do/In Progress/etc. (from either this view or the floating
+  modal) puts it onto the board.
+  - **Left sidebar** (220px): search input, Project + Priority filter dropdowns, a
+    dashed "+ New backlog task" button (opens the New Task modal pre-set to Backlog
+    status), and a scrolling list of backlog task rows (id, title, project dot+name)
+    — clicking a row selects it, shown with a highlighted background.
+  - **Right detail panel**: the exact same editable fields as the floating task
+    detail modal (click-to-edit title, Markdown description editor, Status/
+    Assignee/Priority/Project selects, Labels, Comments/History tabs) rendered
+    inline instead of as a popup, bound to whichever backlog task is selected in
+    the sidebar.
 - **Projects modal** (opened via the "Projects" header button): list of existing
   projects, each row showing a color dot, name, live task count, and Edit/Delete
   controls; Edit expands the row in place into name + description fields plus a row
@@ -277,6 +291,21 @@ agent id or null, priority, labels, project id or null, comments, history log).
   row at the bottom opens the same field set for creating one. Deleting a project
   removes it from the board's filter and project-select lists (tasks keep their
   reference but it simply won't resolve to a visible project any more).
+
+### 7. Spend
+- **Purpose**: cost visibility across the roster, grouped three ways.
+- **Header** (44px): "Spend" title + running total across all agents.
+- **Body** (max-width 640px, single scrolling column): three grouped horizontal bar
+  charts, each row a label + an 8px (6px for the model sub-rows) rounded track bar
+  sized relative to the group's largest value + a right-aligned dollar figure
+  (monospace, amber `#d9a04a`/`#b98a3a`), sorted descending by spend:
+  - **By provider**: one bar per LLM provider in use, with each provider's models
+    nested underneath as smaller indented sub-bars (own scale within that provider)
+    so you can see e.g. Anthropic's total and its per-model breakdown together.
+  - **By agent**: one bar per agent, bar color matches that agent's status dot.
+  - **By project**: one bar per project (color from the project's swatch) plus a
+    "No project" bucket; an agent's cost is split evenly across its open sessions
+    and attributed to each session's project.
 
 ## Design Tokens
 
@@ -330,10 +359,10 @@ all "icons" (logo mark, avatar, MCP server icons) are flat colored rounded squar
 circles as placeholders. Any real product icon set can replace these directly.
 
 ## Screenshots
-`screenshots/01-agents-grid.png`, `02-skills.png`, `03-mcp-servers.png` — reference
-captures of those three screens. Agent Detail and New Agent aren't captured here;
-open `Roster.dc.html` directly and click into an agent card / "New agent" to see them
-live.
+`screenshots/01-agents-grid.png`, `02-skills.png`, `03-mcp-servers.png`,
+`04-tasks-board.png`, `05-tasks-backlog.png`, `06-spend.png` — reference captures of
+those screens. Agent Detail and New Agent aren't captured here; open
+`Roster.dc.html` directly and click into an agent card / "New agent" to see them live.
 
 ## Files
 - `Roster.dc.html` — the full prototype (single file, inline styles, demo data and
