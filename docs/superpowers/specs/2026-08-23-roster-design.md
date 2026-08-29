@@ -499,6 +499,13 @@ Each was raised and decided explicitly:
     where "All priorities" does not fit at the usual size — which is why the handoff
     specifies 11.5px there against 12px everywhere else.
 
+40. **Adding a task to the store is idempotent on both paths.** A task you create
+    arrives twice — once from the call that made it, once from the broadcast the main
+    process sends every window — and the broadcast wins the race, because it is emitted
+    before the IPC reply returns. Only the broadcast was guarded, so every task made
+    from the New Task modal appeared twice until the next reload. `withTask` is now
+    used by both.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

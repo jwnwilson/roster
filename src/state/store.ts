@@ -391,6 +391,22 @@ export function selectGridAgents(state: RosterState): Agent[] {
 
 export const NO_COMMENTS: readonly TaskComment[] = Object.freeze([])
 
+/**
+ * The list with one task added, unless it is already in it.
+ *
+ * A task we create ourselves arrives twice: once from the call that made it,
+ * and once from the broadcast the main process sends every window. The
+ * broadcast usually wins the race, so *both* paths have to be idempotent —
+ * guarding only one of them, as this did, meant every task created from the
+ * New Task modal appeared on the board twice until the next reload.
+ *
+ * Returns the same array when there is nothing to add, so a no-op does not
+ * re-render every subscriber.
+ */
+export function withTask(tasks: Task[], task: Task): Task[] {
+  return tasks.some((existing) => existing.id === task.id) ? tasks : [...tasks, task]
+}
+
 /** Tasks left by the board's text filter and its project filter. */
 export function selectFilteredTasks(state: RosterState): Task[] {
   const q = state.taskQuery.trim().toLowerCase()
@@ -587,9 +603,7 @@ export function reduceTaskEvent(
 ): Partial<RosterState> {
   switch (event.type) {
     case 'task-created':
-      // Our own create already put it in the list; don't add it twice.
-      if (state.tasks.some((task) => task.id === event.task.id)) return {}
-      return { tasks: [...state.tasks, event.task] }
+      return { tasks: withTask(state.tasks, event.task) }
 
     case 'task-updated':
       return {

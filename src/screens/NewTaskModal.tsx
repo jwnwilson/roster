@@ -5,7 +5,7 @@ import { taskPriorityLabel } from '@shared/tasks'
 import { Field, Modal, Select, TextInput } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import { LabelChips } from './TaskFields'
-import { ALL_PROJECTS, useRoster } from '@/state/store'
+import { ALL_PROJECTS, useRoster, withTask } from '@/state/store'
 
 const NO_PROJECT = 'none'
 const UNASSIGNED = 'unassigned'
@@ -47,7 +47,9 @@ export function NewTaskModal() {
         labels,
       })
       useRoster.setState((s) => ({
-        tasks: [...s.tasks, created],
+        // withTask, not a plain append: the broadcast for this same task has
+        // usually landed already, and appending again would show it twice.
+        tasks: withTask(s.tasks, created),
         // A new backlog task is what you want to be looking at next.
         ...(created.status === 'backlog' ? { backlogSelectedId: created.id } : {}),
       }))
