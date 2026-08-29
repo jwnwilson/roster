@@ -76,7 +76,10 @@
   --color-priority-medium: var(--color-accent);
   --color-priority-low: var(--color-faint-2);
 
-  /* kanban column status dots */
+  /* task status dots — backlog is not a column, but a task can hold it */
+  /* The pack gives backlog no colour; the disabled-dot grey is a step dimmer
+     than To Do, which is the right read for work nobody has scheduled. */
+  --color-backlog: var(--color-off);
   --color-todo: var(--color-dim);
   --color-in-progress: var(--color-accent);
   --color-in-review: var(--color-amber);

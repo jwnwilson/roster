@@ -17,6 +17,9 @@ export function NewTaskModal() {
   // A task created while a project is selected belongs to it — retyping the
   // filter you are already looking at is busywork.
   const filter = useRoster((s) => s.projectFilter)
+  // Which button opened this decides what it makes: "New task" a board task,
+  // "+ New backlog task" one that starts off the board.
+  const status = useRoster((s) => s.newTaskStatus)
 
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
@@ -37,12 +40,17 @@ export function NewTaskModal() {
       const created = await window.roster.tasks.create({
         title: title.trim(),
         description,
+        status,
         priority,
         assigneeId: assignee === UNASSIGNED ? null : assignee,
         projectId: project === NO_PROJECT ? null : project,
         labels,
       })
-      useRoster.setState((s) => ({ tasks: [...s.tasks, created] }))
+      useRoster.setState((s) => ({
+        tasks: [...s.tasks, created],
+        // A new backlog task is what you want to be looking at next.
+        ...(created.status === 'backlog' ? { backlogSelectedId: created.id } : {}),
+      }))
       close()
     } catch (cause) {
       setError(messageFor(cause))

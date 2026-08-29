@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { TASK_PRIORITIES, TASK_STATUSES } from '@shared/types'
+import { BOARD_STATUSES, TASK_PRIORITIES, TASK_STATUSES } from '@shared/types'
 import {
   PROJECT_COLORS,
   initialsFor,
@@ -42,8 +42,19 @@ describe('task vocabulary', () => {
   })
 
   test('the board orders columns left to right, most urgent priority first', () => {
-    expect(TASK_STATUSES).toEqual(['todo', 'in_progress', 'in_review', 'done'])
+    expect(BOARD_STATUSES).toEqual(['todo', 'in_progress', 'in_review', 'done'])
     expect(TASK_PRIORITIES[0]).toBe('urgent')
+  })
+
+  test('backlog is a status a task can hold, but never a column', () => {
+    // The whole point of the backlog: work that is not on the board yet. A
+    // fifth column would put it back on.
+    expect(TASK_STATUSES).toContain('backlog')
+    expect(BOARD_STATUSES as readonly string[]).not.toContain('backlog')
+  })
+
+  test('the status select offers backlog first, ahead of the columns', () => {
+    expect(TASK_STATUSES).toEqual(['backlog', ...BOARD_STATUSES])
   })
 })
 

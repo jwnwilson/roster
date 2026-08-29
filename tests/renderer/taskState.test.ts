@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { columnOf, moveTask, reduceTaskEvent, useRoster } from '@/state/store'
+import {
+  columnOf,
+  columnsFor,
+  moveTask,
+  reduceTaskEvent,
+  selectBacklogTasks,
+  selectFilteredTasks,
+  useRoster,
+} from '@/state/store'
 import { aProject, aTask, aTaskComment } from './factories'
 import { installRosterApi } from './rosterApi'
 
@@ -204,5 +212,65 @@ describe('moveTask', () => {
 
     expect(await moveTask('ROS-404', 'done')).toBeNull()
     expect(api.tasks.apply).not.toHaveBeenCalled()
+  })
+})
+
+describe('the board and the backlog divide the tasks between them', () => {
+  const TASKS = [
+    aTask({ id: 'ROS-1', title: 'On the board', status: 'todo', projectId: 'p1' }),
+    aTask({ id: 'ROS-2', title: 'An idea', status: 'backlog', priority: 'low', projectId: 'p1' }),
+    aTask({ id: 'ROS-3', title: 'Another idea', status: 'backlog', priority: 'urgent' }),
+  ]
+
+  beforeEach(() => {
+    useRoster.setState({ tasks: TASKS })
+  })
+
+  test('the board never shows backlog work', () => {
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1'])
+  })
+
+  test('the backlog shows only backlog work', () => {
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-2', 'ROS-3'])
+  })
+
+  test('the two searches are separate, since they search different lists', () => {
+    useRoster.setState({ taskQuery: 'On the board', backlogQuery: 'Another' })
+
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1'])
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-3'])
+  })
+
+  test('the backlog matches on the task key too', () => {
+    useRoster.setState({ backlogQuery: 'ros-3' })
+
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-3'])
+  })
+
+  test('the priority filter narrows the backlog', () => {
+    useRoster.setState({ backlogPriority: 'urgent' })
+
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-3'])
+  })
+
+  test('the project filter is the shared one, and reaches both lists', () => {
+    useRoster.setState({ projectFilter: 'p1' })
+
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1'])
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-2'])
+  })
+
+  test('grouping drops anything that is not a column, rather than throwing', () => {
+    // columnsFor indexes a four-key record by status; a backlog task that
+    // slipped past the filter would take the whole board down with it.
+    const columns = columnsFor(TASKS)
+
+    expect(columns.todo.map((t) => t.id)).toEqual(['ROS-1'])
+    expect(Object.keys(columns)).toEqual(['todo', 'in_progress', 'in_review', 'done'])
+  })
+
+  test('a backlog task is not a drop target, so nothing can be dropped onto it', () => {
+    expect(columnOf('ROS-2', TASKS)).toBeNull()
+    expect(columnOf('backlog', TASKS)).toBeNull()
   })
 })

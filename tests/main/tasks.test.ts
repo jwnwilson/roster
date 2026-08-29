@@ -149,6 +149,17 @@ describe('TaskStore.apply — assignee', () => {
     expect(assigned.status).toBe('in_review')
   })
 
+  test('and leaves a backlog task in the backlog, rather than starting it', () => {
+    // Picking up To Do work starts it; putting a name against an idea does
+    // not schedule it. A rule written as "untouched" rather than "To Do"
+    // would yank the whole backlog onto the board.
+    const task = tasks.create({ title: 'an idea', status: 'backlog' })
+
+    const { task: assigned } = tasks.apply(task.id, { field: 'assignee', value: 'debug' }, YOU)
+
+    expect(assigned.status).toBe('backlog')
+  })
+
   test('the auto-start is silent — one action, one line', () => {
     const task = tasks.create({ title: 'a', status: 'todo' })
 

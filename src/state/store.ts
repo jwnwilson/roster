@@ -10,6 +10,7 @@ import type {
   Session,
   Skill,
   Status,
+  BoardStatus,
   Task,
   TaskComment,
   TaskStatus,
@@ -18,16 +19,20 @@ import type {
 } from '@shared/types'
 import type { SessionEventPayload, TaskEventPayload } from '@shared/ipc'
 import { rollUpAgentStatus } from '@shared/status'
-import { TASK_STATUSES } from '@shared/types'
+import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
 
 export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks'
 export type PaneMode = 'chat' | 'terminal'
 export type McpTab = 'installed' | 'registry'
 export type TaskTab = 'comments' | 'history'
+export type TaskView = 'backlog' | 'board'
 
 /** The project filter's "no filter" value, in both the grid and the board. */
 export const ALL_PROJECTS = 'all'
+
+/** The backlog priority filter's "no filter" value. */
+export const ALL_PRIORITIES = 'all'
 
 /** Staged edits from the Edit modal, committed to the agent only on Save. */
 export interface Draft {
@@ -91,10 +96,20 @@ interface RosterState {
   draft: Draft | null
 
   /* ---- Tasks board -------------------------------------------------- */
+  /** Which of the Tasks screen's two views is showing. */
+  taskView: TaskView
   /** The task whose detail modal is open. */
   openTaskId: string | null
   taskQuery: string
   taskTab: TaskTab
+  /* ---- Backlog ------------------------------------------------------ */
+  backlogQuery: string
+  /** ALL_PRIORITIES, or a TaskPriority. */
+  backlogPriority: string
+  /** The backlog row whose detail fills the panel beside the list. */
+  backlogSelectedId: string | null
+  /** Which button opened the New Task modal decides what it creates. */
+  newTaskStatus: TaskStatus
   /**
    * ALL_PROJECTS, or a project id.
    *
@@ -137,6 +152,10 @@ interface RosterState {
   setMode(mode: PaneMode): void
   setMcpTab(tab: McpTab): void
 
+  setTaskView(view: TaskView): void
+  setBacklogQuery(value: string): void
+  setBacklogPriority(value: string): void
+  selectBacklogTask(taskId: string): void
   toggleTool(id: string): void
   togglePlanMode(sessionId: string): void
   setPlanMode(sessionId: string, on: boolean): void
@@ -148,7 +167,8 @@ interface RosterState {
   openTask(taskId: string): void
   closeTask(): void
   setProjectsOpen(open: boolean): void
-  setNewTaskOpen(open: boolean): void
+  /** The status decides what the modal creates: a board task, or a backlog one. */
+  setNewTaskOpen(open: boolean, status?: TaskStatus): void
 
   openEdit(): void
   cancelEdit(): void
@@ -193,9 +213,14 @@ export const useRoster = create<RosterState>((set, get) => ({
   editOpen: false,
   draft: null,
 
+  taskView: 'board',
   openTaskId: null,
   taskQuery: '',
   taskTab: 'comments',
+  backlogQuery: '',
+  backlogPriority: ALL_PRIORITIES,
+  backlogSelectedId: null,
+  newTaskStatus: 'todo',
   projectFilter: ALL_PROJECTS,
   projectsOpen: false,
   newTaskOpen: false,
@@ -242,6 +267,10 @@ export const useRoster = create<RosterState>((set, get) => ({
   setMode: (mode) => set({ mode }),
   setMcpTab: (mcpTab) => set({ mcpTab }),
 
+  setTaskView: (taskView) => set({ taskView }),
+  setBacklogQuery: (backlogQuery) => set({ backlogQuery }),
+  setBacklogPriority: (backlogPriority) => set({ backlogPriority }),
+  selectBacklogTask: (backlogSelectedId) => set({ backlogSelectedId, taskTab: 'comments' }),
   toggleTool: (id) => set((s) => ({ openTools: { ...s.openTools, [id]: !s.openTools[id] } })),
   togglePlanMode: (sessionId) =>
     set((s) => ({ planMode: { ...s.planMode, [sessionId]: !s.planMode[sessionId] } })),
@@ -258,7 +287,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   openTask: (openTaskId) => set({ openTaskId, taskTab: 'comments' }),
   closeTask: () => set({ openTaskId: null }),
   setProjectsOpen: (projectsOpen) => set({ projectsOpen }),
-  setNewTaskOpen: (newTaskOpen) => set({ newTaskOpen }),
+  setNewTaskOpen: (newTaskOpen, newTaskStatus = 'todo') => set({ newTaskOpen, newTaskStatus }),
 
   /** Snapshots the agent's live config into a draft; nothing is committed yet. */
   openEdit: () => {
@@ -368,6 +397,8 @@ export function selectFilteredTasks(state: RosterState): Task[] {
   const project = state.projectFilter
 
   return state.tasks.filter((task) => {
+    // Backlog work is off the board by definition; it has its own view.
+    if (task.status === 'backlog') return false
     if (project !== ALL_PROJECTS && task.projectId !== project) return false
     if (q === '') return true
     // The key is searchable too: "ROS-101" is how people refer to a task.
@@ -375,16 +406,44 @@ export function selectFilteredTasks(state: RosterState): Task[] {
   })
 }
 
-/** Groups tasks into the four columns, in board order. */
-export function columnsFor(tasks: readonly Task[]): Record<TaskStatus, Task[]> {
-  const columns: Record<TaskStatus, Task[]> = {
+/**
+ * Groups tasks into the four columns, in board order.
+ *
+ * Anything that is not a column — a backlog task that slipped past the
+ * filter — is dropped rather than indexed, since indexing would throw and
+ * take the whole board down with it.
+ */
+export function columnsFor(tasks: readonly Task[]): Record<BoardStatus, Task[]> {
+  const columns: Record<BoardStatus, Task[]> = {
     todo: [],
     in_progress: [],
     in_review: [],
     done: [],
   }
-  for (const task of tasks) columns[task.status].push(task)
+  for (const task of tasks) columns[task.status as BoardStatus]?.push(task)
   return columns
+}
+
+/**
+ * The backlog list: work nobody has scheduled, narrowed by the sidebar's
+ * own search and priority filter and by the app-wide project filter.
+ *
+ * The project filter is shared with the board and the grid deliberately —
+ * the Backlog tab shows that dropdown twice at once, and two controls over
+ * two values would read as a bug.
+ */
+export function selectBacklogTasks(state: RosterState): Task[] {
+  const q = state.backlogQuery.trim().toLowerCase()
+  const project = state.projectFilter
+  const priority = state.backlogPriority
+
+  return state.tasks.filter((task) => {
+    if (task.status !== 'backlog') return false
+    if (project !== ALL_PROJECTS && task.projectId !== project) return false
+    if (priority !== ALL_PRIORITIES && task.priority !== priority) return false
+    if (q === '') return true
+    return task.title.toLowerCase().includes(q) || task.id.toLowerCase().includes(q)
+  })
 }
 
 export function selectOpenTask(state: RosterState): Task | null {
@@ -397,10 +456,16 @@ export function projectById(state: RosterState, id: string | null): Project | nu
 }
 
 /** What a drop landed on: a column, or the column of the card under it. */
-export function columnOf(overId: string | number, tasks: readonly Task[]): TaskStatus | null {
+export function columnOf(overId: string | number, tasks: readonly Task[]): BoardStatus | null {
   const id = String(overId)
-  if ((TASK_STATUSES as readonly string[]).includes(id)) return id as TaskStatus
-  return tasks.find((task) => task.id === id)?.status ?? null
+  if ((BOARD_STATUSES as readonly string[]).includes(id)) return id as BoardStatus
+
+  const status = tasks.find((task) => task.id === id)?.status
+  // Only a column is a drop target. Backlog is not one, so a card can never
+  // be dropped out of the board and into it.
+  return status !== undefined && (BOARD_STATUSES as readonly string[]).includes(status)
+    ? (status as BoardStatus)
+    : null
 }
 
 function withTaskStatus(tasks: readonly Task[], taskId: string, status: TaskStatus): Task[] {
@@ -415,7 +480,7 @@ function withTaskStatus(tasks: readonly Task[], taskId: string, status: TaskStat
  * and silently stays moved after a failed write is a lie. Resolves an error
  * message, or null when it worked.
  */
-export async function moveTask(taskId: string, status: TaskStatus): Promise<string | null> {
+export async function moveTask(taskId: string, status: BoardStatus): Promise<string | null> {
   const previous = useRoster.getState().tasks.find((task) => task.id === taskId)
   if (!previous || previous.status === status) return null
 

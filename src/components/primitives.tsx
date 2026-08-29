@@ -237,6 +237,11 @@ interface SelectProps<T extends string> {
   onChange: (value: T) => void
   ariaLabel: string
   className?: string
+  /**
+   * The backlog sidebar's tighter metrics: two of these share 220px, and at
+   * the usual size "All priorities" does not fit in half of it.
+   */
+  compact?: boolean
 }
 
 /**
@@ -253,6 +258,7 @@ export function Select<T extends string>({
   onChange,
   ariaLabel,
   className = '',
+  compact = false,
 }: SelectProps<T>) {
   return (
     <div className={`relative ${className}`}>
@@ -260,7 +266,9 @@ export function Select<T extends string>({
         value={value}
         aria-label={ariaLabel}
         onChange={(e) => onChange(e.target.value as T)}
-        className="w-full cursor-pointer appearance-none rounded-chip border border-line-input bg-card py-[5px] pr-[26px] pl-[10px] font-ui text-md text-ink-3 outline-none hover:border-line-hover-strong focus:border-accent-line"
+        className={`w-full cursor-pointer appearance-none rounded-chip border border-line-input bg-card font-ui text-ink-3 outline-none hover:border-line-hover-strong focus:border-accent-line ${
+          compact ? 'py-[5px] pr-[20px] pl-[8px] text-base' : 'py-[5px] pr-[26px] pl-[10px] text-md'
+        }`}
         data-hoverable
       >
         {options.map((option) => (
@@ -271,7 +279,9 @@ export function Select<T extends string>({
       </select>
       <span
         aria-hidden
-        className="pointer-events-none absolute top-1/2 right-[9px] -translate-y-1/2 text-[9px] text-dim"
+        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-[9px] text-dim ${
+          compact ? 'right-[7px]' : 'right-[9px]'
+        }`}
       >
         ▾
       </span>

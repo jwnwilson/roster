@@ -13,9 +13,9 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { TASK_STATUSES, type Task, type TaskStatus } from '@shared/types'
+import { BOARD_STATUSES, type Task, type BoardStatus } from '@shared/types'
 import { taskStatusColor, taskStatusLabel } from '@shared/tasks'
-import { PrimaryButton, ScreenHeader, TextInput } from '@/components/primitives'
+import { PrimaryButton, ScreenHeader, Segmented, TextInput } from '@/components/primitives'
 import { ProjectFilter } from '@/components/ProjectFilter'
 import { TaskCard, TaskCardBody, type TaskCardProps } from '@/components/TaskCard'
 import {
@@ -26,13 +26,23 @@ import {
   moveTask,
   selectFilteredTasks,
   useRoster,
+  type TaskView,
 } from '@/state/store'
 import { boardAnnouncements } from '@/state/board'
+import { Backlog } from './Backlog'
 import { TaskDetailModal } from './TaskDetailModal'
 import { NewTaskModal } from './NewTaskModal'
 import { ProjectsModal } from './ProjectsModal'
 
+/** Backlog sits left of Board, as the handoff draws it. */
+const VIEWS: readonly { value: TaskView; label: string }[] = [
+  { value: 'backlog', label: 'Backlog' },
+  { value: 'board', label: 'Board' },
+]
+
 export function Tasks() {
+  const taskView = useRoster((s) => s.taskView)
+  const setTaskView = useRoster((s) => s.setTaskView)
   const tasks = useRoster(useShallow(selectFilteredTasks))
   const total = useRoster((s) => s.tasks.length)
   const inReview = useRoster((s) => s.tasks.filter((t) => t.status === 'in_review').length)
@@ -89,6 +99,12 @@ export function Tasks() {
   return (
     <div className="flex h-screen flex-col">
       <ScreenHeader title="Tasks">
+        <Segmented
+          ariaLabel="Tasks view"
+          options={VIEWS}
+          value={taskView}
+          onChange={setTaskView}
+        />
         <span className="text-md text-dim">{summary}</span>
         <div className="ml-auto flex items-center gap-[8px]">
           <ProjectFilter />
@@ -115,24 +131,28 @@ export function Tasks() {
         <p className="m-0 border-b border-line px-[18px] py-[8px] text-md text-error">{error}</p>
       ) : null}
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        accessibility={{ announcements: boardAnnouncements(tasks) }}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragCancel={() => setDragging(null)}
-      >
-        <div className="flex min-h-0 flex-1 gap-[14px] overflow-x-auto px-[18px] py-[16px]">
-          {TASK_STATUSES.map((status) => (
-            <Column key={status} status={status} tasks={columns[status]} />
-          ))}
-        </div>
+      {taskView === 'backlog' ? (
+        <Backlog />
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          accessibility={{ announcements: boardAnnouncements(tasks) }}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          onDragCancel={() => setDragging(null)}
+        >
+          <div className="flex min-h-0 flex-1 gap-[14px] overflow-x-auto px-[18px] py-[16px]">
+            {BOARD_STATUSES.map((status) => (
+              <Column key={status} status={status} tasks={columns[status]} />
+            ))}
+          </div>
 
-        <DragOverlay>
-          {dragging ? <CardFor task={dragging} render={(p) => <TaskCardBody {...p} />} /> : null}
-        </DragOverlay>
-      </DndContext>
+          <DragOverlay>
+            {dragging ? <CardFor task={dragging} render={(p) => <TaskCardBody {...p} />} /> : null}
+          </DragOverlay>
+        </DndContext>
+      )}
 
       {openTaskId ? <TaskDetailModal /> : null}
       {newTaskOpen ? <NewTaskModal /> : null}
@@ -142,7 +162,7 @@ export function Tasks() {
 }
 
 interface ColumnProps {
-  status: TaskStatus
+  status: BoardStatus
   tasks: Task[]
 }
 

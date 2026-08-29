@@ -113,4 +113,55 @@ export const MIGRATIONS: readonly string[] = [
 
   ALTER TABLE sessions ADD COLUMN project_id TEXT;
   `,
+
+  // 5 — backlog becomes a fifth status. It is not a kanban column; it is
+  // where work lives before anyone is ready to schedule it.
+  //
+  // SQLite cannot widen a CHECK, so tasks is rebuilt — and task_comments has
+  // to be rebuilt alongside it. Renaming tasks aside rewrites the child's
+  // REFERENCES to point at tasks_old, so a rebuild that touched only tasks
+  // would leave every comment hanging off the scrap table and lose the lot
+  // when it was dropped: DROP TABLE performs an implicit DELETE FROM, which
+  // fires ON DELETE CASCADE. Nor can that be switched off from in here —
+  // the runner holds a transaction, where foreign_keys is ignored,
+  // legacy_alter_table does not prevent the rewrite, and defer_foreign_keys
+  // defers checks but not actions. Rebuilding both is what keeps the thread.
+  `
+  ALTER TABLE tasks RENAME TO tasks_old;
+  ALTER TABLE task_comments RENAME TO task_comments_old;
+
+  CREATE TABLE tasks (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL CHECK (status IN ('backlog', 'todo', 'in_progress', 'in_review', 'done')),
+    priority    TEXT NOT NULL CHECK (priority IN ('urgent', 'high', 'medium', 'low')),
+    assignee_id TEXT,
+    project_id  TEXT REFERENCES projects (id) ON DELETE SET NULL,
+    labels      TEXT NOT NULL DEFAULT '[]',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+
+  INSERT INTO tasks SELECT * FROM tasks_old;
+
+  CREATE TABLE task_comments (
+    id         TEXT PRIMARY KEY,
+    task_id    TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+    author     TEXT NOT NULL,
+    tone       TEXT NOT NULL CHECK (tone IN ('you', 'agent')),
+    text       TEXT NOT NULL,
+    is_system  INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+
+  INSERT INTO task_comments SELECT * FROM task_comments_old;
+
+  DROP TABLE task_comments_old;
+  DROP TABLE tasks_old;
+
+  CREATE INDEX ix_tasks_status       ON tasks (status, updated_at);
+  CREATE INDEX ix_tasks_project      ON tasks (project_id);
+  CREATE INDEX ix_task_comments_task ON task_comments (task_id, created_at);
+  `,
 ]

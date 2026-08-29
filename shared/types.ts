@@ -218,7 +218,18 @@ export interface AgentUsage {
  * ---------------------------------------------------------------------- */
 
 /** The four kanban columns, in board order. */
-export const TASK_STATUSES = ['todo', 'in_progress', 'in_review', 'done'] as const
+export const BOARD_STATUSES = ['todo', 'in_progress', 'in_review', 'done'] as const
+export type BoardStatus = (typeof BOARD_STATUSES)[number]
+
+/**
+ * Every status a task can hold.
+ *
+ * Backlog comes first and is deliberately not a column: it is where an idea
+ * lives before anyone is ready to schedule it. Anything that renders the
+ * board wants BOARD_STATUSES; anything that lets someone choose a status
+ * wants this.
+ */
+export const TASK_STATUSES = ['backlog', ...BOARD_STATUSES] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
 
 /** Most urgent first, which is also the order the priority select shows. */
