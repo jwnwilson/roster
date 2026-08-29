@@ -1,5 +1,5 @@
 import type { Db } from '../db'
-import type { AgentUsage, Usage } from '../../../shared/types'
+import { NO_PROJECT, type AgentUsage, type SpendSummary, type Usage } from '../../../shared/types'
 
 interface UsageRow {
   session_id: string
@@ -66,6 +66,41 @@ export class UsageStore {
     return Object.fromEntries(
       rows.map((row) => [row.agent_id, { tokens: row.tokens ?? 0, costUsd: row.cost ?? 0 }]),
     )
+  }
+
+  /**
+   * Totals per project, across every session assigned to it.
+   *
+   * Attributed per session rather than split across an agent's sessions: a
+   * session already knows its own project and its own cost, so there is
+   * nothing to estimate. Sessions nobody assigned fall under NO_PROJECT.
+   */
+  byProject(): Record<string, AgentUsage> {
+    const rows = this.db
+      .prepare<[string], { project_id: string; tokens: number | null; cost: number | null }>(
+        `SELECT COALESCE(s.project_id, ?) AS project_id,
+                SUM(u.total_tokens) AS tokens,
+                SUM(u.cost_usd)     AS cost
+           FROM usage u
+           JOIN sessions s ON s.id = u.session_id
+          GROUP BY project_id`,
+      )
+      .all(NO_PROJECT)
+
+    return Object.fromEntries(
+      rows.map((row) => [row.project_id, { tokens: row.tokens ?? 0, costUsd: row.cost ?? 0 }]),
+    )
+  }
+
+  /**
+   * Both rollups in one trip, for the Spend screen.
+   *
+   * Composed from the two queries above rather than re-summing: one SQL
+   * definition of each figure, so the screen and the grid cards cannot
+   * disagree about what an agent has spent.
+   */
+  summary(): SpendSummary {
+    return { byAgent: this.byAgent(), byProject: this.byProject() }
   }
 }
 

@@ -59,6 +59,7 @@
   --color-amber-line-pulse: #8a6a2e; /* rosterPulse midpoint */
   --color-amber-ink: #1a1508; /* text on filled amber */
   --color-amber-text: #e8d3ad; /* banner copy */
+  --color-amber-dim: #b98a3a; /* Spend's model sub-row figures */
 
   /* ---- status -------------------------------------------------------- */
   --color-done: #4fa86a;

@@ -44,7 +44,7 @@ const api: RosterApi = {
     create: (agentId, title) => ipcRenderer.invoke(CHANNELS.sessionsCreate, agentId, title),
     messages: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsMessages, sessionId),
     usage: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsUsage, sessionId),
-    usageByAgent: () => ipcRenderer.invoke(CHANNELS.sessionsUsageByAgent),
+    spendSummary: () => ipcRenderer.invoke(CHANNELS.sessionsSpendSummary),
     send: (sessionId, prompt, options) =>
       ipcRenderer.invoke(CHANNELS.sessionsSend, sessionId, prompt, options),
     cancel: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsCancel, sessionId),

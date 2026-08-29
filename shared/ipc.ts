@@ -12,7 +12,7 @@ import type {
   Task,
   TaskComment,
   TranscriptLine,
-  AgentUsage,
+  SpendSummary,
   Usage,
 } from './types'
 
@@ -47,8 +47,11 @@ export interface RosterApi {
     create(agentId: string, title?: string): Promise<Session>
     messages(sessionId: string): Promise<Message[]>
     usage(sessionId: string): Promise<Usage | null>
-    /** Token and cost totals per agent, for the grid cards. */
-    usageByAgent(): Promise<Record<string, AgentUsage>>
+    /**
+     * Every spend rollup in one trip: totals per agent (for the grid cards
+     * and the sidebar) and per project (for the Spend screen).
+     */
+    spendSummary(): Promise<SpendSummary>
     send(sessionId: string, prompt: string, options?: SendOptions): Promise<void>
     cancel(sessionId: string): Promise<void>
     /** Files the session under a project, or under none. */
@@ -242,7 +245,7 @@ export const CHANNELS = {
   sessionsCreate: 'sessions:create',
   sessionsMessages: 'sessions:messages',
   sessionsUsage: 'sessions:usage',
-  sessionsUsageByAgent: 'sessions:usageByAgent',
+  sessionsSpendSummary: 'sessions:spendSummary',
   sessionsSend: 'sessions:send',
   sessionsCancel: 'sessions:cancel',
   sessionsRespondToApproval: 'sessions:respondToApproval',
