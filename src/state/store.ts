@@ -9,6 +9,7 @@ import type {
   RunnerStatus,
   Session,
   Skill,
+  SpendSummary,
   Status,
   Task,
   TaskComment,
@@ -21,7 +22,7 @@ import { rollUpAgentStatus } from '@shared/status'
 import { TASK_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
 
-export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks'
+export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
 export type PaneMode = 'chat' | 'terminal'
 export type McpTab = 'installed' | 'registry'
 export type TaskTab = 'comments' | 'history'
@@ -41,7 +42,7 @@ export interface Draft {
   cwdLabel: string
 }
 
-interface RosterState {
+export interface RosterState {
   /* ---- loaded data ------------------------------------------------- */
   agents: Agent[]
   runners: RunnerStatus[]
@@ -59,6 +60,8 @@ interface RosterState {
   usage: Record<string, Usage>
   /** Token and cost totals per agent, for the grid cards. */
   agentUsage: Record<string, AgentUsage>
+  /** Token and cost totals per project id (or NO_PROJECT), for Spend. */
+  spendByProject: Record<string, AgentUsage>
   /** agentId -> the last few lines of its most recent session. */
   transcripts: Record<string, TranscriptLine[]>
   projects: Project[]
@@ -118,7 +121,7 @@ interface RosterState {
   setSessions(agentId: string, sessions: Session[]): void
   setMessages(sessionId: string, messages: Message[]): void
   setUsage(sessionId: string, usage: Usage): void
-  setAgentUsage(totals: Record<string, AgentUsage>): void
+  setSpend(summary: SpendSummary): void
   setTranscripts(transcripts: Record<string, TranscriptLine[]>): void
   setAllSessions(sessions: Record<string, Session[]>): void
   setMcpServers(servers: McpServer[]): void
@@ -174,6 +177,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   approvals: {},
   usage: {},
   agentUsage: {},
+  spendByProject: {},
   transcripts: {},
   projects: [],
   tasks: [],
@@ -214,7 +218,10 @@ export const useRoster = create<RosterState>((set, get) => ({
     set((s) => ({ messages: { ...s.messages, [sessionId]: messages } })),
 
   setUsage: (sessionId, usage) => set((s) => ({ usage: { ...s.usage, [sessionId]: usage } })),
-  setAgentUsage: (agentUsage) => set({ agentUsage }),
+  // One payload, so the grid cards and the Spend screen can never be
+  // showing totals from two different reads.
+  setSpend: (summary) =>
+    set({ agentUsage: summary.byAgent, spendByProject: summary.byProject }),
   setTranscripts: (transcripts) => set({ transcripts }),
   setAllSessions: (sessions) => set({ sessions }),
   setMcpServers: (mcpServers) => set({ mcpServers }),

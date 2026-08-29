@@ -10,7 +10,7 @@ import {
   type SendOptions,
   type TaskChange,
 } from '../../../shared/ipc'
-import type { RunnerStatus } from '../../../shared/types'
+import type { RunnerStatus, SpendSummary } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
@@ -38,6 +38,9 @@ let manager: SessionManager | null = null
 
 /** Everything the renderer asks for is done by the person at the keyboard. */
 const YOU = { name: 'You', tone: 'you' } as const
+
+/** What Spend reads before the database is open. */
+const EMPTY_SPEND: SpendSummary = { byAgent: {}, byProject: {} }
 
 const agentStore = new AgentStore(() => runners)
 const skillStore = new SkillStore()
@@ -166,7 +169,7 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsUsage, (_e, sessionId: string) =>
     usageStore?.forSession(sessionId) ?? null,
   )
-  ipcMain.handle(CHANNELS.sessionsUsageByAgent, () => usageStore?.byAgent() ?? {})
+  ipcMain.handle(CHANNELS.sessionsSpendSummary, () => usageStore?.summary() ?? EMPTY_SPEND)
   ipcMain.handle(
     CHANNELS.sessionsSend,
     (_e, sessionId: string, prompt: string, options?: SendOptions) =>

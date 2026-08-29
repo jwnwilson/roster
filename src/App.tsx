@@ -5,6 +5,7 @@ import { AgentsGrid } from './screens/AgentsGrid'
 import { McpServers } from './screens/McpServers'
 import { NewAgent } from './screens/NewAgent'
 import { Skills } from './screens/Skills'
+import { Spend } from './screens/Spend'
 import { Tasks } from './screens/Tasks'
 import { useRoster } from './state/store'
 
@@ -14,7 +15,7 @@ export function App() {
   const applySessionEvent = useRoster((s) => s.applySessionEvent)
   const setTranscripts = useRoster((s) => s.setTranscripts)
   const setAllSessions = useRoster((s) => s.setAllSessions)
-  const setAgentUsage = useRoster((s) => s.setAgentUsage)
+  const setSpend = useRoster((s) => s.setSpend)
   const setProjects = useRoster((s) => s.setProjects)
   const setTasks = useRoster((s) => s.setTasks)
   const applyTaskEvent = useRoster((s) => s.applyTaskEvent)
@@ -32,7 +33,7 @@ export function App() {
         mcpServers,
         transcripts,
         sessions,
-        agentUsage,
+        spend,
         projects,
         tasks,
       ] = await Promise.all([
@@ -42,7 +43,7 @@ export function App() {
         window.roster.mcp.list(),
         window.roster.sessions.recentByAgent(),
         window.roster.sessions.listAll(),
-        window.roster.sessions.usageByAgent(),
+        window.roster.sessions.spendSummary(),
         window.roster.projects.list(),
         window.roster.tasks.list(),
       ])
@@ -50,7 +51,7 @@ export function App() {
       hydrate({ agents, runners, skills, mcpServers })
       setTranscripts(transcripts)
       setAllSessions(sessions)
-      setAgentUsage(agentUsage)
+      setSpend(spend)
       setProjects(projects)
       setTasks(tasks)
     }
@@ -64,7 +65,7 @@ export function App() {
       // Totals are summed in SQL across every session, which the renderer
       // cannot do from one session's event.
       if (event.type === 'usage') {
-        void window.roster.sessions.usageByAgent().then(setAgentUsage)
+        void window.roster.sessions.spendSummary().then(setSpend)
       }
       // A finished turn changes what the grid cards should show.
       if (event.type === 'streaming' && !event.active) {
@@ -88,7 +89,7 @@ export function App() {
     applySessionEvent,
     setTranscripts,
     setAllSessions,
-    setAgentUsage,
+    setSpend,
     setProjects,
     setTasks,
     applyTaskEvent,
@@ -122,6 +123,8 @@ function Screen({ screen }: ScreenProps) {
       return <NewAgent />
     case 'tasks':
       return <Tasks />
+    case 'spend':
+      return <Spend />
   }
 }
 

@@ -10,7 +10,7 @@ import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
 import { agentsDir, mcpConfigPath, skillsDir } from '@main/store/paths'
 import { TASKS_SERVER } from '@shared/mcp'
-import type { McpServer } from '@shared/types'
+import { NO_PROJECT, type McpServer } from '@shared/types'
 
 let home: string
 
@@ -104,6 +104,45 @@ describe('UsageStore', () => {
 
   test('an agent with no usage is simply absent', () => {
     expect(store.byAgent()).toEqual({})
+  })
+
+  test('groups spend under each session\'s project, for the Spend screen', () => {
+    const a = sessions.create({ agentId: 'debugging', title: '1', origin: 'you' })
+    const b = sessions.create({ agentId: 'review', title: '2', origin: 'you' })
+    sessions.setProject(a.id, 'api')
+    sessions.setProject(b.id, 'api')
+
+    store.record({ sessionId: a.id, inputTokens: 1, outputTokens: 1, totalTokens: 800, costUsd: 1 })
+    store.record({ sessionId: b.id, inputTokens: 1, outputTokens: 1, totalTokens: 200, costUsd: 2 })
+
+    expect(store.byProject()['api']).toEqual({ tokens: 1_000, costUsd: 3 })
+  })
+
+  test('sessions nobody assigned a project land in the no-project bucket', () => {
+    const s = sessions.create({ agentId: 'debugging', title: '1', origin: 'you' })
+    store.record({ sessionId: s.id, inputTokens: 1, outputTokens: 1, totalTokens: 50, costUsd: 0.5 })
+
+    expect(store.byProject()[NO_PROJECT]).toEqual({ tokens: 50, costUsd: 0.5 })
+  })
+
+  test('a project nothing ran against is absent, not a zero row', () => {
+    const s = sessions.create({ agentId: 'debugging', title: '1', origin: 'you' })
+    sessions.setProject(s.id, 'api')
+    store.record({ sessionId: s.id, inputTokens: 1, outputTokens: 1, totalTokens: 50, costUsd: 0.5 })
+
+    expect(store.byProject()['hiring']).toBeUndefined()
+  })
+
+  test('the summary carries both rollups and agrees with each', () => {
+    const s = sessions.create({ agentId: 'debugging', title: '1', origin: 'you' })
+    sessions.setProject(s.id, 'api')
+    store.record({ sessionId: s.id, inputTokens: 1, outputTokens: 1, totalTokens: 80, costUsd: 0.9 })
+
+    expect(store.summary()).toEqual({ byAgent: store.byAgent(), byProject: store.byProject() })
+  })
+
+  test('summarises an empty database as two empty maps, not null', () => {
+    expect(store.summary()).toEqual({ byAgent: {}, byProject: {} })
   })
 })
 

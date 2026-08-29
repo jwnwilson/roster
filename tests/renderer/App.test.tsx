@@ -135,11 +135,14 @@ describe('App — live subscriptions', () => {
   })
 })
 
-describe('App — agent spend totals', () => {
+describe('App — spend totals', () => {
   test('loads them alongside everything else at startup', async () => {
     loadedApi({
       sessions: {
-        usageByAgent: vi.fn().mockResolvedValue({ debugging: { tokens: 900, costUsd: 0.5 } }),
+        spendSummary: vi.fn().mockResolvedValue({
+          byAgent: { debugging: { tokens: 900, costUsd: 0.5 } },
+          byProject: { api: { tokens: 900, costUsd: 0.5 } },
+        }),
       },
     })
     render(<App />)
@@ -150,18 +153,23 @@ describe('App — agent spend totals', () => {
         costUsd: 0.5,
       }),
     )
+    // One payload, so the grid cards and Spend cannot disagree.
+    expect(useRoster.getState().spendByProject['api']).toEqual({ tokens: 900, costUsd: 0.5 })
   })
 
   test('re-reads them when a turn reports usage', async () => {
     let emit: ((event: SessionEventPayload) => void) | null = null
-    const usageByAgent = vi
+    const spendSummary = vi
       .fn()
-      .mockResolvedValueOnce({})
-      .mockResolvedValue({ debugging: { tokens: 77_913, costUsd: 0.94 } })
+      .mockResolvedValueOnce({ byAgent: {}, byProject: {} })
+      .mockResolvedValue({
+        byAgent: { debugging: { tokens: 77_913, costUsd: 0.94 } },
+        byProject: {},
+      })
 
     loadedApi({
       sessions: {
-        usageByAgent,
+        spendSummary,
         onEvent: vi.fn().mockImplementation((listener) => {
           emit = listener
           return () => {}

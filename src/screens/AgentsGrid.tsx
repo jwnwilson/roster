@@ -18,6 +18,7 @@ import {
 } from '@/components/primitives'
 import { ProjectFilter } from '@/components/ProjectFilter'
 import { formatCost, formatTokens } from '@/state/format'
+import { selectRosterTotals } from '@/state/spend'
 
 export function AgentsGrid() {
   const agents = useRoster(useShallow(selectGridAgents))
@@ -260,17 +261,7 @@ function StatusBar() {
   // The handoff puts a tokens/cost readout at the right of this bar. It
   // labels it "session", but no session is current on the grid — the honest
   // figure at this altitude is what the whole roster has spent.
-  const totals = useRoster(
-    useShallow((s) =>
-      Object.values(s.agentUsage).reduce(
-        (sum, usage) => ({
-          tokens: sum.tokens + usage.tokens,
-          costUsd: sum.costUsd + usage.costUsd,
-        }),
-        { tokens: 0, costUsd: 0 },
-      ),
-    ),
-  )
+  const totals = useRoster(useShallow(selectRosterTotals))
 
   return (
     <footer className="flex h-statusbar flex-none items-center gap-[12px] border-t border-line bg-rail px-[18px]">

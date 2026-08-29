@@ -37,11 +37,18 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: /^Skills/ })).toHaveTextContent('1')
   })
 
-  test('Spend remains a disabled placeholder', () => {
+  test('Spend is a real screen, quoting the roster-wide running total', () => {
+    useRoster.setState({
+      agentUsage: {
+        debugging: { tokens: 800, costUsd: 1.43 },
+        review: { tokens: 200, costUsd: 0.48 },
+      },
+    })
     render(<Sidebar />)
 
-    expect(screen.getByRole('button', { name: /Spend/ })).toBeDisabled()
-    expect(screen.getAllByText('soon')).toHaveLength(1)
+    const spend = screen.getByRole('button', { name: /Spend/ })
+    expect(spend).toBeEnabled()
+    expect(spend).toHaveTextContent('$1.91')
   })
 
   test('Tasks is a real screen, counting what is on the board', () => {

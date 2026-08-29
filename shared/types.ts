@@ -213,6 +213,21 @@ export interface AgentUsage {
   costUsd: number
 }
 
+/**
+ * The bucket sessions land in when nobody has assigned them a project.
+ *
+ * A real key rather than null, so the rollup is one flat map and the Spend
+ * screen can label it without a second code path.
+ */
+export const NO_PROJECT = 'none'
+
+/** Every rollup the Spend screen needs, in one round trip. */
+export interface SpendSummary {
+  byAgent: Record<string, AgentUsage>
+  /** Keyed by project id, or NO_PROJECT. */
+  byProject: Record<string, AgentUsage>
+}
+
 /* -------------------------------------------------------------------------
  * Projects and tasks — the shared board, persisted in SQLite.
  * ---------------------------------------------------------------------- */

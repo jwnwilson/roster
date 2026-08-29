@@ -1,12 +1,16 @@
 import { useShallow } from 'zustand/shallow'
 import { agentStatus, useRoster, selectSidebarAgents, NO_SESSIONS, type Screen } from '@/state/store'
 import type { Agent } from '@shared/types'
+import { formatCost } from '@/state/format'
+import { selectRosterTotals } from '@/state/spend'
 import { Logo } from './Logo'
 import { StatusDot } from './primitives'
 
 interface NavItem {
-  key: Screen | 'spend'
+  key: Screen
   label: string
+  /** Overrides the default dot colour, per the handoff's Spend row. */
+  dot?: string
   disabled?: boolean
 }
 
@@ -15,7 +19,7 @@ const NAV: NavItem[] = [
   { key: 'skills', label: 'Skills' },
   { key: 'mcp', label: 'MCP servers' },
   { key: 'tasks', label: 'Tasks' },
-  { key: 'spend', label: 'Spend', disabled: true },
+  { key: 'spend', label: 'Spend', dot: 'var(--color-amber)' },
 ]
 
 export function Sidebar() {
@@ -29,13 +33,14 @@ export function Sidebar() {
   const mcpServers = useRoster((s) => s.mcpServers)
   const tasks = useRoster((s) => s.tasks)
   const agents = useRoster(useShallow(selectSidebarAgents))
+  const totals = useRoster(useShallow(selectRosterTotals))
 
   const counts: Record<string, string> = {
     grid: String(allAgents.length),
     skills: String(skills.length),
     mcp: String(mcpServers.length),
     tasks: String(tasks.length),
-    spend: 'soon',
+    spend: formatCost(totals.costUsd),
   }
 
   return (
@@ -51,7 +56,7 @@ export function Sidebar() {
               type="button"
               disabled={item.disabled}
               aria-current={active ? 'page' : undefined}
-              onClick={() => !item.disabled && go(item.key as Screen)}
+              onClick={() => !item.disabled && go(item.key)}
               className={`flex items-center gap-[9px] rounded-chip border-0 px-[8px] py-[6px] text-left font-ui text-xl ${
                 item.disabled ? 'cursor-default' : 'cursor-pointer hover:bg-[#1a1c23]'
               } ${active ? 'bg-[#1c1e26] text-ink' : 'bg-transparent text-muted'}`}
@@ -62,7 +67,9 @@ export function Sidebar() {
                 style={{
                   width: 5,
                   height: 5,
-                  background: item.disabled ? 'var(--color-off)' : 'var(--color-muted-2)',
+                  background: item.disabled
+                    ? 'var(--color-off)'
+                    : (item.dot ?? 'var(--color-muted-2)'),
                 }}
               />
               <span className="font-medium">{item.label}</span>
