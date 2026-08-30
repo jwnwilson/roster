@@ -164,4 +164,29 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX ix_tasks_project      ON tasks (project_id);
   CREATE INDEX ix_task_comments_task ON task_comments (task_id, created_at);
   `,
+
+  // 6 — tasks imported from Notion remember the page they came from, and a
+  // connection remembers which data source they came out of and how its
+  // properties line up with ours.
+  //
+  // A plain ADD COLUMN: nothing to widen, so none of migration 5's rebuild.
+  // The partial index is what makes importing twice update rather than
+  // duplicate — without it a second import would deal every page a second
+  // task and a second key.
+  `
+  ALTER TABLE tasks ADD COLUMN notion_page_id TEXT;
+
+  CREATE UNIQUE INDEX ix_tasks_notion ON tasks (notion_page_id)
+    WHERE notion_page_id IS NOT NULL;
+
+  CREATE TABLE notion_connections (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    database_id    TEXT NOT NULL,
+    data_source_id TEXT NOT NULL,
+    mapping        TEXT NOT NULL,
+    project_id     TEXT REFERENCES projects (id) ON DELETE SET NULL,
+    created_at     INTEGER NOT NULL
+  );
+  `,
 ]

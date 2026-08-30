@@ -60,6 +60,14 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       install: vi.fn().mockResolvedValue([]),
       save: vi.fn().mockResolvedValue([]),
     },
+    notion: {
+      inspect: vi.fn().mockResolvedValue(null),
+      connect: vi.fn().mockResolvedValue(null),
+      connections: vi.fn().mockResolvedValue([]),
+      importNow: vi.fn().mockResolvedValue({ created: 0, updated: 0, skipped: 0, failed: [] }),
+      disconnect: vi.fn().mockResolvedValue(undefined),
+    },
+
     projects: {
       list: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue(null),

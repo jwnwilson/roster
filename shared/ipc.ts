@@ -15,6 +15,12 @@ import type {
   SpendSummary,
   Usage,
 } from './types'
+import type {
+  ImportSummary,
+  NotionConnection,
+  NotionInspection,
+  NotionMapping,
+} from './notion'
 
 /**
  * The contract exposed on `window.roster`. The renderer may only reach the
@@ -110,6 +116,18 @@ export interface RosterApi {
     /** Replaces a configured server's launch command and environment. */
     save(name: string, command: string, env: Record<string, string>): Promise<McpServer[]>
   }
+  notion: {
+    /**
+     * Looks at a pasted database URL or id without saving anything: resolves
+     * its data source, reads the schema, and guesses a mapping to correct.
+     */
+    inspect(databaseInput: string): Promise<NotionInspection>
+    connect(input: NewConnectionInput): Promise<NotionConnection>
+    connections(): Promise<NotionConnection[]>
+    /** Pulls the data source onto the board. Push happens on its own. */
+    importNow(connectionId: string): Promise<ImportSummary>
+    disconnect(id: string): Promise<void>
+  }
   projects: {
     list(): Promise<Project[]>
     create(input: NewProjectInput): Promise<Project>
@@ -143,6 +161,15 @@ export interface SendOptions {
    * and the agent ends by proposing a plan, which arrives as an approval.
    */
   planMode?: boolean
+}
+
+/** What the connect modal sends once the mapping has been confirmed. */
+export interface NewConnectionInput {
+  name: string
+  databaseId: string
+  dataSourceId: string
+  mapping: NotionMapping
+  projectId?: string | null
 }
 
 export interface NewProjectInput {
@@ -276,6 +303,12 @@ export const CHANNELS = {
   mcpSave: 'mcp:save',
 
   sessionsSetProject: 'sessions:setProject',
+
+  notionInspect: 'notion:inspect',
+  notionConnect: 'notion:connect',
+  notionConnections: 'notion:connections',
+  notionImport: 'notion:import',
+  notionDisconnect: 'notion:disconnect',
 
   projectsList: 'projects:list',
   projectsCreate: 'projects:create',

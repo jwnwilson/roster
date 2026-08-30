@@ -465,8 +465,10 @@ describe('McpServers', () => {
 
     await user.click(screen.getByRole('tab', { name: 'Registry' }))
 
-    expect(screen.getByText('gitlab')).toBeInTheDocument()
-    expect(screen.getByText('notion')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'gitlab' })).toBeInTheDocument()
+    // By heading, not by text: Notion publishes its own server, so "notion"
+    // is also the author line underneath.
+    expect(screen.getByRole('heading', { name: 'notion' })).toBeInTheDocument()
   })
 
   test('an already-installed registry entry cannot be installed twice', async () => {

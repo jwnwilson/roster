@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Agent, McpServer, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
 import { ServerGlyph } from '@/components/ServerGlyph'
+import { NOTION_MCP_COMMAND } from '@shared/mcp'
 import { useRoster, type McpTab } from '@/state/store'
 import { McpServerModal, type McpServerDraft } from './McpServerModal'
 
@@ -23,7 +24,7 @@ const REGISTRY: RegistryEntry[] = [
   { category: 'Data', name: 'bigquery', description: 'Run scoped queries against BigQuery datasets.', author: 'community' },
   { category: 'Workspace', name: 'linear', description: 'Read and update issues, cycles, and project status.', author: 'linear' },
   { category: 'Workspace', name: 'slack', description: 'Search channels and post messages as a bot user.', author: 'community' },
-  { category: 'Workspace', name: 'notion', description: 'Read pages and databases from a Notion workspace.', author: 'community' },
+  { category: 'Workspace', name: 'notion', description: 'Read pages and databases from a Notion workspace.', author: 'notion', command: NOTION_MCP_COMMAND },
 ]
 
 const CATEGORIES = ['Code & repos', 'Data', 'Workspace']
@@ -166,9 +167,16 @@ function AgentCount({ agents, server }: { agents: Agent[]; server: string }) {
   )
 }
 
-/** The launch command Roster writes when installing from the registry. */
-function launchCommandFor(name: string): string {
-  return `npx @modelcontextprotocol/server-${name}`
+/**
+ * The launch command Roster writes when installing from the registry.
+ *
+ * The `@modelcontextprotocol/server-<name>` pattern was true of the reference
+ * servers and is not true in general, so an entry may name its own command.
+ * Anything still relying on the pattern is a guess, and a wrong one produces
+ * a server that simply never starts.
+ */
+function launchCommandFor(entry: RegistryEntry): string {
+  return entry.command ?? `npx @modelcontextprotocol/server-${entry.name}`
 }
 
 function Registry({ onEdit }: EditsServers) {
@@ -193,7 +201,7 @@ function Registry({ onEdit }: EditsServers) {
                   onClick={() =>
                     onEdit({
                       name: entry.name,
-                      command: launchCommandFor(entry.name),
+                      command: launchCommandFor(entry),
                       installing: !installed.has(entry.name),
                     })
                   }
@@ -213,7 +221,7 @@ function Registry({ onEdit }: EditsServers) {
                     onClick={() =>
                       onEdit({
                         name: entry.name,
-                        command: launchCommandFor(entry.name),
+                        command: launchCommandFor(entry),
                         installing: true,
                       })
                     }

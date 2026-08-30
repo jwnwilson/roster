@@ -305,6 +305,8 @@ describe('migration 5 — backlog becomes a status', () => {
       labels: '["bug"]',
       created_at: 11,
       updated_at: 22,
+      // Migration 6 adds this; a task that predates it came from nowhere.
+      notion_page_id: null,
     })
     old.close()
   })
@@ -345,6 +347,97 @@ describe('migration 5 — backlog becomes a status', () => {
 
     expect(() => migrate(old)).not.toThrow()
     expect(version(old)).toBe(MIGRATIONS.length)
+    old.close()
+  })
+})
+
+describe('migration 6 — tasks remember the Notion page they came from', () => {
+  /** A database stopped at version 5, as an install from before this would be. */
+  function atVersion5() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < 5; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma('user_version = 5')
+    return old
+  }
+
+  const insert = (target: ReturnType<typeof atVersion5>, id: string, page?: string) =>
+    target
+      .prepare(
+        'INSERT INTO tasks (id, title, status, priority, labels, created_at, updated_at' +
+          (page === undefined ? '' : ', notion_page_id') +
+          `) VALUES ('${id}', 'x', 'todo', 'medium', '[]', 0, 0` +
+          (page === undefined ? '' : `, '${page}'`) +
+          ')',
+      )
+      .run()
+
+  test('adds the column to a database that predates it', () => {
+    const old = atVersion5()
+    const before = (old.pragma('table_info(tasks)') as { name: string }[]).map((c) => c.name)
+    expect(before).not.toContain('notion_page_id')
+
+    migrate(old)
+
+    expect((old.pragma('table_info(tasks)') as { name: string }[]).map((c) => c.name)).toContain(
+      'notion_page_id',
+    )
+    old.close()
+  })
+
+  test('a task that predates the column simply came from nowhere', () => {
+    const old = atVersion5()
+    insert(old, 'ROS-1')
+
+    migrate(old)
+
+    expect(old.prepare('SELECT notion_page_id FROM tasks').get()).toEqual({
+      notion_page_id: null,
+    })
+    old.close()
+  })
+
+  test('one Notion page cannot become two tasks', () => {
+    const old = atVersion5()
+    migrate(old)
+    insert(old, 'ROS-1', 'page-abc')
+
+    // Without this, a second import would deal every page another task and
+    // another key.
+    expect(() => insert(old, 'ROS-2', 'page-abc')).toThrow()
+    old.close()
+  })
+
+  test('but any number of tasks can have come from nowhere', () => {
+    const old = atVersion5()
+    migrate(old)
+
+    // A partial index: the uniqueness applies to page ids, not to nulls, or
+    // the second hand-made task would be rejected.
+    insert(old, 'ROS-1')
+    expect(() => insert(old, 'ROS-2')).not.toThrow()
+    old.close()
+  })
+
+  test('a connection survives the project it was filed under being deleted', () => {
+    const old = atVersion5()
+    migrate(old)
+    old.prepare(
+      "INSERT INTO projects (id, name, color, description, created_at)" +
+        " VALUES ('p1', 'API', '#fff', '', 0)",
+    ).run()
+    old.prepare(
+      'INSERT INTO notion_connections' +
+        ' (id, name, database_id, data_source_id, mapping, project_id, created_at)' +
+        " VALUES ('c1', 'Tasks', 'db', 'ds', '{}', 'p1', 0)",
+    ).run()
+
+    old.prepare("DELETE FROM projects WHERE id = 'p1'").run()
+
+    // Detached, not deleted — the same call projects already make for tasks.
+    expect(old.prepare('SELECT project_id FROM notion_connections').get()).toEqual({
+      project_id: null,
+    })
     old.close()
   })
 })

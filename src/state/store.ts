@@ -123,6 +123,7 @@ export interface RosterState {
   projectFilter: string
   projectsOpen: boolean
   newTaskOpen: boolean
+  notionOpen: boolean
 
   /* ---- New Agent form ---------------------------------------------- */
   newRunner: string
@@ -172,6 +173,7 @@ export interface RosterState {
   setProjectsOpen(open: boolean): void
   /** The status decides what the modal creates: a board task, or a backlog one. */
   setNewTaskOpen(open: boolean, status?: TaskStatus): void
+  setNotionOpen(open: boolean): void
 
   openEdit(): void
   cancelEdit(): void
@@ -228,6 +230,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   projectFilter: ALL_PROJECTS,
   projectsOpen: false,
   newTaskOpen: false,
+  notionOpen: false,
 
   newRunner: 'claude',
   newModel: '',
@@ -295,6 +298,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   closeTask: () => set({ openTaskId: null }),
   setProjectsOpen: (projectsOpen) => set({ projectsOpen }),
   setNewTaskOpen: (newTaskOpen, newTaskStatus = 'todo') => set({ newTaskOpen, newTaskStatus }),
+  setNotionOpen: (notionOpen) => set({ notionOpen }),
 
   /** Snapshots the agent's live config into a draft; nothing is committed yet. */
   openEdit: () => {

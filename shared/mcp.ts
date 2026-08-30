@@ -28,3 +28,23 @@ export const BUILTIN_MCP_SERVERS: readonly BuiltinMcpServer[] = [
 export function isBuiltinMcpServer(name: string): boolean {
   return BUILTIN_MCP_SERVERS.some((server) => server.name === name)
 }
+
+/* -------------------------------------------------------------------------
+ * Notion.
+ *
+ * Not a built-in — it is an ordinary stdio server from the registry. It is
+ * named here because Roster itself also talks to Notion, and reads the token
+ * out of this server's environment rather than keeping a second copy of it.
+ * ---------------------------------------------------------------------- */
+
+export const NOTION_SERVER = 'notion'
+
+/**
+ * Published by Notion, not under the reference servers' name — so the
+ * registry's `@modelcontextprotocol/server-<name>` guess does not work here
+ * and the entry carries this instead.
+ */
+export const NOTION_MCP_COMMAND = 'npx -y @notionhq/notion-mcp-server'
+
+/** Where that server reads its integration token from, and where Roster looks. */
+export const NOTION_TOKEN_ENV = 'NOTION_TOKEN'
