@@ -16,6 +16,8 @@ export function App() {
   const setTranscripts = useRoster((s) => s.setTranscripts)
   const setAllSessions = useRoster((s) => s.setAllSessions)
   const setSpend = useRoster((s) => s.setSpend)
+  const setUpdate = useRoster((s) => s.setUpdate)
+  const setAppVersion = useRoster((s) => s.setAppVersion)
   const setProjects = useRoster((s) => s.setProjects)
   const setTasks = useRoster((s) => s.setTasks)
   const applyTaskEvent = useRoster((s) => s.applyTaskEvent)
@@ -36,6 +38,7 @@ export function App() {
         spend,
         projects,
         tasks,
+        appVersion,
       ] = await Promise.all([
         window.roster.agents.list(),
         window.roster.runners.list(),
@@ -46,6 +49,7 @@ export function App() {
         window.roster.sessions.spendSummary(),
         window.roster.projects.list(),
         window.roster.tasks.list(),
+        window.roster.update.version(),
       ])
       if (cancelled) return
       hydrate({ agents, runners, skills, mcpServers })
@@ -54,6 +58,7 @@ export function App() {
       setSpend(spend)
       setProjects(projects)
       setTasks(tasks)
+      setAppVersion(appVersion)
     }
 
     void load()
@@ -76,12 +81,15 @@ export function App() {
 
     // Board changes, including ones an agent made partway through a turn.
     const stopTasks = window.roster.tasks.onEvent(applyTaskEvent)
+    // The launch check runs in main; its result arrives here.
+    const stopUpdates = window.roster.update.onStatus(setUpdate)
 
     return () => {
       cancelled = true
       stopAgents()
       stopSessions()
       stopTasks()
+      stopUpdates()
     }
   }, [
     hydrate,
@@ -93,6 +101,8 @@ export function App() {
     setProjects,
     setTasks,
     applyTaskEvent,
+    setUpdate,
+    setAppVersion,
   ])
 
   return (

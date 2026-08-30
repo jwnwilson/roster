@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, nativeImage, shell } from 'electron'
-import { disposeStores, initStores, registerIpc } from './ipc'
+import { checkForUpdatesOnLaunch, disposeStores, initStores, registerIpc } from './ipc'
 
 const isDev = !app.isPackaged
 
@@ -62,6 +62,7 @@ function createWindow(): BrowserWindow {
 
   win.once('ready-to-show', () => {
     win.show()
+    checkForUpdatesOnLaunch()
     void captureIfRequested(win)
   })
 

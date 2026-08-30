@@ -75,6 +75,13 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       comment: vi.fn().mockResolvedValue(null),
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
+    update: {
+      check: vi.fn().mockResolvedValue(undefined),
+      download: vi.fn().mockResolvedValue(undefined),
+      install: vi.fn().mockResolvedValue(undefined),
+      version: vi.fn().mockResolvedValue('0.1.0'),
+      onStatus: vi.fn().mockReturnValue(() => {}),
+    },
     dialog: {
       chooseDirectory: vi.fn().mockResolvedValue(null),
     },

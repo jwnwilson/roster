@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { SessionEventPayload } from '@shared/ipc'
+import type { UpdateState } from '@shared/types'
 import { App } from '@/App'
 import { useRoster } from '@/state/store'
 import { anAgent, aRunner, aSkill, anMcpServer } from './factories'
@@ -132,6 +133,47 @@ describe('App — live subscriptions', () => {
 
     expect(stopAgents).toHaveBeenCalled()
     expect(stopSessions).toHaveBeenCalled()
+  })
+})
+
+describe('App — updates', () => {
+  test('subscribes to updater status and drops it on unmount', async () => {
+    const stopUpdates = vi.fn()
+    loadedApi({
+      update: {
+        onStatus: vi.fn().mockReturnValue(stopUpdates),
+        version: vi.fn().mockResolvedValue('0.1.4'),
+      },
+    })
+
+    const { unmount } = render(<App />)
+    await waitFor(() => expect(useRoster.getState().loaded).toBe(true))
+
+    // The sidebar footer needs it to make sense of any update prompt.
+    expect(useRoster.getState().appVersion).toBe('0.1.4')
+
+    unmount()
+    expect(stopUpdates).toHaveBeenCalled()
+  })
+
+  test('a status pushed from main lands in the store', async () => {
+    let emit: ((state: UpdateState) => void) | null = null
+    loadedApi({
+      update: {
+        onStatus: vi.fn().mockImplementation((listener) => {
+          emit = listener
+          return () => {}
+        }),
+      },
+    })
+    render(<App />)
+    await waitFor(() => expect(useRoster.getState().loaded).toBe(true))
+
+    act(() =>
+      emit?.({ status: 'available', version: '0.1.5', notes: '', url: 'https://example.test' }),
+    )
+
+    expect(useRoster.getState().update).toMatchObject({ status: 'available', version: '0.1.5' })
   })
 })
 
