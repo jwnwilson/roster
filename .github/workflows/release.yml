@@ -3,8 +3,8 @@
 # Three stages, because the two macOS architectures cannot share a runner:
 # `postinstall` runs `electron-builder install-app-deps`, which rebuilds
 # better-sqlite3 and node-pty against Electron's ABI *for the host arch*.
-# Cross-building those is the usual place this breaks, so x64 gets an Intel
-# runner rather than a cross-compile flag.
+# Cross-building those is the usual place this breaks, so x64 gets a real
+# Intel runner rather than a cross-compile flag.
 name: Release
 
 on:
@@ -68,7 +68,10 @@ jobs:
         include:
           - runner: macos-latest # Apple Silicon
             arch: arm64
-          - runner: macos-13 # Intel
+          # macos-13 is retired; macos-15-intel is the Intel runner that
+          # replaced it. A label with no runners queues forever rather than
+          # failing, which is how this first showed up.
+          - runner: macos-15-intel
             arch: x64
     runs-on: ${{ matrix.runner }}
     steps:
