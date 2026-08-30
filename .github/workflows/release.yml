@@ -43,16 +43,46 @@ jobs:
       # become a release people are offered.
       - run: npm run check
 
+      # Racy by nature: the gate above takes a minute, and another merge can
+      # land in that window. So bump from the real tip rather than the commit
+      # this job checked out, and push atomically — a non-atomic push lets a
+      # rejected branch leave its tag behind, which poisons every later run.
       - name: Bump, tag and push
         id: bump
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          npm version patch -m "chore: release v%s [skip ci]"
-          VERSION=$(node -p "require('./package.json').version")
-          git push --follow-tags origin HEAD:main
-          echo "version=$VERSION"  >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION"     >> "$GITHUB_OUTPUT"
+
+          for attempt in 1 2 3; do
+            git fetch --quiet origin main --tags
+            git reset --hard --quiet origin/main
+
+            npm version patch --no-git-tag-version >/dev/null
+            VERSION=$(node -p "require('./package.json').version")
+
+            # Step over any version already tagged, so one orphaned tag from a
+            # failed run cannot wedge the pipeline permanently.
+            while git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; do
+              echo "v$VERSION is already tagged; skipping it"
+              npm version patch --no-git-tag-version >/dev/null
+              VERSION=$(node -p "require('./package.json').version")
+            done
+
+            git commit --quiet -am "chore: release v$VERSION [skip ci]"
+            git tag -a "v$VERSION" -m "v$VERSION"
+
+            if git push --atomic --follow-tags origin HEAD:main; then
+              echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+              echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "main moved while this ran; retrying ($attempt of 3)"
+            git tag -d "v$VERSION"
+          done
+
+          echo "could not land a release commit after 3 attempts" >&2
+          exit 1
 
       # Created once, here, so the two build jobs cannot race to create it.
       - name: Open a draft release
