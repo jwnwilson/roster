@@ -19,7 +19,8 @@
       {
         "provider": "github",
         "owner": "jwnwilson",
-        "repo": "roster"
+        "repo": "roster",
+        "publishAutoUpdate": false
       }
     ],
     "artifactName": "${productName}-${version}-${arch}.${ext}",

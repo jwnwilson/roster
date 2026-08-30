@@ -9,3 +9,9 @@
 - [x] Plan for having memory for agents across sessions when they are working on projects — docs/superpowers/specs/2026-08-28-project-memory.md
 - [ ] Add ability to @ an agent in a task comment which will start a new session for this task with that agent or will send the message to an existing session. Track in the DB which sessions are attached to a task and add links to those sessions from the task.
 - [x] Add backlog for tasks so I can store ideas and work that I am not ready to pick up yet
+- [ ] Add ability to import tasks from notion and update them when they are updated
+- [ ] Add auto update logic prompt checking updates from github
+- [ ] Add ability to archive project instead of delete it and see archived projects
+- [ ] Render .md plans and allow user to add comments and work on it with the agent that created it 
+- [ ] Setup default agents on startup with tech lead being initial agent to work with
+- [ ] Design build and publish an SPA on github for this tool
