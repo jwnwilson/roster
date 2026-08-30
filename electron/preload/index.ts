@@ -7,7 +7,7 @@ import {
   type SessionEventPayload,
   type TaskEventPayload,
 } from '../../shared/ipc'
-import type { Agent } from '../../shared/types'
+import type { Agent, UpdateState } from '../../shared/types'
 
 /** Subscribes to a broadcast channel and returns its unsubscribe. */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -113,6 +113,15 @@ const api: RosterApi = {
     comments: (taskId) => ipcRenderer.invoke(CHANNELS.tasksComments, taskId),
     comment: (taskId, text) => ipcRenderer.invoke(CHANNELS.tasksComment, taskId, text),
     onEvent: (listener) => subscribe<TaskEventPayload>(CHANNELS.tasksEvent, listener),
+  },
+
+  update: {
+    check: () => ipcRenderer.invoke(CHANNELS.updateCheck),
+    download: () => ipcRenderer.invoke(CHANNELS.updateDownload),
+    install: () => ipcRenderer.invoke(CHANNELS.updateInstall),
+    version: () => ipcRenderer.invoke(CHANNELS.updateVersion),
+    onStatus: (listener: (state: UpdateState) => void) =>
+      subscribe(CHANNELS.updateStatus, listener),
   },
 
   dialog: {

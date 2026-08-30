@@ -13,6 +13,7 @@ import type {
   TaskComment,
   TranscriptLine,
   SpendSummary,
+  UpdateState,
   Usage,
 } from './types'
 
@@ -130,6 +131,18 @@ export interface RosterApi {
     /** Live board changes — including ones an agent made mid-turn. */
     onEvent(listener: (event: TaskEventPayload) => void): () => void
   }
+  update: {
+    /** Look for a newer release; the result arrives on onStatus. */
+    check(): Promise<void>
+    /** Fetch the build found by the last check. */
+    download(): Promise<void>
+    /** Open the downloaded installer. */
+    install(): Promise<void>
+    /** The running app's version, for the sidebar footer. */
+    version(): Promise<string>
+    onStatus(listener: (state: UpdateState) => void): () => void
+  }
+
   dialog: {
     /** Native directory picker; resolves null when cancelled. */
     chooseDirectory(current?: string): Promise<string | null>
@@ -289,6 +302,12 @@ export const CHANNELS = {
   tasksComments: 'tasks:comments',
   tasksComment: 'tasks:comment',
   tasksEvent: 'tasks:event', // broadcast, not invoke
+
+  updateCheck: 'update:check',
+  updateDownload: 'update:download',
+  updateInstall: 'update:install',
+  updateVersion: 'update:version',
+  updateStatus: 'update:status', // broadcast, not invoke
 
   dialogChooseDirectory: 'dialog:chooseDirectory',
 } as const
