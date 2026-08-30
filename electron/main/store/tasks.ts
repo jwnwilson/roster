@@ -26,6 +26,7 @@ interface TaskRow {
   labels: string
   created_at: number
   updated_at: number
+  notion_page_id: string | null
 }
 
 interface CommentRow {
@@ -46,6 +47,8 @@ export interface NewTaskInput {
   assigneeId?: string | null
   projectId?: string | null
   labels?: string[]
+  /** The Notion page this came from, when it was imported rather than made here. */
+  notionPageId?: string | null
 }
 
 /** One field of one task, changing. The only thing `apply` accepts. */
@@ -162,8 +165,8 @@ export class TaskStore {
         .prepare(
           `INSERT INTO tasks
              (id, title, description, status, priority, assignee_id, project_id,
-              labels, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              labels, created_at, updated_at, notion_page_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           created.id,
@@ -176,6 +179,7 @@ export class TaskStore {
           JSON.stringify(created.labels),
           created.createdAt,
           created.updatedAt,
+          input.notionPageId ?? null,
         )
 
       return created
@@ -183,6 +187,27 @@ export class TaskStore {
 
     this.emit({ type: 'task-created', task })
     return task
+  }
+
+  /**
+   * The task an imported Notion page became, if it became one.
+   *
+   * This is what makes importing twice update rather than duplicate, and it
+   * is why the column carries a unique index.
+   */
+  findByNotionPage(pageId: string): Task | null {
+    const row = this.db.prepare('SELECT * FROM tasks WHERE notion_page_id = ?').get(pageId) as
+      | TaskRow
+      | undefined
+    return row ? toTask(row) : null
+  }
+
+  /** The Notion page a task came from, for deciding whether to push it back. */
+  notionPageOf(taskId: string): string | null {
+    const row = this.db.prepare('SELECT notion_page_id FROM tasks WHERE id = ?').get(taskId) as
+      | { notion_page_id: string | null }
+      | undefined
+    return row?.notion_page_id ?? null
   }
 
   delete(id: string): void {

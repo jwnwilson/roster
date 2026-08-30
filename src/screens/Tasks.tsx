@@ -33,6 +33,7 @@ import { Backlog } from './Backlog'
 import { TaskDetailModal } from './TaskDetailModal'
 import { NewTaskModal } from './NewTaskModal'
 import { ProjectsModal } from './ProjectsModal'
+import { NotionModal } from './NotionModal'
 
 /** Backlog sits left of Board, as the handoff draws it. */
 const VIEWS: readonly { value: TaskView; label: string }[] = [
@@ -54,6 +55,8 @@ export function Tasks() {
   const newTaskOpen = useRoster((s) => s.newTaskOpen)
   const setProjectsOpen = useRoster((s) => s.setProjectsOpen)
   const setNewTaskOpen = useRoster((s) => s.setNewTaskOpen)
+  const notionOpen = useRoster((s) => s.notionOpen)
+  const setNotionOpen = useRoster((s) => s.setNotionOpen)
 
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState<Task | null>(null)
@@ -116,6 +119,14 @@ export function Tasks() {
           >
             Projects
           </button>
+          <button
+            type="button"
+            onClick={() => setNotionOpen(true)}
+            className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-ink-3 hover:border-line-hover"
+            data-hoverable
+          >
+            Notion
+          </button>
           <TextInput
             ariaLabel="Filter tasks"
             placeholder="Filter tasks"
@@ -157,6 +168,7 @@ export function Tasks() {
       {openTaskId ? <TaskDetailModal /> : null}
       {newTaskOpen ? <NewTaskModal /> : null}
       {projectsOpen ? <ProjectsModal /> : null}
+      {notionOpen ? <NotionModal /> : null}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import {
   type ProjectPatch,
   type PtySize,
   type SendOptions,
+  type NewConnectionInput,
   type TaskChange,
 } from '../../../shared/ipc'
 import type { RunnerStatus, SpendSummary } from '../../../shared/types'
@@ -21,6 +22,11 @@ import { McpStore, withServer } from '../store/mcp'
 import { ProjectStore } from '../store/projects'
 import { SessionStore } from '../store/sessions'
 import { TaskStore } from '../store/tasks'
+import { NotionStore } from '../store/notion'
+import { NotionClient, databaseIdFrom } from '../notion/client'
+import { detectMapping, unmappedStatuses } from '../notion/mapping'
+import { NotionPush, importConnection } from '../notion/sync'
+import { NOTION_SERVER, NOTION_TOKEN_ENV } from '../../../shared/mcp'
 import { SkillStore } from '../store/skills'
 import { UsageStore } from '../store/usage'
 import { Updater } from '../update/updater'
@@ -36,6 +42,8 @@ let usageStore: UsageStore | null = null
 let projectStore: ProjectStore | null = null
 let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
+let notionStore: NotionStore | null = null
+let notionPush: NotionPush | null = null
 
 /**
  * Built lazily, because app.getVersion() and the downloads path are only
@@ -81,6 +89,34 @@ function requireProjects(): ProjectStore {
   return projectStore
 }
 
+function requireNotion(): NotionStore {
+  if (!notionStore) throw new Error('notion store is not initialised')
+  return notionStore
+}
+
+/**
+ * The Notion client, built from the token the `notion` MCP server already
+ * holds.
+ *
+ * One token, in one place: mcp.json is where every other credential lives and
+ * where the MCP screen's environment editor writes. Roster reads it rather
+ * than keeping a second copy.
+ */
+function notionClient(): NotionClient | null {
+  const token = mcpStore.findAll().find((s) => s.name === NOTION_SERVER)?.env[NOTION_TOKEN_ENV]
+  return token === undefined || token.trim() === '' ? null : new NotionClient(token.trim())
+}
+
+function requireNotionClient(): NotionClient {
+  const client = notionClient()
+  if (!client)
+    throw new Error(
+      'No Notion token. Install the "notion" MCP server and set NOTION_TOKEN on it, ' +
+        'from the MCP servers screen.',
+    )
+  return client
+}
+
 function requireTasks(): TaskStore {
   if (!taskStore) throw new Error('task store is not initialised')
   return taskStore
@@ -117,6 +153,7 @@ export async function initStores(): Promise<void> {
   // Agent ids resolve to display names through the agent store, since agents
   // live in agent.toml rather than in this database.
   taskStore = new TaskStore(db, (id) => agentStore.findById(id)?.name ?? null)
+  notionStore = new NotionStore(db)
   seedBoardIfEmpty(projectStore, taskStore, agentStore.findAll())
 
   manager = new SessionManager(
@@ -132,6 +169,17 @@ export async function initStores(): Promise<void> {
   // One bridge, so a task an agent changes mid-turn reaches the board the
   // same way one the user dragged does.
   taskStore.subscribe((event) => broadcast(CHANNELS.tasksEvent, event))
+  // A second subscriber: what changes here is written back to the Notion page
+  // it came from. Silent for tasks that did not come from Notion.
+  notionPush = new NotionPush(
+    taskStore,
+    notionStore,
+    () => agentStore.findAll(),
+    () => notionClient(),
+  )
+  taskStore.subscribe((event) => {
+    if (event.type === 'task-updated') notionPush?.taskChanged(event.task.id)
+  })
   ptyManager.onData((sessionId, data) => broadcast(CHANNELS.ptyData, { sessionId, data }))
   ptyManager.onExit((sessionId, code) => broadcast(CHANNELS.ptyExit, { sessionId, code }))
   agentStore.watch((agents) => {
@@ -319,6 +367,51 @@ export function registerIpc(): void {
     requireSessions().setProject(sessionId, projectId),
   )
 
+  ipcMain.handle(CHANNELS.notionInspect, async (_e, databaseInput: string) => {
+    const databaseId = databaseIdFrom(databaseInput)
+    if (databaseId === null) {
+      throw new Error('That is not a Notion database link or id.')
+    }
+
+    const client = requireNotionClient()
+    const sources = await client.dataSources(databaseId)
+    const source = sources[0]
+    if (!source) {
+      throw new Error('That database has no data sources Roster can read.')
+    }
+
+    const schema = await client.schema(source.id)
+    const mapping = detectMapping(schema.properties)
+
+    return {
+      databaseId,
+      dataSourceId: source.id,
+      name: schema.title === '' ? source.name : schema.title,
+      properties: schema.properties,
+      mapping,
+      unmapped: unmappedStatuses(mapping),
+    }
+  })
+
+  ipcMain.handle(CHANNELS.notionConnect, (_e, input: NewConnectionInput) =>
+    requireNotion().create(input),
+  )
+  ipcMain.handle(CHANNELS.notionConnections, () => requireNotion().findAll())
+  ipcMain.handle(CHANNELS.notionDisconnect, (_e, id: string) => requireNotion().delete(id))
+
+  ipcMain.handle(CHANNELS.notionImport, async (_e, connectionId: string) => {
+    const connection = requireNotion().findById(connectionId)
+    if (!connection) throw new Error(`unknown Notion connection "${connectionId}"`)
+
+    const client = requireNotionClient()
+    const tasks = requireTasks()
+
+    // Suppressed for the duration, or every row pulled in would immediately
+    // push straight back out again.
+    const run = () => importConnection(client, connection, tasks, () => agentStore.findAll())
+    return notionPush ? notionPush.duringImport(run) : run()
+  })
+
   ipcMain.handle(CHANNELS.projectsList, () => requireProjects().findAll())
   ipcMain.handle(CHANNELS.projectsCreate, (_e, input: NewProjectInput) =>
     requireProjects().create(input),
@@ -410,5 +503,6 @@ export function disposeStores(): void {
   agentStore.dispose()
   skillStore.dispose()
   mcpStore.dispose()
+  notionPush?.dispose()
   db?.close()
 }

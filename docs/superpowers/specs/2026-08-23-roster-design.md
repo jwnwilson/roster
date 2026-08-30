@@ -506,6 +506,38 @@ Each was raised and decided explicitly:
     from the New Task modal appeared twice until the next reload. `withTask` is now
     used by both.
 
+41. **Roster makes network calls now.** The Notion sync is the first outbound HTTP in
+    the app — everything else it does is a subprocess it spawned. `notion/client.ts` is
+    deliberately the whole surface: four calls, one serialised queue, one timeout, and
+    one place a status code becomes a sentence. Nothing polls; the pull is a button, so
+    the app is still silent unless asked.
+
+42. **The Notion token lives in `mcp.json`, not a second store.** It is the `notion`
+    MCP server's own `NOTION_TOKEN`, entered through the MCP screen's environment
+    editor, and Roster reads it from `McpStore` rather than keeping a copy. One secret,
+    one place, one UI. It does mean the sync needs that server installed — which is
+    coherent, since the point is that agents reach Notion too. The consequence worth
+    stating: a token in `mcp.json` now reaches Roster's own requests, not only a
+    subprocess it hands the environment to.
+
+43. **The registry can name its own launch command.** `@modelcontextprotocol/server-<name>`
+    was true of the reference servers and is not true in general — Notion publishes its
+    own, so installing `notion` produced a command that could never start. `RegistryEntry`
+    now carries an optional `command`. The other entries still rely on the pattern and
+    are probably wrong the same way; they are out of scope here but worth a pass.
+
+44. **Notion is authoritative for the words, Roster for the state.** The push writes
+    status, priority and assignee and never the title or description, so an agent
+    rewriting a description cannot overwrite what someone wrote in Notion. Nothing
+    reconciles a genuine simultaneous edit — after an import the two can diverge, and
+    the next import wins.
+
+45. **Work in a column Roster does not recognise imports into the backlog.** Not To Do:
+    an unmapped status is not "ready to start", it is a state the board has no word
+    for, which is exactly what the backlog is for. The connect modal says up front
+    which columns nothing maps onto, because that is worth knowing before importing
+    three hundred rows rather than after.
+
 ## 14. Build order
 
 1. Scaffold: Electron + React + Tailwind tokens, sidebar, routing across five screens.

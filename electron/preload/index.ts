@@ -98,6 +98,14 @@ const api: RosterApi = {
     save: (name, command, env) => ipcRenderer.invoke(CHANNELS.mcpSave, name, command, env),
   },
 
+  notion: {
+    inspect: (databaseInput) => ipcRenderer.invoke(CHANNELS.notionInspect, databaseInput),
+    connect: (input) => ipcRenderer.invoke(CHANNELS.notionConnect, input),
+    connections: () => ipcRenderer.invoke(CHANNELS.notionConnections),
+    importNow: (connectionId) => ipcRenderer.invoke(CHANNELS.notionImport, connectionId),
+    disconnect: (id) => ipcRenderer.invoke(CHANNELS.notionDisconnect, id),
+  },
+
   projects: {
     list: () => ipcRenderer.invoke(CHANNELS.projectsList),
     create: (input) => ipcRenderer.invoke(CHANNELS.projectsCreate, input),

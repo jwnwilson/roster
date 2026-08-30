@@ -340,6 +340,14 @@ export interface RegistryEntry {
   description: string
   author: string
   category: string
+  /**
+   * The launch command, when it is not `@modelcontextprotocol/server-<name>`.
+   *
+   * That pattern held for the reference servers and holds for nothing else —
+   * Notion's is published by Notion, under its own name. An entry without
+   * this one falls back to the pattern.
+   */
+  command?: string
 }
 
 /* -------------------------------------------------------------------------
