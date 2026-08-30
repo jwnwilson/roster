@@ -37,6 +37,19 @@ describe('Sidebar', () => {
     expect(screen.getByRole('button', { name: /^Skills/ })).toHaveTextContent('1')
   })
 
+  test('shows which build is running, so an update prompt can be read', () => {
+    useRoster.setState({ appVersion: '0.1.4' })
+    render(<Sidebar />)
+
+    expect(screen.getByText('v0.1.4')).toBeInTheDocument()
+  })
+
+  test('says nothing about the version before main has reported one', () => {
+    render(<Sidebar />)
+
+    expect(screen.queryByText(/^v\d/)).not.toBeInTheDocument()
+  })
+
   test('Spend is a real screen, quoting the roster-wide running total', () => {
     useRoster.setState({
       agentUsage: {

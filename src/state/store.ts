@@ -16,6 +16,7 @@ import type {
   TaskComment,
   TaskStatus,
   TranscriptLine,
+  UpdateState,
   Usage,
 } from '@shared/types'
 import type { SessionEventPayload, TaskEventPayload } from '@shared/ipc'
@@ -95,6 +96,10 @@ export interface RosterState {
   planMode: Record<string, boolean>
   query: string
   gridQuery: string
+  /** What the updater last reported; drives the sidebar's update row. */
+  update: UpdateState
+  /** The running app's version, for the sidebar footer. Empty until asked. */
+  appVersion: string
   editOpen: boolean
   draft: Draft | null
 
@@ -138,6 +143,8 @@ export interface RosterState {
   setMessages(sessionId: string, messages: Message[]): void
   setUsage(sessionId: string, usage: Usage): void
   setSpend(summary: SpendSummary): void
+  setUpdate(update: UpdateState): void
+  setAppVersion(version: string): void
   setTranscripts(transcripts: Record<string, TranscriptLine[]>): void
   setAllSessions(sessions: Record<string, Session[]>): void
   setMcpServers(servers: McpServer[]): void
@@ -216,6 +223,8 @@ export const useRoster = create<RosterState>((set, get) => ({
   planMode: {},
   query: '',
   gridQuery: '',
+  update: { status: 'idle' },
+  appVersion: '',
   editOpen: false,
   draft: null,
 
@@ -250,6 +259,8 @@ export const useRoster = create<RosterState>((set, get) => ({
   // showing totals from two different reads.
   setSpend: (summary) =>
     set({ agentUsage: summary.byAgent, spendByProject: summary.byProject }),
+  setUpdate: (update) => set({ update }),
+  setAppVersion: (appVersion) => set({ appVersion }),
   setTranscripts: (transcripts) => set({ transcripts }),
   setAllSessions: (sessions) => set({ sessions }),
   setMcpServers: (mcpServers) => set({ mcpServers }),

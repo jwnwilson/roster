@@ -1,6 +1,6 @@
 {
   "name": "roster",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Desktop app for managing a roster of AI coding agents",
   "main": "out/main/index.js",
   "author": "jwnwilson88@gmail.com",
@@ -15,9 +15,27 @@
       "out/**/*",
       "package.json"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "jwnwilson",
+        "repo": "roster",
+        "publishAutoUpdate": false
+      }
+    ],
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "mac": {
       "icon": "build/icon.icns",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
     },
     "win": {
       "icon": "build/icon.png"

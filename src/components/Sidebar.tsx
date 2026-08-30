@@ -4,6 +4,7 @@ import type { Agent } from '@shared/types'
 import { formatCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { Logo } from './Logo'
+import { UpdateRow } from './UpdateRow'
 import { StatusDot } from './primitives'
 
 interface NavItem {
@@ -34,6 +35,7 @@ export function Sidebar() {
   const tasks = useRoster((s) => s.tasks)
   const agents = useRoster(useShallow(selectSidebarAgents))
   const totals = useRoster(useShallow(selectRosterTotals))
+  const appVersion = useRoster((s) => s.appVersion)
 
   const counts: Record<string, string> = {
     grid: String(allAgents.length),
@@ -103,6 +105,8 @@ export function Sidebar() {
         ))}
       </div>
 
+      <UpdateRow />
+
       <div className="flex flex-none items-center gap-[8px] border-t border-line p-[10px]">
         <span
           aria-hidden
@@ -111,6 +115,11 @@ export function Sidebar() {
           JD
         </span>
         <span className="text-md text-muted">Local workspace</span>
+        {/* Which build this is. Without it there is no reading an update
+            prompt — "0.1.2 available" says nothing on its own. */}
+        {appVersion ? (
+          <span className="ml-auto font-mono text-xs text-faint-2">v{appVersion}</span>
+        ) : null}
       </div>
     </nav>
   )

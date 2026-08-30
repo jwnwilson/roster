@@ -1,4 +1,4 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import {
   CHANNELS,
   type AgentPatch,
@@ -29,6 +29,7 @@ import { NotionPush, importConnection } from '../notion/sync'
 import { NOTION_SERVER, NOTION_TOKEN_ENV } from '../../../shared/mcp'
 import { SkillStore } from '../store/skills'
 import { UsageStore } from '../store/usage'
+import { Updater } from '../update/updater'
 import { databasePath, mcpConfigPath, rosterHome } from '../store/paths'
 import { join } from 'node:path'
 import { seedIfEmpty } from '../store/seed'
@@ -43,6 +44,17 @@ let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
 let notionStore: NotionStore | null = null
 let notionPush: NotionPush | null = null
+
+/**
+ * Built lazily, because app.getVersion() and the downloads path are only
+ * meaningful once Electron is ready.
+ */
+let updater: Updater | null = null
+
+function requireUpdater(): Updater {
+  if (!updater) throw new Error('updater is not initialised')
+  return updater
+}
 
 /** Everything the renderer asks for is done by the person at the keyboard. */
 const YOU = { name: 'You', tone: 'you' } as const
@@ -174,6 +186,32 @@ export async function initStores(): Promise<void> {
     registerCustomRunners(agents)
     broadcast(CHANNELS.agentsChanged, agents)
   })
+
+  // ROSTER_RELEASE_URL points the check at a stand-in release, which is the
+  // only way to exercise the offer/download path before one is published.
+  const releaseUrl = process.env['ROSTER_RELEASE_URL']
+
+  updater = new Updater({
+    currentVersion: app.getVersion(),
+    arch: process.arch,
+    downloadDir: app.getPath('downloads'),
+    fetch: globalThis.fetch,
+    ...(releaseUrl ? { releaseUrl } : {}),
+  })
+  updater.subscribe((state) => broadcast(CHANNELS.updateStatus, state))
+}
+
+/**
+ * The check that runs on launch.
+ *
+ * Silent, so a laptop that happens to be offline says nothing rather than
+ * opening with an error. Skipped in development, where the running version
+ * comes from package.json and there is no installed bundle to replace —
+ * ROSTER_UPDATE_CHECK=1 forces it for testing the flow.
+ */
+export function checkForUpdatesOnLaunch(): void {
+  if (!app.isPackaged && process.env['ROSTER_UPDATE_CHECK'] !== '1') return
+  void updater?.check({ silent: true })
 }
 
 export function registerIpc(): void {
@@ -400,6 +438,22 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.tasksComment, (_e, taskId: string, text: string) =>
     requireTasks().comment(taskId, { author: YOU.name, tone: YOU.tone, text }),
   )
+
+  ipcMain.handle(CHANNELS.updateVersion, () => app.getVersion())
+  ipcMain.handle(CHANNELS.updateCheck, () => requireUpdater().check())
+  ipcMain.handle(CHANNELS.updateDownload, () => requireUpdater().download())
+
+  ipcMain.handle(CHANNELS.updateInstall, async () => {
+    const state = requireUpdater().current()
+    if (state.status !== 'ready') return
+
+    // Opening the DMG mounts it and brings up its window; the user drags
+    // Roster across. An unsigned build cannot replace itself in place.
+    const error = await shell.openPath(state.path)
+    // openPath reports failure by returning a message rather than throwing,
+    // so a silent no-op here would look like nothing happened.
+    if (error) shell.showItemInFolder(state.path)
+  })
 
   ipcMain.handle(CHANNELS.dialogChooseDirectory, async (e, current?: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)

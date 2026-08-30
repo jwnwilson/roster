@@ -1,0 +1,106 @@
+# Every push to main becomes a version.
+#
+# Three stages, because the two macOS architectures cannot share a runner:
+# `postinstall` runs `electron-builder install-app-deps`, which rebuilds
+# better-sqlite3 and node-pty against Electron's ABI *for the host arch*.
+# Cross-building those is the usual place this breaks, so x64 gets a real
+# Intel runner rather than a cross-compile flag.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# The version job pushes a commit and a tag back to main.
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    # Skip the release commit this workflow makes itself, or it loops.
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The same gate used locally. A push that cannot pass it must not
+      # become a release people are offered.
+      - run: npm run check
+
+      - name: Bump, tag and push
+        id: bump
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          npm version patch -m "chore: release v%s [skip ci]"
+          VERSION=$(node -p "require('./package.json').version")
+          git push --follow-tags origin HEAD:main
+          echo "version=$VERSION"  >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION"     >> "$GITHUB_OUTPUT"
+
+      # Created once, here, so the two build jobs cannot race to create it.
+      - name: Open a draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ steps.bump.outputs.tag }}" --draft --generate-notes --title "${{ steps.bump.outputs.tag }}"
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-latest # Apple Silicon
+            arch: arm64
+          # macos-13 is retired; macos-15-intel is the Intel runner that
+          # replaced it. A label with no runners queues forever rather than
+          # failing, which is how this first showed up.
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      # Unsigned on purpose: there is no Developer ID. CSC_IDENTITY_AUTO_DISCOVERY
+      # off stops electron-builder hunting for a certificate and failing.
+      - name: Package and attach ${{ matrix.arch }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --mac --${{ matrix.arch }} --publish always
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ needs.version.outputs.tag }}" --draft=false

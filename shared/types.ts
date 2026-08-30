@@ -360,3 +360,18 @@ export interface TranscriptLine {
   role: 'user' | 'agent' | 'tool'
   text: string
 }
+
+/* -------------------------------------------------------------------------
+ * Updates — Roster is distributed as an unsigned DMG, so it cannot replace
+ * itself the way a signed app can. It checks GitHub Releases, fetches the
+ * build for this machine's architecture, and opens it for you to drag across.
+ * ---------------------------------------------------------------------- */
+export type UpdateState =
+  | { status: 'idle' }
+  | { status: 'checking' }
+  /** Nothing newer published, or the check could not reach GitHub. */
+  | { status: 'current' }
+  | { status: 'available'; version: string; notes: string; url: string }
+  | { status: 'downloading'; version: string; percent: number }
+  | { status: 'ready'; version: string; path: string }
+  | { status: 'error'; message: string }
