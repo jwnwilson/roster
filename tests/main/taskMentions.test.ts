@@ -545,6 +545,29 @@ describe('TaskMentions.dispatch — what the agent is actually sent', () => {
     expect(occurrences).toBe(2)
   })
 
+  test('ends with the question, so no instruction trails the quoted material', async () => {
+    const id = aTask()
+
+    await mentions.dispatch(id, '@tech-lead what do you make of this?')
+
+    // A trailing instruction reads as part of the quote: a small model echoed
+    // "Your reply is posted back to the task." back as the first line of its
+    // answer. The ask leads, the question closes.
+    expect(promptSent().trimEnd().endsWith('@tech-lead what do you make of this?')).toBe(true)
+  })
+
+  test('says up front what the agent is being asked to do', async () => {
+    const id = aTask()
+
+    await mentions.dispatch(id, '@tech-lead why?')
+
+    const prompt = promptSent()
+    const instruction = prompt.indexOf('Answer the question')
+    const fence = prompt.indexOf('--- description ---')
+    expect(instruction).toBeGreaterThan(-1)
+    expect(instruction).toBeLessThan(fence)
+  })
+
   test('marks quoted task content as quoted, since agents can write it', async () => {
     const id = aTask()
 
