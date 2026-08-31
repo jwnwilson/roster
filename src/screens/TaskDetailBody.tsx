@@ -15,10 +15,11 @@ import type { TaskChange } from '@shared/ipc'
 import { Markdown } from '@/components/Markdown'
 import { TrashIcon } from '@/components/icons'
 import { MentionInput } from '@/components/MentionInput'
-import { IconButton, SectionLabel, Segmented, Select } from '@/components/primitives'
+import { IconButton, SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import {
   NO_COMMENTS,
+  NO_TASK_SESSIONS,
   agentStatus,
   projectOptionLabel,
   projectPickerProjects,
@@ -67,12 +68,19 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
     ),
   )
   const thread = useRoster(useShallow((s) => s.taskComments[task.id] ?? NO_COMMENTS))
+  const setTaskSessions = useRoster((s) => s.setTaskSessions)
+  const openAgent = useRoster((s) => s.openAgent)
+  const closeTask = useRoster((s) => s.closeTask)
+  const attached = useRoster(useShallow((s) => s.taskSessions[task.id] ?? NO_TASK_SESSIONS))
 
   const [error, setError] = useState<string | null>(null)
   const taskId = task.id
 
-  // The thread is read when the task is opened, not with the board — a
-  // hundred cards would otherwise mean a hundred threads nobody asked for.
+  // The thread and the attached sessions are both read when the task is
+  // opened, not with the board — a hundred cards would otherwise mean a
+  // hundred threads and session lists nobody asked for. One effect, one
+  // cancelled flag: either fetch settling after the task has changed (or
+  // the panel closed) must not write state for the wrong task.
   useEffect(() => {
     let cancelled = false
 
@@ -85,10 +93,19 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
         if (!cancelled) setError(messageFor(cause))
       })
 
+    void window.roster.tasks
+      .sessions(taskId)
+      .then((loaded) => {
+        if (!cancelled) setTaskSessions(taskId, loaded)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(messageFor(cause))
+      })
+
     return () => {
       cancelled = true
     }
-  }, [taskId, setTaskComments])
+  }, [taskId, setTaskComments, setTaskSessions])
 
   async function apply(change: TaskChange): Promise<void> {
     setError(null)
@@ -197,6 +214,38 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
             onRemove={(value) => void apply({ field: 'removeLabel', value })}
           />
         </Rail>
+
+        {/* Only once a mention has put a session here — an untouched task's
+            rail should read exactly as it did before. */}
+        {attached.length > 0 ? (
+          <Rail label="Sessions">
+            <div className="flex flex-col gap-[2px]">
+              {attached.map((link) => {
+                const agent = agents.find((candidate) => candidate.id === link.agentId)
+                const name = agent?.name ?? link.agentId
+
+                return (
+                  <button
+                    key={link.sessionId}
+                    type="button"
+                    aria-label={`Open ${name}`}
+                    onClick={() => {
+                      // Leaving it open would pop the modal back over the
+                      // session the moment the user returned to Tasks.
+                      closeTask()
+                      openAgent(link.agentId, link.sessionId)
+                    }}
+                    className="flex cursor-pointer items-center gap-[7px] rounded-chip border-0 bg-transparent px-[6px] py-[4px] text-left hover:bg-accent-surface-2"
+                    data-hoverable
+                  >
+                    <StatusDot status={statuses[link.agentId] ?? 'idle'} />
+                    <span className="truncate text-md text-ink-2">{name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </Rail>
+        ) : null}
 
         {/* Last, and set apart by the rule above it: everything else in the
             rail is reversible and this is not. Directly under the fields

@@ -506,3 +506,63 @@ describe('TaskDetailModal — mentioning an agent in a comment', () => {
     expect(screen.queryByText('## Findings')).not.toBeInTheDocument()
   })
 })
+
+describe('TaskDetailModal — the sessions a task has attached', () => {
+  const LINK = {
+    taskId: 'ROS-101',
+    agentId: 'debugging',
+    sessionId: 'session-9',
+    createdAt: 1_700_000_000_000,
+  }
+
+  test('says nothing about sessions until there is one', async () => {
+    render(<TaskDetailModal />)
+
+    await screen.findByText('ROS-101')
+    expect(screen.queryByRole('button', { name: /Open Debugging Agent/ })).not.toBeInTheDocument()
+  })
+
+  test('reads the attached sessions when the task opens', async () => {
+    const api = installRosterApi()
+    render(<TaskDetailModal />)
+
+    await waitFor(() => expect(api.tasks.sessions).toHaveBeenCalledWith('ROS-101'))
+  })
+
+  test('lists the agent a mention put on the task', async () => {
+    installRosterApi({ tasks: { sessions: vi.fn().mockResolvedValue([LINK]) } })
+    render(<TaskDetailModal />)
+
+    expect(
+      await screen.findByRole('button', { name: 'Open Debugging Agent' }),
+    ).toBeInTheDocument()
+  })
+
+  test('opens the session, and leaves the task behind', async () => {
+    installRosterApi({ tasks: { sessions: vi.fn().mockResolvedValue([LINK]) } })
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open Debugging Agent' }))
+
+    const state = useRoster.getState()
+    expect(state.screen).toBe('agent')
+    expect(state.agentId).toBe('debugging')
+    expect(state.sess['debugging']).toBe('session-9')
+    // Otherwise coming back to Tasks pops the modal open over the session
+    // the user just went to read.
+    expect(state.openTaskId).toBeNull()
+  })
+
+  test('shows a session an agent was mentioned into while the panel was open', async () => {
+    installRosterApi()
+    render(<TaskDetailModal />)
+    await screen.findByText('ROS-101')
+
+    useRoster.getState().applyTaskEvent({ type: 'task-session', taskId: 'ROS-101', link: LINK })
+
+    expect(
+      await screen.findByRole('button', { name: 'Open Debugging Agent' }),
+    ).toBeInTheDocument()
+  })
+})
