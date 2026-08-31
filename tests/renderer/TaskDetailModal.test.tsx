@@ -566,3 +566,46 @@ describe('TaskDetailModal — the sessions a task has attached', () => {
     ).toBeInTheDocument()
   })
 })
+
+describe('TaskDetailModal — posting a comment once', () => {
+  test('a second Enter while the first is in flight does not post twice', async () => {
+    // A mention starts a paid turn, so a double post is not just a duplicate
+    // comment — it can be two turns on the user's account.
+    let release: (() => void) | undefined
+    const api = installRosterApi({
+      tasks: {
+        comment: vi.fn().mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              release = () => resolve(aTaskComment())
+            }),
+        ),
+      },
+    })
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+    const box = await screen.findByRole('combobox', { name: 'Add a comment' })
+
+    await user.type(box, '@debugging have a look{Enter}')
+    await user.keyboard('{Enter}')
+    release?.()
+
+    await waitFor(() => expect(api.tasks.comment).toHaveBeenCalledTimes(1))
+  })
+
+  test('says why a comment could not be posted', async () => {
+    installRosterApi({
+      tasks: { comment: vi.fn().mockRejectedValue(new Error('database is locked')) },
+    })
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+
+    await user.type(
+      await screen.findByRole('combobox', { name: 'Add a comment' }),
+      'a note{Enter}',
+    )
+
+    // Silence here would look like the comment had posted.
+    expect(await screen.findByText(/database is locked/)).toBeInTheDocument()
+  })
+})

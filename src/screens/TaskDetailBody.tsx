@@ -419,18 +419,26 @@ function Thread({ taskId, comments, agents, statuses }: ThreadProps) {
   const setTaskComments = useRoster((s) => s.setTaskComments)
   const [text, setText] = useState('')
   const [posting, setPosting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const shown = comments.filter((comment) => comment.isSystem === (tab === 'history'))
 
   async function post(): Promise<void> {
     const body = text.trim()
-    if (body === '') return
+    // Guarded here rather than only on the button, because Enter reaches
+    // this too — and a comment that mentions an agent starts a paid turn, so
+    // a double post is two turns, not just two comments.
+    if (body === '' || posting) return
     setPosting(true)
+    setError(null)
 
     try {
       await window.roster.tasks.comment(taskId, body)
       setTaskComments(taskId, await window.roster.tasks.comments(taskId))
       setText('')
+    } catch (cause) {
+      // Silence would read as though the comment had posted.
+      setError(messageFor(cause))
     } finally {
       setPosting(false)
     }
@@ -491,6 +499,8 @@ function Thread({ taskId, comments, agents, statuses }: ThreadProps) {
           </button>
         </div>
       ) : null}
+
+      {error ? <p className="m-0 text-md text-error">{error}</p> : null}
     </section>
   )
 }

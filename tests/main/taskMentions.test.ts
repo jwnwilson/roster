@@ -72,7 +72,20 @@ describe('TaskMentions.dispatch — opening a session', () => {
     )
   })
 
-  test('opens the transcript with the task, so the agent is not answering blind', async () => {
+  test('opens the transcript by saying which task it came from', async () => {
+    const id = aTask()
+
+    await mentions.dispatch(id, '@tech-lead what do you make of this?')
+
+    const session = sessions.findByTask(id, 'tech-lead')
+    const [first] = sessions.messages(session?.id ?? '')
+    expect(first?.kind).toBe('spawn')
+    const pill = first?.kind === 'spawn' ? first.text : ''
+    expect(pill).toContain(id)
+    expect(pill).toContain('Fix connection pool leak')
+  })
+
+  test('keeps the transcript pill short, since the task travels in the prompt', async () => {
     const id = aTask()
     tasks.comment(id, { author: 'You', tone: 'you', text: 'seen twice today' })
 
@@ -80,24 +93,11 @@ describe('TaskMentions.dispatch — opening a session', () => {
 
     const session = sessions.findByTask(id, 'tech-lead')
     const [first] = sessions.messages(session?.id ?? '')
-    expect(first?.kind).toBe('spawn')
-    const brief = first?.kind === 'spawn' ? first.text : ''
-    expect(brief).toContain(id)
-    expect(brief).toContain('Fix connection pool leak')
-    expect(brief).toContain('It leaks on 504.')
-    expect(brief).toContain('seen twice today')
-  })
-
-  test('starts the turn with the comment that mentioned it', async () => {
-    const id = aTask()
-
-    await mentions.dispatch(id, '@tech-lead what do you make of this?')
-
-    const session = sessions.findByTask(id, 'tech-lead')
-    expect(send).toHaveBeenCalledWith(
-      session?.id,
-      `On ${id}: @tech-lead what do you make of this?`,
-    )
+    const pill = first?.kind === 'spawn' ? first.text : ''
+    // SessionManager records the prompt as a message too, so repeating the
+    // brief here would print the whole thing twice in the transcript.
+    expect(pill).not.toContain('It leaks on 504.')
+    expect(pill).not.toContain('seen twice today')
   })
 
   test('announces the attachment, so an open panel can show it', async () => {
@@ -205,7 +205,7 @@ describe('TaskMentions.briefFor', () => {
 
     // Get the thread and extract the brief
     const thread = tasks.comments(id)
-    const brief = briefFor(tasks.findById(id)!, thread)
+    const brief = briefFor(tasks.findById(id)!, thread, 'what do you make of this?')
 
     // The brief should contain the ordinary comment
     expect(brief).toContain('seen twice today')
@@ -452,5 +452,140 @@ describe('TaskMentions.dispatch — when reading messages fails', () => {
     })
     // Exactly one comment for this mention — not the reply and the failure.
     expect(written(id).filter((entry) => entry.author === 'Tech Lead')).toHaveLength(1)
+  })
+})
+
+describe('TaskMentions.dispatch — what the agent is actually sent', () => {
+  /** The prompt handed to the runner for the most recent turn. */
+  function promptSent(): string {
+    return String(send.mock.calls.at(-1)?.[1] ?? '')
+  }
+
+  test('sends the task itself on first contact, not just the comment', async () => {
+    const id = aTask()
+    tasks.comment(id, { author: 'You', tone: 'you', text: 'seen twice today' })
+
+    await mentions.dispatch(id, '@tech-lead what do you make of this?')
+
+    // A spawn message is a transcript artefact — the runner is handed one
+    // string and nothing else, so anything the agent must know has to be in
+    // this prompt or it is not in the conversation at all.
+    const prompt = promptSent()
+    expect(prompt).toContain(id)
+    expect(prompt).toContain('Fix connection pool leak')
+    expect(prompt).toContain('It leaks on 504.')
+    expect(prompt).toContain('seen twice today')
+    expect(prompt).toContain('what do you make of this?')
+  })
+
+  test('sends only the comment once the session already knows the task', async () => {
+    const id = aTask()
+    await mentions.dispatch(id, '@tech-lead first question')
+
+    await mentions.dispatch(id, '@tech-lead second question')
+
+    // Re-sending the description every turn would be paid for every turn.
+    const prompt = promptSent()
+    expect(prompt).toBe(`On ${id}: @tech-lead second question`)
+    expect(prompt).not.toContain('It leaks on 504.')
+  })
+
+  test('does not repeat the triggering comment inside the thread it quotes', async () => {
+    const id = aTask()
+
+    await mentions.dispatch(id, '@tech-lead only once please')
+
+    const occurrences = promptSent().split('only once please').length - 1
+    expect(occurrences).toBe(1)
+  })
+
+  test('marks quoted task content as quoted, since agents can write it', async () => {
+    const id = aTask()
+
+    await mentions.dispatch(id, '@tech-lead have a look')
+
+    // An agent with the tasks tools can author a description or a comment,
+    // so this text reaches another agent's prompt. Fencing it is what keeps
+    // it readable as quoted material rather than as instruction.
+    expect(promptSent()).toMatch(/quoted|not instructions/i)
+  })
+
+  test('caps a long thread rather than sending an unbounded first prompt', async () => {
+    const id = aTask()
+    for (let i = 0; i < 60; i += 1) {
+      tasks.comment(id, { author: 'You', tone: 'you', text: `comment number ${i}` })
+    }
+
+    await mentions.dispatch(id, '@tech-lead thoughts?')
+
+    const prompt = promptSent()
+    expect(prompt.length).toBeLessThan(10_000)
+    // The newest comments are the ones worth keeping.
+    expect(prompt).toContain('comment number 59')
+    expect(prompt).not.toContain('comment number 0:')
+  })
+})
+
+describe('TaskMentions.dispatch — a runner failure is not the agent speaking', () => {
+  test('reports a failed turn as a failure, not as the agent’s answer', async () => {
+    const id = aTask()
+    // How SessionManager.failTurn records a turn that could not run: an
+    // assistant message authored by "roster", after which send() resolves
+    // rather than throwing.
+    send.mockImplementation(async (sessionId: string) => {
+      sessions.append({
+        sessionId,
+        kind: 'text',
+        role: 'assistant',
+        who: 'roster',
+        text: 'no runner is registered for "claude"',
+      })
+    })
+
+    await mentions.dispatch(id, '@tech-lead why?')
+
+    expect(written(id)).toContainEqual({
+      author: 'Tech Lead',
+      text: 'Couldn\'t answer — no runner is registered for "claude"',
+    })
+  })
+
+  test('does not quote Roster’s own failure text as prose', async () => {
+    const id = aTask()
+    send.mockImplementation(async (sessionId: string) => {
+      sessions.append({
+        sessionId,
+        kind: 'text',
+        role: 'assistant',
+        who: 'roster',
+        text: 'the CLI exited unexpectedly',
+      })
+    })
+
+    await mentions.dispatch(id, '@tech-lead why?')
+
+    const answers = written(id).filter((entry) => entry.author === 'Tech Lead')
+    expect(answers).toHaveLength(1)
+    expect(answers[0]?.text).toContain("Couldn't answer")
+  })
+
+  test('still posts real prose when the turn also recorded one', async () => {
+    const id = aTask()
+    send.mockImplementation(async (sessionId: string) => {
+      sessions.append({
+        sessionId,
+        kind: 'text',
+        role: 'assistant',
+        who: 'Tech Lead',
+        text: 'It is the retry path.',
+      })
+    })
+
+    await mentions.dispatch(id, '@tech-lead why?')
+
+    expect(written(id)).toContainEqual({
+      author: 'Tech Lead',
+      text: 'It is the retry path.',
+    })
   })
 })
