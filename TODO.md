@@ -12,8 +12,11 @@
 - [x] Add ability to import tasks from notion and update them when they are updated
 - [x] Add auto update logic prompt checking updates from github
 - [x] Add Agent management so I can hide / show agents
-- [ ] Setup Agent setup workflow and add default agents on startup with tech lead being initial agent to work with
 - [ ] Clear initial tasks for new installations
+- [ ] Setup Agent setup workflow and add default agents on startup with tech lead being initial agent to work with
 - [x] Add ability to archive project instead of delete it and see archived projects
+- [ ] Improved install route look at brew
+- [ ] Add LLM streaming for results
 - [ ] Render .md plans and allow user to add comments and work on it with the agent that created it 
 - [ ] Design build and publish an SPA on github for this tool
+- [ ] Look at making agents multi repo

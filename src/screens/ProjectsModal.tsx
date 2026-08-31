@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Project } from '@shared/types'
 import { PROJECT_COLORS } from '@shared/tasks'
@@ -14,6 +14,17 @@ interface Draft {
 }
 
 const BLANK: Draft = { name: '', color: PROJECT_COLORS[0] as string, description: '' }
+
+/**
+ * Rows per page. Chosen so a full page still fits inside the card's floor
+ * without scrolling: past this the list is long enough that paging through it
+ * beats a scrollbar you have to drag past the projects you have finished with.
+ */
+const PAGE_SIZE = 5
+
+/** How tall and wide the card sits, whatever the list is doing inside it. */
+const MODAL_WIDTH = 640
+const MODAL_MIN_HEIGHT = 520
 
 /**
  * Active and Archived, as two views of one list.
@@ -37,12 +48,26 @@ export function ProjectsModal() {
   const close = () => useRoster.getState().setProjectsOpen(false)
 
   const [tab, setTab] = useState<ProjectsTab>('active')
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(0)
   const [editing, setEditing] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Draft>(BLANK)
   const [error, setError] = useState<string | null>(null)
 
   const showing = tab === 'active' ? active : archived
+  const matching = useMemo(() => matchingProjects(showing, query), [showing, query])
+
+  const pageCount = Math.max(1, Math.ceil(matching.length / PAGE_SIZE))
+  // Archiving or deleting the last row on the last page would otherwise leave
+  // you staring at an empty one with no way to tell what happened.
+  const current = Math.min(page, pageCount - 1)
+  const visible = matching.slice(current * PAGE_SIZE, current * PAGE_SIZE + PAGE_SIZE)
+
+  const filtering = query.trim() !== ''
+  const summary = filtering
+    ? `${matching.length} of ${showing.length} match`
+    : `${showing.length} ${showing.length === 1 ? 'project' : 'projects'}`
 
   async function reload(): Promise<void> {
     useRoster.setState({ projects: await window.roster.projects.list() })
@@ -115,10 +140,20 @@ export function ProjectsModal() {
     setEditing(project.id)
   }
 
+  function changeQuery(next: string): void {
+    setQuery(next)
+    // The row being edited may not survive the new filter, and a page number
+    // from the old list means nothing against the new one.
+    setPage(0)
+    setEditing(null)
+  }
+
   return (
     <Modal
       label="Projects"
       onClose={close}
+      maxWidth={MODAL_WIDTH}
+      minHeight={MODAL_MIN_HEIGHT}
       header={
         <div className="flex items-center gap-[12px]">
           <h2 className="m-0 text-2xl font-semibold">Projects</h2>
@@ -128,6 +163,7 @@ export function ProjectsModal() {
             value={tab}
             onChange={(next) => {
               setTab(next)
+              setPage(0)
               // A form left open on the other tab would reopen against a
               // project this one does not show.
               setEditing(null)
@@ -136,73 +172,124 @@ export function ProjectsModal() {
           />
         </div>
       }
+      footer={
+        pageCount > 1 ? (
+          <>
+            <span className="text-md text-dim">
+              Page {current + 1} of {pageCount}
+            </span>
+            <div className="ml-auto flex gap-[8px]">
+              <SecondaryButton
+                label="Previous"
+                onClick={() => setPage(current - 1)}
+                disabled={current === 0}
+              />
+              <SecondaryButton
+                label="Next"
+                onClick={() => setPage(current + 1)}
+                disabled={current === pageCount - 1}
+              />
+            </div>
+          </>
+        ) : undefined
+      }
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-[10px] overflow-y-auto px-[18px] py-[14px]">
-        {showing.map((project) => (
-          <div
-            key={project.id}
-            className="flex flex-col gap-[9px] rounded-[9px] border border-line px-[13px] py-[11px]"
-          >
-            {editing === project.id ? (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-none items-center gap-[10px] border-b border-line px-[18px] py-[10px]">
+          <TextInput
+            ariaLabel="Filter projects"
+            placeholder="Filter projects"
+            value={query}
+            onChange={changeQuery}
+            className="w-[220px]"
+          />
+          <span className="text-md text-dim">{summary}</span>
+        </div>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-[10px] overflow-y-auto px-[18px] py-[14px]">
+          {visible.map((project) => (
+            <div
+              key={project.id}
+              className="flex flex-col gap-[9px] rounded-[9px] border border-line px-[13px] py-[11px]"
+            >
+              {editing === project.id ? (
+                <Editor
+                  draft={draft}
+                  setDraft={setDraft}
+                  onCancel={() => setEditing(null)}
+                  onSave={() => void save(project.id)}
+                  saveLabel="Save"
+                />
+              ) : (
+                <ProjectRow
+                  project={project}
+                  taskCount={tasks.filter((task) => task.projectId === project.id).length}
+                  onEdit={() => beginEdit(project)}
+                  onArchive={() => void setArchived(project, true)}
+                  onRestore={() => void setArchived(project, false)}
+                  onDelete={() => void remove(project)}
+                />
+              )}
+            </div>
+          ))}
+
+          {matching.length === 0 ? (
+            <p className="m-0 text-md text-dim">
+              {emptyMessage(tab, filtering, archived.length)}
+            </p>
+          ) : null}
+
+          {tab === 'archived' ? null : creating ? (
+            <div className="flex flex-col gap-[9px] rounded-[9px] border border-line-card px-[13px] py-[12px]">
               <Editor
                 draft={draft}
                 setDraft={setDraft}
-                onCancel={() => setEditing(null)}
-                onSave={() => void save(project.id)}
-                saveLabel="Save"
+                onCancel={() => {
+                  setCreating(false)
+                  setDraft(BLANK)
+                }}
+                onSave={() => void create()}
+                saveLabel="Create"
               />
-            ) : (
-              <ProjectRow
-                project={project}
-                taskCount={tasks.filter((task) => task.projectId === project.id).length}
-                onEdit={() => beginEdit(project)}
-                onArchive={() => void setArchived(project, true)}
-                onRestore={() => void setArchived(project, false)}
-                onDelete={() => void remove(project)}
-              />
-            )}
-          </div>
-        ))}
-
-        {showing.length === 0 ? (
-          <p className="m-0 text-md text-dim">{emptyMessage(tab, archived.length)}</p>
-        ) : null}
-
-        {tab === 'archived' ? null : creating ? (
-          <div className="flex flex-col gap-[9px] rounded-[9px] border border-line-card px-[13px] py-[12px]">
-            <Editor
-              draft={draft}
-              setDraft={setDraft}
-              onCancel={() => {
-                setCreating(false)
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
                 setDraft(BLANK)
+                setCreating(true)
               }}
-              onSave={() => void create()}
-              saveLabel="Create"
-            />
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(BLANK)
-              setCreating(true)
-            }}
-            className="cursor-pointer rounded-[9px] border border-dashed border-line-dashed bg-transparent p-[9px] font-ui text-lg text-dim hover:border-line-hover-strong hover:text-ink"
-            data-hoverable
-          >
-            + New project
-          </button>
-        )}
+              className="cursor-pointer rounded-[9px] border border-dashed border-line-dashed bg-transparent p-[9px] font-ui text-lg text-dim hover:border-line-hover-strong hover:text-ink"
+              data-hoverable
+            >
+              + New project
+            </button>
+          )}
 
-        {error ? <p className="m-0 text-md text-error">{error}</p> : null}
+          {error ? <p className="m-0 text-md text-error">{error}</p> : null}
+        </div>
       </div>
     </Modal>
   )
 }
 
-/** Nothing to show, said in the way that fits which tab you are on. */
-function emptyMessage(tab: ProjectsTab, archivedCount: number): string {
+/** Name or description, case-insensitively — the two things a row shows. */
+function matchingProjects(projects: readonly Project[], query: string): readonly Project[] {
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return projects
+
+  return projects.filter(
+    (project) =>
+      project.name.toLowerCase().includes(needle) ||
+      project.description.toLowerCase().includes(needle),
+  )
+}
+
+/** Nothing to show, said in the way that fits why. */
+function emptyMessage(tab: ProjectsTab, filtering: boolean, archivedCount: number): string {
+  // A filter that matched nothing is not an empty list, and saying so would
+  // send someone looking for projects that are right there.
+  if (filtering) return 'No projects match.'
   if (tab === 'archived') return 'No archived projects.'
   // "No projects yet" would be a lie when they are all simply put away.
   return archivedCount > 0 ? 'No active projects.' : 'No projects yet.'
@@ -280,6 +367,7 @@ interface SecondaryButtonProps {
   label: string
   onClick: () => void
   destructive?: boolean
+  disabled?: boolean
   className?: string
 }
 
@@ -287,13 +375,15 @@ function SecondaryButton({
   label,
   onClick,
   destructive = false,
+  disabled = false,
   className = '',
 }: SecondaryButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`cursor-pointer rounded-sm border border-line-input bg-transparent px-[9px] py-[3px] font-ui text-sm ${
+      disabled={disabled}
+      className={`cursor-pointer rounded-sm border border-line-input bg-transparent px-[9px] py-[3px] font-ui text-sm disabled:cursor-default disabled:opacity-40 ${
         destructive ? 'text-error hover:border-error' : 'text-ink-3 hover:border-line-hover-strong'
       } ${className}`}
       data-hoverable

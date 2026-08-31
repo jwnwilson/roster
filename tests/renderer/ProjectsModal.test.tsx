@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { Project } from '@shared/types'
 import { ProjectsModal } from '@/screens/ProjectsModal'
 import { NewTaskModal } from '@/screens/NewTaskModal'
 import { ALL_PROJECTS, useRoster } from '@/state/store'
@@ -493,5 +494,185 @@ describe('NewTaskModal', () => {
 
     expect(screen.queryByText('bug')).not.toBeInTheDocument()
     expect(useRoster.getState().newTaskOpen).toBe(true)
+  })
+})
+
+describe('ProjectsModal — the size of the card', () => {
+  test('opens at a size that does not track its contents', () => {
+    // One project or twenty, the card is the same shape — a modal that
+    // resized as you paged or filtered would move its own buttons.
+    useRoster.setState({ projects: [PROJECTS[0] as Project] })
+    render(<ProjectsModal />)
+
+    const card = screen.getByRole('dialog').firstElementChild as HTMLElement
+    expect(card).toHaveStyle({ minHeight: 'min(520px, 100%)', maxWidth: '640px' })
+  })
+})
+
+describe('ProjectsModal — filtering', () => {
+  test('narrows the list by name', async () => {
+    const user = userEvent.setup()
+    render(<ProjectsModal />)
+
+    await user.type(screen.getByLabelText('Filter projects'), 'reliab')
+
+    expect(screen.getByText('API reliability')).toBeInTheDocument()
+    expect(screen.queryByText('Q3 planning')).not.toBeInTheDocument()
+  })
+
+  test('matches the description too', async () => {
+    const user = userEvent.setup()
+    render(<ProjectsModal />)
+
+    await user.type(screen.getByLabelText('Filter projects'), 'roadmap')
+
+    expect(screen.getByText('Q3 planning')).toBeInTheDocument()
+    expect(screen.queryByText('API reliability')).not.toBeInTheDocument()
+  })
+
+  test('ignores case', async () => {
+    const user = userEvent.setup()
+    render(<ProjectsModal />)
+
+    await user.type(screen.getByLabelText('Filter projects'), 'API RELIABILITY')
+
+    expect(screen.getByText('API reliability')).toBeInTheDocument()
+  })
+
+  test('says when nothing matches, rather than looking empty', async () => {
+    const user = userEvent.setup()
+    render(<ProjectsModal />)
+
+    await user.type(screen.getByLabelText('Filter projects'), 'nothing like this')
+
+    expect(screen.getByText('No projects match.')).toBeInTheDocument()
+    // "No projects yet" would be a lie — they are simply filtered out.
+    expect(screen.queryByText('No projects yet.')).not.toBeInTheDocument()
+  })
+
+  test('counts what it is showing', async () => {
+    const user = userEvent.setup()
+    render(<ProjectsModal />)
+
+    expect(screen.getByText('2 projects')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Filter projects'), 'reliab')
+
+    expect(screen.getByText('1 of 2 match')).toBeInTheDocument()
+  })
+
+  test('applies to the archived tab on its own terms', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [...PROJECTS, ARCHIVED] })
+    render(<ProjectsModal />)
+
+    await user.type(screen.getByLabelText('Filter projects'), 'shipped')
+    expect(screen.getByText('No projects match.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('tab', { name: 'Archived' }))
+    expect(screen.getByText('Shipped work')).toBeInTheDocument()
+  })
+
+  test('closes an open editor, which may no longer be on screen', async () => {
+    const user = userEvent.setup()
+    render(<ProjectsModal />)
+
+    await user.click(screen.getAllByRole('button', { name: 'Edit' })[0] as HTMLElement)
+    await user.type(screen.getByLabelText('Filter projects'), 'q3')
+
+    expect(screen.queryByLabelText('Project name')).not.toBeInTheDocument()
+  })
+})
+
+describe('ProjectsModal — pagination', () => {
+  /** More projects than one page holds. */
+  function manyProjects(count: number): Project[] {
+    return Array.from({ length: count }, (_, i) =>
+      aProject({ id: `p${i}`, name: `Project ${i}`, description: '' }),
+    )
+  }
+
+  test('is absent while everything fits on one page', () => {
+    render(<ProjectsModal />)
+
+    expect(screen.queryByRole('button', { name: 'Next' })).not.toBeInTheDocument()
+  })
+
+  test('shows one page at a time, and says how many there are', () => {
+    useRoster.setState({ projects: manyProjects(12) })
+    render(<ProjectsModal />)
+
+    expect(screen.getByText('Page 1 of 3')).toBeInTheDocument()
+    expect(screen.getByText('Project 0')).toBeInTheDocument()
+    expect(screen.queryByText('Project 5')).not.toBeInTheDocument()
+  })
+
+  test('Next moves on, Previous comes back', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: manyProjects(12) })
+    render(<ProjectsModal />)
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    expect(screen.getByText('Project 5')).toBeInTheDocument()
+    expect(screen.queryByText('Project 0')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Previous' }))
+    expect(screen.getByText('Project 0')).toBeInTheDocument()
+  })
+
+  test('cannot step off either end', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: manyProjects(12) })
+    render(<ProjectsModal />)
+
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+
+    expect(screen.getByText('Page 3 of 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
+  })
+
+  test('filtering starts again at the first page', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: manyProjects(12) })
+    render(<ProjectsModal />)
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.type(screen.getByLabelText('Filter projects'), 'Project 1')
+
+    // "Project 1", "Project 10" and "Project 11" — one page, and you are on it.
+    expect(screen.getByText('Project 1')).toBeInTheDocument()
+    expect(screen.queryByText('Page 2 of 2')).not.toBeInTheDocument()
+  })
+
+  test('switching tab starts again at the first page', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({
+      projects: [...manyProjects(12), ARCHIVED],
+    })
+    render(<ProjectsModal />)
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('tab', { name: 'Archived' }))
+    await user.click(screen.getByRole('tab', { name: 'Active' }))
+
+    expect(screen.getByText('Project 0')).toBeInTheDocument()
+  })
+
+  test('emptying the last page falls back rather than stranding you', async () => {
+    const user = userEvent.setup()
+    const projects = manyProjects(6)
+    // Six projects: one full page and a page holding a single row.
+    useRoster.setState({ projects })
+    installRosterApi({
+      projects: { list: vi.fn().mockResolvedValue(projects.slice(0, 5)) },
+    })
+    render(<ProjectsModal />)
+
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(screen.getByRole('button', { name: 'Archive' }))
+
+    await waitFor(() => expect(screen.getByText('Project 0')).toBeInTheDocument())
   })
 })
