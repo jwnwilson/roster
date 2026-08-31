@@ -983,7 +983,7 @@ function replyWith(...chunks: string[]): void {
 }
 
 describe('TaskMentions.dispatch — the answer', () => {
-  test('posts the agent’s reply into the thread', async () => {
+  test('posts the agent's reply into the thread', async () => {
     const id = aTask()
     replyWith('It is the retry path holding the connection.')
 
@@ -1071,7 +1071,7 @@ describe('TaskMentions.dispatch — when the turn fails', () => {
 
     expect(written(id)).toContainEqual({
       author: 'Tech Lead',
-      text: 'Couldn’t answer — no runner is registered for "claude"',
+      text: 'Couldn't answer — no runner is registered for "claude"',
     })
   })
 
@@ -1111,7 +1111,7 @@ describe('TaskMentions.dispatch — when the turn fails', () => {
     })
     expect(written(id)).toContainEqual({
       author: 'Tech Lead',
-      text: 'Couldn’t answer — boom',
+      text: 'Couldn't answer — boom',
     })
   })
 })
@@ -1148,7 +1148,7 @@ In `electron/main/sessions/mentions.ts`, replace `ask` with:
       task.id,
       agent,
       reply === ''
-        ? `Answered in “${session.title}” — nothing to quote here.`
+        ? `Answered in "${session.title}" — nothing to quote here.`
         : reply,
     )
   }
@@ -1194,7 +1194,7 @@ function failureFor(agent: Agent, cause: unknown): string {
 
   return message === ALREADY_RUNNING
     ? `${agent.name} is still working on your last question.`
-    : `Couldn’t answer — ${message}`
+    : `Couldn't answer — ${message}`
 }
 ```
 
@@ -1411,7 +1411,7 @@ describe('reduceTaskEvent — sessions attached to a task', () => {
     expect(useRoster.getState().taskSessions['ROS-9']).toBeUndefined()
   })
 
-  test('forgets a deleted task’s attachments', () => {
+  test('forgets a deleted task's attachments', () => {
     useRoster.setState({ tasks: [], taskSessions: { 'ROS-1': [LINK] } })
 
     useRoster.getState().applyTaskEvent({ type: 'task-deleted', taskId: 'ROS-1' })
