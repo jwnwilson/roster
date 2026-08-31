@@ -71,8 +71,25 @@ export class TaskMentions {
     )
   }
 
+  /**
+   * Asks one agent, containing every failure so `dispatch` never rejects.
+   *
+   * `dispatch` is called as `void mentions.dispatch(...)` from the comment
+   * handler — nothing awaits it, so a rejection here would surface as an
+   * unhandled promise rejection in the main process rather than as anything
+   * a user could see. Opening the session (a unique-index race, an FK
+   * violation) is exactly as fallible as sending the turn, so it gets the
+   * same containment: report the failure into the thread, the way a failed
+   * turn already does.
+   */
   private async ask(task: Task, agent: Agent, comment: string): Promise<void> {
-    const session = this.sessions.findByTask(task.id, agent.id) ?? this.open(task, agent)
+    let session: Session
+    try {
+      session = this.sessions.findByTask(task.id, agent.id) ?? this.open(task, agent)
+    } catch (cause) {
+      this.safePost(task.id, agent, failureFor(agent, cause))
+      return
+    }
 
     // What the session held before this turn, so the reply is this turn's
     // prose and not the answer to the last question.
@@ -83,18 +100,34 @@ export class TaskMentions {
       // about without re-reading the brief.
       await this.runner.send(session.id, `On ${task.id}: ${comment}`)
     } catch (cause) {
-      this.post(task.id, agent, failureFor(agent, cause))
+      this.safePost(task.id, agent, failureFor(agent, cause))
       return
     }
 
     const reply = this.replySince(session.id, before)
-    this.post(
+    this.safePost(
       task.id,
       agent,
       reply === ''
         ? `Answered in "${session.title}" — nothing to quote here.`
         : reply,
     )
+  }
+
+  /**
+   * `post`, but swallowing its own failure.
+   *
+   * Reached only when the store that would carry the failure message is
+   * itself the thing that broke — there is no thread left to write into, and
+   * letting that second error escape would still leave `dispatch` rejecting,
+   * which is the exact outcome this containment exists to prevent.
+   */
+  private safePost(taskId: string, agent: Agent, text: string): void {
+    try {
+      this.post(taskId, agent, text)
+    } catch {
+      // Nothing left to report to; dropping this is the least-bad outcome.
+    }
   }
 
   /**

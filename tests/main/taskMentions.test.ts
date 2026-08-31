@@ -370,3 +370,40 @@ describe('TaskMentions.dispatch — when the turn fails', () => {
     })
   })
 })
+
+describe('TaskMentions.dispatch — when opening the session fails', () => {
+  // Forced at the store rather than through the roster or agent stores: a
+  // unique-index race or an FK violation surfaces from `sessions.create`
+  // itself, so stubbing that call is the least contrived way to reproduce
+  // it without wiring up a real constraint violation.
+  test('resolves rather than rejects, and reports the reason in the thread', async () => {
+    const id = aTask()
+    vi.spyOn(sessions, 'create').mockImplementation(() => {
+      throw new Error('UNIQUE constraint failed: sessions.id')
+    })
+
+    await expect(mentions.dispatch(id, '@tech-lead why?')).resolves.toBeUndefined()
+
+    expect(send).not.toHaveBeenCalled()
+    expect(written(id)).toContainEqual({
+      author: 'Tech Lead',
+      text: 'Couldn\'t answer — UNIQUE constraint failed: sessions.id',
+    })
+  })
+
+  test('does not open a session that later turns could resume', async () => {
+    const id = aTask()
+    vi.spyOn(sessions, 'create').mockImplementationOnce(() => {
+      throw new Error('boom')
+    })
+
+    await mentions.dispatch(id, '@tech-lead first try')
+    replyWith('Second try worked.')
+    await mentions.dispatch(id, '@tech-lead second try')
+
+    expect(written(id)).toContainEqual({
+      author: 'Tech Lead',
+      text: 'Second try worked.',
+    })
+  })
+})
