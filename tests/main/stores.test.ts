@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -302,7 +302,7 @@ describe('McpStore', () => {
 /* ------------------------------------------------------------------- seed */
 
 describe('seedIfEmpty', () => {
-  test('creates agents, skills, and an mcp config on a fresh install', async () => {
+  test('creates skills and an mcp config on a fresh install, but no agents', async () => {
     const seeded = await seedIfEmpty(mcpConfigPath())
 
     expect(seeded).toBe(true)
@@ -314,6 +314,8 @@ describe('seedIfEmpty', () => {
     const mcp = new McpStore()
     await mcp.load()
     expect(mcp.findAll().length).toBeGreaterThan(0)
+
+    await expect(readdir(agentsDir())).resolves.toHaveLength(0)
   })
 
   test('creates the shared workspace, so an approved write has somewhere to go', async () => {

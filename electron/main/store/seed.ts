@@ -1,70 +1,13 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { TASKS_SERVER } from '../../../shared/mcp'
-import { serializeAgentToml, type AgentConfig } from './agentToml'
-import { agentDir, agentTomlPath, agentsDir, rosterHome, skillsDir } from './paths'
+import { agentsDir, rosterHome, skillsDir } from './paths'
 
 /**
- * First-run content. Mirrors the roster in the design handoff so a fresh
- * install has something to look at; every file is a real, editable
- * agent.toml, not a hardcoded demo array.
- *
- * Working directories point at `~/roster/workspace` rather than the handoff's
- * `~/work/api`, which does not exist on a new machine. Deliberately not the
- * user's home: an approved write would otherwise land directly in it.
- *
- * All four start with the built-in task board enabled, so a fresh install has
- * a board agents can actually work. Turning it off per agent is what the MCP
- * screen is for.
+ * First-run content. A fresh install starts with no agents and no tasks —
+ * users build their own roster. Skills and MCP servers still seed as
+ * starter content: they are generically useful templates, not demo data
+ * tied to a canned agent roster.
  */
-function seedAgents(workspace: string): AgentConfig[] {
-  return [
-    {
-      id: 'architect',
-      name: 'Architect Agent',
-      runner: 'claude',
-      model: 'claude-opus-5',
-      cwd: workspace,
-      systemPrompt:
-        'You design before you build. Compare at least two shapes, state the trade-off in one sentence each, and record the decision as an ADR in docs/adr. Hand implementation work to other agents rather than editing source yourself.',
-      skills: ['adr-writer', 'estimate-breakdown'],
-      mcpServers: ['filesystem', 'github', TASKS_SERVER],
-    },
-    {
-      id: 'debugging',
-      name: 'Debugging Agent',
-      runner: 'claude',
-      model: 'claude-opus-5',
-      cwd: workspace,
-      systemPrompt:
-        'Reproduce before you fix. Write the failing test first, commit it alone, then patch. Never force-push without asking. Keep changes scoped to the files named in the request.',
-      skills: ['repro-harness', 'stack-triage'],
-      mcpServers: ['filesystem', TASKS_SERVER],
-    },
-    {
-      id: 'review',
-      name: 'Review Agent',
-      runner: 'claude',
-      model: 'claude-sonnet-5',
-      cwd: workspace,
-      systemPrompt:
-        'Review for correctness first, style last. Separate blocking notes from nits and quote the line you are reacting to. If the change lacks a test, say so before anything else.',
-      skills: ['pr-review', 'stack-triage'],
-      mcpServers: ['filesystem', 'github', TASKS_SERVER],
-    },
-    {
-      id: 'estimation',
-      name: 'Estimation Agent',
-      runner: 'claude',
-      model: 'claude-haiku-4-5',
-      cwd: workspace,
-      systemPrompt:
-        'Break work down until every task is a day or less. Flag unowned tasks and cross-team dependencies explicitly. Give ranges, not single numbers.',
-      skills: ['estimate-breakdown'],
-      mcpServers: [TASKS_SERVER],
-    },
-  ]
-}
 
 const SEED_SKILLS: Record<string, string> = {
   'repro-harness': `# Repro Harness
@@ -137,13 +80,7 @@ export async function seedIfEmpty(mcpPath: string): Promise<boolean> {
   const existing = await readdir(agentsDir())
   if (existing.length > 0) return false
 
-  const workspace = join(rosterHome(), 'workspace')
-  await mkdir(workspace, { recursive: true })
-
-  for (const config of seedAgents(workspace)) {
-    await mkdir(agentDir(config.id), { recursive: true })
-    await writeFile(agentTomlPath(config.id), serializeAgentToml(config), 'utf8')
-  }
+  await mkdir(join(rosterHome(), 'workspace'), { recursive: true })
 
   for (const [name, body] of Object.entries(SEED_SKILLS)) {
     await mkdir(join(skillsDir(), name), { recursive: true })
