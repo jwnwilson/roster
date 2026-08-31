@@ -733,3 +733,85 @@ describe('SessionManager.cancel', () => {
     expect(seen).toBeDefined()
   })
 })
+
+describe('SessionManager.enqueue', () => {
+  /** A turn that hangs until it is released, so a queue can be observed. */
+  function gatedTurn(): () => void {
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    runnerStub.run.mockImplementation(async function* () {
+      await gate
+      yield { kind: 'done', runnerSessionId: 'r1' } as RunnerEvent
+    })
+    return release
+  }
+
+  test('runs straight away when nothing is in flight', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const session = manager.create('debugging', 'x')
+
+    manager.enqueue(session.id, 'go')
+
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledWith('go', expect.anything()))
+  })
+
+  test('waits for the turn in flight rather than being refused', async () => {
+    const release = gatedTurn()
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'first')
+
+    manager.enqueue(session.id, 'second')
+
+    // send() throws while a turn is live; the whole point of enqueue is that
+    // Roster's own follow-up does not have to.
+    expect(runnerStub.run).toHaveBeenCalledTimes(1)
+    release()
+    await turn
+
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledTimes(2))
+    expect(runnerStub.run.mock.calls[1]?.[0]).toBe('second')
+  })
+
+  test('carries its options to the queued turn', async () => {
+    const release = gatedTurn()
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'first')
+
+    manager.enqueue(session.id, 'revise it', { planMode: true })
+    release()
+    await turn
+
+    await vi.waitFor(() =>
+      expect(runnerStub.run).toHaveBeenCalledWith(
+        'revise it',
+        expect.objectContaining({ planMode: true }),
+      ),
+    )
+  })
+
+  test('only the last queued prompt runs', async () => {
+    const release = gatedTurn()
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'first')
+
+    manager.enqueue(session.id, 'stale')
+    manager.enqueue(session.id, 'fresh')
+    release()
+    await turn
+
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledTimes(2))
+    expect(runnerStub.run.mock.calls[1]?.[0]).toBe('fresh')
+    expect(runnerStub.run).not.toHaveBeenCalledWith('stale', expect.anything())
+  })
+
+  test('a session that has gone is dropped, not thrown', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    // Nothing awaits enqueue, so a rejection here would be unhandled and
+    // would take the main process down rather than the turn.
+    expect(() => manager.enqueue('ghost', 'go')).not.toThrow()
+    await vi.waitFor(() => expect(runnerStub.run).not.toHaveBeenCalled())
+  })
+})

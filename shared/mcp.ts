@@ -16,12 +16,19 @@ export interface BuiltinMcpServer {
 /** The board tools: list, read, update, comment, create. */
 export const TASKS_SERVER = 'tasks'
 
+/** Reporting the pull request a built plan ended in. */
+export const PLANS_SERVER = 'plans'
+
 export const BUILTIN_MCP_SERVERS: readonly BuiltinMcpServer[] = [
   {
     name: TASKS_SERVER,
     // Sits where a launch command sits on the other cards, so it has to read
     // at a glance rather than explain the whole feature.
     description: 'Assign, move, comment on and file tasks on the shared board.',
+  },
+  {
+    name: PLANS_SERVER,
+    description: 'Report the pull request a plan was built into, so Roster can link to it.',
   },
 ]
 

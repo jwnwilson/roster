@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { Agent, Approval, Message, Session, Usage } from '../../../shared/types'
-import { isBuiltinMcpServer, TASKS_SERVER } from '../../../shared/mcp'
+import { isBuiltinMcpServer, PLANS_SERVER, TASKS_SERVER } from '../../../shared/mcp'
+import { EXIT_PLAN_MODE, planFromToolInput } from '../../../shared/plans'
 import type { AgentStore } from '../store/agents'
 import type { McpStore } from '../store/mcp'
 import type { SessionStore } from '../store/sessions'
@@ -9,11 +10,13 @@ import type { SkillStore } from '../store/skills'
 import type { UsageStore } from '../store/usage'
 import type { TaskStore } from '../store/tasks'
 import type { ProjectStore } from '../store/projects'
+import type { PlanStore } from '../store/plans'
 import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
 import { createRosterMcpServer } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
+import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
 import { describeActivity, THINKING } from './activity'
 
 /** Per-turn choices the caller makes, rather than the agent's configuration. */
@@ -66,6 +69,8 @@ interface ActiveRun {
 export class SessionManager {
   private active = new Map<string, ActiveRun>()
   private listeners = new Set<(event: SessionEvent) => void>()
+  /** Turns Roster owes a session once its current one ends. See enqueue. */
+  private queued = new Map<string, { prompt: string; options: SendOptions }>()
 
   constructor(
     private readonly agents: AgentStore,
@@ -79,6 +84,11 @@ export class SessionManager {
      * one simply exposes no task tools.
      */
     private readonly board?: { tasks: TaskStore; projects: ProjectStore },
+    /**
+     * Where plans are kept. Optional for the same reason as the board: a
+     * manager without one runs turns exactly as before and captures nothing.
+     */
+    private readonly plans?: PlanStore,
   ) {}
 
   subscribe(listener: (event: SessionEvent) => void): () => void {
@@ -157,6 +167,34 @@ export class SessionManager {
 
   /* ---- running a turn --------------------------------------------------- */
 
+  /**
+   * Runs a prompt now, or as soon as the turn in flight ends.
+   *
+   * Every turn used to originate from someone pressing send, so refusing one
+   * while another was live was the whole of the story. Roster now starts
+   * turns of its own — revising a plan, building an approved one — and it
+   * cannot ask the person who clicked to wait for the agent to fall quiet
+   * first.
+   *
+   * One queued turn per session: a second replaces the first, because these
+   * are instructions about the same plan and the newest is the one meant.
+   * Nothing awaits this, so a failure is recorded on the session rather than
+   * thrown into a promise no one is holding.
+   */
+  enqueue(sessionId: string, prompt: string, options: SendOptions = {}): void {
+    if (this.active.has(sessionId)) {
+      this.queued.set(sessionId, { prompt, options })
+      return
+    }
+
+    void this.send(sessionId, prompt, options).catch((cause: unknown) => {
+      // A session that has gone has nowhere to show an error; anything else
+      // belongs in its transcript where it can be seen.
+      if (!this.sessions.findById(sessionId)) return
+      this.failTurn(sessionId, cause instanceof Error ? cause.message : String(cause))
+    })
+  }
+
   async send(sessionId: string, prompt: string, options: SendOptions = {}): Promise<void> {
     if (this.active.has(sessionId)) throw new Error('this session is already running')
 
@@ -222,6 +260,13 @@ export class SessionManager {
       if (tasks) {
         inProcessMcpServers[TASKS_SERVER] = await createTasksMcpServer(tasks, agent.id)
       }
+
+      // Reporting a pull request is opt-in the same way. Without it a plan
+      // still gets built; Roster simply never learns where the work landed.
+      const planTools = this.planToolsFor(agent)
+      if (planTools) {
+        inProcessMcpServers[PLANS_SERVER] = await createPlansMcpServer(planTools)
+      }
     }
 
     try {
@@ -248,7 +293,22 @@ export class SessionManager {
       if (this.sessions.findById(sessionId)?.status === 'running') {
         this.setStatus(sessionId, 'done')
       }
+      this.drain(sessionId)
     }
+  }
+
+  /**
+   * Starts whatever was queued behind the turn that just ended.
+   *
+   * Deliberately not awaited: the queued turn is its own turn, and the
+   * caller of send() is owed only the one it asked for.
+   */
+  private drain(sessionId: string): void {
+    const next = this.queued.get(sessionId)
+    if (!next) return
+
+    this.queued.delete(sessionId)
+    this.enqueue(sessionId, next.prompt, next.options)
   }
 
   cancel(sessionId: string): void {
@@ -267,12 +327,20 @@ export class SessionManager {
         // Anything said before the tool call belongs above it in the
         // transcript, so flush before writing the tool row.
         this.flushText(sessionId, run)
+        // The same plan also arrives through the approval callback, in no
+        // guaranteed order. Capture is idempotent, so whichever gets here
+        // first creates it and the other simply finds it.
+        const proposed =
+          event.name === EXIT_PLAN_MODE ? planFromToolInput(event.input) : null
+        const planId = proposed === null ? null : this.capturePlan(sessionId, proposed)
+
         const message = this.record(sessionId, {
           sessionId,
           kind: 'tool',
           tool: event.name,
           args: event.args,
           ...(event.input !== undefined ? { input: event.input } : {}),
+          ...(planId !== null ? { planId } : {}),
           output: '',
           isError: false,
         })
@@ -399,12 +467,15 @@ export class SessionManager {
     run: ActiveRun,
     event: Extract<RunnerEvent, { kind: 'approval' }>,
   ): void {
+    const planId = event.plan === undefined ? null : this.capturePlan(sessionId, event.plan)
+
     const approval: Approval = {
       id: event.id,
       sessionId,
       toolName: event.toolName,
       command: event.command,
       ...(event.questions !== undefined ? { questions: event.questions } : {}),
+      ...(planId !== null ? { planId } : {}),
       status: 'pending',
       createdAt: Date.now(),
     }
@@ -442,6 +513,34 @@ export class SessionManager {
   private setStatus(sessionId: string, status: Session['status']): void {
     this.sessions.updateStatus(sessionId, status)
     this.emit({ type: 'status', sessionId, status })
+  }
+
+  /**
+   * Records a plan the agent just proposed, and says which one it is.
+   *
+   * Returns null when this manager has no plan store, or when the session has
+   * gone — capturing a plan is worth nothing next to finishing the turn.
+   */
+  /**
+   * The plan tools for this agent, or nothing.
+   *
+   * Gated on the agent enabling "plans", like the board, and on this manager
+   * having a plan store at all.
+   */
+  private planToolsFor(agent: Agent): PlanTools | undefined {
+    const plans = this.plans
+    if (!plans || !agent.mcpServers.includes(PLANS_SERVER)) return undefined
+
+    return {
+      recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
+    }
+  }
+
+  private capturePlan(sessionId: string, body: string): string | null {
+    const session = this.sessions.findById(sessionId)
+    if (!this.plans || !session) return null
+
+    return this.plans.capture({ sessionId, agentId: session.agentId, body }).id
   }
 
   private failTurn(sessionId: string, message: string): void {

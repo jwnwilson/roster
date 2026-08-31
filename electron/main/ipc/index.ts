@@ -11,7 +11,7 @@ import {
   type NewConnectionInput,
   type TaskChange,
 } from '../../../shared/ipc'
-import type { RunnerStatus, SpendSummary } from '../../../shared/types'
+import type { PlanDocument, RunnerStatus, SpendSummary } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
@@ -22,7 +22,9 @@ import { McpStore, withServer } from '../store/mcp'
 import { ProjectStore } from '../store/projects'
 import { SessionStore } from '../store/sessions'
 import { TaskStore } from '../store/tasks'
+import { PlanStore } from '../store/plans'
 import { NotionStore } from '../store/notion'
+import { PlanFlow } from '../sessions/planFlow'
 import { NotionClient, databaseIdFrom } from '../notion/client'
 import { detectMapping, unmappedStatuses } from '../notion/mapping'
 import { NotionPush, importConnection } from '../notion/sync'
@@ -42,6 +44,8 @@ let usageStore: UsageStore | null = null
 let projectStore: ProjectStore | null = null
 let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
+let planStore: PlanStore | null = null
+let planFlow: PlanFlow | null = null
 let notionStore: NotionStore | null = null
 let notionPush: NotionPush | null = null
 
@@ -77,6 +81,16 @@ function broadcast(channel: string, payload: unknown): void {
 function requireManager(): SessionManager {
   if (!manager) throw new Error('session manager is not initialised')
   return manager
+}
+
+function requirePlans(): PlanStore {
+  if (!planStore) throw new Error('plan store is not initialised')
+  return planStore
+}
+
+function requirePlanFlow(): PlanFlow {
+  if (!planFlow) throw new Error('plan flow is not initialised')
+  return planFlow
 }
 
 function requireSessions(): SessionStore {
@@ -156,6 +170,8 @@ export async function initStores(): Promise<void> {
   notionStore = new NotionStore(db)
   seedBoardIfEmpty(projectStore, taskStore, agentStore.findAll())
 
+  planStore = new PlanStore(db)
+
   manager = new SessionManager(
     agentStore,
     sessionStore,
@@ -163,12 +179,17 @@ export async function initStores(): Promise<void> {
     mcpStore,
     usageStore,
     { tasks: taskStore, projects: projectStore },
+    planStore,
   )
+  planFlow = new PlanFlow(planStore, manager)
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
   // One bridge, so a task an agent changes mid-turn reaches the board the
   // same way one the user dragged does.
   taskStore.subscribe((event) => broadcast(CHANNELS.tasksEvent, event))
+  // The same bridge for plans: an agent revising one mid-turn has to reach an
+  // open modal, and a second window has to see it too.
+  planStore.subscribe((event) => broadcast(CHANNELS.plansEvent, event))
   // A second subscriber: what changes here is written back to the Notion page
   // it came from. Silent for tasks that did not come from Notion.
   notionPush = new NotionPush(
@@ -459,6 +480,23 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.tasksComment, (_e, taskId: string, text: string) =>
     requireTasks().comment(taskId, { author: YOU.name, tone: YOU.tone, text }),
   )
+
+  ipcMain.handle(CHANNELS.plansListBySession, (_e, sessionId: string) =>
+    requirePlans().listBySession(sessionId),
+  )
+  ipcMain.handle(CHANNELS.plansRead, (_e, planId: string): PlanDocument => {
+    const plans = requirePlans()
+    const plan = plans.findById(planId)
+    if (!plan) throw new Error(`unknown plan "${planId}"`)
+    return { plan, body: plans.body(planId) }
+  })
+  ipcMain.handle(CHANNELS.plansComments, (_e, planId: string) => requirePlans().comments(planId))
+  // Both of these start a turn on the session that wrote the plan; the
+  // sequencing around a still-blocked ExitPlanMode lives in PlanFlow.
+  ipcMain.handle(CHANNELS.plansSubmit, (_e, planId: string, text: string) =>
+    requirePlanFlow().submit(planId, text),
+  )
+  ipcMain.handle(CHANNELS.plansApprove, (_e, planId: string) => requirePlanFlow().approve(planId))
 
   ipcMain.handle(CHANNELS.updateVersion, () => app.getVersion())
   ipcMain.handle(CHANNELS.updateCheck, () => requireUpdater().check())

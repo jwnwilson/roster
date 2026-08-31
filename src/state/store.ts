@@ -12,6 +12,8 @@ import type {
   SpendSummary,
   Status,
   BoardStatus,
+  PlanComment,
+  PlanDocument,
   Task,
   TaskComment,
   TaskStatus,
@@ -19,7 +21,7 @@ import type {
   UpdateState,
   Usage,
 } from '@shared/types'
-import type { SessionEventPayload, TaskEventPayload } from '@shared/ipc'
+import type { PlanEventPayload, SessionEventPayload, TaskEventPayload } from '@shared/ipc'
 import { rollUpAgentStatus } from '@shared/status'
 import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
@@ -74,6 +76,10 @@ export interface RosterState {
   tasks: Task[]
   /** taskId -> its thread, loaded when the task is opened. */
   taskComments: Record<string, TaskComment[]>
+  /** planId -> the plan and its current body, loaded when it is opened. */
+  plans: Record<string, PlanDocument>
+  /** planId -> its thread, loaded alongside the plan. */
+  planComments: Record<string, PlanComment[]>
   loaded: boolean
 
   /* ---- navigation --------------------------------------------------- */
@@ -108,6 +114,8 @@ export interface RosterState {
   taskView: TaskView
   /** The task whose detail modal is open. */
   openTaskId: string | null
+  /** The plan being reviewed, or null. Mounted by the agent screen. */
+  openPlanId: string | null
   taskQuery: string
   taskTab: TaskTab
   /* ---- Backlog ------------------------------------------------------ */
@@ -152,6 +160,8 @@ export interface RosterState {
   setProjects(projects: Project[]): void
   setTasks(tasks: Task[]): void
   setTaskComments(taskId: string, comments: TaskComment[]): void
+  setPlan(document: PlanDocument): void
+  setPlanComments(planId: string, comments: PlanComment[]): void
   /** Applies one live board change from the main process. */
   applyTaskEvent(event: TaskEventPayload): void
   /** Applies one live event from the main process. */
@@ -177,6 +187,9 @@ export interface RosterState {
   setProjectFilter(value: string): void
   openTask(taskId: string): void
   closeTask(): void
+  openPlan(planId: string): void
+  closePlan(): void
+  applyPlanEvent(event: PlanEventPayload): void
   setProjectsOpen(open: boolean): void
   /** The status decides what the modal creates: a board task, or a backlog one. */
   setNewTaskOpen(open: boolean, status?: TaskStatus): void
@@ -211,6 +224,8 @@ export const useRoster = create<RosterState>((set, get) => ({
   projects: [],
   tasks: [],
   taskComments: {},
+  plans: {},
+  planComments: {},
   loaded: false,
 
   screen: 'grid',
@@ -230,6 +245,7 @@ export const useRoster = create<RosterState>((set, get) => ({
 
   taskView: 'board',
   openTaskId: null,
+  openPlanId: null,
   taskQuery: '',
   taskTab: 'comments',
   backlogQuery: '',
@@ -270,6 +286,11 @@ export const useRoster = create<RosterState>((set, get) => ({
   setTaskComments: (taskId, comments) =>
     set((s) => ({ taskComments: { ...s.taskComments, [taskId]: comments } })),
 
+  setPlan: (document) =>
+    set((s) => ({ plans: { ...s.plans, [document.plan.id]: document } })),
+  setPlanComments: (planId, comments) =>
+    set((s) => ({ planComments: { ...s.planComments, [planId]: comments } })),
+
   applySessionEvent: (event) => set((s) => reduceSessionEvent(s, event)),
   applyTaskEvent: (event) => set((s) => reduceTaskEvent(s, event)),
 
@@ -307,6 +328,10 @@ export const useRoster = create<RosterState>((set, get) => ({
   // not the first thing you want to read.
   openTask: (openTaskId) => set({ openTaskId, taskTab: 'comments' }),
   closeTask: () => set({ openTaskId: null }),
+
+  openPlan: (openPlanId) => set({ openPlanId }),
+  closePlan: () => set({ openPlanId: null }),
+  applyPlanEvent: (event) => set((s) => reducePlanEvent(s, event)),
   setProjectsOpen: (projectsOpen) => set({ projectsOpen }),
   setNewTaskOpen: (newTaskOpen, newTaskStatus = 'todo') => set({ newTaskOpen, newTaskStatus }),
   setNotionOpen: (notionOpen) => set({ notionOpen }),
@@ -442,6 +467,9 @@ export function selectGridAgents(state: RosterState): Agent[] {
  * ------------------------------------------------------------------ */
 
 export const NO_COMMENTS: readonly TaskComment[] = Object.freeze([])
+
+/** The same, for a plan whose thread is empty. */
+export const NO_PLAN_COMMENTS: readonly PlanComment[] = Object.freeze([])
 
 /**
  * The list with one task added, unless it is already in it.
@@ -785,6 +813,45 @@ export function reduceTaskEvent(
         ...(state.projectFilter !== ALL_PROJECTS && !stillOffered
           ? { projectFilter: ALL_PROJECTS }
           : {}),
+      }
+    }
+  }
+}
+
+/**
+ * Plan changes from the main process, applied to whatever is open.
+ *
+ * Pure, like reduceTaskEvent, so the ordering rules can be tested without
+ * React or IPC. Nothing is invented here: a plan or thread this window has
+ * never read is left alone, because it will be read in full when it is
+ * opened, and a half-filled record would render as a plan with no body.
+ */
+export function reducePlanEvent(
+  state: RosterState,
+  event: PlanEventPayload,
+): Partial<RosterState> {
+  switch (event.type) {
+    case 'plan-updated': {
+      const existing = state.plans[event.plan.id]
+      if (existing === undefined) return {}
+
+      // The body is deliberately not touched: only the store has the new
+      // version, and showing v1 under a v2 heading would be worse than
+      // waiting for the modal to re-read it.
+      return { plans: { ...state.plans, [event.plan.id]: { ...existing, plan: event.plan } } }
+    }
+
+    case 'comment': {
+      const existing = state.planComments[event.planId]
+      if (existing === undefined) return {}
+      // It arrives from the call that wrote it and from the broadcast.
+      if (existing.some((comment) => comment.id === event.comment.id)) return {}
+
+      return {
+        planComments: {
+          ...state.planComments,
+          [event.planId]: [...existing, event.comment],
+        },
       }
     }
   }

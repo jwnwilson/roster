@@ -263,6 +263,52 @@ describe('AgentDetail — approving a plan', () => {
     expect(window.roster.sessions.respondToApproval).toHaveBeenCalledWith('s1', 'a1', false)
     expect(useRoster.getState().planMode['s1']).toBe(true)
   })
+
+  test('offers to read the plan properly when there is one to read', async () => {
+    useRoster.setState({ approvals: { s1: [{ ...PLAN, planId: 'plan-1' }] } })
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Review plan' }))
+
+    expect(useRoster.getState().openPlanId).toBe('plan-1')
+  })
+
+  test('answering a plan it never captured is unchanged', async () => {
+    render(<AgentDetail />)
+
+    // A plan from before this feature, or from a runner that has no plan
+    // mode: the old two-button banner is still the whole of it.
+    expect(await screen.findByRole('button', { name: 'Start work' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Review plan' })).not.toBeInTheDocument()
+  })
+
+  test('mounts the plan modal once one is open', async () => {
+    installRosterApi({
+      plans: {
+        read: vi.fn().mockResolvedValue({
+          plan: {
+            id: 'plan-1',
+            sessionId: 's1',
+            agentId: 'debugging',
+            title: 'Fix the pool leak',
+            status: 'draft',
+            version: 1,
+            createdAt: 0,
+            updatedAt: 0,
+          },
+          body: '## Steps\n\n- reproduce\n',
+        }),
+        comments: vi.fn().mockResolvedValue([]),
+      },
+      sessions: { listByAgent: vi.fn().mockResolvedValue([aSession({ id: 's1' })]) },
+    })
+    useRoster.setState({ openPlanId: 'plan-1' })
+
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('heading', { name: 'Steps' })).toBeInTheDocument()
+  })
 })
 
 describe('AgentDetail — config rail', () => {
