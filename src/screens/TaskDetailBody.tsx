@@ -3,6 +3,8 @@ import { useShallow } from 'zustand/shallow'
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
+  type Agent,
+  type Status,
   type Task,
   type TaskComment,
   type TaskPriority,
@@ -12,6 +14,7 @@ import { taskPriorityLabel, taskStatusLabel } from '@shared/tasks'
 import type { TaskChange } from '@shared/ipc'
 import { Markdown } from '@/components/Markdown'
 import { TrashIcon } from '@/components/icons'
+import { MentionInput } from '@/components/MentionInput'
 import { IconButton, SectionLabel, Segmented, Select } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import {
@@ -132,7 +135,7 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
           onSave={(value) => void apply({ field: 'description', value })}
         />
 
-        <Thread taskId={task.id} comments={thread} />
+        <Thread taskId={task.id} comments={thread} agents={agents} statuses={statuses} />
 
         {error ? <p className="m-0 text-md text-error">{error}</p> : null}
       </div>
@@ -352,6 +355,8 @@ function Description({ value, onSave }: DescriptionProps) {
 interface ThreadProps {
   taskId: string
   comments: readonly TaskComment[]
+  agents: readonly Agent[]
+  statuses: Record<string, Status>
 }
 
 const TABS = [
@@ -359,7 +364,7 @@ const TABS = [
   { value: 'history' as const, label: 'History' },
 ]
 
-function Thread({ taskId, comments }: ThreadProps) {
+function Thread({ taskId, comments, agents, statuses }: ThreadProps) {
   const tab = useRoster((s) => s.taskTab)
   const setTaskTab = useRoster((s) => s.setTaskTab)
   const setTaskComments = useRoster((s) => s.setTaskComments)
@@ -410,7 +415,7 @@ function Thread({ taskId, comments }: ThreadProps) {
               >
                 {comment.author}
               </span>
-              <span className="text-md leading-[1.55] text-ink-2">{comment.text}</span>
+              <Markdown>{comment.text}</Markdown>
             </div>
           ))}
         </div>
@@ -418,17 +423,14 @@ function Thread({ taskId, comments }: ThreadProps) {
 
       {tab === 'comments' ? (
         <div className="flex items-center gap-[8px]">
-          <input
-            type="text"
-            aria-label="Add a comment"
-            placeholder="Add a comment"
+          <MentionInput
+            ariaLabel="Add a comment"
+            placeholder="Add a comment, or @mention an agent"
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation()
-              if (e.key === 'Enter') void post()
-            }}
-            className="flex-1 rounded-chip border border-line-card bg-card px-[10px] py-[6px] font-ui text-md text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
+            onChange={setText}
+            onSubmit={() => void post()}
+            agents={agents}
+            statuses={statuses}
           />
           <button
             type="button"

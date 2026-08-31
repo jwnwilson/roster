@@ -461,3 +461,48 @@ describe('TaskDetailModal — archived projects', () => {
     expect(select).toHaveValue('p2')
   })
 })
+
+describe('TaskDetailModal — mentioning an agent in a comment', () => {
+  test('completes an agent as it is typed', async () => {
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+
+    await user.type(await screen.findByRole('combobox', { name: 'Add a comment' }), 'ask @de')
+
+    expect(screen.getByRole('option', { name: /Debugging Agent/ })).toBeInTheDocument()
+  })
+
+  test('posts the mention as written, so the main process can resolve it', async () => {
+    const api = installRosterApi()
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+    const box = await screen.findByRole('combobox', { name: 'Add a comment' })
+
+    await user.type(box, '@de')
+    await user.click(screen.getByRole('option', { name: /Debugging Agent/ }))
+    await user.type(box, 'what do you think?{Enter}')
+
+    await waitFor(() =>
+      expect(api.tasks.comment).toHaveBeenCalledWith(
+        'ROS-101',
+        '@debugging what do you think?',
+      ),
+    )
+  })
+
+  test('renders an answer as Markdown, since agents write it', async () => {
+    installRosterApi({
+      tasks: {
+        comments: vi
+          .fn()
+          .mockResolvedValue([
+            aTaskComment({ author: 'Debugging Agent', tone: 'agent', text: '## Findings' }),
+          ]),
+      },
+    })
+    render(<TaskDetailModal />)
+
+    expect(await screen.findByRole('heading', { name: 'Findings' })).toBeInTheDocument()
+    expect(screen.queryByText('## Findings')).not.toBeInTheDocument()
+  })
+})
