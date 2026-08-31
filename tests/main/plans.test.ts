@@ -62,6 +62,39 @@ describe('capturing a plan', () => {
     expect(capture('   \n\n').title).toBe('Untitled plan')
   })
 
+  test('does not take a section heading for a title', () => {
+    // What Claude actually produces: the document opens with its structure,
+    // not with its subject. "Context" names neither the plan nor its branch.
+    const structured = [
+      '# Context',
+      '',
+      'The user wants a simple hello world Python script.',
+      '',
+      '# Plan',
+      '',
+      '1. Create hello.py',
+    ].join('\n')
+
+    expect(capture(structured).title).toBe('The user wants a simple hello world Python script.')
+  })
+
+  test('keeps a heading that is actually a title', () => {
+    const titled = '# Archive and un-archive projects\n\n## Context\n\nToday a project…'
+
+    expect(capture(titled).title).toBe('Archive and un-archive projects')
+  })
+
+  test('cuts a long first sentence rather than carrying the paragraph', () => {
+    const rambling = `# Summary\n\n${'word '.repeat(60)}\n`
+
+    expect(capture(rambling).title.length).toBeLessThanOrEqual(71)
+  })
+
+  test('falls back to the section heading when there is nothing else', () => {
+    // Better a weak title than none at all.
+    expect(capture('# Context\n').title).toBe('Context')
+  })
+
   test('a rewrite becomes the next version, and the old one stays on disk', async () => {
     const first = capture(V1)
     const second = capture(V2)

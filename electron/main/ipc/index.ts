@@ -181,7 +181,7 @@ export async function initStores(): Promise<void> {
     { tasks: taskStore, projects: projectStore },
     planStore,
   )
-  planFlow = new PlanFlow(planStore, manager)
+  planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
   // One bridge, so a task an agent changes mid-turn reaches the board the

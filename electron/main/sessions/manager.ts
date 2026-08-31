@@ -293,8 +293,38 @@ export class SessionManager {
       if (this.sessions.findById(sessionId)?.status === 'running') {
         this.setStatus(sessionId, 'done')
       }
+      // Only when nothing is waiting: approving a plan queues the build behind
+      // the planning turn, and settling here would cancel it before it ran.
+      if (!this.queued.has(sessionId)) this.settleBuild(sessionId)
       this.drain(sessionId)
     }
+  }
+
+  /**
+   * Hands a plan back when its build turn ended without a pull request.
+   *
+   * The agent may have refused, run out of road, or simply stopped. Whatever
+   * the reason, a plan left marked as building is a dead end: that state
+   * offers neither comments nor approval, so there is no way to answer it.
+   * Better to say what happened and put it back in your hands.
+   */
+  private settleBuild(sessionId: string): void {
+    const plans = this.plans
+    if (!plans) return
+
+    const building = plans
+      .listBySession(sessionId)
+      .find((plan) => plan.status === 'building' && plan.prUrl === undefined)
+    if (!building) return
+
+    plans.comment(building.id, {
+      author: this.agentNameFor(sessionId),
+      tone: 'agent',
+      text: 'The build ended without opening a pull request.',
+    })
+    // The branch is kept, so approving again continues the same work rather
+    // than starting a second one beside it.
+    plans.setStatus(building.id, 'draft')
   }
 
   /**

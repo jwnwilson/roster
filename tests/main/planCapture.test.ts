@@ -224,3 +224,82 @@ describe('a manager built without a plan store', () => {
     expect(bare.pendingApprovals(session.id)[0]?.planId).toBeUndefined()
   })
 })
+
+describe('a build that produced no pull request', () => {
+  async function buildingPlan(): Promise<{ sessionId: string; planId: string }> {
+    const sessionId = await runTurn(approvalEvent(BODY))
+    const planId = plans.listBySession(sessionId)[0]!.id
+    plans.setStatus(planId, 'building', { branch: 'roster/plan-x' })
+    return { sessionId, planId }
+  }
+
+  test('comes back to you rather than saying "building" for ever', async () => {
+    const { sessionId, planId } = await buildingPlan()
+
+    await runTurnOn(sessionId)
+
+    // Found the hard way: the agent could not make a worktree, said so, and
+    // the plan sat in "building" with no way to answer it.
+    expect(plans.findById(planId)?.status).toBe('draft')
+  })
+
+  test('says in the thread why it came back', async () => {
+    const { sessionId, planId } = await buildingPlan()
+
+    await runTurnOn(sessionId)
+
+    expect(plans.comments(planId)).toContainEqual(
+      expect.objectContaining({
+        tone: 'agent',
+        text: 'The build ended without opening a pull request.',
+      }),
+    )
+  })
+
+  test('keeps the branch, so approving again does not rename the work', async () => {
+    const { sessionId, planId } = await buildingPlan()
+
+    await runTurnOn(sessionId)
+
+    expect(plans.findById(planId)?.branch).toBe('roster/plan-x')
+  })
+
+  test('a build that did open one is left alone', async () => {
+    const { sessionId, planId } = await buildingPlan()
+    plans.recordPullRequest(planId, { url: 'https://github.com/o/r/pull/31' })
+
+    await runTurnOn(sessionId)
+
+    expect(plans.findById(planId)?.status).toBe('in_review')
+  })
+
+  test('waits for the build turn it is still queued behind', async () => {
+    const { sessionId, planId } = await buildingPlan()
+
+    // Approving queues the build behind the planning turn. Settling when that
+    // turn ends would cancel the build before it ever ran.
+    let queued = false
+    runnerStub.run.mockImplementation(async function* () {
+      // Once: the queued turn runs through this same stub, and enqueuing
+      // again from it would never stop.
+      if (!queued) {
+        queued = true
+        manager.enqueue(sessionId, 'build it')
+      }
+      yield { kind: 'done', runnerSessionId: 'r1' } as RunnerEvent
+    })
+    await manager.send(sessionId, 'go')
+
+    expect(plans.findById(planId)?.status).toBe('building')
+  })
+
+  test('leaves a plan nobody approved alone', async () => {
+    const sessionId = await runTurn(approvalEvent(BODY))
+    const planId = plans.listBySession(sessionId)[0]!.id
+
+    await runTurnOn(sessionId)
+
+    expect(plans.findById(planId)?.status).toBe('draft')
+    expect(plans.comments(planId)).toEqual([])
+  })
+})

@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -11,10 +11,12 @@ import { branchFor, worktreeFor } from '@main/sessions/planPrompt'
 const BODY = '# Archive projects\n\nArchiving keeps the row.\n'
 
 let home: string
+let repo: string
 let db: ReturnType<typeof openDatabase>
 let plans: PlanStore
 let flow: PlanFlow
 let pending: Approval[]
+let cwd: string | null
 
 const manager = {
   pendingApprovals: vi.fn(() => pending),
@@ -44,11 +46,15 @@ function planApproval(): Approval {
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'roster-planflow-'))
+  repo = join(home, 'repo')
+  await mkdir(join(repo, '.git'), { recursive: true })
   process.env['ROSTER_HOME'] = home
   db = openDatabase(':memory:')
   plans = new PlanStore(db)
-  flow = new PlanFlow(plans, manager as never)
+  flow = new PlanFlow(plans, manager as never, () => cwd)
   pending = []
+  // A real repository by default; the guard is exercised on its own below.
+  cwd = repo
   manager.respondToApproval.mockClear()
   manager.enqueue.mockClear()
 })
@@ -213,6 +219,32 @@ describe('approving a plan', () => {
 
   test('refuses a plan that does not exist', () => {
     expect(() => flow.approve('nope')).toThrow('unknown plan "nope"')
+  })
+
+  test('refuses when the agent does not work in a git repository', () => {
+    const plan = planAwaitingReview()
+    cwd = join(home, 'not-a-repo')
+
+    // Found the hard way: the default agent cwd is ~/roster/workspace, which
+    // is not a repository. The agent was sent to make a worktree there, could
+    // not, and the plan had nowhere to go.
+    expect(() => flow.approve(plan.id)).toThrow(/not a git repository/)
+    expect(manager.enqueue).not.toHaveBeenCalled()
+    expect(plans.findById(plan.id)?.status).toBe('draft')
+  })
+
+  test('says which directory it means, so it can be changed', () => {
+    const plan = planAwaitingReview()
+    cwd = join(home, 'not-a-repo')
+
+    expect(() => flow.approve(plan.id)).toThrow(new RegExp(join(home, 'not-a-repo')))
+  })
+
+  test('refuses when the agent has no working directory at all', () => {
+    const plan = planAwaitingReview()
+    cwd = null
+
+    expect(() => flow.approve(plan.id)).toThrow(/not a git repository/)
   })
 
   test('refuses one that is already being built', () => {

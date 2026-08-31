@@ -303,7 +303,57 @@ export function planTitle(body: string): string {
   if (heading === null) return 'Untitled plan'
 
   const stripped = heading.replace(/^#+\s*/, '').trim()
-  return stripped === '' ? 'Untitled plan' : stripped
+  if (stripped === '') return 'Untitled plan'
+
+  // A plan often opens with its structure rather than its subject — Claude's
+  // own tend to begin "# Context" — and that names neither the plan nor the
+  // branch it will be built on. The first line of prose does.
+  if (SECTION_HEADINGS.has(stripped.toLowerCase())) {
+    return firstSentence(body) ?? stripped
+  }
+
+  return stripped
+}
+
+/**
+ * Headings that describe a document's parts rather than its subject.
+ *
+ * Deliberately short: the cost of missing one is a weak title, and the cost
+ * of over-reaching is throwing away a real one.
+ */
+const SECTION_HEADINGS = new Set([
+  'context',
+  'summary',
+  'overview',
+  'background',
+  'plan',
+  'goal',
+  'goals',
+  'problem',
+  'approach',
+  'proposal',
+])
+
+/** Long enough to say what the plan is, short enough for a modal header. */
+const MAX_TITLE = 70
+
+/** The first line of prose: not a heading, a list item, a fence, or blank. */
+function firstSentence(body: string): string | null {
+  for (const line of body.split('\n')) {
+    const text = line.trim()
+    if (text === '' || /^(#|[-*+>]|\d+\.|```)/.test(text)) continue
+
+    const sentence = text.split(/(?<=\.)\s/)[0]?.trim() ?? text
+    return sentence.length <= MAX_TITLE ? sentence : `${cutAtWord(sentence)}…`
+  }
+
+  return null
+}
+
+function cutAtWord(text: string): string {
+  const cut = text.slice(0, MAX_TITLE)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()
 }
 
 function versionPath(planId: string, version: number): string {

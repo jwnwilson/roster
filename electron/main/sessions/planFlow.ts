@@ -2,6 +2,7 @@ import type { Plan } from '../../../shared/types'
 import { EXIT_PLAN_MODE } from '../../../shared/plans'
 import type { PlanStore } from '../store/plans'
 import type { SessionManager } from './manager'
+import { isGitRepository } from './repo'
 import {
   APPROVED_REASON,
   branchFor,
@@ -35,6 +36,13 @@ export class PlanFlow {
       SessionManager,
       'pendingApprovals' | 'respondToApproval' | 'enqueue'
     >,
+    /**
+     * Where the agent behind a plan works.
+     *
+     * Only needed to check the build has somewhere to go; agents live in
+     * agent.toml rather than in the database, so this is handed in.
+     */
+    private readonly cwdFor: (agentId: string) => string | null,
   ) {}
 
   /**
@@ -86,11 +94,26 @@ export class PlanFlow {
    * The build cannot happen inside the planning turn — plan mode refuses
    * every edit for its whole life — so a pending call is refused and the work
    * is queued as its own turn behind it.
+   *
+   * Refuses outright when the agent does not work in a git repository: there
+   * is no branch to make and no pull request to open, and finding that out
+   * from the agent halfway through leaves the plan stranded.
    */
   approve(planId: string): Plan {
     const plan = this.require(planId)
     if (plan.status === 'building' || plan.status === 'in_review') {
       throw new Error(`plan "${planId}" has already been approved`)
+    }
+
+    // Checked before anything else happens. Without it the agent is sent to
+    // make a worktree somewhere it cannot, refuses, and the plan is left
+    // marked as building with no pull request ever coming.
+    const cwd = this.cwdFor(plan.agentId)
+    if (cwd === null || !isGitRepository(cwd)) {
+      throw new Error(
+        `${cwd ?? 'the agent’s working directory'} is not a git repository, so there is ` +
+          'nowhere to branch from. Point the agent at a checkout and approve again.',
+      )
     }
 
     const blocked = this.blockedOnPlan(plan)
