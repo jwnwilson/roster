@@ -21,6 +21,7 @@ export function App() {
   const setProjects = useRoster((s) => s.setProjects)
   const setTasks = useRoster((s) => s.setTasks)
   const applyTaskEvent = useRoster((s) => s.applyTaskEvent)
+  const applyPlanEvent = useRoster((s) => s.applyPlanEvent)
   const loaded = useRoster((s) => s.loaded)
   const screen = useRoster((s) => s.screen)
 
@@ -81,6 +82,9 @@ export function App() {
 
     // Board changes, including ones an agent made partway through a turn.
     const stopTasks = window.roster.tasks.onEvent(applyTaskEvent)
+    // A plan being revised, or commented on from another window, has to reach
+    // an open plan modal the same way a board change reaches the board.
+    const stopPlans = window.roster.plans.onEvent(applyPlanEvent)
     // The launch check runs in main; its result arrives here.
     const stopUpdates = window.roster.update.onStatus(setUpdate)
 
@@ -89,12 +93,14 @@ export function App() {
       stopAgents()
       stopSessions()
       stopTasks()
+      stopPlans()
       stopUpdates()
     }
   }, [
     hydrate,
     setAgents,
     applySessionEvent,
+    applyPlanEvent,
     setTranscripts,
     setAllSessions,
     setSpend,

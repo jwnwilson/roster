@@ -432,3 +432,29 @@ describe('prettyArgs', () => {
     expect(prettyArgs('{"plan":"## Fix it\\n\\n1. step"}')).toBe('## Fix it\n\n1. step')
   })
 })
+
+describe('ToolBody — a plan an agent proposed', () => {
+  test('offers to open it, so the plan outlives the approval banner', async () => {
+    render(
+      <ToolBody
+        id="t1"
+        tool="ExitPlanMode"
+        args="# Archive projects"
+        output="ok"
+        isError={false}
+        planId="plan-1"
+      />,
+    )
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: 'Review plan' }))
+
+    expect(useRoster.getState().openPlanId).toBe('plan-1')
+  })
+
+  test('an ordinary tool row offers nothing of the kind', () => {
+    render(<ToolBody id="t1" tool="Bash" args="git push" output="done" isError={false} />)
+
+    expect(screen.queryByRole('button', { name: 'Review plan' })).not.toBeInTheDocument()
+  })
+})

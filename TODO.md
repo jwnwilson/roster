@@ -14,7 +14,7 @@
 - [x] Add Agent management so I can hide / show agents
 - [x] Clear initial tasks for new installations
 - [x] Add ability to archive project instead of delete it and see archived projects
-- [ ] Render .md plans and allow user to add comments and work on it with the agent that created it 
+- [x] Render .md plans and allow user to add comments and work on it with the agent that created it 
 - [ ] Add LLM streaming for results
 - [ ] Setup Agent setup workflow and add default agents on startup with tech lead being initial agent to work with
 - [ ] Agent, global & per project context when it's working.

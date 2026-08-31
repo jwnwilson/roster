@@ -507,3 +507,163 @@ describe('migration 7 — a project can be archived instead of destroyed', () =>
     old.close()
   })
 })
+
+describe('migration 8 — plans', () => {
+  /** A database stopped at version 7, as an existing install would be. */
+  function atVersion7() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (const step of MIGRATIONS.slice(0, 7)) old.exec(step)
+    old.pragma('user_version = 7')
+    return old
+  }
+
+  function insertSession(target: Database.Database, id: string): void {
+    target
+      .prepare(
+        'INSERT INTO sessions (id, agent_id, title, origin, status, created_at)' +
+          " VALUES (?, 'debugging', 'Work', 'you', 'idle', 0)",
+      )
+      .run(id)
+  }
+
+  function insertPlan(target: Database.Database, id: string, sessionId: string): void {
+    target
+      .prepare(
+        'INSERT INTO plans (id, session_id, agent_id, title, status, version, created_at, updated_at)' +
+          " VALUES (?, ?, 'debugging', 'Do it', 'draft', 1, 0, 0)",
+      )
+      .run(id, sessionId)
+  }
+
+  test('adds the tables to a database that predates them', () => {
+    const old = atVersion7()
+    const before = (old.pragma('table_list') as { name: string }[]).map((t) => t.name)
+    expect(before).not.toContain('plans')
+
+    migrate(old)
+
+    const after = (old.pragma('table_list') as { name: string }[]).map((t) => t.name)
+    expect(after).toContain('plans')
+    expect(after).toContain('plan_comments')
+    old.close()
+  })
+
+  test('a plan keeps only metadata — the body is a file, not a column', () => {
+    const old = atVersion7()
+    migrate(old)
+
+    const columns = (old.pragma('table_info(plans)') as { name: string }[]).map((c) => c.name)
+    expect(columns).toEqual([
+      'id',
+      'session_id',
+      'agent_id',
+      'title',
+      'status',
+      'version',
+      'branch',
+      'pr_url',
+      'created_at',
+      'updated_at',
+    ])
+    old.close()
+  })
+
+  test('refuses a status outside the four the feature has', () => {
+    const old = atVersion7()
+    migrate(old)
+    insertSession(old, 's1')
+
+    expect(() =>
+      old
+        .prepare(
+          'INSERT INTO plans (id, session_id, agent_id, title, status, version, created_at, updated_at)' +
+            " VALUES ('p1', 's1', 'debugging', 'Do it', 'archived', 1, 0, 0)",
+        )
+        .run(),
+    ).toThrow(/CHECK/)
+    old.close()
+  })
+
+  test('losing the session takes its plans and their thread with it', () => {
+    const old = atVersion7()
+    migrate(old)
+    insertSession(old, 's1')
+    insertPlan(old, 'p1', 's1')
+    old
+      .prepare(
+        'INSERT INTO plan_comments (id, plan_id, author, tone, text, version, created_at)' +
+          " VALUES ('c1', 'p1', 'You', 'you', 'change section 3', 1, 0)",
+      )
+      .run()
+
+    // A plan with no session is a document about a conversation that no
+    // longer exists; the thread goes with it.
+    old.prepare("DELETE FROM sessions WHERE id = 's1'").run()
+
+    expect(old.prepare('SELECT COUNT(*) AS n FROM plans').get()).toEqual({ n: 0 })
+    expect(old.prepare('SELECT COUNT(*) AS n FROM plan_comments').get()).toEqual({ n: 0 })
+    old.close()
+  })
+})
+
+describe('migration 9 — quoting a plan in a comment', () => {
+  /** A database stopped at version 8, as an install on the last build would be. */
+  function atVersion8() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (const step of MIGRATIONS.slice(0, 8)) old.exec(step)
+    old.pragma('user_version = 8')
+    return old
+  }
+
+  function seedComment(target: Database.Database): void {
+    target
+      .prepare(
+        'INSERT INTO sessions (id, agent_id, title, origin, status, created_at)' +
+          " VALUES ('s1', 'debugging', 'Work', 'you', 'idle', 0)",
+      )
+      .run()
+    target
+      .prepare(
+        'INSERT INTO plans (id, session_id, agent_id, title, status, version, created_at, updated_at)' +
+          " VALUES ('p1', 's1', 'debugging', 'Do it', 'draft', 1, 0, 0)",
+      )
+      .run()
+    target
+      .prepare(
+        'INSERT INTO plan_comments (id, plan_id, author, tone, text, version, created_at)' +
+          " VALUES ('c1', 'p1', 'You', 'you', 'change section 3', 1, 0)",
+      )
+      .run()
+  }
+
+  test('adds the column to a database that predates it', () => {
+    const old = atVersion8()
+    expect(
+      (old.pragma('table_info(plan_comments)') as { name: string }[]).map((c) => c.name),
+    ).not.toContain('quote')
+
+    migrate(old)
+
+    expect(
+      (old.pragma('table_info(plan_comments)') as { name: string }[]).map((c) => c.name),
+    ).toContain('quote')
+    old.close()
+  })
+
+  test('a note written before this reads as a note about the whole plan', () => {
+    const old = atVersion8()
+    seedComment(old)
+
+    migrate(old)
+
+    // NULL means "no passage": the note stands, it simply points at nothing
+    // in particular, which is what it always did.
+    expect(old.prepare('SELECT text, quote FROM plan_comments').get()).toEqual({
+      text: 'change section 3',
+      quote: null,
+    })
+    old.close()
+  })
+})

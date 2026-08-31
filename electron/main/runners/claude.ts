@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
+import { EXIT_PLAN_MODE } from '../../../shared/plans'
 import { detectAllRunners } from '../auth/probes'
 import { normalizeClaudeMessage, summarisePlan } from './normalizeClaude'
 import { parseQuestions, summariseQuestions } from './questions'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
 import { TASK_TOOL_NAMES } from './taskTools'
+import { PLAN_TOOL_NAMES } from './planTools'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
 
 /**
@@ -78,7 +80,7 @@ export class ClaudeRunner implements Runner {
         // session or move a card would be friction with nothing behind it.
         // Who may touch the board is decided by whether the "tasks" server is
         // registered for this agent at all, not by this gate.
-        allowedTools: [...ROSTER_TOOL_NAMES, ...TASK_TOOL_NAMES],
+        allowedTools: [...ROSTER_TOOL_NAMES, ...TASK_TOOL_NAMES, ...PLAN_TOOL_NAMES],
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
@@ -130,6 +132,7 @@ export class ClaudeRunner implements Runner {
     const id = randomUUID()
 
     const questions = parseQuestions(input['questions'])
+    const plan = toolName === EXIT_PLAN_MODE ? planBody(input['plan']) : null
 
     return new Promise((resolve) => {
       this.pending.set(id, {
@@ -147,6 +150,7 @@ export class ClaudeRunner implements Runner {
         toolName,
         command: describeCommand(toolName, input),
         ...(questions !== null ? { questions } : {}),
+        ...(plan !== null ? { plan } : {}),
       })
     })
   }
@@ -226,4 +230,14 @@ export function describeCommand(toolName: string, input: Record<string, unknown>
 
 function describe(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
+}
+
+/**
+ * The plan out of an ExitPlanMode's arguments.
+ *
+ * Roster keeps the plan as a document, so the whole body has to travel with
+ * the approval; `describeCommand` only ever produces its heading.
+ */
+function planBody(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value : null
 }

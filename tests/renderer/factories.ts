@@ -1,6 +1,8 @@
 import type {
   Agent,
   McpServer,
+  Plan,
+  PlanComment,
   Project,
   RunnerStatus,
   Session,
@@ -106,6 +108,33 @@ export function aTaskComment(overrides: Partial<TaskComment> = {}): TaskComment 
     tone: 'you',
     text: 'Reproduces about every 90s.',
     isSystem: false,
+    createdAt: 1_700_000_000_000,
+    ...overrides,
+  }
+}
+
+export function aPlan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    id: 'plan-1',
+    sessionId: 'session-1',
+    agentId: 'debugging',
+    title: 'Archive projects',
+    status: 'draft',
+    version: 1,
+    createdAt: 1_700_000_000_000,
+    updatedAt: 1_700_000_000_000,
+    ...overrides,
+  }
+}
+
+export function aPlanComment(overrides: Partial<PlanComment> = {}): PlanComment {
+  return {
+    id: 'plan-comment-1',
+    planId: 'plan-1',
+    author: 'You',
+    tone: 'you',
+    text: 'Use a nullable timestamp.',
+    version: 1,
     createdAt: 1_700_000_000_000,
     ...overrides,
   }

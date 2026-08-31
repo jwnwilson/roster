@@ -68,6 +68,7 @@ export function toThreadMessage(message: Message): ThreadMessageLike {
             header: headerFor(message),
             durationMs: message.durationMs,
             input: message.input,
+            planId: message.planId,
           },
         },
       }

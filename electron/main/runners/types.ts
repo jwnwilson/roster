@@ -26,6 +26,14 @@ export type RunnerEvent =
       toolName: string
       command: string
       questions?: Question[]
+      /**
+       * The whole plan, when the tool was ExitPlanMode.
+       *
+       * `command` carries only its heading, which is all the banner shows.
+       * Roster keeps the plan itself, so it has to travel with the approval
+       * rather than being dug back out of the transcript.
+       */
+      plan?: string
     }
   /** Running totals, not deltas. */
   | {

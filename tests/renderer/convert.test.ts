@@ -180,3 +180,22 @@ describe('messageFromDataPart', () => {
     expect(messageFromDataPart({ type: 'data-spawn' })).toBeNull()
   })
 })
+
+describe('toThreadMessage — a tool row carrying a plan', () => {
+  test('passes the plan id through, so the row can link to it', () => {
+    const converted = toThreadMessage({
+      id: 'm1',
+      sessionId: 's1',
+      kind: 'tool',
+      tool: 'ExitPlanMode',
+      args: '# Archive projects',
+      input: '{"plan":"# Archive projects"}',
+      planId: 'plan-1',
+      output: 'ok',
+      isError: false,
+      createdAt: 0,
+    })
+
+    expect((converted.metadata?.custom as { planId?: string } | undefined)?.planId).toBe('plan-1')
+  })
+})
