@@ -461,3 +461,151 @@ describe('TaskDetailModal — archived projects', () => {
     expect(select).toHaveValue('p2')
   })
 })
+
+describe('TaskDetailModal — mentioning an agent in a comment', () => {
+  test('completes an agent as it is typed', async () => {
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+
+    await user.type(await screen.findByRole('combobox', { name: 'Add a comment' }), 'ask @de')
+
+    expect(screen.getByRole('option', { name: /Debugging Agent/ })).toBeInTheDocument()
+  })
+
+  test('posts the mention as written, so the main process can resolve it', async () => {
+    const api = installRosterApi()
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+    const box = await screen.findByRole('combobox', { name: 'Add a comment' })
+
+    await user.type(box, '@de')
+    await user.click(screen.getByRole('option', { name: /Debugging Agent/ }))
+    await user.type(box, 'what do you think?{Enter}')
+
+    await waitFor(() =>
+      expect(api.tasks.comment).toHaveBeenCalledWith(
+        'ROS-101',
+        '@debugging what do you think?',
+      ),
+    )
+  })
+
+  test('renders an answer as Markdown, since agents write it', async () => {
+    installRosterApi({
+      tasks: {
+        comments: vi
+          .fn()
+          .mockResolvedValue([
+            aTaskComment({ author: 'Debugging Agent', tone: 'agent', text: '## Findings' }),
+          ]),
+      },
+    })
+    render(<TaskDetailModal />)
+
+    expect(await screen.findByRole('heading', { name: 'Findings' })).toBeInTheDocument()
+    expect(screen.queryByText('## Findings')).not.toBeInTheDocument()
+  })
+})
+
+describe('TaskDetailModal — the sessions a task has attached', () => {
+  const LINK = {
+    taskId: 'ROS-101',
+    agentId: 'debugging',
+    sessionId: 'session-9',
+    createdAt: 1_700_000_000_000,
+  }
+
+  test('says nothing about sessions until there is one', async () => {
+    render(<TaskDetailModal />)
+
+    await screen.findByText('ROS-101')
+    expect(screen.queryByRole('button', { name: /Open Debugging Agent/ })).not.toBeInTheDocument()
+  })
+
+  test('reads the attached sessions when the task opens', async () => {
+    const api = installRosterApi()
+    render(<TaskDetailModal />)
+
+    await waitFor(() => expect(api.tasks.sessions).toHaveBeenCalledWith('ROS-101'))
+  })
+
+  test('lists the agent a mention put on the task', async () => {
+    installRosterApi({ tasks: { sessions: vi.fn().mockResolvedValue([LINK]) } })
+    render(<TaskDetailModal />)
+
+    expect(
+      await screen.findByRole('button', { name: 'Open Debugging Agent' }),
+    ).toBeInTheDocument()
+  })
+
+  test('opens the session, and leaves the task behind', async () => {
+    installRosterApi({ tasks: { sessions: vi.fn().mockResolvedValue([LINK]) } })
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open Debugging Agent' }))
+
+    const state = useRoster.getState()
+    expect(state.screen).toBe('agent')
+    expect(state.agentId).toBe('debugging')
+    expect(state.sess['debugging']).toBe('session-9')
+    // Otherwise coming back to Tasks pops the modal open over the session
+    // the user just went to read.
+    expect(state.openTaskId).toBeNull()
+  })
+
+  test('shows a session an agent was mentioned into while the panel was open', async () => {
+    installRosterApi()
+    render(<TaskDetailModal />)
+    await screen.findByText('ROS-101')
+
+    useRoster.getState().applyTaskEvent({ type: 'task-session', taskId: 'ROS-101', link: LINK })
+
+    expect(
+      await screen.findByRole('button', { name: 'Open Debugging Agent' }),
+    ).toBeInTheDocument()
+  })
+})
+
+describe('TaskDetailModal — posting a comment once', () => {
+  test('a second Enter while the first is in flight does not post twice', async () => {
+    // A mention starts a paid turn, so a double post is not just a duplicate
+    // comment — it can be two turns on the user's account.
+    let release: (() => void) | undefined
+    const api = installRosterApi({
+      tasks: {
+        comment: vi.fn().mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              release = () => resolve(aTaskComment())
+            }),
+        ),
+      },
+    })
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+    const box = await screen.findByRole('combobox', { name: 'Add a comment' })
+
+    await user.type(box, '@debugging have a look{Enter}')
+    await user.keyboard('{Enter}')
+    release?.()
+
+    await waitFor(() => expect(api.tasks.comment).toHaveBeenCalledTimes(1))
+  })
+
+  test('says why a comment could not be posted', async () => {
+    installRosterApi({
+      tasks: { comment: vi.fn().mockRejectedValue(new Error('database is locked')) },
+    })
+    const user = userEvent.setup()
+    render(<TaskDetailModal />)
+
+    await user.type(
+      await screen.findByRole('combobox', { name: 'Add a comment' }),
+      'a note{Enter}',
+    )
+
+    // Silence here would look like the comment had posted.
+    expect(await screen.findByText(/database is locked/)).toBeInTheDocument()
+  })
+})

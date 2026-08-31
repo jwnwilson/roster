@@ -14,6 +14,7 @@ import type {
   Status,
   Task,
   TaskComment,
+  TaskSessionLink,
   TranscriptLine,
   SpendSummary,
   UpdateState,
@@ -157,6 +158,11 @@ export interface RosterApi {
     remove(taskId: string): Promise<boolean>
     comments(taskId: string): Promise<TaskComment[]>
     comment(taskId: string, text: string): Promise<TaskComment>
+    /**
+     * Sessions attached to this task — one per agent that has been mentioned
+     * on it, oldest first.
+     */
+    sessions(taskId: string): Promise<TaskSessionLink[]>
     /** Live board changes — including ones an agent made mid-turn. */
     onEvent(listener: (event: TaskEventPayload) => void): () => void
   }
@@ -261,6 +267,7 @@ export type TaskEventPayload =
   | { type: 'task-updated'; task: Task }
   | { type: 'task-deleted'; taskId: string }
   | { type: 'comment'; taskId: string; comment: TaskComment }
+  | { type: 'task-session'; taskId: string; link: TaskSessionLink }
   | { type: 'projects'; projects: Project[] }
 
 export interface AgentPatch {
@@ -385,6 +392,7 @@ export const CHANNELS = {
   tasksDelete: 'tasks:delete',
   tasksComments: 'tasks:comments',
   tasksComment: 'tasks:comment',
+  tasksSessions: 'tasks:sessions',
   tasksEvent: 'tasks:event', // broadcast, not invoke
 
   updateCheck: 'update:check',

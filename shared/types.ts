@@ -100,6 +100,12 @@ export interface Session {
    * config rail. Null until someone says — nothing infers it.
    */
   projectId?: string | null
+  /**
+   * The task this session was opened from, when it was opened by mentioning
+   * its agent in a task's comment thread. Null for an ordinary session, and
+   * null again if that task is later deleted — the transcript outlives it.
+   */
+  taskId?: string | null
   createdAt: number
 }
 
@@ -316,6 +322,20 @@ export interface TaskComment {
   tone: 'you' | 'agent'
   text: string
   isSystem: boolean
+  createdAt: number
+}
+
+/**
+ * A session opened by mentioning an agent on a task. One per agent per task,
+ * which the database enforces.
+ *
+ * Deliberately minimal — the agent's name and status are derived in the
+ * renderer from the roster it already holds.
+ */
+export interface TaskSessionLink {
+  taskId: string
+  agentId: string
+  sessionId: string
   createdAt: number
 }
 

@@ -5,6 +5,7 @@ import type {
   Session,
   SessionOrigin,
   Status,
+  TaskSessionLink,
   TranscriptLine,
 } from '../../../shared/types'
 
@@ -19,6 +20,7 @@ interface SessionRow {
   status: Status
   runner_session_id: string | null
   project_id: string | null
+  task_id: string | null
   created_at: number
 }
 
@@ -45,6 +47,8 @@ export interface CreateSessionInput {
   origin: SessionOrigin
   /** Set when another agent opened this session. */
   from?: { agentId: string; sessionId: string; label: string }
+  /** The task this session answers, when it was opened by a mention. */
+  taskId?: string
 }
 
 /**
@@ -64,6 +68,7 @@ export class SessionStore {
       status: 'idle',
       // A new session belongs to no project until somebody files it.
       projectId: null,
+      taskId: input.taskId ?? null,
       createdAt: Date.now(),
       ...(input.from
         ? {
@@ -81,8 +86,8 @@ export class SessionStore {
       .prepare(
         `INSERT INTO sessions
            (id, agent_id, title, origin, from_agent_id, from_session_id, from_label,
-            status, runner_session_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            status, runner_session_id, task_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -94,6 +99,7 @@ export class SessionStore {
         input.from?.label ?? null,
         session.status,
         null,
+        input.taskId ?? null,
         session.createdAt,
       )
 
@@ -160,6 +166,39 @@ export class SessionStore {
     const session = this.findById(id)
     if (!session) throw new Error(`unknown session "${id}"`)
     return session
+  }
+
+  /**
+   * The session an agent already has on a task, if it has one.
+   *
+   * This is what makes a second mention continue the conversation rather
+   * than start a new one. The pair is unique by index, so there is at most
+   * one row to find.
+   */
+  findByTask(taskId: string, agentId: string): Session | null {
+    const row = this.db
+      .prepare<[string, string], SessionRow>(
+        'SELECT * FROM sessions WHERE task_id = ? AND agent_id = ?',
+      )
+      .get(taskId, agentId)
+
+    return row ? toSession(row) : null
+  }
+
+  /** Every session attached to a task, for the detail panel's rail. */
+  linksForTask(taskId: string): TaskSessionLink[] {
+    const rows = this.db
+      .prepare<[string], SessionRow>(
+        'SELECT * FROM sessions WHERE task_id = ? ORDER BY created_at ASC',
+      )
+      .all(taskId)
+
+    return rows.map((row) => ({
+      taskId,
+      agentId: row.agent_id,
+      sessionId: row.id,
+      createdAt: row.created_at,
+    }))
   }
 
   delete(id: string): void {
@@ -338,6 +377,7 @@ function toSession(row: SessionRow): Session {
       : {}),
     ...(row.runner_session_id !== null ? { runnerSessionId: row.runner_session_id } : {}),
     projectId: row.project_id,
+    taskId: row.task_id,
   }
 }
 

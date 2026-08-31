@@ -81,7 +81,16 @@ export function App() {
     })
 
     // Board changes, including ones an agent made partway through a turn.
-    const stopTasks = window.roster.tasks.onEvent(applyTaskEvent)
+    const stopTasks = window.roster.tasks.onEvent((event) => {
+      applyTaskEvent(event)
+      // A mention just opened a session, and the roster's own list is only
+      // otherwise refreshed when a turn finishes — so without this the new
+      // session is missing from the sidebar for as long as the agent takes
+      // to answer, which is exactly when someone would go looking for it.
+      if (event.type === 'task-session') {
+        void window.roster.sessions.listAll().then(setAllSessions)
+      }
+    })
     // A plan being revised, or commented on from another window, has to reach
     // an open plan modal the same way a board change reaches the board.
     const stopPlans = window.roster.plans.onEvent(applyPlanEvent)
