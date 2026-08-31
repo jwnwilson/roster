@@ -1,6 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { app, BrowserWindow, nativeImage, shell } from 'electron'
+import { app, BrowserWindow, dialog, nativeImage, shell } from 'electron'
 import { checkForUpdatesOnLaunch, disposeStores, initStores, registerIpc } from './ipc'
 
 const isDev = !app.isPackaged
@@ -120,7 +120,21 @@ async function captureIfRequested(win: BrowserWindow): Promise<void> {
 void app.whenReady().then(async () => {
   applyDevIcon()
   registerIpc()
-  await initStores()
+
+  try {
+    await initStores()
+  } catch (cause) {
+    // Without this the rejection is unhandled and no window is ever created,
+    // so the app simply does not start and says nothing about why. The one
+    // failure that actually reaches here is a roster whose database a newer
+    // Roster has already migrated — a sentence the user can act on, and one
+    // there is no renderer alive to show.
+    const detail = cause instanceof Error ? cause.message : String(cause)
+    dialog.showErrorBox('Roster cannot open this roster', detail)
+    app.quit()
+    return
+  }
+
   createWindow()
 
   app.on('activate', () => {

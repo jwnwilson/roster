@@ -33,6 +33,31 @@ describe('migrations', () => {
 
     expect(columns).toContain('total_tokens')
   })
+
+  test('refuses a database written by a newer build', () => {
+    // The loop only runs forward, so a database ahead of this build used to
+    // pass straight through it: every migration skipped, no error, and the
+    // first query against a column this build expects fails somewhere deep
+    // in a feature. Two Roster builds sharing one ~/roster is enough to
+    // produce it, which is exactly how it was found.
+    db.pragma(`user_version = ${MIGRATIONS.length + 1}`)
+
+    expect(() => migrate(db)).toThrow(/newer version of Roster/i)
+  })
+
+  test('names both versions, so the message says what to do about it', () => {
+    db.pragma(`user_version = ${MIGRATIONS.length + 2}`)
+
+    expect(() => migrate(db)).toThrow(
+      new RegExp(`${MIGRATIONS.length + 2}[\\s\\S]*${MIGRATIONS.length}`),
+    )
+  })
+
+  test('still accepts a database exactly at this build’s version', () => {
+    // The boundary: equal is up to date, not ahead.
+    expect(version(db)).toBe(MIGRATIONS.length)
+    expect(() => migrate(db)).not.toThrow()
+  })
 })
 
 describe('migration 2 — total tokens', () => {
