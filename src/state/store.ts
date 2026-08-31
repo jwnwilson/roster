@@ -800,6 +800,13 @@ export function reduceTaskEvent(
       }
     }
 
+    case 'task-session':
+      // Not yet rendered anywhere — the task detail panel that will show
+      // attached sessions is a later task. An explicit no-op keeps this
+      // switch exhaustive over TaskEventPayload rather than silently
+      // ignoring a variant it doesn't know about.
+      return {}
+
     case 'projects': {
       // The filter can only offer active projects, so one pointing at a
       // project archived or deleted in another window has to let go — a
