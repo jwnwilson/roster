@@ -134,3 +134,84 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${{ needs.version.outputs.tag }}" --draft=false
+
+  # Everything that makes a release installable without typing an xattr command:
+  # a checksum manifest for scripts/install.sh, and a refreshed Homebrew cask.
+  # Runs after `publish` because both routes point at URLs that must already be
+  # live by the time anyone can reach them.
+  distribute:
+    needs: [version, publish]
+    runs-on: ubuntu-latest
+    env:
+      TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # GitHub records a sha256 for every asset it stores, so the checksums come
+      # from its own record of the uploaded bytes rather than from a 700MB
+      # re-download. The field is recent, hence the fallback rather than a trust.
+      - name: Collect checksums
+        id: sums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          for arch in arm64 x64; do
+            dmg="Roster-$VERSION-$arch.dmg"
+
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" \
+                    --jq ".assets[] | select(.name == \"$dmg\") | .digest" \
+                  | sed 's/^sha256://')
+
+            if [ -z "$sha" ]; then
+              echo "no digest recorded for $dmg; hashing it directly"
+              gh release download "$TAG" --pattern "$dmg" --dir dl --clobber
+              sha=$(sha256sum "dl/$dmg" | cut -d' ' -f1)
+            fi
+
+            printf '%s  %s\n' "$sha" "$dmg" >> SHASUMS256.txt
+            echo "$arch=$sha" >> "$GITHUB_OUTPUT"
+          done
+
+          cat SHASUMS256.txt
+
+      - name: Attach the checksum manifest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ needs.version.outputs.tag }}" SHASUMS256.txt --clobber
+
+      # Skipped rather than failed when the secret is absent, so forks and a
+      # not-yet-created tap do not turn a good release red.
+      - name: Update the Homebrew cask
+        if: env.TAP_TOKEN != ''
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SHA_ARM: ${{ steps.sums.outputs.arm64 }}
+          SHA_X64: ${{ steps.sums.outputs.x64 }}
+        run: |
+          set -euo pipefail
+
+          git clone --depth 1 \
+            "https://x-access-token:$TAP_TOKEN@github.com/jwnwilson/homebrew-tap.git" tap
+
+          mkdir -p tap/Casks
+          sed -e "s/__VERSION__/$VERSION/" \
+              -e "s/__SHA_ARM__/$SHA_ARM/" \
+              -e "s/__SHA_X64__/$SHA_X64/" \
+              packaging/homebrew/roster.rb.tmpl > tap/Casks/roster.rb
+
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/roster.rb
+
+          if git diff --cached --quiet; then
+            echo "cask is already at $VERSION"
+            exit 0
+          fi
+
+          git commit -m "roster $VERSION"
+          git push

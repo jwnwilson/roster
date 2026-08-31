@@ -15,7 +15,7 @@ The CLI owns all of that.
 
 | | |
 |---|---|
-| Node.js | 22 or newer (developed on 25.2) |
+| Node.js | 22 or newer — only if you build from source |
 | Platform | macOS (Windows and Linux are untested) |
 | At least one agent CLI | [`claude`](https://code.claude.com) or [`codex`](https://developers.openai.com/codex/cli), already signed in |
 
@@ -23,7 +23,50 @@ Roster drives whichever CLI you already have installed and logged in. If none is
 available, the app still runs — agents just show `error` with the reason, e.g.
 *"not signed in — run `claude auth login`"*.
 
-## Getting started
+## Install
+
+**Homebrew** — the shortest route, and it keeps you up to date:
+
+```bash
+brew install --cask jwnwilson/tap/roster
+```
+
+**One-line installer** — the same result without Homebrew:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jwnwilson/roster/main/scripts/install.sh | sh
+```
+
+It picks the build for your architecture, checks it against the checksums published
+with the release, and copies Roster into `/Applications`. If piping a script into a
+shell makes you uneasy — a reasonable instinct — download it and read it first.
+
+**Or take the DMG** from [the latest release](https://github.com/jwnwilson/roster/releases/latest)
+and drag Roster to Applications.
+
+### Why the first two routes exist
+
+Roster is not signed with an Apple Developer ID. macOS therefore quarantines anything
+you download and refuses to open it, and on recent versions right-click → Open no
+longer gets you past that. Homebrew and the installer script both clear the quarantine
+flag for you; that is the whole of what they add.
+
+After a hand-installed DMG you can clear it yourself:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Roster.app
+```
+
+Or without a terminal: double-click Roster, then open **System Settings → Privacy &
+Security**, scroll to the notice about Roster being blocked, click **Open Anyway**,
+and confirm once more.
+
+### Upgrading
+
+`brew upgrade --cask roster`, or re-run the installer — it replaces the copy in place.
+Roster also checks for new releases on launch and offers to fetch them.
+
+## Developing
 
 ```bash
 npm install     # also rebuilds better-sqlite3 and node-pty for Electron
