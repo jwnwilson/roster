@@ -1,0 +1,41 @@
+# Rendered by the `distribute` job in .github/workflows/release.yml and pushed to
+# jwnwilson/homebrew-tap as Casks/roster.rb. Edit this template, never the copy
+# in the tap — the next release overwrites it.
+cask "roster" do
+  arch arm: "arm64", intel: "x64"
+
+  version "__VERSION__"
+  sha256 arm:   "__SHA_ARM__",
+         intel: "__SHA_X64__"
+
+  url "https://github.com/jwnwilson/roster/releases/download/v#{version}/Roster-#{version}-#{arch}.dmg",
+      verified: "github.com/jwnwilson/roster/"
+  name "Roster"
+  desc "Desktop app for managing a roster of AI coding agents"
+  homepage "https://github.com/jwnwilson/roster"
+
+  livecheck do
+    url :url
+    strategy :github_latest
+  end
+
+  depends_on macos: :big_sur
+
+  app "Roster.app"
+
+  # Roster is unsigned — there is no Developer ID — so the quarantine flag
+  # Homebrew stages the app with would leave an install macOS refuses to open.
+  # Clearing it here is what keeps `brew install --cask roster` a single step.
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/Roster.app"]
+  end
+
+  # ~/roster is deliberately absent: that is the user's agents, skills and MCP
+  # config, not application cruft, and uninstalling should not delete their work.
+  zap trash: [
+    "~/Library/Application Support/Roster",
+    "~/Library/Preferences/dev.roster.app.plist",
+    "~/Library/Saved Application State/dev.roster.app.savedState",
+  ]
+end
