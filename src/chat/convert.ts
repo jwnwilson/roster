@@ -69,6 +69,7 @@ export function toThreadMessage(message: Message): ThreadMessageLike {
             durationMs: message.durationMs,
             input: message.input,
             planId: message.planId,
+            asksQuestions: carriesQuestions(message.input),
           },
         },
       }
@@ -97,4 +98,27 @@ export function toThreadMessage(message: Message): ThreadMessageLike {
 export function messageFromDataPart(part: { type: string; data?: unknown }): Message | null {
   if (part.type !== 'data-spawn' && part.type !== 'data-handoff') return null
   return (part.data as Message | undefined) ?? null
+}
+
+/**
+ * Whether a tool call was the agent asking something.
+ *
+ * A question reaches Roster as a permission request whose input carries the
+ * questions themselves, and the row it leaves in the transcript is the only
+ * lasting trace of it — so it is also the natural way back to one still
+ * waiting for an answer.
+ */
+export function carriesQuestions(input: string | undefined): boolean {
+  if (input === undefined) return false
+
+  try {
+    const parsed: unknown = JSON.parse(input)
+    return (
+      parsed !== null &&
+      typeof parsed === 'object' &&
+      Array.isArray((parsed as { questions?: unknown }).questions)
+    )
+  } catch {
+    return false
+  }
 }

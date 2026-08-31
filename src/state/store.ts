@@ -159,6 +159,8 @@ export interface RosterState {
   setSkills(skills: Skill[]): void
   setProjects(projects: Project[]): void
   setTasks(tasks: Task[]): void
+  /** Replaces a session's pending approvals, as read back from the main process. */
+  setApprovals(sessionId: string, approvals: Approval[]): void
   setTaskComments(taskId: string, comments: TaskComment[]): void
   setPlan(document: PlanDocument): void
   setPlanComments(planId: string, comments: PlanComment[]): void
@@ -283,6 +285,9 @@ export const useRoster = create<RosterState>((set, get) => ({
   setSkills: (skills) => set({ skills }),
   setProjects: (projects) => set({ projects }),
   setTasks: (tasks) => set({ tasks }),
+  setApprovals: (sessionId, approvals) =>
+    set((s) => ({ approvals: { ...s.approvals, [sessionId]: approvals } })),
+
   setTaskComments: (taskId, comments) =>
     set((s) => ({ taskComments: { ...s.taskComments, [taskId]: comments } })),
 

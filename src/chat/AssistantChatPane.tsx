@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { createContext, useCallback, useContext, useMemo, useRef } from 'react'
 import {
   AssistantRuntimeProvider,
   MessagePrimitive,
@@ -11,6 +11,15 @@ import { toThreadMessage, type RosterHeader } from './convert'
 import { Composer, StreamingRow } from './Composer'
 import { HandoffBody, SpawnBody, TextBody, ToolBody, MessageHeader } from './messages'
 import { QuestionCard } from './QuestionCard'
+
+/**
+ * How a transcript row reaches the question card.
+ *
+ * Null when nothing is waiting to be answered: the rows are rendered by
+ * assistant-ui rather than by this file, so what they may offer has to reach
+ * them through context rather than through props.
+ */
+const ShowQuestion = createContext<(() => void) | null>(null)
 
 interface AssistantChatPaneProps {
   sessionId: string
@@ -70,8 +79,14 @@ export function AssistantChatPane({
     onCancel: async () => onCancel(),
   })
 
+  const questionRef = useRef<HTMLDivElement | null>(null)
+  const showQuestion = useCallback(() => {
+    questionRef.current?.scrollIntoView({ block: 'center' })
+  }, [])
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <ShowQuestion.Provider value={questions ? showQuestion : null}>
       <ThreadPrimitive.Root className="flex min-h-0 flex-1 flex-col">
         <ThreadPrimitive.Viewport
           className="flex min-h-0 flex-1 flex-col gap-[20px] overflow-y-auto px-[26px] pt-[22px] pb-[8px]"
@@ -90,11 +105,13 @@ export function AssistantChatPane({
           {/* Below the transcript, where the question was asked — not in the
               banner, which has room for one line and two buttons. */}
           {questions ? (
-            <QuestionCard
-              questions={questions}
-              onAnswer={onAnswer}
-              onSkip={onSkipQuestions}
-            />
+            <div ref={questionRef}>
+              <QuestionCard
+                questions={questions}
+                onAnswer={onAnswer}
+                onSkip={onSkipQuestions}
+              />
+            </div>
           ) : null}
         </ThreadPrimitive.Viewport>
 
@@ -106,6 +123,7 @@ export function AssistantChatPane({
           onTogglePlanMode={onTogglePlanMode}
         />
       </ThreadPrimitive.Root>
+      </ShowQuestion.Provider>
     </AssistantRuntimeProvider>
   )
 }
@@ -127,6 +145,10 @@ function RosterMessage() {
   const planId = useAuiState(
     (s) => (s.message.metadata?.custom as { planId?: string } | undefined)?.planId,
   )
+  const asksQuestions = useAuiState(
+    (s) => (s.message.metadata?.custom as { asksQuestions?: boolean } | undefined)?.asksQuestions,
+  )
+  const showQuestion = useContext(ShowQuestion)
 
   return (
     <MessagePrimitive.Root className="flex max-w-[720px] flex-col gap-[7px]">
@@ -149,6 +171,9 @@ function RosterMessage() {
                   {...(toolInput !== undefined ? { input: toolInput } : {})}
                   {...(durationMs !== undefined ? { durationMs } : {})}
                   {...(planId !== undefined ? { planId } : {})}
+                  {...(asksQuestions === true && showQuestion !== null
+                    ? { onShowQuestion: showQuestion }
+                    : {})}
                 />
               )
             // A `data-<name>` part surfaces here as type "data" with the
