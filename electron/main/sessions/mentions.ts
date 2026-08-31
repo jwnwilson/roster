@@ -1,0 +1,135 @@
+import { parseMentions } from '../../../shared/mentions'
+import { taskPriorityLabel, taskStatusLabel } from '../../../shared/tasks'
+import type {
+  Agent,
+  Session,
+  Task,
+  TaskComment,
+  TaskSessionLink,
+} from '../../../shared/types'
+import type { SessionStore } from '../store/sessions'
+import type { TaskStore } from '../store/tasks'
+
+/**
+ * The slice of SessionManager this needs.
+ *
+ * Narrow on purpose: a turn can then be driven in a test by a spy, without
+ * standing up a runner or the SDK.
+ */
+export interface MentionRunner {
+  send(sessionId: string, prompt: string): Promise<void>
+}
+
+/**
+ * Mentioning an agent in a task's comment thread.
+ *
+ * The mechanism is `SessionManager.handOff` with a task as the origin: a
+ * session is opened on the mentioned agent, its transcript opens with a
+ * brief saying why it exists, and the turn runs. Mentioning the same agent
+ * again continues that session, so it still remembers what it was asked
+ * about this task an hour ago.
+ *
+ * Only a comment written by a person reaches here. An agent's own comments
+ * are inert, which is what stops one agent's answer mentioning another and
+ * looping forever.
+ */
+export class TaskMentions {
+  constructor(
+    /** A function, not the store: the roster lives in agent.toml, and reloads. */
+    private readonly roster: () => Agent[],
+    private readonly sessions: SessionStore,
+    private readonly tasks: TaskStore,
+    private readonly runner: MentionRunner,
+    private readonly onAttached: (link: TaskSessionLink) => void = () => {},
+  ) {}
+
+  /**
+   * Sends a comment to every agent it mentions.
+   *
+   * The returned promise settles when every turn has finished, which is why
+   * the IPC handler discards it with `void` — posting a comment must not
+   * wait for an agent to think. Tests await it.
+   */
+  async dispatch(taskId: string, text: string): Promise<void> {
+    const task = this.tasks.findById(taskId)
+    if (!task) return
+
+    const roster = this.roster()
+    const mentioned = parseMentions(
+      text,
+      roster.map((agent) => agent.id),
+    )
+    if (mentioned.length === 0) return
+
+    await Promise.all(
+      mentioned.map((mention) => {
+        const agent = roster.find((candidate) => candidate.id === mention.agentId)
+        return agent ? this.ask(task, agent, text) : Promise.resolve()
+      }),
+    )
+  }
+
+  private async ask(task: Task, agent: Agent, comment: string): Promise<void> {
+    const session = this.sessions.findByTask(task.id, agent.id) ?? this.open(task, agent)
+
+    // The key leads, so a resumed session knows which task is being asked
+    // about without re-reading the brief.
+    await this.runner.send(session.id, `On ${task.id}: ${comment}`)
+  }
+
+  private open(task: Task, agent: Agent): Session {
+    const session = this.sessions.create({
+      agentId: agent.id,
+      title: `${task.id} — ${task.title}`,
+      // Always 'you': by design only a person's comment dispatches.
+      origin: 'you',
+      taskId: task.id,
+    })
+
+    // The transcript opens by saying why it exists, exactly as a handoff's
+    // does. `to` is omitted — a SessionRef points at an agent and a session,
+    // and this one's origin is a task, which `session.taskId` already holds.
+    this.sessions.append({
+      sessionId: session.id,
+      kind: 'spawn',
+      from: 'You',
+      text: briefFor(task, this.tasks.comments(task.id)),
+    })
+
+    this.onAttached({
+      taskId: task.id,
+      agentId: agent.id,
+      sessionId: session.id,
+      createdAt: session.createdAt,
+    })
+
+    return session
+  }
+}
+
+/**
+ * What a mentioned agent is told when its session opens.
+ *
+ * Exported because it is the whole value of the first message and deserves
+ * its own tests. History lines are left out: the agent was asked a question,
+ * not handed an audit log.
+ */
+export function briefFor(task: Task, thread: readonly TaskComment[]): string {
+  const lines = [
+    `You have been mentioned on ${task.id} — ${task.title}.`,
+    '',
+    `Status: ${taskStatusLabel(task.status)}`,
+    `Priority: ${taskPriorityLabel(task.priority)}`,
+    '',
+    task.description.trim() === '' ? '(no description)' : task.description,
+  ]
+
+  const written = thread.filter((entry) => !entry.isSystem)
+  if (written.length > 0) {
+    lines.push('', 'The thread so far:')
+    for (const entry of written) lines.push(`- ${entry.author}: ${entry.text}`)
+  }
+
+  lines.push('', 'Answer here. Your reply is posted back to the task.')
+  return lines.join('\n')
+}
