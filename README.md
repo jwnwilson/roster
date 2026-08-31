@@ -25,12 +25,6 @@ available, the app still runs — agents just show `error` with the reason, e.g.
 
 ## Install
 
-**Homebrew** — the shortest route, and it keeps you up to date:
-
-```bash
-brew install --cask jwnwilson/tap/roster
-```
-
 **One-line installer** — the same result without Homebrew:
 
 ```bash
