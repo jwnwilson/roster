@@ -73,7 +73,7 @@ export function reviseReason(input: PlanPromptInput): string {
   return [
     'Not yet — revise the plan first:',
     '',
-    ...notes.map((note) => `- ${note.text}`),
+    ...notes.map(asLine),
     '',
     'Present the revised plan with ExitPlanMode when it is ready.',
   ].join('\n')
@@ -125,7 +125,18 @@ function notesSection(input: PlanPromptInput): string {
   const notes = yourNotes(input)
   if (notes.length === 0) return ''
 
-  return ['--- REVIEW NOTES ---', ...notes.map((note) => `- ${note.text}`), ''].join('\n')
+  return ['--- REVIEW NOTES ---', ...notes.map(asLine), ''].join('\n')
+}
+
+/**
+ * One note, with the passage it was written about.
+ *
+ * Naming the passage is most of what the note means: "make this nullable"
+ * against a plan with four columns in it is a guess, and the agent should not
+ * have to make it.
+ */
+function asLine(note: PlanComment): string {
+  return note.quote === undefined ? `- ${note.text}` : `- On “${note.quote}”: ${note.text}`
 }
 
 function yourNotes(input: PlanPromptInput): readonly PlanComment[] {

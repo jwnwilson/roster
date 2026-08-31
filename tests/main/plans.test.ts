@@ -152,6 +152,38 @@ describe('the thread on a plan', () => {
       plans.comment('nope', { author: 'You', tone: 'you', text: 'hi' }),
     ).toThrow('unknown plan "nope"')
   })
+
+  test('remembers the passage a note was written about', () => {
+    const plan = capture(V1)
+
+    const note = plans.comment(plan.id, {
+      author: 'You',
+      tone: 'you',
+      text: 'make this nullable',
+      quote: 'Archiving keeps the row.',
+    })
+
+    expect(note.quote).toBe('Archiving keeps the row.')
+    expect(plans.comments(plan.id)[0]?.quote).toBe('Archiving keeps the row.')
+  })
+
+  test('a note about the plan as a whole quotes nothing', () => {
+    const plan = capture(V1)
+
+    const note = plans.comment(plan.id, { author: 'You', tone: 'you', text: 'too vague' })
+
+    // Absent rather than empty: "no passage" and "the empty passage" are
+    // different things, and only one of them should render a quotation.
+    expect(note.quote).toBeUndefined()
+    expect(plans.comments(plan.id)[0]?.quote).toBeUndefined()
+  })
+
+  test('the agent’s own thread lines quote nothing', () => {
+    const plan = capture(V1)
+    capture(V2)
+
+    expect(plans.comments(plan.id)[0]?.quote).toBeUndefined()
+  })
 })
 
 describe('moving a plan on', () => {

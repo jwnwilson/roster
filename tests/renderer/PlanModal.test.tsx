@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Plan, PlanComment } from '@shared/types'
@@ -139,7 +139,7 @@ describe('sending comments back', () => {
     await user.click(screen.getByRole('button', { name: 'Send comments' }))
 
     await waitFor(() =>
-      expect(api.plans.submit).toHaveBeenCalledWith('plan-1', 'use a timestamp'),
+      expect(api.plans.submit).toHaveBeenCalledWith('plan-1', 'use a timestamp', undefined),
     )
   })
 
@@ -253,5 +253,116 @@ describe('a plan that is no longer yours to answer', () => {
 
     const link = await screen.findByRole('link', { name: /pull request/i })
     expect(link).toHaveAttribute('href', 'https://github.com/o/r/pull/31')
+  })
+})
+
+describe('commenting on a passage', () => {
+  /** Stages a selection over the rendered plan, as dragging across it would. */
+  function selectInPlan(text: string): void {
+    const region = screen.getByRole('region', { name: 'Plan' })
+    const node = region.firstChild ?? region
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: text === '',
+      anchorNode: node,
+      focusNode: node,
+      toString: () => text,
+    } as unknown as Selection)
+    fireEvent.mouseUp(region)
+  }
+
+  test('shows what you selected, so you can see what you are answering', async () => {
+    open()
+    render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
+
+    selectInPlan('reproduce')
+
+    expect(await screen.findByText('reproduce', { selector: 'q' })).toBeInTheDocument()
+  })
+
+  test('sends the passage along with the note', async () => {
+    const api = open(aPlan(), [], { submit: vi.fn().mockResolvedValue(aPlan()) })
+    render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
+    const user = userEvent.setup()
+
+    selectInPlan('reproduce')
+    await user.type(screen.getByLabelText('Add a comment'), 'do this twice')
+    await user.click(screen.getByRole('button', { name: 'Send comments' }))
+
+    await waitFor(() =>
+      expect(api.plans.submit).toHaveBeenCalledWith('plan-1', 'do this twice', 'reproduce'),
+    )
+  })
+
+  test('a note with nothing selected quotes nothing', async () => {
+    const api = open(aPlan(), [], { submit: vi.fn().mockResolvedValue(aPlan()) })
+    render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
+    const user = userEvent.setup()
+
+    await user.type(await screen.findByLabelText('Add a comment'), 'too vague')
+    await user.click(screen.getByRole('button', { name: 'Send comments' }))
+
+    await waitFor(() =>
+      expect(api.plans.submit).toHaveBeenCalledWith('plan-1', 'too vague', undefined),
+    )
+  })
+
+  test('you can let go of the passage without losing what you typed', async () => {
+    open()
+    render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
+    const user = userEvent.setup()
+
+    selectInPlan('reproduce')
+    await user.type(await screen.findByLabelText('Add a comment'), 'about the plan generally')
+    await user.click(await screen.findByRole('button', { name: 'Clear the selected passage' }))
+
+    expect(screen.queryByText('reproduce', { selector: 'q' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Add a comment')).toHaveValue('about the plan generally')
+  })
+
+  test('deselecting in the plan lets go of it too', async () => {
+    open()
+    render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
+
+    selectInPlan('reproduce')
+    expect(await screen.findByText('reproduce', { selector: 'q' })).toBeInTheDocument()
+
+    // A plain click clears the highlight on screen; the chip has to agree.
+    selectInPlan('')
+
+    await waitFor(() =>
+      expect(screen.queryByText('reproduce', { selector: 'q' })).not.toBeInTheDocument(),
+    )
+  })
+
+  test('lets go of it once the note has gone', async () => {
+    open(aPlan(), [], { submit: vi.fn().mockResolvedValue(aPlan()) })
+    render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
+    const user = userEvent.setup()
+
+    selectInPlan('reproduce')
+    await user.type(screen.getByLabelText('Add a comment'), 'do this twice')
+    await user.click(screen.getByRole('button', { name: 'Send comments' }))
+
+    await waitFor(() =>
+      expect(screen.queryByText('reproduce', { selector: 'q' })).not.toBeInTheDocument(),
+    )
+  })
+
+  test('shows which passage an earlier note was about', async () => {
+    open(aPlan(), [
+      aPlanComment({ text: 'do this twice', quote: 'reproduce' }),
+      aPlanComment({ id: 'c2', text: 'too vague' }),
+    ])
+    render(<PlanModal />)
+
+    expect(await screen.findByText('reproduce', { selector: 'q' })).toBeInTheDocument()
+    expect(screen.getByText('do this twice')).toBeInTheDocument()
+    expect(screen.getByText('too vague')).toBeInTheDocument()
   })
 })

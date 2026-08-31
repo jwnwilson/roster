@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import type { Plan, PlanComment } from '@shared/types'
 import { planFromToolInput } from '@shared/plans'
-import { branchFor, buildPrompt, revisePrompt, worktreeFor } from '@main/sessions/planPrompt'
+import {
+  branchFor,
+  buildPrompt,
+  reviseReason,
+  revisePrompt,
+  worktreeFor,
+} from '@main/sessions/planPrompt'
 
 const PLAN: Plan = {
   id: 'a3f9c0d1-2222-3333-4444-555566667777',
@@ -95,6 +101,25 @@ describe('the prompt that asks for a revision', () => {
     expect(prompt).not.toContain('old point')
   })
 
+  test('names the passage a note is about', () => {
+    const prompt = revisePrompt({
+      plan: PLAN,
+      body: BODY,
+      comments: [note('make this nullable', { quote: 'Archiving keeps the row.' })],
+    })
+
+    // Without the passage the agent has to guess which part "this" is.
+    expect(prompt).toContain('Archiving keeps the row.')
+    expect(prompt).toContain('make this nullable')
+  })
+
+  test('a note about the plan as a whole quotes nothing at it', () => {
+    const prompt = revisePrompt({ plan: PLAN, body: BODY, comments: [note('too vague')] })
+
+    expect(prompt).toContain('- too vague')
+    expect(prompt).not.toMatch(/On “/)
+  })
+
   test('asks for a plan rather than for the work', () => {
     const prompt = revisePrompt({ plan: PLAN, body: BODY, comments: [note('x')] })
 
@@ -125,6 +150,16 @@ describe('the prompt that asks for the work', () => {
     expect(prompt).toContain('keep the tasks')
   })
 
+  test('carries the passage a note was about', () => {
+    const anchored = buildPrompt({
+      plan: PLAN,
+      body: BODY,
+      comments: [note('keep these', { quote: 'Archiving keeps the row.' })],
+    })
+
+    expect(anchored).toContain('Archiving keeps the row.')
+  })
+
   test('says nothing about notes when there are none', () => {
     const bare = buildPrompt({ plan: PLAN, body: BODY, comments: [] })
 
@@ -146,5 +181,24 @@ describe('reading a plan out of a tool call', () => {
     expect(planFromToolInput(JSON.stringify({ plan: 42 }))).toBeNull()
     expect(planFromToolInput(JSON.stringify({ plan: '   ' }))).toBeNull()
     expect(planFromToolInput(JSON.stringify({ other: 'x' }))).toBeNull()
+  })
+})
+
+describe('the reason a plan is refused', () => {
+  test('carries the passage, since that is most of what the note means', () => {
+    const reason = reviseReason({
+      plan: PLAN,
+      body: BODY,
+      comments: [note('make this nullable', { quote: 'Archiving keeps the row.' })],
+    })
+
+    expect(reason).toContain('Archiving keeps the row.')
+    expect(reason).toContain('make this nullable')
+  })
+
+  test('still leaves the plan itself out — the agent is holding it', () => {
+    const reason = reviseReason({ plan: PLAN, body: BODY, comments: [note('x')] })
+
+    expect(reason).not.toContain(BODY)
   })
 })

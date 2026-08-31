@@ -25,6 +25,7 @@ interface PlanCommentRow {
   author: string
   tone: 'you' | 'agent'
   text: string
+  quote: string | null
   version: number
   created_at: number
 }
@@ -32,6 +33,14 @@ interface PlanCommentRow {
 export type PlanEvent =
   | { type: 'plan-updated'; plan: Plan }
   | { type: 'comment'; planId: string; comment: PlanComment }
+
+/** A note someone is adding to a plan, with the passage it is about. */
+export interface NewPlanComment {
+  author: string
+  tone: 'you' | 'agent'
+  text: string
+  quote?: string
+}
 
 export interface CaptureInput {
   sessionId: string
@@ -121,7 +130,7 @@ export class PlanStore {
     return plan
   }
 
-  comment(planId: string, input: { author: string; tone: 'you' | 'agent'; text: string }): PlanComment {
+  comment(planId: string, input: NewPlanComment): PlanComment {
     const comment = this.writeComment(this.require(planId), input)
     this.emit({ type: 'comment', planId, comment })
     return comment
@@ -250,16 +259,14 @@ export class PlanStore {
       )
   }
 
-  private writeComment(
-    plan: Plan,
-    input: { author: string; tone: 'you' | 'agent'; text: string },
-  ): PlanComment {
+  private writeComment(plan: Plan, input: NewPlanComment): PlanComment {
     const comment: PlanComment = {
       id: randomUUID(),
       planId: plan.id,
       author: input.author,
       tone: input.tone,
       text: input.text,
+      ...(input.quote === undefined ? {} : { quote: input.quote }),
       // Stamped so a note keeps its meaning after the agent rewrites the plan.
       version: plan.version,
       createdAt: Date.now(),
@@ -267,8 +274,8 @@ export class PlanStore {
 
     this.db
       .prepare(
-        `INSERT INTO plan_comments (id, plan_id, author, tone, text, version, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO plan_comments (id, plan_id, author, tone, text, quote, version, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         comment.id,
@@ -276,6 +283,7 @@ export class PlanStore {
         comment.author,
         comment.tone,
         comment.text,
+        comment.quote ?? null,
         comment.version,
         comment.createdAt,
       )
@@ -339,6 +347,7 @@ function toComment(row: PlanCommentRow): PlanComment {
     author: row.author,
     tone: row.tone,
     text: row.text,
+    ...(row.quote === null ? {} : { quote: row.quote }),
     version: row.version,
     createdAt: row.created_at,
   }

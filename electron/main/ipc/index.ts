@@ -493,8 +493,8 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.plansComments, (_e, planId: string) => requirePlans().comments(planId))
   // Both of these start a turn on the session that wrote the plan; the
   // sequencing around a still-blocked ExitPlanMode lives in PlanFlow.
-  ipcMain.handle(CHANNELS.plansSubmit, (_e, planId: string, text: string) =>
-    requirePlanFlow().submit(planId, text),
+  ipcMain.handle(CHANNELS.plansSubmit, (_e, planId: string, text: string, quote?: string) =>
+    requirePlanFlow().submit(planId, text, quote),
   )
   ipcMain.handle(CHANNELS.plansApprove, (_e, planId: string) => requirePlanFlow().approve(planId))
 

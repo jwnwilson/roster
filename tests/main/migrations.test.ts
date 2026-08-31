@@ -606,3 +606,64 @@ describe('migration 8 — plans', () => {
     old.close()
   })
 })
+
+describe('migration 9 — quoting a plan in a comment', () => {
+  /** A database stopped at version 8, as an install on the last build would be. */
+  function atVersion8() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (const step of MIGRATIONS.slice(0, 8)) old.exec(step)
+    old.pragma('user_version = 8')
+    return old
+  }
+
+  function seedComment(target: Database.Database): void {
+    target
+      .prepare(
+        'INSERT INTO sessions (id, agent_id, title, origin, status, created_at)' +
+          " VALUES ('s1', 'debugging', 'Work', 'you', 'idle', 0)",
+      )
+      .run()
+    target
+      .prepare(
+        'INSERT INTO plans (id, session_id, agent_id, title, status, version, created_at, updated_at)' +
+          " VALUES ('p1', 's1', 'debugging', 'Do it', 'draft', 1, 0, 0)",
+      )
+      .run()
+    target
+      .prepare(
+        'INSERT INTO plan_comments (id, plan_id, author, tone, text, version, created_at)' +
+          " VALUES ('c1', 'p1', 'You', 'you', 'change section 3', 1, 0)",
+      )
+      .run()
+  }
+
+  test('adds the column to a database that predates it', () => {
+    const old = atVersion8()
+    expect(
+      (old.pragma('table_info(plan_comments)') as { name: string }[]).map((c) => c.name),
+    ).not.toContain('quote')
+
+    migrate(old)
+
+    expect(
+      (old.pragma('table_info(plan_comments)') as { name: string }[]).map((c) => c.name),
+    ).toContain('quote')
+    old.close()
+  })
+
+  test('a note written before this reads as a note about the whole plan', () => {
+    const old = atVersion8()
+    seedComment(old)
+
+    migrate(old)
+
+    // NULL means "no passage": the note stands, it simply points at nothing
+    // in particular, which is what it always did.
+    expect(old.prepare('SELECT text, quote FROM plan_comments').get()).toEqual({
+      text: 'change section 3',
+      quote: null,
+    })
+    old.close()
+  })
+})

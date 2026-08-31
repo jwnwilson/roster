@@ -241,4 +241,15 @@ export const MIGRATIONS: readonly string[] = [
 
   CREATE INDEX ix_plan_comments_plan ON plan_comments (plan_id, created_at);
   `,
+
+  // 9 — a note can point at the passage it is about.
+  //
+  // The passage is stored as the text itself rather than as an offset or a
+  // line number. The agent rewrites the plan between versions, which is the
+  // entire point of the review loop, and any positional anchor would be
+  // pointing at the wrong words by the time it was read. A quotation still
+  // means what it meant. NULL is a note about the plan as a whole.
+  `
+  ALTER TABLE plan_comments ADD COLUMN quote TEXT;
+  `,
 ]

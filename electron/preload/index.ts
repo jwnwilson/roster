@@ -130,8 +130,8 @@ const api: RosterApi = {
     listBySession: (sessionId: string) => ipcRenderer.invoke(CHANNELS.plansListBySession, sessionId),
     read: (planId: string) => ipcRenderer.invoke(CHANNELS.plansRead, planId),
     comments: (planId: string) => ipcRenderer.invoke(CHANNELS.plansComments, planId),
-    submit: (planId: string, text: string) =>
-      ipcRenderer.invoke(CHANNELS.plansSubmit, planId, text),
+    submit: (planId: string, text: string, quote?: string) =>
+      ipcRenderer.invoke(CHANNELS.plansSubmit, planId, text, quote),
     approve: (planId: string) => ipcRenderer.invoke(CHANNELS.plansApprove, planId),
     onEvent: (listener) => subscribe<PlanEventPayload>(CHANNELS.plansEvent, listener),
   },

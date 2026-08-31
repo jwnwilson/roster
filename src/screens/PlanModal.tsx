@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Plan, PlanComment, PlanStatus } from '@shared/types'
 import { PLANS_SERVER } from '@shared/mcp'
 import { Markdown } from '../components/Markdown'
 import { Modal, SectionLabel } from '../components/primitives'
 import { messageFor } from '../lib/errors'
+import { quoteFromSelection } from '../lib/selection'
 import { NO_PLAN_COMMENTS, useRoster } from '../state/store'
 
 /** Wide enough for a plan to read as a document rather than as a column. */
@@ -45,8 +46,10 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
   const setPlanComments = useRoster((s) => s.setPlanComments)
 
   const [text, setText] = useState('')
+  const [quote, setQuote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const planRef = useRef<HTMLElement | null>(null)
 
   // Re-read on the version rather than only on mount: the agent rewriting the
   // plan while it is open changes the row, and only the store has the body.
@@ -123,7 +126,15 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
               <button
                 type="button"
                 disabled={busy || note === ''}
-                onClick={() => void act(() => window.roster.plans.submit(plan.id, note), () => setText(''))}
+                onClick={() =>
+                  void act(
+                    () => window.roster.plans.submit(plan.id, note, quote ?? undefined),
+                    () => {
+                      setText('')
+                      setQuote(null)
+                    },
+                  )
+                }
                 className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[12px] py-[6px] font-ui text-md text-muted hover:border-line-hover disabled:cursor-default disabled:opacity-50"
               >
                 Send comments
@@ -145,7 +156,18 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
     >
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] py-[20px]">
-          <Markdown>{body}</Markdown>
+          {/* Selecting inside here is how a note gets attached to a passage.
+              Both mouse and keyboard, since a selection can be made either
+              way, and a bare click clears it so the chip agrees with what is
+              highlighted on screen. */}
+          <section
+            aria-label="Plan"
+            ref={planRef}
+            onMouseUp={() => setQuote(quoteFromSelection(window.getSelection(), planRef.current))}
+            onKeyUp={() => setQuote(quoteFromSelection(window.getSelection(), planRef.current))}
+          >
+            <Markdown>{body}</Markdown>
+          </section>
 
           <div className="h-[1px] flex-none bg-line" />
 
@@ -154,9 +176,24 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
 
         <div className="flex flex-none flex-col gap-[8px] border-t border-line px-[22px] py-[12px]">
           {error === null ? null : <p className="m-0 text-md text-error">{error}</p>}
+          {quote === null ? null : (
+            <div className="flex items-start gap-[8px] rounded-field border border-accent-line bg-accent-surface px-[10px] py-[6px]">
+              <span className="flex-none text-sm text-dim">On</span>
+              <Quote>{quote}</Quote>
+              <button
+                type="button"
+                aria-label="Clear the selected passage"
+                onClick={() => setQuote(null)}
+                className="ml-auto flex-none cursor-pointer border-0 bg-transparent p-0 font-ui text-[13px] leading-none text-dim hover:text-ink"
+                data-hoverable
+              >
+                ×
+              </button>
+            </div>
+          )}
           <textarea
             aria-label="Add a comment"
-            placeholder="What should change?"
+            placeholder={quote === null ? 'What should change?' : 'What should change about it?'}
             value={text}
             rows={3}
             onChange={(e) => setText(e.target.value)}
@@ -200,6 +237,21 @@ function Waiting({ plan, agentName }: { plan: Plan; agentName: string }) {
   )
 }
 
+/**
+ * A passage of the plan, quoted.
+ *
+ * A real <q>: this is a quotation of another part of the document, and the
+ * thread and the composer chip should render it identically so that what you
+ * are about to say and what you said before look like the same kind of thing.
+ */
+function Quote({ children }: { children: string }) {
+  return (
+    <q className="border-l-2 border-accent-line pl-[8px] text-sm leading-[1.5] text-muted-2 before:content-none after:content-none">
+      {children}
+    </q>
+  )
+}
+
 function StatusChip({ status }: { status: PlanStatus }) {
   const label = status === 'in_review' ? 'In review' : status[0]!.toUpperCase() + status.slice(1)
 
@@ -228,6 +280,7 @@ function Thread({ comments }: { comments: readonly PlanComment[] }) {
             >
               {comment.author}
             </span>
+            {comment.quote === undefined ? null : <Quote>{comment.quote}</Quote>}
             <span className="text-md leading-[1.55] text-ink-2">{comment.text}</span>
           </div>
         ))

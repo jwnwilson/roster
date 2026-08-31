@@ -133,6 +133,37 @@ describe('sending comments back', () => {
   test('refuses a plan that does not exist', () => {
     expect(() => flow.submit('nope', 'x')).toThrow('unknown plan "nope"')
   })
+
+  test('files the passage the note was written about', () => {
+    const plan = planAwaitingReview()
+
+    flow.submit(plan.id, 'make this nullable', 'Archiving keeps the row.')
+
+    expect(plans.comments(plan.id)).toContainEqual(
+      expect.objectContaining({ text: 'make this nullable', quote: 'Archiving keeps the row.' }),
+    )
+  })
+
+  test('tells the agent which passage, not just what', () => {
+    const plan = planAwaitingReview()
+    pending = [planApproval()]
+
+    flow.submit(plan.id, 'make this nullable', 'Archiving keeps the row.')
+
+    expect(manager.respondToApproval).toHaveBeenCalledWith('s1', 'a1', {
+      approved: false,
+      reason: expect.stringContaining('Archiving keeps the row.'),
+    })
+  })
+
+  test('a passage of only whitespace is no passage at all', () => {
+    const plan = planAwaitingReview()
+
+    flow.submit(plan.id, 'too vague', '   ')
+
+    // Otherwise the agent is handed an empty quotation to reason about.
+    expect(plans.comments(plan.id)[0]?.quote).toBeUndefined()
+  })
 })
 
 describe('approving a plan', () => {

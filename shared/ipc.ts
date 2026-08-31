@@ -170,8 +170,11 @@ export interface RosterApi {
      *
      * The actor is decided in the main process, so a renderer cannot file a
      * note as though an agent had written it.
+     *
+     * `quote` is the passage of the plan the note is about, when you selected
+     * one before writing it.
      */
-    submit(planId: string, text: string): Promise<Plan>
+    submit(planId: string, text: string, quote?: string): Promise<Plan>
     /** Accept it: the agent builds it in a worktree and opens a pull request. */
     approve(planId: string): Promise<Plan>
     /** Live plan changes — a revision arriving, or a note from either side. */

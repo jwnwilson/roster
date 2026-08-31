@@ -451,6 +451,15 @@ export interface PlanComment {
   author: string
   tone: 'you' | 'agent'
   text: string
+  /**
+   * The passage of the plan this note is about, quoted.
+   *
+   * A quotation rather than a line number or an offset: the agent rewrites
+   * the plan between versions, so any positional anchor would point at the
+   * wrong words by the time it was read. Absent means the note is about the
+   * plan as a whole.
+   */
+  quote?: string
   /** The version it was written against, so it keeps its meaning after a rewrite. */
   version: number
   createdAt: number

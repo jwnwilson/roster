@@ -44,14 +44,26 @@ export class PlanFlow {
    * When it is still waiting on its ExitPlanMode, the notes go back as the
    * reason it was refused: that is the existing "keep planning" path, and it
    * costs no extra turn.
+   *
+   * `quote` is the passage of the plan the note is about, if you selected
+   * one. It travels with the note so the agent is told which part you meant
+   * rather than having to guess from the words.
    */
-  submit(planId: string, text: string): Plan {
+  submit(planId: string, text: string, quote?: string): Plan {
     const plan = this.require(planId)
 
     const note = text.trim()
     if (note === '') throw new Error('a comment cannot be empty')
 
-    this.plans.comment(planId, { ...YOU, text: note })
+    // A passage of only whitespace is no passage: an empty quotation would
+    // give the agent nothing to look at and something to reason about.
+    const passage = quote?.trim()
+
+    this.plans.comment(planId, {
+      ...YOU,
+      text: note,
+      ...(passage === undefined || passage === '' ? {} : { quote: passage }),
+    })
 
     const input = this.promptInput(plan)
     const blocked = this.blockedOnPlan(plan)
