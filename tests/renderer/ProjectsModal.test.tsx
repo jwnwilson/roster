@@ -495,6 +495,45 @@ describe('NewTaskModal', () => {
     expect(screen.queryByText('bug')).not.toBeInTheDocument()
     expect(useRoster.getState().newTaskOpen).toBe(true)
   })
+
+  test('Create Another creates the task and leaves the modal open', async () => {
+    const user = userEvent.setup()
+    const created = aTask({ id: 'ROS-9', title: 'A new one' })
+    const api = installRosterApi({ tasks: { create: vi.fn().mockResolvedValue(created) } })
+    render(<NewTaskModal />)
+
+    await user.type(screen.getByLabelText('Task title'), 'A new one')
+    await user.click(screen.getByRole('button', { name: 'Create Another' }))
+
+    await waitFor(() => expect(api.tasks.create).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(useRoster.getState().tasks).toContainEqual(created))
+    expect(useRoster.getState().newTaskOpen).toBe(true)
+  })
+
+  test('Create Another clears title, description, and labels but keeps assignee, priority, and project', async () => {
+    const user = userEvent.setup()
+    installRosterApi({ tasks: { create: vi.fn().mockResolvedValue(aTask()) } })
+    render(<NewTaskModal />)
+
+    await user.type(screen.getByLabelText('Task title'), 'A new one')
+    await user.type(screen.getByLabelText('Task description'), 'Some details')
+    await user.selectOptions(screen.getByLabelText('Assignee'), 'debugging')
+    await user.selectOptions(screen.getByLabelText('Priority'), 'urgent')
+    await user.click(screen.getByRole('button', { name: '+ Add' }))
+    await user.type(screen.getByLabelText('New label'), 'bug{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Create Another' }))
+
+    await waitFor(() => expect(screen.getByLabelText('Task title')).toHaveValue(''))
+    expect(screen.getByLabelText('Task description')).toHaveValue('')
+    expect(screen.queryByText('bug')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Assignee')).toHaveValue('debugging')
+    expect(screen.getByLabelText('Priority')).toHaveValue('urgent')
+  })
+
+  test('Create Another is disabled with no title, same as Create task', () => {
+    render(<NewTaskModal />)
+    expect(screen.getByRole('button', { name: 'Create Another' })).toBeDisabled()
+  })
 })
 
 describe('ProjectsModal — the size of the card', () => {

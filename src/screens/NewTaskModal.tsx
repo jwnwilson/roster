@@ -33,7 +33,7 @@ export function NewTaskModal() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function create(): Promise<void> {
+  async function create(keepOpen: boolean): Promise<void> {
     setSaving(true)
     setError(null)
 
@@ -54,7 +54,15 @@ export function NewTaskModal() {
         // A new backlog task is what you want to be looking at next.
         ...(created.status === 'backlog' ? { backlogSelectedId: created.id } : {}),
       }))
-      close()
+      if (keepOpen) {
+        // Assignee, priority, and project carry over — batching a run of
+        // similar tasks is the point of staying open.
+        setTitle('')
+        setDescription('')
+        setLabels([])
+      } else {
+        close()
+      }
     } catch (cause) {
       setError(messageFor(cause))
     } finally {
@@ -79,7 +87,16 @@ export function NewTaskModal() {
           </button>
           <button
             type="button"
-            onClick={() => void create()}
+            onClick={() => void create(true)}
+            disabled={saving || title.trim() === ''}
+            className="cursor-pointer rounded-pill border border-line-card bg-transparent px-[13px] py-[7px] font-ui text-lg font-semibold text-ink-2 hover:border-line-hover-strong disabled:cursor-default disabled:opacity-50"
+            data-hoverable
+          >
+            {saving ? 'Creating…' : 'Create Another'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void create(false)}
             disabled={saving || title.trim() === ''}
             className="cursor-pointer rounded-pill border-0 bg-accent px-[15px] py-[7px] font-ui text-lg font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-50"
           >
