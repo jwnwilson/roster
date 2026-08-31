@@ -252,4 +252,23 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE plan_comments ADD COLUMN quote TEXT;
   `,
+
+  // 10 — a session can be attached to a task
+  //
+  // Mentioning an agent in a task's thread opens a session for it. The
+  // column sits beside project_id because it is the same kind of fact: what
+  // this session's work is about. One session per agent per task, enforced
+  // by the index rather than remembered by the caller, so two dispatches
+  // racing cannot produce two.
+  //
+  // SET NULL rather than CASCADE: deleting a task must not destroy a
+  // transcript. Those turns cost real money and their usage rows feed the
+  // Spend screen. A plain ADD COLUMN carries the REFERENCES clause because
+  // the default is NULL, which is the one case SQLite allows.
+  `
+  ALTER TABLE sessions ADD COLUMN task_id TEXT REFERENCES tasks (id) ON DELETE SET NULL;
+
+  CREATE UNIQUE INDEX ux_sessions_task_agent
+    ON sessions (task_id, agent_id) WHERE task_id IS NOT NULL;
+  `,
 ]

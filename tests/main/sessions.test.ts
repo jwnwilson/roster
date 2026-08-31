@@ -178,3 +178,67 @@ describe('SessionStore — messages', () => {
     expect(store.messages(s.id)).toEqual([])
   })
 })
+
+describe('SessionStore — sessions attached to a task', () => {
+  function task(id: string): void {
+    db.prepare(
+      'INSERT INTO tasks (id, title, status, priority, labels, created_at, updated_at)' +
+        ` VALUES ('${id}', 'Fix pool leak', 'todo', 'medium', '[]', 0, 0)`,
+    ).run()
+  }
+
+  test('records the task a session was opened from', () => {
+    task('ROS-1')
+
+    const session = store.create({
+      agentId: 'debugging',
+      title: 'ROS-1 — Fix pool leak',
+      origin: 'you',
+      taskId: 'ROS-1',
+    })
+
+    expect(session.taskId).toBe('ROS-1')
+    expect(store.findById(session.id)?.taskId).toBe('ROS-1')
+  })
+
+  test('an ordinary session is attached to no task', () => {
+    const session = store.create({ agentId: 'debugging', title: 'x', origin: 'you' })
+
+    expect(session.taskId).toBeNull()
+  })
+
+  test('finds the session an agent already has on a task', () => {
+    task('ROS-1')
+    const created = store.create({
+      agentId: 'debugging',
+      title: 'ROS-1 — Fix pool leak',
+      origin: 'you',
+      taskId: 'ROS-1',
+    })
+
+    expect(store.findByTask('ROS-1', 'debugging')?.id).toBe(created.id)
+  })
+
+  test('finds nothing for an agent that has not been mentioned on it', () => {
+    task('ROS-1')
+
+    expect(store.findByTask('ROS-1', 'review')).toBeNull()
+  })
+
+  test('lists every session attached to a task, oldest first', () => {
+    task('ROS-1')
+    const first = store.create({ agentId: 'debugging', title: 'a', origin: 'you', taskId: 'ROS-1' })
+    const second = store.create({ agentId: 'review', title: 'b', origin: 'you', taskId: 'ROS-1' })
+
+    expect(store.linksForTask('ROS-1')).toEqual([
+      { taskId: 'ROS-1', agentId: 'debugging', sessionId: first.id, createdAt: first.createdAt },
+      { taskId: 'ROS-1', agentId: 'review', sessionId: second.id, createdAt: second.createdAt },
+    ])
+  })
+
+  test('lists nothing for a task nobody has been mentioned on', () => {
+    task('ROS-1')
+
+    expect(store.linksForTask('ROS-1')).toEqual([])
+  })
+})
