@@ -1,5 +1,6 @@
+import { useShallow } from 'zustand/shallow'
 import { Select } from '@/components/primitives'
-import { ALL_PROJECTS, useRoster } from '@/state/store'
+import { ALL_PROJECTS, activeProjects, useRoster } from '@/state/store'
 
 /**
  * The project filter, shared by the board, the grid and the backlog.
@@ -17,7 +18,10 @@ export function ProjectFilter({
   className?: string
   compact?: boolean
 }) {
-  const projects = useRoster((s) => s.projects)
+  // Archived projects are not on offer. A filter left pointing at one is
+  // reset by the store when the project list changes, so this cannot end
+  // up showing a blank select.
+  const projects = useRoster(useShallow(activeProjects))
   const value = useRoster((s) => s.projectFilter)
   const onChange = useRoster((s) => s.setProjectFilter)
 

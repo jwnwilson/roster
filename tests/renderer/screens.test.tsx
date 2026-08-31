@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { EditAgentModal } from '@/screens/EditAgentModal'
 import { McpServers } from '@/screens/McpServers'
 import { NewAgent } from '@/screens/NewAgent'
-import { Skills, relativeTime } from '@/screens/Skills'
+import { Skills } from '@/screens/Skills'
+import { relativeTime } from '@/state/format'
 import { Tasks } from '@/screens/Tasks'
 import { AgentsGrid } from '@/screens/AgentsGrid'
 import { Sidebar } from '@/components/Sidebar'
@@ -114,6 +115,32 @@ describe('Sidebar', () => {
 
     await user.click(screen.getByLabelText('Close window'))
     expect(window.roster.window.close).toHaveBeenCalled()
+  })
+
+  test('leaves a hidden agent out of the roster list', () => {
+    useRoster.setState({
+      agents: [
+        anAgent({ id: 'a', name: 'Architect Agent' }),
+        anAgent({ id: 'b', name: 'Review Agent', hidden: true }),
+      ],
+    })
+    render(<Sidebar />)
+
+    expect(screen.getByText('Architect Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Review Agent')).not.toBeInTheDocument()
+  })
+
+  test('counts only visible agents, so the badge matches the list', () => {
+    useRoster.setState({
+      agents: [
+        anAgent({ id: 'a', name: 'Architect Agent' }),
+        anAgent({ id: 'b', name: 'Review Agent', hidden: true }),
+      ],
+    })
+    render(<Sidebar />)
+
+    expect(screen.getByRole('button', { name: /^Agents/ })).toHaveTextContent('1')
+    expect(screen.getByText('1/1')).toBeInTheDocument()
   })
 })
 

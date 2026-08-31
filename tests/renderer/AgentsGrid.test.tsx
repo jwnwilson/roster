@@ -146,6 +146,69 @@ describe('AgentsGrid — filtering', () => {
   })
 })
 
+describe('AgentsGrid — hidden agents', () => {
+  beforeEach(() => {
+    useRoster.setState({
+      agents: [
+        anAgent({ id: 'architect', name: 'Architect Agent' }),
+        anAgent({ id: 'debugging', name: 'Debugging Agent' }),
+        anAgent({ id: 'review', name: 'Review Agent', hidden: true }),
+      ],
+    })
+  })
+
+  test('does not render a card for a hidden agent', () => {
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('Architect Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Review Agent')).not.toBeInTheDocument()
+  })
+
+  test('reports how many agents are hidden in the summary', () => {
+    render(<AgentsGrid />)
+    expect(screen.getByText('2 shown · 1 hidden · 0 running')).toBeInTheDocument()
+  })
+
+  test('counts only visible agents while filtering', async () => {
+    const user = userEvent.setup()
+    render(<AgentsGrid />)
+
+    await user.type(screen.getByLabelText('Filter agents'), 'architect')
+
+    // 2, not 3: a hidden agent could never have matched.
+    expect(screen.getByText('1 of 2 match')).toBeInTheDocument()
+  })
+
+  test('says every agent is hidden rather than claiming none are configured', () => {
+    useRoster.setState({ agents: [anAgent({ id: 'architect', hidden: true })] })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('Every agent is hidden.')).toBeInTheDocument()
+    expect(screen.queryByText('No agents configured yet.')).not.toBeInTheDocument()
+  })
+
+  test('the Manage button opens the management modal', async () => {
+    const user = userEvent.setup()
+    render(<AgentsGrid />)
+
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+
+    expect(screen.getByRole('dialog', { name: 'Manage agents' })).toBeInTheDocument()
+  })
+
+  test('a hidden agent can be brought back from the management modal', async () => {
+    const user = userEvent.setup()
+    render(<AgentsGrid />)
+
+    await user.click(screen.getByRole('button', { name: 'Manage' }))
+
+    expect(screen.getByRole('button', { name: 'Show Review Agent' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+})
+
 describe('AgentsGrid — navigation', () => {
   test('clicking a card opens that agent', async () => {
     const user = userEvent.setup()

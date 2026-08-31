@@ -378,3 +378,30 @@ describe('TaskDetailModal — closing', () => {
     expect(container).toBeEmptyDOMElement()
   })
 })
+
+describe('TaskDetailModal — archived projects', () => {
+  const PUT_AWAY = aProject({ id: 'p2', name: 'Q3 planning', archivedAt: 1_700_000_500_000 })
+
+  test('the project picker does not offer an archived project', async () => {
+    useRoster.setState({ projects: [aProject({ id: 'p1', name: 'API reliability' }), PUT_AWAY] })
+    render(<TaskDetailModal />)
+
+    const select = await screen.findByLabelText('Project')
+    expect(within(select).getByText('API reliability')).toBeInTheDocument()
+    expect(within(select).queryByText('Q3 planning')).not.toBeInTheDocument()
+  })
+
+  test('but a task already filed under one still shows it, marked archived', async () => {
+    useRoster.setState({
+      projects: [aProject({ id: 'p1', name: 'API reliability' }), PUT_AWAY],
+      tasks: [{ ...TASK, projectId: 'p2' }],
+    })
+    render(<TaskDetailModal />)
+
+    // A native select renders blank on a value it has no option for, which
+    // would make the task read as unfiled and silently move it on save.
+    const select = await screen.findByLabelText('Project')
+    expect(within(select).getByText('Q3 planning (archived)')).toBeInTheDocument()
+    expect(select).toHaveValue('p2')
+  })
+})

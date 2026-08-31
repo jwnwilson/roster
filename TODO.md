@@ -9,9 +9,11 @@
 - [x] Plan for having memory for agents across sessions when they are working on projects — docs/superpowers/specs/2026-08-28-project-memory.md
 - [x] Add backlog for tasks so I can store ideas and work that I am not ready to pick up yet
 - [x] Import Notion tasks, let agents reach Notion over MCP, and push Roster changes back to the Notion page
-- [ ] Add ability to import tasks from notion and update them when they are updated
-- [ ] Add auto update logic prompt checking updates from github
-- [ ] Add ability to archive project instead of delete it and see archived projects
+- [x] Add ability to import tasks from notion and update them when they are updated
+- [x] Add auto update logic prompt checking updates from github
+- [x] Add Agent management so I can hide / show agents
+- [ ] Setup Agent setup workflow and add default agents on startup with tech lead being initial agent to work with
+- [ ] Clear initial tasks for new installations
+- [x] Add ability to archive project instead of delete it and see archived projects
 - [ ] Render .md plans and allow user to add comments and work on it with the agent that created it 
-- [ ] Setup default agents on startup with tech lead being initial agent to work with
 - [ ] Design build and publish an SPA on github for this tool

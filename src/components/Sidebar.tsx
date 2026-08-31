@@ -1,5 +1,12 @@
 import { useShallow } from 'zustand/shallow'
-import { agentStatus, useRoster, selectSidebarAgents, NO_SESSIONS, type Screen } from '@/state/store'
+import {
+  agentStatus,
+  useRoster,
+  selectSidebarAgents,
+  selectVisibleAgents,
+  NO_SESSIONS,
+  type Screen,
+} from '@/state/store'
 import type { Agent } from '@shared/types'
 import { formatCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
@@ -29,7 +36,9 @@ export function Sidebar() {
   const query = useRoster((s) => s.query)
   const setQuery = useRoster((s) => s.setQuery)
   const openAgent = useRoster((s) => s.openAgent)
-  const allAgents = useRoster((s) => s.agents)
+  // The roster you can actually see. Counting hidden agents here would put a
+  // number on the badge that no list below it accounts for.
+  const rosterSize = useRoster((s) => selectVisibleAgents(s).length)
   const skills = useRoster((s) => s.skills)
   const mcpServers = useRoster((s) => s.mcpServers)
   const tasks = useRoster((s) => s.tasks)
@@ -38,7 +47,7 @@ export function Sidebar() {
   const appVersion = useRoster((s) => s.appVersion)
 
   const counts: Record<string, string> = {
-    grid: String(allAgents.length),
+    grid: String(rosterSize),
     skills: String(skills.length),
     mcp: String(mcpServers.length),
     tasks: String(tasks.length),
@@ -84,7 +93,7 @@ export function Sidebar() {
       <div className="flex items-center px-[16px] pt-[10px] pb-[6px]">
         <span className="text-xs font-semibold uppercase tracking-[0.07em] text-label">Roster</span>
         <span className="ml-auto font-mono text-xs text-faint-2">
-          {agents.length}/{allAgents.length}
+          {agents.length}/{rosterSize}
         </span>
       </div>
 

@@ -51,6 +51,7 @@ const AGENTS: Agent[] = [
     systemPrompt: '',
     skills: [],
     mcpServers: ['tasks'],
+    hidden: false,
     status: 'idle',
   },
   {
@@ -63,6 +64,7 @@ const AGENTS: Agent[] = [
     systemPrompt: '',
     skills: [],
     mcpServers: ['tasks'],
+    hidden: false,
     status: 'idle',
   },
   {
@@ -76,6 +78,7 @@ const AGENTS: Agent[] = [
     skills: [],
     // Deliberately without the board.
     mcpServers: [],
+    hidden: false,
     status: 'idle',
   },
 ]
@@ -192,6 +195,27 @@ describe('the task tools an agent is given', () => {
     expect(tools.agentName('ghost')).toBeNull()
     expect(tools.projectName(project.id)).toBe('API reliability')
     expect(tools.projectName('nope')).toBeNull()
+  })
+
+  test('say which projects are archived, so work cannot vanish into one', async () => {
+    const live = projects.create({ name: 'API reliability', color: 'a' })
+    const shipped = projects.create({ name: 'Shipped', color: 'b' })
+    projects.setArchived(shipped.id, true)
+    const tools = await taskTools()
+
+    expect(tools.isArchivedProject(shipped.id)).toBe(true)
+    expect(tools.isArchivedProject(live.id)).toBe(false)
+    // An id nobody recognises is not an archived project; create_task
+    // rejects it on its own terms.
+    expect(tools.isArchivedProject('nope')).toBe(false)
+  })
+
+  test('an archived project still resolves to its name', async () => {
+    const shipped = projects.create({ name: 'Shipped', color: 'b' })
+    projects.setArchived(shipped.id, true)
+
+    // Old tasks filed under it must keep naming it, or they read as unfiled.
+    expect((await taskTools()).projectName(shipped.id)).toBe('Shipped')
   })
 })
 

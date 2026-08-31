@@ -110,6 +110,8 @@ const api: RosterApi = {
     list: () => ipcRenderer.invoke(CHANNELS.projectsList),
     create: (input) => ipcRenderer.invoke(CHANNELS.projectsCreate, input),
     update: (id, patch) => ipcRenderer.invoke(CHANNELS.projectsUpdate, id, patch),
+    setArchived: (id, archived) =>
+      ipcRenderer.invoke(CHANNELS.projectsSetArchived, id, archived),
     remove: (id) => ipcRenderer.invoke(CHANNELS.projectsDelete, id),
   },
 

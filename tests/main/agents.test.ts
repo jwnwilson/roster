@@ -174,6 +174,66 @@ describe('AgentStore.update', () => {
 
     await expect(store.update('ghost', { model: 'x' })).rejects.toThrow(/unknown agent/)
   })
+
+  test('writes hidden back to agent.toml', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { hidden: true })
+
+    expect(updated.hidden).toBe(true)
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).toContain(
+      'hidden = true',
+    )
+  })
+
+  test('refuses to change an agent whose agent.toml does not parse', async () => {
+    // The old message said "unknown agent", which sent you looking for a
+    // missing directory rather than the parse error sitting right there.
+    await writeAgent('bad', 'name = "Broken"\nrunner = "claude"\ncwd = "/tmp"\n')
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('bad', { hidden: true })).rejects.toThrow(
+      /does not parse — agent\.toml for "bad".*model/,
+    )
+  })
+})
+
+describe('AgentStore — hidden agents', () => {
+  test('still returns a hidden agent, since hiding is the renderer\'s concern', async () => {
+    await writeAgent('debug', `${VALID}hidden = true\n`)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findAll().map((a) => a.id)).toEqual(['debug'])
+    expect(store.findById('debug')?.hidden).toBe(true)
+  })
+
+  test('a fresh agent starts visible', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({
+      name: 'Review Agent',
+      runner: 'claude',
+      model: 'claude-opus-5',
+      cwd: join(home, 'workspace'),
+      systemPrompt: '',
+      skills: [],
+    })
+
+    expect(created.hidden).toBe(false)
+  })
+
+  test('reports a broken agent as visible so its error cannot be missed', async () => {
+    await writeAgent('bad', 'name = "Broken"\nrunner = "claude"\ncwd = "/tmp"\n')
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('bad')?.hidden).toBe(false)
+  })
 })
 
 describe('AgentStore.watch', () => {

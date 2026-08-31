@@ -4,6 +4,7 @@ import { statusColor } from '@shared/status'
 import { GhostButton, PrimaryButton, ScreenHeader, SectionLabel } from '@/components/primitives'
 import { useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
+import { relativeTime } from '@/state/format'
 import { CodeEditor } from '@/components/CodeEditor'
 
 /** A row in the file tree: a skill folder or one of its files. */
@@ -625,16 +626,3 @@ function buildTree(skills: Skill[]): TreeRow[] {
   ])
 }
 
-export function relativeTime(ms: number, now = Date.now()): string {
-  const seconds = Math.max(0, Math.round((now - ms) / 1000))
-  if (seconds < 60) return 'just now'
-
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
-
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
-
-  const days = Math.round(hours / 24)
-  return `${days} day${days === 1 ? '' : 's'} ago`
-}

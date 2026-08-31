@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Project } from '@shared/types'
 import { PROJECT_COLORS } from '@shared/tasks'
-import { Modal, TextInput } from '@/components/primitives'
+import { Modal, Segmented, TextInput } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
-import { ALL_PROJECTS, useRoster } from '@/state/store'
+import { relativeTime } from '@/state/format'
+import { ALL_PROJECTS, activeProjects, archivedProjects, useRoster } from '@/state/store'
 
 interface Draft {
   name: string
@@ -14,15 +15,34 @@ interface Draft {
 
 const BLANK: Draft = { name: '', color: PROJECT_COLORS[0] as string, description: '' }
 
+/**
+ * Active and Archived, as two views of one list.
+ *
+ * Archiving is the everyday way to finish with a project: it keeps the row,
+ * its tasks and its sessions, and only stops the app offering it. Delete
+ * lives on the Archived tab alone, so destroying a grouping always takes two
+ * deliberate steps.
+ */
+type ProjectsTab = 'active' | 'archived'
+
+const TABS: readonly { value: ProjectsTab; label: string }[] = [
+  { value: 'active', label: 'Active' },
+  { value: 'archived', label: 'Archived' },
+]
+
 export function ProjectsModal() {
-  const projects = useRoster(useShallow((s) => s.projects))
+  const active = useRoster(useShallow(activeProjects))
+  const archived = useRoster(useShallow(archivedProjects))
   const tasks = useRoster(useShallow((s) => s.tasks))
   const close = () => useRoster.getState().setProjectsOpen(false)
 
+  const [tab, setTab] = useState<ProjectsTab>('active')
   const [editing, setEditing] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Draft>(BLANK)
   const [error, setError] = useState<string | null>(null)
+
+  const showing = tab === 'active' ? active : archived
 
   async function reload(): Promise<void> {
     useRoster.setState({ projects: await window.roster.projects.list() })
@@ -51,34 +71,74 @@ export function ProjectsModal() {
     }
   }
 
+  async function setArchived(project: Project, archive: boolean): Promise<void> {
+    setError(null)
+    try {
+      await window.roster.projects.setArchived(project.id, archive)
+      await reload()
+      // The filter only offers active projects, so one pointing at a project
+      // just put away would show an empty board with no way to tell why.
+      if (archive) clearFilterOn(project.id)
+    } catch (cause) {
+      setError(messageFor(cause))
+    }
+  }
+
   async function remove(project: Project): Promise<void> {
     setError(null)
     try {
-      await window.roster.projects.remove(project.id)
+      // The confirmation lives in the main process; false means it was
+      // dismissed, and nothing here should move.
+      const deleted = await window.roster.projects.remove(project.id)
+      if (!deleted) return
+
       // Tasks keep existing, so re-read them too — they have just lost
       // their project, and the board must stop claiming otherwise.
       useRoster.setState((s) => ({
         tasks: s.tasks.map((task) =>
           task.projectId === project.id ? { ...task, projectId: null } : task,
         ),
-        // A filter pointing at a project that no longer exists would show an
-        // empty board with no way to tell why.
-        ...(s.projectFilter === project.id ? { projectFilter: ALL_PROJECTS } : {}),
       }))
+      clearFilterOn(project.id)
       await reload()
     } catch (cause) {
       setError(messageFor(cause))
     }
   }
 
+  function beginEdit(project: Project): void {
+    setDraft({
+      name: project.name,
+      color: project.color,
+      description: project.description,
+    })
+    setEditing(project.id)
+  }
+
   return (
     <Modal
       label="Projects"
       onClose={close}
-      header={<h2 className="m-0 text-2xl font-semibold">Projects</h2>}
+      header={
+        <div className="flex items-center gap-[12px]">
+          <h2 className="m-0 text-2xl font-semibold">Projects</h2>
+          <Segmented
+            ariaLabel="Projects view"
+            options={TABS}
+            value={tab}
+            onChange={(next) => {
+              setTab(next)
+              // A form left open on the other tab would reopen against a
+              // project this one does not show.
+              setEditing(null)
+              setCreating(false)
+            }}
+          />
+        </div>
+      }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[10px] overflow-y-auto px-[18px] py-[14px]">
-        {projects.map((project) => (
+        {showing.map((project) => (
           <div
             key={project.id}
             className="flex flex-col gap-[9px] rounded-[9px] border border-line px-[13px] py-[11px]"
@@ -92,50 +152,23 @@ export function ProjectsModal() {
                 saveLabel="Save"
               />
             ) : (
-              <>
-                <div className="flex items-center gap-[9px]">
-                  <span
-                    aria-hidden
-                    className="flex-none rounded-full"
-                    style={{ width: 8, height: 8, background: project.color }}
-                  />
-                  <span className="text-xl font-semibold">{project.name}</span>
-                  <span className="font-mono text-xs text-dim-2">
-                    {tasks.filter((task) => task.projectId === project.id).length} tasks
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDraft({
-                        name: project.name,
-                        color: project.color,
-                        description: project.description,
-                      })
-                      setEditing(project.id)
-                    }}
-                    className="ml-auto cursor-pointer rounded-sm border border-line-input bg-transparent px-[9px] py-[3px] font-ui text-sm text-ink-3 hover:border-line-hover-strong"
-                    data-hoverable
-                  >
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void remove(project)}
-                    className="cursor-pointer rounded-sm border border-line-input bg-transparent px-[9px] py-[3px] font-ui text-sm text-error hover:border-error"
-                    data-hoverable
-                  >
-                    Delete
-                  </button>
-                </div>
-                {project.description === '' ? null : (
-                  <p className="m-0 text-md leading-[1.5] text-muted-2">{project.description}</p>
-                )}
-              </>
+              <ProjectRow
+                project={project}
+                taskCount={tasks.filter((task) => task.projectId === project.id).length}
+                onEdit={() => beginEdit(project)}
+                onArchive={() => void setArchived(project, true)}
+                onRestore={() => void setArchived(project, false)}
+                onDelete={() => void remove(project)}
+              />
             )}
           </div>
         ))}
 
-        {creating ? (
+        {showing.length === 0 ? (
+          <p className="m-0 text-md text-dim">{emptyMessage(tab, archived.length)}</p>
+        ) : null}
+
+        {tab === 'archived' ? null : creating ? (
           <div className="flex flex-col gap-[9px] rounded-[9px] border border-line-card px-[13px] py-[12px]">
             <Editor
               draft={draft}
@@ -165,6 +198,108 @@ export function ProjectsModal() {
         {error ? <p className="m-0 text-md text-error">{error}</p> : null}
       </div>
     </Modal>
+  )
+}
+
+/** Nothing to show, said in the way that fits which tab you are on. */
+function emptyMessage(tab: ProjectsTab, archivedCount: number): string {
+  if (tab === 'archived') return 'No archived projects.'
+  // "No projects yet" would be a lie when they are all simply put away.
+  return archivedCount > 0 ? 'No active projects.' : 'No projects yet.'
+}
+
+/** A filter pointing at a project the dropdown no longer offers has to let go. */
+function clearFilterOn(projectId: string): void {
+  const { projectFilter, setProjectFilter } = useRoster.getState()
+  if (projectFilter === projectId) setProjectFilter(ALL_PROJECTS)
+}
+
+interface ProjectRowProps {
+  project: Project
+  taskCount: number
+  onEdit: () => void
+  onArchive: () => void
+  onRestore: () => void
+  onDelete: () => void
+}
+
+function ProjectRow({
+  project,
+  taskCount,
+  onEdit,
+  onArchive,
+  onRestore,
+  onDelete,
+}: ProjectRowProps) {
+  const isArchived = project.archivedAt !== null
+
+  return (
+    <>
+      <div className="flex items-center gap-[9px]">
+        <span
+          aria-hidden
+          className="flex-none rounded-full"
+          style={{
+            width: 8,
+            height: 8,
+            background: project.color,
+            // Dimmed rather than recoloured, so an archived project is still
+            // recognisably the one you filed the work under.
+            opacity: isArchived ? 0.5 : 1,
+          }}
+        />
+        <span className={`text-xl font-semibold ${isArchived ? 'text-muted-2' : ''}`}>
+          {project.name}
+        </span>
+        <span className="font-mono text-xs text-dim-2">{taskCount} tasks</span>
+
+        {isArchived ? (
+          <>
+            <span className="text-sm text-dim-2">
+              Archived {relativeTime(project.archivedAt as number)}
+            </span>
+            <SecondaryButton label="Restore" onClick={onRestore} className="ml-auto" />
+            <SecondaryButton label="Delete" onClick={onDelete} destructive />
+          </>
+        ) : (
+          <>
+            <SecondaryButton label="Edit" onClick={onEdit} className="ml-auto" />
+            {/* Not destructive: nothing is lost, and it can be taken back. */}
+            <SecondaryButton label="Archive" onClick={onArchive} />
+          </>
+        )}
+      </div>
+      {project.description === '' ? null : (
+        <p className="m-0 text-md leading-[1.5] text-muted-2">{project.description}</p>
+      )}
+    </>
+  )
+}
+
+interface SecondaryButtonProps {
+  label: string
+  onClick: () => void
+  destructive?: boolean
+  className?: string
+}
+
+function SecondaryButton({
+  label,
+  onClick,
+  destructive = false,
+  className = '',
+}: SecondaryButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`cursor-pointer rounded-sm border border-line-input bg-transparent px-[9px] py-[3px] font-ui text-sm ${
+        destructive ? 'text-error hover:border-error' : 'text-ink-3 hover:border-line-hover-strong'
+      } ${className}`}
+      data-hoverable
+    >
+      {label}
+    </button>
   )
 }
 

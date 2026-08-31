@@ -5,7 +5,7 @@ import { taskPriorityLabel } from '@shared/tasks'
 import { Field, Modal, Select, TextInput } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import { LabelChips } from './TaskFields'
-import { ALL_PROJECTS, useRoster, withTask } from '@/state/store'
+import { ALL_PROJECTS, activeProjects, useRoster, withTask } from '@/state/store'
 
 const NO_PROJECT = 'none'
 const UNASSIGNED = 'unassigned'
@@ -13,7 +13,8 @@ const UNASSIGNED = 'unassigned'
 export function NewTaskModal() {
   const close = () => useRoster.getState().setNewTaskOpen(false)
   const agents = useRoster(useShallow((s) => s.agents))
-  const projects = useRoster(useShallow((s) => s.projects))
+  // New work never starts in an archived project.
+  const projects = useRoster(useShallow(activeProjects))
   // A task created while a project is selected belongs to it — retyping the
   // filter you are already looking at is busywork.
   const filter = useRoster((s) => s.projectFilter)

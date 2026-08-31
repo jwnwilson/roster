@@ -261,3 +261,47 @@ describe('Tasks — an empty board', () => {
     expect(useRoster.getState().projectFilter).toBe(ALL_PROJECTS)
   })
 })
+
+describe('Tasks — archived projects', () => {
+  const ACTIVE = aProject({ id: 'p1', name: 'API reliability' })
+  const PUT_AWAY = aProject({ id: 'p2', name: 'Q3 planning', archivedAt: 1_700_000_500_000 })
+
+  beforeEach(() => {
+    useRoster.setState({
+      projects: [ACTIVE, PUT_AWAY],
+      tasks: [
+        aTask({ id: 'ROS-1', title: 'Live work', projectId: 'p1' }),
+        aTask({ id: 'ROS-2', title: 'Shipped work', projectId: 'p2' }),
+      ],
+    })
+  })
+
+  test('the board does not show work from an archived project', () => {
+    render(<Tasks />)
+
+    expect(screen.getByText('Live work')).toBeInTheDocument()
+    expect(screen.queryByText('Shipped work')).not.toBeInTheDocument()
+  })
+
+  test('the filter does not offer an archived project', () => {
+    render(<Tasks />)
+
+    const select = screen.getByLabelText('Filter by project')
+    expect(within(select).getByText('API reliability')).toBeInTheDocument()
+    expect(within(select).queryByText('Q3 planning')).not.toBeInTheDocument()
+  })
+
+  test('the count matches what is on the board', () => {
+    render(<Tasks />)
+
+    // Counting hidden work here would claim more tasks than are showing.
+    expect(screen.getByText('1 task · 0 in review')).toBeInTheDocument()
+  })
+
+  test('restoring the project puts its cards back', () => {
+    useRoster.setState({ projects: [ACTIVE, { ...PUT_AWAY, archivedAt: null }] })
+    render(<Tasks />)
+
+    expect(screen.getByText('Shipped work')).toBeInTheDocument()
+  })
+})

@@ -96,3 +96,87 @@ describe('ProjectStore.delete', () => {
     expect(projects.findById(project.id)).toBeNull()
   })
 })
+
+describe('ProjectStore.setArchived', () => {
+  test('archiving stamps the moment it was put away', () => {
+    const before = Date.now()
+    const project = projects.create({ name: 'Shipped', color: 'a' })
+    expect(project.archivedAt).toBeNull()
+
+    const archived = projects.setArchived(project.id, true)
+
+    expect(archived.archivedAt).not.toBeNull()
+    expect(archived.archivedAt as number).toBeGreaterThanOrEqual(before)
+    expect(projects.findById(project.id)).toEqual(archived)
+  })
+
+  test('restoring makes it active again', () => {
+    const project = projects.create({ name: 'Shipped', color: 'a' })
+    projects.setArchived(project.id, true)
+
+    const restored = projects.setArchived(project.id, false)
+
+    expect(restored.archivedAt).toBeNull()
+    expect(projects.findById(project.id)?.archivedAt).toBeNull()
+  })
+
+  test('a new project starts active', () => {
+    expect(projects.create({ name: 'Fresh', color: 'a' }).archivedAt).toBeNull()
+  })
+
+  test('changes nothing else about the project', () => {
+    const project = projects.create({ name: 'Shipped', color: 'a', description: 'keep me' })
+
+    const archived = projects.setArchived(project.id, true)
+
+    expect(archived).toMatchObject({
+      id: project.id,
+      name: 'Shipped',
+      color: 'a',
+      description: 'keep me',
+      createdAt: project.createdAt,
+    })
+  })
+
+  test('keeps its tasks and sessions, unlike delete', () => {
+    const project = projects.create({ name: 'Shipped', color: 'a' })
+    const task = tasks.create({ title: 'Still filed', projectId: project.id })
+    const session = sessions.create({ agentId: 'debug', title: 'Work', origin: 'you' })
+    db.prepare('UPDATE sessions SET project_id = ? WHERE id = ?').run(project.id, session.id)
+
+    projects.setArchived(project.id, true)
+
+    // Archiving hides the work; it must never detach it, or restoring would
+    // hand back an empty project.
+    expect(tasks.findById(task.id)?.projectId).toBe(project.id)
+    expect(
+      db.prepare('SELECT project_id FROM sessions WHERE id = ?').get(session.id),
+    ).toEqual({ project_id: project.id })
+  })
+
+  test('an archived project is still listed, so its name keeps resolving', () => {
+    const project = projects.create({ name: 'Shipped', color: 'a' })
+    projects.setArchived(project.id, true)
+
+    // Spend and every task card resolve a project name by id. Filtering the
+    // archived ones out here would make old work read as unfiled.
+    expect(projects.findAll().map((p) => p.id)).toEqual([project.id])
+  })
+
+  test('refuses to archive a project that does not exist', () => {
+    expect(() => projects.setArchived('nope', true)).toThrow('unknown project "nope"')
+  })
+
+  test('editing an archived project leaves it archived', () => {
+    const project = projects.create({ name: 'Shipped', color: 'a' })
+    const archived = projects.setArchived(project.id, true)
+
+    const updated = projects.update(project.id, { name: 'Shipped v2' })
+
+    // Archiving is its own verb, so Save on the edit form cannot quietly
+    // bring a project back.
+    expect(updated.name).toBe('Shipped v2')
+    expect(updated.archivedAt).toBe(archived.archivedAt)
+    expect(projects.findById(project.id)?.archivedAt).toBe(archived.archivedAt)
+  })
+})

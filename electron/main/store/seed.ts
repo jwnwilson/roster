@@ -29,6 +29,7 @@ function seedAgents(workspace: string): AgentConfig[] {
         'You design before you build. Compare at least two shapes, state the trade-off in one sentence each, and record the decision as an ADR in docs/adr. Hand implementation work to other agents rather than editing source yourself.',
       skills: ['adr-writer', 'estimate-breakdown'],
       mcpServers: ['filesystem', 'github', TASKS_SERVER],
+      hidden: false,
     },
     {
       id: 'debugging',
@@ -40,6 +41,7 @@ function seedAgents(workspace: string): AgentConfig[] {
         'Reproduce before you fix. Write the failing test first, commit it alone, then patch. Never force-push without asking. Keep changes scoped to the files named in the request.',
       skills: ['repro-harness', 'stack-triage'],
       mcpServers: ['filesystem', TASKS_SERVER],
+      hidden: false,
     },
     {
       id: 'review',
@@ -51,6 +53,7 @@ function seedAgents(workspace: string): AgentConfig[] {
         'Review for correctness first, style last. Separate blocking notes from nits and quote the line you are reacting to. If the change lacks a test, say so before anything else.',
       skills: ['pr-review', 'stack-triage'],
       mcpServers: ['filesystem', 'github', TASKS_SERVER],
+      hidden: false,
     },
     {
       id: 'estimation',
@@ -62,6 +65,7 @@ function seedAgents(workspace: string): AgentConfig[] {
         'Break work down until every task is a day or less. Flag unowned tasks and cross-team dependencies explicitly. Give ranges, not single numbers.',
       skills: ['estimate-breakdown'],
       mcpServers: [TASKS_SERVER],
+      hidden: false,
     },
   ]
 }

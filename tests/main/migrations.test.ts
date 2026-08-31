@@ -441,3 +441,69 @@ describe('migration 6 — tasks remember the Notion page they came from', () => 
     old.close()
   })
 })
+
+describe('migration 7 — a project can be archived instead of destroyed', () => {
+  /** A database stopped at version 6, as an install from before this would be. */
+  function atVersion6() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < 6; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma('user_version = 6')
+    return old
+  }
+
+  const insertProject = (target: ReturnType<typeof atVersion6>, id: string) =>
+    target
+      .prepare(
+        'INSERT INTO projects (id, name, color, description, created_at)' +
+          ` VALUES ('${id}', 'API reliability', '#7c5cff', 'x', 7)`,
+      )
+      .run()
+
+  test('adds the column to a database that predates it', () => {
+    const old = atVersion6()
+    expect(
+      (old.pragma('table_info(projects)') as { name: string }[]).map((c) => c.name),
+    ).not.toContain('archived_at')
+
+    migrate(old)
+
+    expect(
+      (old.pragma('table_info(projects)') as { name: string }[]).map((c) => c.name),
+    ).toContain('archived_at')
+    old.close()
+  })
+
+  test('every project that predates the column is active', () => {
+    const old = atVersion6()
+    insertProject(old, 'p1')
+
+    migrate(old)
+
+    // NULL means active. An existing install must not wake up with its
+    // projects put away.
+    expect(old.prepare('SELECT name, archived_at FROM projects').get()).toEqual({
+      name: 'API reliability',
+      archived_at: null,
+    })
+    old.close()
+  })
+
+  test('archiving a project keeps the tasks filed under it', () => {
+    const old = atVersion6()
+    migrate(old)
+    insertProject(old, 'p1')
+    old.prepare(
+      'INSERT INTO tasks (id, title, status, priority, project_id, labels, created_at, updated_at)' +
+        " VALUES ('ROS-1', 'x', 'todo', 'medium', 'p1', '[]', 0, 0)",
+    ).run()
+
+    old.prepare("UPDATE projects SET archived_at = 99 WHERE id = 'p1'").run()
+
+    // An archive that lost the work it grouped would be a delete with extra
+    // steps: the row stays, and everything keeps pointing at it.
+    expect(old.prepare('SELECT project_id FROM tasks').get()).toEqual({ project_id: 'p1' })
+    expect(old.prepare('SELECT archived_at FROM projects').get()).toEqual({ archived_at: 99 })
+    old.close()
+  })
+})

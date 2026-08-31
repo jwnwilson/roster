@@ -24,3 +24,18 @@ export function formatCost(costUsd: number): string {
   if (!Number.isFinite(costUsd) || costUsd <= 0) return '$0.00'
   return `$${costUsd.toFixed(2)}`
 }
+
+/** "3 days ago" — how long ago something happened, in plain words. */
+export function relativeTime(ms: number, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - ms) / 1000))
+  if (seconds < 60) return 'just now'
+
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+
+  const days = Math.round(hours / 24)
+  return `${days} day${days === 1 ? '' : 's'} ago`
+}

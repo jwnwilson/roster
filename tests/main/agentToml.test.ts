@@ -66,6 +66,20 @@ describe('parseAgentToml', () => {
     )
     expect(cfg.custom).toEqual({ command: 'gemini', args: ['-p', '{prompt}'] })
   })
+
+  test('defaults hidden to false when agent.toml does not mention it', () => {
+    expect(parseAgentToml('debug', VALID).hidden).toBe(false)
+  })
+
+  test('reads hidden = true', () => {
+    expect(parseAgentToml('debug', `${VALID}hidden = true\n`).hidden).toBe(true)
+  })
+
+  test('rejects a hidden that is not a boolean', () => {
+    const bad = `${VALID}hidden = "yes"\n`
+    expect(() => parseAgentToml('debug', bad)).toThrow(AgentConfigError)
+    expect(() => parseAgentToml('debug', bad)).toThrow(/hidden/)
+  })
 })
 
 describe('serializeAgentToml', () => {
@@ -87,6 +101,11 @@ describe('serializeAgentToml', () => {
 
     const reparsed = parseAgentToml('debug', serializeAgentToml(withNewlines))
     expect(reparsed.systemPrompt).toBe('Line one.\nLine two.\n\nLine four.')
+  })
+
+  test('round-trips hidden through serialize and parse', () => {
+    const cfg = parseAgentToml('debug', `${VALID}hidden = true\n`)
+    expect(parseAgentToml('debug', serializeAgentToml(cfg)).hidden).toBe(true)
   })
 
   test('round-trips a custom runner block', () => {

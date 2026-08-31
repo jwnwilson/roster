@@ -5,7 +5,7 @@ import type { ImportSummary, NotionConnection, NotionInspection, NotionMapping }
 import { taskStatusLabel } from '@shared/tasks'
 import { Field, Modal, Select, TextInput } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
-import { useRoster } from '@/state/store'
+import { activeProjects, useRoster } from '@/state/store'
 
 const NO_PROJECT = 'none'
 const UNMAPPED = 'none'
@@ -21,7 +21,9 @@ const UNMAPPED = 'none'
  */
 export function NotionModal() {
   const close = () => useRoster.getState().setNotionOpen(false)
-  const projects = useRoster(useShallow((s) => s.projects))
+  // Importing into an archived project would file the pages somewhere
+  // the board does not show, so only active ones are offered.
+  const projects = useRoster(useShallow(activeProjects))
 
   const [connections, setConnections] = useState<NotionConnection[]>([])
   const [databaseInput, setDatabaseInput] = useState('')

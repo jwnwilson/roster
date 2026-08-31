@@ -130,10 +130,17 @@ export interface RosterApi {
     disconnect(id: string): Promise<void>
   }
   projects: {
+    /** Every project, archived ones included — the renderer splits them. */
     list(): Promise<Project[]>
     create(input: NewProjectInput): Promise<Project>
     update(id: string, patch: ProjectPatch): Promise<Project>
-    remove(id: string): Promise<void>
+    /**
+     * Puts a project away, or brings it back. Nothing it grouped is lost,
+     * which is why this rather than remove is the everyday verb.
+     */
+    setArchived(id: string, archived: boolean): Promise<Project>
+    /** Resolves false when the confirmation dialog was dismissed. */
+    remove(id: string): Promise<boolean>
   }
   tasks: {
     list(): Promise<Task[]>
@@ -228,6 +235,7 @@ export interface AgentPatch {
   skills?: string[]
   mcpServers?: string[]
   cwd?: string
+  hidden?: boolean
 }
 
 export interface NewAgentInput {
@@ -326,6 +334,7 @@ export const CHANNELS = {
   projectsList: 'projects:list',
   projectsCreate: 'projects:create',
   projectsUpdate: 'projects:update',
+  projectsSetArchived: 'projects:setArchived',
   projectsDelete: 'projects:delete',
 
   tasksList: 'tasks:list',

@@ -192,6 +192,12 @@ interface ToggleChipProps {
   /** Skills use a rounded square dot; MCP servers use a circle. */
   dotShape?: 'square' | 'circle'
   mono?: boolean
+  /**
+   * Overrides the accessible name. Needed when the visible label is the state
+   * itself ("Shown" / "Hidden") rather than what the control acts on, which
+   * would otherwise read as "Shown, pressed".
+   */
+  ariaLabel?: string
 }
 
 export function ToggleChip({
@@ -200,11 +206,13 @@ export function ToggleChip({
   onToggle,
   dotShape = 'square',
   mono = false,
+  ariaLabel,
 }: ToggleChipProps) {
   return (
     <button
       type="button"
       aria-pressed={on}
+      {...(ariaLabel !== undefined ? { 'aria-label': ariaLabel } : {})}
       onClick={onToggle}
       className={`flex cursor-pointer items-center gap-[7px] rounded-[20px] border px-[11px] py-[6px] text-md ${
         on

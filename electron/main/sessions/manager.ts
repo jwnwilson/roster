@@ -490,6 +490,7 @@ export class SessionManager {
       find: (taskId) => tasks.findById(taskId),
       comments: (taskId) => tasks.comments(taskId),
       projectName: (projectId) => projects.findById(projectId)?.name ?? null,
+      isArchivedProject: (projectId) => projects.findById(projectId)?.archivedAt != null,
       agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
       create: (input) =>
         tasks.create({
