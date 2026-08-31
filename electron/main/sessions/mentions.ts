@@ -64,6 +64,8 @@ export class TaskMentions {
     await Promise.all(
       mentioned.map((mention) => {
         const agent = roster.find((candidate) => candidate.id === mention.agentId)
+        // Type-narrowing guard: parseMentions is given roster.map(a => a.id) as its
+        // whitelist, so every mention it returns is found by roster.find().
         return agent ? this.ask(task, agent, text) : Promise.resolve()
       }),
     )
@@ -72,9 +74,50 @@ export class TaskMentions {
   private async ask(task: Task, agent: Agent, comment: string): Promise<void> {
     const session = this.sessions.findByTask(task.id, agent.id) ?? this.open(task, agent)
 
-    // The key leads, so a resumed session knows which task is being asked
-    // about without re-reading the brief.
-    await this.runner.send(session.id, `On ${task.id}: ${comment}`)
+    // What the session held before this turn, so the reply is this turn's
+    // prose and not the answer to the last question.
+    const before = this.sessions.messages(session.id).length
+
+    try {
+      // The key leads, so a resumed session knows which task is being asked
+      // about without re-reading the brief.
+      await this.runner.send(session.id, `On ${task.id}: ${comment}`)
+    } catch (cause) {
+      this.post(task.id, agent, failureFor(agent, cause))
+      return
+    }
+
+    const reply = this.replySince(session.id, before)
+    this.post(
+      task.id,
+      agent,
+      reply === ''
+        ? `Answered in "${session.title}" — nothing to quote here.`
+        : reply,
+    )
+  }
+
+  /**
+   * The agent's prose from this turn, joined.
+   *
+   * Joined rather than reduced to the last message because SessionManager
+   * flushes buffered text in chunks — taking only the final one would post
+   * the last paragraph of an answer and drop the rest. Tool calls are left
+   * out: they are how the answer was reached, not the answer.
+   */
+  private replySince(sessionId: string, before: number): string {
+    return this.sessions
+      .messages(sessionId)
+      .slice(before)
+      .flatMap((message) =>
+        message.kind === 'text' && message.role === 'assistant' ? [message.text.trim()] : [],
+      )
+      .filter((text) => text !== '')
+      .join('\n\n')
+  }
+
+  private post(taskId: string, agent: Agent, text: string): void {
+    this.tasks.comment(taskId, { author: agent.name, tone: 'agent', text })
   }
 
   private open(task: Task, agent: Agent): Session {
@@ -132,4 +175,21 @@ export function briefFor(task: Task, thread: readonly TaskComment[]): string {
 
   lines.push('', 'Answer here. Your reply is posted back to the task.')
   return lines.join('\n')
+}
+
+/** SessionManager's wording for a session that has not finished its turn. */
+const ALREADY_RUNNING = 'this session is already running'
+
+/**
+ * Why an answer did not arrive, as a sentence for the thread.
+ *
+ * An asynchronous failure can no longer reject the IPC call, so this is the
+ * only place it can surface.
+ */
+function failureFor(agent: Agent, cause: unknown): string {
+  const message = cause instanceof Error ? cause.message : String(cause)
+
+  return message === ALREADY_RUNNING
+    ? `${agent.name} is still working on your last question.`
+    : `Couldn't answer — ${message}`
 }
