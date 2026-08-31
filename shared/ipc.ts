@@ -153,7 +153,8 @@ export interface RosterApi {
      * so a renderer cannot log a change as though an agent made it.
      */
     apply(taskId: string, change: TaskChange): Promise<Task>
-    remove(taskId: string): Promise<void>
+    /** Resolves false when the confirmation dialog was dismissed. */
+    remove(taskId: string): Promise<boolean>
     comments(taskId: string): Promise<TaskComment[]>
     comment(taskId: string, text: string): Promise<TaskComment>
     /** Live board changes — including ones an agent made mid-turn. */

@@ -1,7 +1,14 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { Skill } from '@shared/types'
 import { statusColor } from '@shared/status'
-import { GhostButton, PrimaryButton, ScreenHeader, SectionLabel } from '@/components/primitives'
+import {
+  GhostButton,
+  IconButton,
+  PrimaryButton,
+  ScreenHeader,
+  SectionLabel,
+} from '@/components/primitives'
+import { TrashIcon } from '@/components/icons'
 import { useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
 import { relativeTime } from '@/state/format'
@@ -434,51 +441,6 @@ function TreeRowView({
         </IconButton>
       </span>
     </div>
-  )
-}
-
-interface IconButtonProps {
-  label: string
-  onClick: () => void
-  children: React.ReactNode
-  /** Reddens on hover, so a destructive action never looks like the others. */
-  destructive?: boolean
-}
-
-function IconButton({ label, onClick, children, destructive = false }: IconButtonProps) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className={`flex cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-[3px] text-dim hover:bg-[#24262f] ${
-        destructive ? 'hover:text-error' : 'hover:text-ink'
-      }`}
-    >
-      {children}
-    </button>
-  )
-}
-
-function TrashIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path d="M2.75 4.25h10.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-      <path
-        d="M6.25 4.25V3a.75.75 0 0 1 .75-.75h2a.75.75 0 0 1 .75.75v1.25"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M4 4.25 4.6 13a.75.75 0 0 0 .75.7h5.3a.75.75 0 0 0 .75-.7l.6-8.75"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-      <path d="M6.75 6.75v4.5M9.25 6.75v4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    </svg>
   )
 }
 

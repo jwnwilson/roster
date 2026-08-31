@@ -475,7 +475,23 @@ export function registerIpc(): void {
     // change could be logged as though an agent had made it.
     return requireTasks().apply(taskId, change, YOU).task
   })
-  ipcMain.handle(CHANNELS.tasksDelete, (_e, taskId: string) => requireTasks().delete(taskId))
+  ipcMain.handle(CHANNELS.tasksDelete, async (e, taskId: string) => {
+    const task = requireTasks().findById(taskId)
+    if (!task) return false
+
+    // A task has no archive to fall back on the way a project does, and its
+    // comments and history go with it through the foreign key — so this asks
+    // first, as deleting a project or a skill does.
+    const confirmed = await confirmDelete(
+      e,
+      task.title,
+      'Its comments and history go with it. This cannot be undone.',
+    )
+    if (!confirmed) return false
+
+    requireTasks().delete(taskId)
+    return true
+  })
   ipcMain.handle(CHANNELS.tasksComments, (_e, taskId: string) => requireTasks().comments(taskId))
   ipcMain.handle(CHANNELS.tasksComment, (_e, taskId: string, text: string) =>
     requireTasks().comment(taskId, { author: YOU.name, tone: YOU.tone, text }),

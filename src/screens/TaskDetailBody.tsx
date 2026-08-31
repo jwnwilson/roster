@@ -11,13 +11,15 @@ import {
 import { taskPriorityLabel, taskStatusLabel } from '@shared/tasks'
 import type { TaskChange } from '@shared/ipc'
 import { Markdown } from '@/components/Markdown'
-import { SectionLabel, Segmented, Select } from '@/components/primitives'
+import { TrashIcon } from '@/components/icons'
+import { IconButton, SectionLabel, Segmented, Select } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import {
   NO_COMMENTS,
   agentStatus,
   projectOptionLabel,
   projectPickerProjects,
+  reduceTaskEvent,
   useRoster,
   type TaskTab,
 } from '@/state/store'
@@ -100,6 +102,24 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
     }
   }
 
+  async function remove(): Promise<void> {
+    setError(null)
+
+    try {
+      // The confirmation lives in the main process, so a dismissal comes
+      // back as false rather than as a rejection.
+      const deleted = await window.roster.tasks.remove(task.id)
+      if (!deleted) return
+
+      // The same event the broadcast will carry, applied straight away so
+      // the panel stops showing a task that is gone. Applying it twice is
+      // safe, which is what makes the broadcast a no-op when it lands.
+      useRoster.setState((s) => reduceTaskEvent(s, { type: 'task-deleted', taskId: task.id }))
+    } catch (cause) {
+      setError(messageFor(cause))
+    }
+  }
+
   return (
     <div className="flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col gap-[18px] overflow-y-auto px-[22px] py-[20px]">
@@ -174,6 +194,17 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
             onRemove={(value) => void apply({ field: 'removeLabel', value })}
           />
         </Rail>
+
+        {/* Last, and set apart by the rule above it: everything else in the
+            rail is reversible and this is not. Directly under the fields
+            rather than pinned to the floor of the rail — a tall empty panel
+            would otherwise leave it stranded where nobody looks. */}
+        <div className="flex flex-none items-center justify-between border-t border-line pt-[12px]">
+          <SectionLabel>Delete</SectionLabel>
+          <IconButton label={`Delete ${task.id}`} onClick={() => void remove()} destructive>
+            <TrashIcon />
+          </IconButton>
+        </div>
       </aside>
     </div>
   )

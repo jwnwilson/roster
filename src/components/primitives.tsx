@@ -144,6 +144,32 @@ export function GhostButton({ onClick, children }: GhostButtonProps) {
   )
 }
 
+interface IconButtonProps {
+  /** Both the accessible name and the tooltip — an icon has no text of its own. */
+  label: string
+  onClick: () => void
+  children: ReactNode
+  /** Reddens on hover, so a destructive action never looks like the others. */
+  destructive?: boolean
+}
+
+/** A bare glyph that acts on the row or panel it sits in. */
+export function IconButton({ label, onClick, children, destructive = false }: IconButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={`flex cursor-pointer items-center justify-center rounded-[3px] border-0 bg-transparent p-[3px] text-dim hover:bg-[#24262f] ${
+        destructive ? 'hover:text-error' : 'hover:text-ink'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
 interface SegmentedProps<T extends string> {
   options: readonly { value: T; label: string }[]
   value: T
