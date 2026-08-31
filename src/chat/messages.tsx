@@ -55,11 +55,28 @@ interface ToolBodyProps {
   output: string
   isError: boolean
   durationMs?: number
+  /**
+   * The plan this call proposed, when it was an ExitPlanMode.
+   *
+   * The approval banner is the first way to reach a plan and the shortest
+   * lived; this row is the one that is still there tomorrow.
+   */
+  planId?: string
 }
 
-export function ToolBody({ id, tool, args, input, output, isError, durationMs }: ToolBodyProps) {
+export function ToolBody({
+  id,
+  tool,
+  args,
+  input,
+  output,
+  isError,
+  durationMs,
+  planId,
+}: ToolBodyProps) {
   const open = useRoster((s) => s.openTools[id] ?? false)
   const toggleTool = useRoster((s) => s.toggleTool)
+  const openPlan = useRoster((s) => s.openPlan)
   const running = output === '' && !isError
 
   return (
@@ -82,6 +99,18 @@ export function ToolBody({ id, tool, args, input, output, isError, durationMs }:
           {running ? '…' : formatDuration(durationMs)}
         </span>
       </button>
+      {planId === undefined ? null : (
+        <div className="border-t border-line px-[11px] py-[7px]">
+          <button
+            type="button"
+            onClick={() => openPlan(planId)}
+            className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[10px] py-[4px] font-ui text-md text-accent-text hover:border-accent-line"
+            data-hoverable
+          >
+            Review plan
+          </button>
+        </div>
+      )}
       {open ? (
         <div className="border-t border-line bg-well px-[12px] py-[10px]">
           {input === undefined ? null : (

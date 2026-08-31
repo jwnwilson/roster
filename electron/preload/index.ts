@@ -5,6 +5,7 @@ import {
   type PtySize,
   type RosterApi,
   type SessionEventPayload,
+  type PlanEventPayload,
   type TaskEventPayload,
 } from '../../shared/ipc'
 import type { Agent, UpdateState } from '../../shared/types'
@@ -123,6 +124,16 @@ const api: RosterApi = {
     comments: (taskId) => ipcRenderer.invoke(CHANNELS.tasksComments, taskId),
     comment: (taskId, text) => ipcRenderer.invoke(CHANNELS.tasksComment, taskId, text),
     onEvent: (listener) => subscribe<TaskEventPayload>(CHANNELS.tasksEvent, listener),
+  },
+
+  plans: {
+    listBySession: (sessionId: string) => ipcRenderer.invoke(CHANNELS.plansListBySession, sessionId),
+    read: (planId: string) => ipcRenderer.invoke(CHANNELS.plansRead, planId),
+    comments: (planId: string) => ipcRenderer.invoke(CHANNELS.plansComments, planId),
+    submit: (planId: string, text: string, quote?: string) =>
+      ipcRenderer.invoke(CHANNELS.plansSubmit, planId, text, quote),
+    approve: (planId: string) => ipcRenderer.invoke(CHANNELS.plansApprove, planId),
+    onEvent: (listener) => subscribe<PlanEventPayload>(CHANNELS.plansEvent, listener),
   },
 
   update: {

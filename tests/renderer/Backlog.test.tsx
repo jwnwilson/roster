@@ -154,6 +154,22 @@ describe('choosing a backlog task', () => {
   })
 })
 
+describe('deleting from the backlog', () => {
+  test('the panel can delete the task it is showing', async () => {
+    const user = userEvent.setup()
+    const api = installRosterApi()
+    render(<Tasks />)
+    await openBacklog(user)
+
+    await user.click(within(backlog()).getByRole('option', { name: /Budget alerts/ }))
+    await user.click(screen.getByRole('button', { name: 'Delete ROS-10' }))
+
+    // The backlog is where the junk collects, so it needs the same delete
+    // the board's modal has rather than only the modal having one.
+    expect(api.tasks.remove).toHaveBeenCalledWith('ROS-10')
+  })
+})
+
 describe('filtering the backlog', () => {
   test('matches on title', async () => {
     const user = userEvent.setup()

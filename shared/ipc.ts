@@ -4,6 +4,9 @@ import type {
   McpServer,
   Message,
   ModelInfo,
+  Plan,
+  PlanComment,
+  PlanDocument,
   Project,
   RunnerStatus,
   Session,
@@ -150,11 +153,33 @@ export interface RosterApi {
      * so a renderer cannot log a change as though an agent made it.
      */
     apply(taskId: string, change: TaskChange): Promise<Task>
-    remove(taskId: string): Promise<void>
+    /** Resolves false when the confirmation dialog was dismissed. */
+    remove(taskId: string): Promise<boolean>
     comments(taskId: string): Promise<TaskComment[]>
     comment(taskId: string, text: string): Promise<TaskComment>
     /** Live board changes — including ones an agent made mid-turn. */
     onEvent(listener: (event: TaskEventPayload) => void): () => void
+  }
+  plans: {
+    /** Every plan this session has proposed, oldest first. */
+    listBySession(sessionId: string): Promise<Plan[]>
+    /** The plan and the Markdown of its current version. */
+    read(planId: string): Promise<PlanDocument>
+    comments(planId: string): Promise<PlanComment[]>
+    /**
+     * Add a note and send it back to the agent, which revises the plan.
+     *
+     * The actor is decided in the main process, so a renderer cannot file a
+     * note as though an agent had written it.
+     *
+     * `quote` is the passage of the plan the note is about, when you selected
+     * one before writing it.
+     */
+    submit(planId: string, text: string, quote?: string): Promise<Plan>
+    /** Accept it: the agent builds it in a worktree and opens a pull request. */
+    approve(planId: string): Promise<Plan>
+    /** Live plan changes — a revision arriving, or a note from either side. */
+    onEvent(listener: (event: PlanEventPayload) => void): () => void
   }
   update: {
     /** Look for a newer release; the result arrives on onStatus. */
@@ -220,6 +245,16 @@ export type TaskChange =
   | { field: 'description'; value: string }
   | { field: 'addLabel'; value: string }
   | { field: 'removeLabel'; value: string }
+
+/**
+ * What the main process broadcasts when a plan changes.
+ *
+ * Mirrors TaskEventPayload: the store's own event union, republished to every
+ * window so an open plan updates while the agent is still rewriting it.
+ */
+export type PlanEventPayload =
+  | { type: 'plan-updated'; plan: Plan }
+  | { type: 'comment'; planId: string; comment: PlanComment }
 
 export type TaskEventPayload =
   | { type: 'task-created'; task: Task }
@@ -336,6 +371,13 @@ export const CHANNELS = {
   projectsUpdate: 'projects:update',
   projectsSetArchived: 'projects:setArchived',
   projectsDelete: 'projects:delete',
+
+  plansListBySession: 'plans:listBySession',
+  plansRead: 'plans:read',
+  plansComments: 'plans:comments',
+  plansSubmit: 'plans:submit',
+  plansApprove: 'plans:approve',
+  plansEvent: 'plans:event', // broadcast, not invoke
 
   tasksList: 'tasks:list',
   tasksCreate: 'tasks:create',

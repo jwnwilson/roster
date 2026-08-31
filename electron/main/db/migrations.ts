@@ -201,4 +201,55 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE projects ADD COLUMN archived_at INTEGER;
   `,
+
+  // 8 — a plan an agent proposed, kept as a document you can read and answer.
+  //
+  // The body is deliberately not a column: it lives at
+  // ~/roster/plans/<id>/v<N>.md, because a plan is exactly the kind of thing
+  // this app keeps as a file you own — greppable, diffable, and still there
+  // when Roster is not running. The row holds only what has to be queryable:
+  // which session made it, how far it got, and the pull request it ended in.
+  //
+  // Both tables hang off the session, so a session that goes takes its plans
+  // and their threads with it. A plan about a conversation that no longer
+  // exists is not a document, it is a leak.
+  `
+  CREATE TABLE plans (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+    agent_id   TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    status     TEXT NOT NULL CHECK (status IN ('draft', 'revising', 'building', 'in_review')),
+    version    INTEGER NOT NULL,
+    branch     TEXT,
+    pr_url     TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX ix_plans_session ON plans (session_id, created_at);
+
+  CREATE TABLE plan_comments (
+    id         TEXT PRIMARY KEY,
+    plan_id    TEXT NOT NULL REFERENCES plans (id) ON DELETE CASCADE,
+    author     TEXT NOT NULL,
+    tone       TEXT NOT NULL CHECK (tone IN ('you', 'agent')),
+    text       TEXT NOT NULL,
+    version    INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX ix_plan_comments_plan ON plan_comments (plan_id, created_at);
+  `,
+
+  // 9 — a note can point at the passage it is about.
+  //
+  // The passage is stored as the text itself rather than as an offset or a
+  // line number. The agent rewrites the plan between versions, which is the
+  // entire point of the review loop, and any positional anchor would be
+  // pointing at the wrong words by the time it was read. A quotation still
+  // means what it meant. NULL is a note about the plan as a whole.
+  `
+  ALTER TABLE plan_comments ADD COLUMN quote TEXT;
+  `,
 ]

@@ -379,6 +379,62 @@ describe('TaskDetailModal — closing', () => {
   })
 })
 
+describe('TaskDetailModal — deleting', () => {
+  test('offers a delete control on the task that is open', async () => {
+    render(<TaskDetailModal />)
+
+    expect(await screen.findByRole('button', { name: 'Delete ROS-101' })).toBeInTheDocument()
+  })
+
+  test('asks the main process to remove the task', async () => {
+    const user = userEvent.setup()
+    const api = installRosterApi()
+    render(<TaskDetailModal />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete ROS-101' }))
+
+    expect(api.tasks.remove).toHaveBeenCalledWith('ROS-101')
+  })
+
+  test('drops the task and closes the modal once it is gone', async () => {
+    const user = userEvent.setup()
+    installRosterApi({ tasks: { remove: vi.fn().mockResolvedValue(true) } })
+    render(<TaskDetailModal />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete ROS-101' }))
+
+    await waitFor(() => expect(useRoster.getState().openTaskId).toBeNull())
+    expect(useRoster.getState().tasks).toEqual([])
+  })
+
+  test('keeps the task when the confirmation is dismissed', async () => {
+    const user = userEvent.setup()
+    // The dialog lives in the main process, so a cancel comes back as false
+    // rather than as a rejection.
+    installRosterApi({ tasks: { remove: vi.fn().mockResolvedValue(false) } })
+    render(<TaskDetailModal />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete ROS-101' }))
+
+    await waitFor(() => expect(useRoster.getState().openTaskId).toBe('ROS-101'))
+    expect(useRoster.getState().tasks).toHaveLength(1)
+  })
+
+  test('surfaces the reason a task could not be deleted', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      tasks: { remove: vi.fn().mockRejectedValue(new Error('database is locked')) },
+    })
+    render(<TaskDetailModal />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete ROS-101' }))
+
+    expect(await screen.findByText(/database is locked/)).toBeInTheDocument()
+    // The modal stays put, or the message would vanish with it.
+    expect(useRoster.getState().openTaskId).toBe('ROS-101')
+  })
+})
+
 describe('TaskDetailModal — archived projects', () => {
   const PUT_AWAY = aProject({ id: 'p2', name: 'Q3 planning', archivedAt: 1_700_000_500_000 })
 

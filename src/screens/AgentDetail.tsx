@@ -1,10 +1,12 @@
 import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
+import { EXIT_PLAN_MODE } from '@shared/plans'
 import { statusColor } from '@shared/status'
 import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
+import { PlanModal } from './PlanModal'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
 import {
@@ -66,6 +68,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const setUsage = useRoster((s) => s.setUsage)
   const selectSession = useRoster((s) => s.selectSession)
   const editOpen = useRoster((s) => s.editOpen)
+  const openPlanId = useRoster((s) => s.openPlanId)
   const status = useRoster((s) => agentStatus(s, agent))
 
   // Sessions come from SQLite, not from the agent config, so they load per
@@ -208,6 +211,8 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
       </div>
 
       {editOpen ? <EditAgentModal agent={agent} /> : null}
+      {/* Plans belong to a session, so this is where they are read. */}
+      {openPlanId === null ? null : <PlanModal />}
     </div>
   )
 }
@@ -271,12 +276,11 @@ interface ApprovalBannerProps {
   approval: Approval
 }
 
-/** The tool an agent calls to present its plan and leave plan mode. */
-const EXIT_PLAN_MODE = 'ExitPlanMode'
-
 function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
   const setPlanMode = useRoster((s) => s.setPlanMode)
+  const openPlan = useRoster((s) => s.openPlan)
   const isPlan = approval.toolName === EXIT_PLAN_MODE
+  const planId = approval.planId
 
   function respond(approved: boolean): void {
     void window.roster.sessions.respondToApproval(sessionId, approval.id, approved)
@@ -301,6 +305,16 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
         )}
       </p>
       <div className="ml-auto flex gap-[7px]">
+        {planId === undefined ? null : (
+          <button
+            type="button"
+            onClick={() => openPlan(planId)}
+            className="cursor-pointer rounded-chip border border-amber-line bg-transparent px-[11px] py-[4px] font-ui text-md text-amber-text hover:border-amber"
+            data-hoverable
+          >
+            Review plan
+          </button>
+        )}
         <button
           type="button"
           onClick={() => respond(false)}

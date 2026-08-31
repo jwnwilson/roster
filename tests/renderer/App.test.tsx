@@ -1,11 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { SessionEventPayload } from '@shared/ipc'
+import type { PlanEventPayload, SessionEventPayload } from '@shared/ipc'
 import type { UpdateState } from '@shared/types'
 import { App } from '@/App'
 import { useRoster } from '@/state/store'
-import { anAgent, aRunner, aSkill, anMcpServer } from './factories'
+import { anAgent, aPlan, aRunner, aSkill, anMcpServer } from './factories'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
@@ -119,12 +119,34 @@ describe('App — live subscriptions', () => {
     await waitFor(() => expect(useRoster.getState().streaming['s1']).toBe(true))
   })
 
+  test('applies a plan an agent revised while you were reading it', async () => {
+    let push: ((event: PlanEventPayload) => void) | undefined
+    loadedApi({
+      plans: {
+        onEvent: vi.fn((listener: (event: PlanEventPayload) => void) => {
+          push = listener
+          return () => {}
+        }),
+      },
+    })
+    const plan = aPlan({ version: 2 })
+    render(<App />)
+    await screen.findByText(/configured/)
+    useRoster.setState({ plans: { 'plan-1': { plan: aPlan(), body: '# v1' } } })
+
+    act(() => push?.({ type: 'plan-updated', plan }))
+
+    await waitFor(() => expect(useRoster.getState().plans['plan-1']?.plan.version).toBe(2))
+  })
+
   test('unsubscribes on unmount, so a closed window stops receiving events', async () => {
     const stopAgents = vi.fn()
     const stopSessions = vi.fn()
+    const stopPlans = vi.fn()
     loadedApi({
       agents: { list: vi.fn().mockResolvedValue(AGENTS), onChanged: vi.fn(() => stopAgents) },
       sessions: { onEvent: vi.fn(() => stopSessions) },
+      plans: { onEvent: vi.fn(() => stopPlans) },
     })
 
     const { unmount } = render(<App />)
@@ -133,6 +155,7 @@ describe('App — live subscriptions', () => {
 
     expect(stopAgents).toHaveBeenCalled()
     expect(stopSessions).toHaveBeenCalled()
+    expect(stopPlans).toHaveBeenCalled()
   })
 })
 

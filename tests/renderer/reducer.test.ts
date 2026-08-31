@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import type { Approval, Message, Usage } from '@shared/types'
-import { reduceSessionEvent, useRoster } from '@/state/store'
+import type { Approval, Message, Plan, PlanComment, Usage } from '@shared/types'
+import { reducePlanEvent, reduceSessionEvent, useRoster } from '@/state/store'
 import { aSession } from './factories'
 
 const INITIAL = useRoster.getState()
@@ -333,5 +333,116 @@ describe('reduceSessionEvent — activity', () => {
     })
 
     expect(next.activity?.['other']).toBe('Reading …')
+  })
+})
+
+describe('reducePlanEvent', () => {
+  const PLAN: Plan = {
+    id: 'p1',
+    sessionId: 's1',
+    agentId: 'debugging',
+    title: 'Archive projects',
+    status: 'draft',
+    version: 1,
+    createdAt: 0,
+    updatedAt: 0,
+  }
+
+  function aNote(id: string, text: string): PlanComment {
+    return {
+      id,
+      planId: 'p1',
+      author: 'You',
+      tone: 'you',
+      text,
+      version: 1,
+      createdAt: 0,
+    }
+  }
+
+  function apply(event: Parameters<typeof reducePlanEvent>[1]): void {
+    useRoster.setState((s) => reducePlanEvent(s, event))
+  }
+
+  test('a revision replaces the plan on an open document', () => {
+    useRoster.setState({ plans: { p1: { plan: PLAN, body: '# v1' } } })
+
+    apply({ type: 'plan-updated', plan: { ...PLAN, version: 2, status: 'draft' } })
+
+    expect(state().plans['p1']?.plan.version).toBe(2)
+  })
+
+  test('the body is left alone, since only the store has the new one', () => {
+    useRoster.setState({ plans: { p1: { plan: PLAN, body: '# v1' } } })
+
+    apply({ type: 'plan-updated', plan: { ...PLAN, version: 2 } })
+
+    // The modal re-reads it; guessing here would show v1 under a v2 heading.
+    expect(state().plans['p1']?.body).toBe('# v1')
+  })
+
+  test('a plan nobody has open is ignored', () => {
+    apply({ type: 'plan-updated', plan: PLAN })
+
+    expect(state().plans['p1']).toBeUndefined()
+  })
+
+  test('a note appends to a thread that is open', () => {
+    useRoster.setState({ planComments: { p1: [aNote('c1', 'first')] } })
+
+    apply({ type: 'comment', planId: 'p1', comment: aNote('c2', 'second') })
+
+    expect(state().planComments['p1']?.map((c) => c.text)).toEqual(['first', 'second'])
+  })
+
+  test('the same note twice appends once', () => {
+    useRoster.setState({ planComments: { p1: [aNote('c1', 'first')] } })
+
+    // It arrives from the call that wrote it and from the broadcast.
+    apply({ type: 'comment', planId: 'p1', comment: aNote('c1', 'first') })
+
+    expect(state().planComments['p1']).toHaveLength(1)
+  })
+
+  test('a note on a thread that was never opened is ignored', () => {
+    apply({ type: 'comment', planId: 'p1', comment: aNote('c1', 'first') })
+
+    // It will be read in full when the plan is opened.
+    expect(state().planComments['p1']).toBeUndefined()
+  })
+})
+
+describe('opening and closing a plan', () => {
+  test('opening one names it', () => {
+    useRoster.getState().openPlan('p1')
+
+    expect(state().openPlanId).toBe('p1')
+  })
+
+  test('closing it lets go', () => {
+    useRoster.getState().openPlan('p1')
+    useRoster.getState().closePlan()
+
+    expect(state().openPlanId).toBeNull()
+  })
+
+  test('a document read over IPC is kept for the modal', () => {
+    const document = {
+      plan: {
+        id: 'p1',
+        sessionId: 's1',
+        agentId: 'debugging',
+        title: 'Archive projects',
+        status: 'draft' as const,
+        version: 1,
+        createdAt: 0,
+        updatedAt: 0,
+      },
+      body: '# Archive projects',
+    }
+
+    useRoster.getState().setPlan(document)
+
+    expect(state().plans['p1']).toEqual(document)
   })
 })

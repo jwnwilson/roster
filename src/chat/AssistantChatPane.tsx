@@ -124,6 +124,9 @@ function RosterMessage() {
   const toolInput = useAuiState(
     (s) => (s.message.metadata?.custom as { input?: string } | undefined)?.input,
   )
+  const planId = useAuiState(
+    (s) => (s.message.metadata?.custom as { planId?: string } | undefined)?.planId,
+  )
 
   return (
     <MessagePrimitive.Root className="flex max-w-[720px] flex-col gap-[7px]">
@@ -145,6 +148,7 @@ function RosterMessage() {
                   isError={part.isError === true}
                   {...(toolInput !== undefined ? { input: toolInput } : {})}
                   {...(durationMs !== undefined ? { durationMs } : {})}
+                  {...(planId !== undefined ? { planId } : {})}
                 />
               )
             // A `data-<name>` part surfaces here as type "data" with the

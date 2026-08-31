@@ -141,6 +141,14 @@ export interface ToolMessage extends BaseMessage {
   isError: boolean
   /** Milliseconds; formatted as "1.2s" at render time. */
   durationMs?: number
+  /**
+   * The plan this call proposed, when it was an ExitPlanMode.
+   *
+   * Stored on the message rather than looked up, so the transcript can still
+   * offer the plan long after the approval banner has gone and after a
+   * reload. Messages are persisted as JSON, so this costs no migration.
+   */
+  planId?: string
 }
 
 export interface SpawnMessage extends BaseMessage {
@@ -180,6 +188,8 @@ export interface Approval {
    * the transcript rather than allowed or denied in the banner.
    */
   questions?: Question[]
+  /** Set when the tool was ExitPlanMode: the plan it proposed, already captured. */
+  planId?: string
   status: 'pending' | 'approved' | 'denied'
   createdAt: number
   decidedAt?: number
@@ -389,3 +399,68 @@ export type UpdateState =
   | { status: 'downloading'; version: string; percent: number }
   | { status: 'ready'; version: string; path: string }
   | { status: 'error'; message: string }
+
+/* -------------------------------------------------------------------------
+ * Plans — what an agent proposes in plan mode, kept as a document rather
+ * than as one line of a transcript.
+ *
+ * The body is not here. It lives at ~/roster/plans/<id>/v<N>.md, one file per
+ * version, because a plan is something you read, keep and answer, and this
+ * app's posture is that state like that is a file you own.
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Where a plan has got to.
+ *
+ * `draft` is the only state that is waiting on you; the other three are
+ * waiting on the agent.
+ */
+export type PlanStatus = 'draft' | 'revising' | 'building' | 'in_review'
+
+export interface Plan {
+  id: string
+  /** The session that proposed it — the same one that revises and builds it. */
+  sessionId: string
+  agentId: string
+  /** The plan's opening heading, as the approval banner already shows it. */
+  title: string
+  status: PlanStatus
+  /** Bumped each time the agent rewrites it; the current file is v<version>.md. */
+  version: number
+  /** The branch the agent was told to build on. Set when it is approved. */
+  branch?: string
+  /** Reported by the agent once it has opened the pull request. */
+  prUrl?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** A plan and the Markdown of its current version. */
+export interface PlanDocument {
+  plan: Plan
+  body: string
+}
+
+/**
+ * One note on a plan. Mirrors TaskComment deliberately — the same columns and
+ * the same tones, so a thread reads the same on a plan as it does on a task.
+ */
+export interface PlanComment {
+  id: string
+  planId: string
+  author: string
+  tone: 'you' | 'agent'
+  text: string
+  /**
+   * The passage of the plan this note is about, quoted.
+   *
+   * A quotation rather than a line number or an offset: the agent rewrites
+   * the plan between versions, so any positional anchor would point at the
+   * wrong words by the time it was read. Absent means the note is about the
+   * plan as a whole.
+   */
+  quote?: string
+  /** The version it was written against, so it keeps its meaning after a rewrite. */
+  version: number
+  createdAt: number
+}
