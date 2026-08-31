@@ -67,6 +67,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const setSessions = useRoster((s) => s.setSessions)
   const setMessages = useRoster((s) => s.setMessages)
   const setUsage = useRoster((s) => s.setUsage)
+  const setApprovals = useRoster((s) => s.setApprovals)
   const selectSession = useRoster((s) => s.selectSession)
   const editOpen = useRoster((s) => s.editOpen)
   const openPlanId = useRoster((s) => s.openPlanId)
@@ -95,11 +96,22 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
     void window.roster.sessions.usage(activeId).then((loaded) => {
       if (!cancelled && loaded) setUsage(activeId, loaded)
     })
+    // An approval lives in the main process for as long as the agent is
+    // blocked on it. Without this, reloading the window loses the question
+    // while the agent is still waiting for its answer.
+    void window.roster.sessions.pendingApprovals(activeId).then((loaded) => {
+      if (cancelled || loaded.length === 0) return
+      // Only when this window knows of none. While it is open the live events
+      // are the truth, and a reply that arrived during this round trip would
+      // otherwise be replaced by the answer to a question already gone.
+      if ((useRoster.getState().approvals[activeId] ?? []).length > 0) return
+      setApprovals(activeId, loaded)
+    })
 
     return () => {
       cancelled = true
     }
-  }, [activeId, setMessages, setUsage])
+  }, [activeId, setMessages, setUsage, setApprovals])
 
   // Opening an agent from the sidebar or a card body names no session, which
   // used to leave the tab strip full and the pane empty. The newest is the
@@ -112,14 +124,16 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   }, [activeId, sessions, agent.id, selectSession])
 
   const active = sessions.find((s) => s.id === activeId) ?? null
-  const pending = approvals[0] ?? null
-  // A question is answered in the transcript, so the banner would be a second
-  // control over the same approval — and its Approve means "did not answer".
-  const asking = pending?.questions ?? null
+  // Split rather than "whichever came first": a question is answered in the
+  // transcript and a command in the banner, so an agent blocked on both needs
+  // both, and a question queued behind a command must not go unasked.
+  const questioning = approvals.find((approval) => approval.questions !== undefined) ?? null
+  const pending = approvals.find((approval) => approval.questions === undefined) ?? null
+  const asking = questioning?.questions ?? null
 
   function respondToQuestion(answers: Record<string, string>): void {
-    if (!pending || !activeId) return
-    void window.roster.sessions.respondToApproval(activeId, pending.id, true, answers)
+    if (!questioning || !activeId) return
+    void window.roster.sessions.respondToApproval(activeId, questioning.id, true, answers)
   }
 
   async function newSession(): Promise<void> {
@@ -171,9 +185,9 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
         onNew={() => void newSession()}
       />
 
-      {pending && activeId && asking === null ? (
-        <ApprovalBanner sessionId={activeId} approval={pending} />
-      ) : null}
+      {/* The banner is for commands only; a question is answered where it was
+          asked. With both pending, both are shown. */}
+      {pending && activeId ? <ApprovalBanner sessionId={activeId} approval={pending} /> : null}
 
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
@@ -187,7 +201,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               isStreaming={streaming}
               streamingText={activity ?? `${agent.name} is working…`}
               skillsLine={`skills: ${agent.skills.join(', ') || 'none'}`}
-              {...(asking !== null && pending?.sessionId === active.id
+              {...(asking !== null && questioning?.sessionId === active.id
                 ? { questions: asking }
                 : {})}
               onAnswer={respondToQuestion}

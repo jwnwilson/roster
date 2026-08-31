@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { AgentDetail } from '@/screens/AgentDetail'
@@ -185,6 +185,60 @@ describe('AgentDetail — answering a question', () => {
     // Approve/Deny is the wrong shape for a question — approving without an
     // answer only tells the agent nobody replied.
     expect(screen.queryByText(/Waiting on you/)).not.toBeInTheDocument()
+  })
+
+  test('a question still waiting is found again after a reload', async () => {
+    // The store is empty on a fresh window, but the agent is still blocked
+    // on the question. Nothing used to ask the main process for it, so the
+    // turn simply looked dead.
+    useRoster.setState({ approvals: {} })
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([aSession({ id: 's1', status: 'approval' })]),
+        pendingApprovals: vi.fn().mockResolvedValue([ASKING]),
+      },
+    })
+
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: /Redis/ })).toBeInTheDocument()
+  })
+
+  test('a question waiting behind another approval is still asked', async () => {
+    const command = {
+      id: 'a0',
+      sessionId: 's1',
+      toolName: 'Bash',
+      command: 'git push',
+      status: 'pending' as const,
+      createdAt: 0,
+    }
+    useRoster.setState({ approvals: { s1: [command, ASKING] } })
+
+    render(<AgentDetail />)
+
+    // Only approvals[0] used to be read, so a question queued behind a
+    // command was never put to the user at all.
+    expect(await screen.findByRole('button', { name: /Redis/ })).toBeInTheDocument()
+    expect(screen.getByText(/Waiting on you/)).toBeInTheDocument()
+  })
+
+  test('the banner answers the command, not the question', async () => {
+    const command = {
+      id: 'a0',
+      sessionId: 's1',
+      toolName: 'Bash',
+      command: 'git push',
+      status: 'pending' as const,
+      createdAt: 0,
+    }
+    useRoster.setState({ approvals: { s1: [command, ASKING] } })
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Approve' }))
+
+    expect(window.roster.sessions.respondToApproval).toHaveBeenCalledWith('s1', 'a0', true)
   })
 
   test('clicking an option answers the pending approval', async () => {
@@ -548,6 +602,104 @@ describe('AgentDetail — filing a session under a project', () => {
     await waitFor(() =>
       expect(window.roster.sessions.setProject).toHaveBeenCalledWith('s1', null),
     )
+  })
+})
+
+describe('AgentDetail — finding a question again', () => {
+  const QUESTIONS = [
+    {
+      question: 'Which cache backend?',
+      header: 'Cache',
+      multiSelect: false,
+      options: [
+        { label: 'Redis', description: 'Distributed' },
+        { label: 'None', description: 'Skip it' },
+      ],
+    },
+  ]
+
+  const ASKING = {
+    id: 'a1',
+    sessionId: 's1',
+    toolName: 'AskUserQuestion',
+    command: 'Which cache backend?',
+    questions: QUESTIONS,
+    status: 'pending' as const,
+    createdAt: 0,
+  }
+
+  /** The row the question left in the transcript when it was asked. */
+  const ASKED_ROW = {
+    id: 'm1',
+    sessionId: 's1',
+    kind: 'tool' as const,
+    tool: 'AskUserQuestion',
+    args: 'Which cache backend?',
+    input: JSON.stringify({ questions: QUESTIONS }),
+    output: '',
+    isError: false,
+    createdAt: 0,
+  }
+
+  beforeEach(() => {
+    withSessions([aSession({ id: 's1', status: 'approval' })])
+    useRoster.setState({ messages: { s1: [ASKED_ROW] } })
+  })
+
+  test('the row it left offers to bring the question back', async () => {
+    useRoster.setState({ approvals: { s1: [ASKING] } })
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: 'Show question' })).toBeInTheDocument()
+  })
+
+  test('clicking it scrolls the question into view', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView')
+    useRoster.setState({ approvals: { s1: [ASKING] } })
+    render(<AgentDetail />)
+
+    // fireEvent rather than userEvent: assistant-ui re-renders the row
+    // between userEvent's pointerdown and its click, so the click lands on a
+    // node that is no longer there.
+    fireEvent.click(await screen.findByRole('button', { name: 'Show question' }))
+
+    // The card sits below a transcript that may be long; the whole point is
+    // getting back to it without hunting.
+    expect(scrollIntoView).toHaveBeenCalled()
+    scrollIntoView.mockRestore()
+  })
+
+  test('offers nothing once the question has been answered', async () => {
+    // The agent has already been told; there is nothing left to answer.
+    useRoster.setState({ approvals: { s1: [] } })
+    render(<AgentDetail />)
+
+    await screen.findByText('AskUserQuestion')
+    expect(screen.queryByRole('button', { name: 'Show question' })).not.toBeInTheDocument()
+  })
+
+  test('offers nothing on a row that never asked anything', async () => {
+    useRoster.setState({
+      approvals: { s1: [ASKING] },
+      messages: {
+        s1: [
+          {
+            id: 'm2',
+            sessionId: 's1',
+            kind: 'tool' as const,
+            tool: 'Bash',
+            args: 'git push',
+            output: 'done',
+            isError: false,
+            createdAt: 0,
+          },
+        ],
+      },
+    })
+    render(<AgentDetail />)
+
+    await screen.findByText('Bash')
+    expect(screen.queryByRole('button', { name: 'Show question' })).not.toBeInTheDocument()
   })
 })
 

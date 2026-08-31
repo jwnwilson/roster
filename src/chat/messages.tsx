@@ -62,6 +62,14 @@ interface ToolBodyProps {
    * lived; this row is the one that is still there tomorrow.
    */
   planId?: string
+  /**
+   * Brings the question this row asked back into view.
+   *
+   * Only given while that question is still unanswered: once the agent has
+   * been told, there is nothing left to answer and offering it would be a
+   * button that does nothing.
+   */
+  onShowQuestion?: () => void
 }
 
 export function ToolBody({
@@ -73,6 +81,7 @@ export function ToolBody({
   isError,
   durationMs,
   planId,
+  onShowQuestion,
 }: ToolBodyProps) {
   const open = useRoster((s) => s.openTools[id] ?? false)
   const toggleTool = useRoster((s) => s.toggleTool)
@@ -99,6 +108,18 @@ export function ToolBody({
           {running ? '…' : formatDuration(durationMs)}
         </span>
       </button>
+      {onShowQuestion === undefined ? null : (
+        <div className="border-t border-line px-[11px] py-[7px]">
+          <button
+            type="button"
+            onClick={onShowQuestion}
+            className="cursor-pointer rounded-chip border border-accent-line bg-accent-surface px-[10px] py-[4px] font-ui text-md text-accent-text hover:border-accent"
+            data-hoverable
+          >
+            Show question
+          </button>
+        </div>
+      )}
       {planId === undefined ? null : (
         <div className="border-t border-line px-[11px] py-[7px]">
           <button
