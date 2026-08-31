@@ -195,6 +195,34 @@ describe('TaskMentions.dispatch — when it should do nothing', () => {
   })
 })
 
+describe('TaskMentions.dispatch — nothing escapes it', () => {
+  test('resolves when the task lookup itself throws', async () => {
+    // The call site is a bare `void dispatch(...)` and this app installs no
+    // process-level unhandledRejection guard, so a throw anywhere in here —
+    // including before the first await — has to stay in here.
+    vi.spyOn(tasks, 'findById').mockImplementation(() => {
+      throw new Error('database disk image is malformed')
+    })
+
+    await expect(mentions.dispatch('ROS-1', '@tech-lead why?')).resolves.toBeUndefined()
+  })
+
+  test('resolves when reading the roster throws', async () => {
+    const id = aTask()
+    const exploding = new TaskMentions(
+      () => {
+        throw new Error('agents directory vanished')
+      },
+      sessions,
+      tasks,
+      { send: send as unknown as (s: string, p: string) => Promise<void> },
+    )
+
+    await expect(exploding.dispatch(id, '@tech-lead why?')).resolves.toBeUndefined()
+    expect(send).not.toHaveBeenCalled()
+  })
+})
+
 describe('TaskMentions.briefFor', () => {
   test('leaves History lines out of the briefing', async () => {
     const id = aTask()

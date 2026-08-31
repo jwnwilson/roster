@@ -51,22 +51,35 @@ export class TaskMentions {
    * wait for an agent to think. Tests await it.
    */
   async dispatch(taskId: string, text: string): Promise<void> {
-    const task = this.tasks.findById(taskId)
+    let task: Task | null
+    let roster: Agent[]
+
+    // Contained like everything below it. Reading the task and the roster
+    // are the two steps with no agent to attribute a failure to and no
+    // confidence the store could accept one — so there is nowhere to report,
+    // and the only thing left to get right is not rejecting.
+    try {
+      task = this.tasks.findById(taskId)
+      roster = this.roster()
+    } catch {
+      return
+    }
+
     if (!task) return
 
-    const roster = this.roster()
     const mentioned = parseMentions(
       text,
       roster.map((agent) => agent.id),
     )
     if (mentioned.length === 0) return
 
+    const found = task
     await Promise.all(
       mentioned.map((mention) => {
         const agent = roster.find((candidate) => candidate.id === mention.agentId)
         // Type-narrowing guard: parseMentions is given roster.map(a => a.id) as its
         // whitelist, so every mention it returns is found by roster.find().
-        return agent ? this.ask(task, agent, text) : Promise.resolve()
+        return agent ? this.ask(found, agent, text) : Promise.resolve()
       }),
     )
   }
