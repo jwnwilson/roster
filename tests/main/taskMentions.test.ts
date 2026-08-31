@@ -520,11 +520,29 @@ describe('TaskMentions.dispatch — what the agent is actually sent', () => {
 
   test('does not repeat the triggering comment inside the thread it quotes', async () => {
     const id = aTask()
+    // The order production uses: the IPC handler writes the comment, then
+    // dispatches — so by the time the brief is built the trigger is already
+    // the last entry in the thread. Without that write this only exercises
+    // the branch where there is nothing to trim.
+    tasks.comment(id, { author: 'You', tone: 'you', text: '@tech-lead only once please' })
 
     await mentions.dispatch(id, '@tech-lead only once please')
 
     const occurrences = promptSent().split('only once please').length - 1
     expect(occurrences).toBe(1)
+  })
+
+  test('keeps an earlier comment that happens to read the same', async () => {
+    const id = aTask()
+    tasks.comment(id, { author: 'You', tone: 'you', text: '@tech-lead ping' })
+    tasks.comment(id, { author: 'You', tone: 'you', text: '@tech-lead ping' })
+
+    await mentions.dispatch(id, '@tech-lead ping')
+
+    // Only the last entry is the trigger. Matching on text alone would eat
+    // the earlier one too and quietly drop real history.
+    const occurrences = promptSent().split('@tech-lead ping').length - 1
+    expect(occurrences).toBe(2)
   })
 
   test('marks quoted task content as quoted, since agents can write it', async () => {
