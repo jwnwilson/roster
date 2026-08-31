@@ -364,3 +364,43 @@ describe('archiving a project takes its sessions off the grid', () => {
     expect(sessionsInProject(sessions, ALL_PROJECTS)).toBe(sessions)
   })
 })
+
+describe('reduceTaskEvent — sessions attached to a task', () => {
+  const LINK = {
+    taskId: 'ROS-1',
+    agentId: 'tech-lead',
+    sessionId: 'session-1',
+    createdAt: 1_700_000_000_000,
+  }
+
+  test('adds an attachment to a task whose panel is open', () => {
+    useRoster.setState({ taskSessions: { 'ROS-1': [] } })
+
+    useRoster.getState().applyTaskEvent({ type: 'task-session', taskId: 'ROS-1', link: LINK })
+
+    expect(useRoster.getState().taskSessions['ROS-1']).toEqual([LINK])
+  })
+
+  test('applying the same attachment twice changes nothing', () => {
+    useRoster.setState({ taskSessions: { 'ROS-1': [LINK] } })
+
+    useRoster.getState().applyTaskEvent({ type: 'task-session', taskId: 'ROS-1', link: LINK })
+
+    expect(useRoster.getState().taskSessions['ROS-1']).toEqual([LINK])
+  })
+
+  test('ignores a task whose panel was never opened', () => {
+    // Nothing to append to — the list is read in full when it is opened.
+    useRoster.getState().applyTaskEvent({ type: 'task-session', taskId: 'ROS-9', link: LINK })
+
+    expect(useRoster.getState().taskSessions['ROS-9']).toBeUndefined()
+  })
+
+  test("forgets a deleted task's attachments", () => {
+    useRoster.setState({ tasks: [], taskSessions: { 'ROS-1': [LINK] } })
+
+    useRoster.getState().applyTaskEvent({ type: 'task-deleted', taskId: 'ROS-1' })
+
+    expect(useRoster.getState().taskSessions['ROS-1']).toBeUndefined()
+  })
+})

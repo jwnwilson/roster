@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { EXIT_PLAN_MODE } from '@shared/plans'
 import { statusColor } from '@shared/status'
+import { taskStatusColor } from '@shared/tasks'
 import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
@@ -428,8 +429,69 @@ function ConfigRail({ agent }: { agent: Agent }) {
         )}
       </section>
 
+      <SessionTask />
       <SessionCard />
     </aside>
+  )
+}
+
+/**
+ * The task this session was opened to answer.
+ *
+ * The mirror of the Sessions row on a task's own rail: from there you reach
+ * the transcript, from here you get back to the work. Absent for a session
+ * nobody opened from a task — and absent again once that task is deleted,
+ * since the column carrying this is set to null rather than cascading, so a
+ * transcript outlives the task but stops claiming to belong to it.
+ *
+ * Above the Session card deliberately: what the session is about reads
+ * before what it has cost.
+ */
+function SessionTask() {
+  const agentId = useRoster((s) => s.agentId)
+  const activeId = useRoster((s) => (agentId ? s.sess[agentId] : undefined))
+  const taskId = useRoster(
+    (s) =>
+      (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
+        (session) => session.id === activeId,
+      )?.taskId ?? null,
+  )
+  // The key comes off the session, so the link works whether or not the
+  // board has been read; only the title is the part that can be missing.
+  const task = useRoster((s) => s.tasks.find((candidate) => candidate.id === taskId) ?? null)
+  const go = useRoster((s) => s.go)
+  const openTask = useRoster((s) => s.openTask)
+
+  if (taskId === null) return null
+
+  return (
+    <section className="flex flex-col gap-[9px]">
+      <SectionLabel>Task</SectionLabel>
+      <button
+        type="button"
+        aria-label={`Open ${taskId}`}
+        // The task first, so the board is already showing it when the screen
+        // changes rather than for one frame showing no modal at all.
+        onClick={() => {
+          openTask(taskId)
+          go('tasks')
+        }}
+        className="flex cursor-pointer flex-col gap-[5px] rounded-field border border-line bg-card p-[11px] text-left hover:border-line-hover-strong"
+        data-hoverable
+      >
+        <div className="flex items-center gap-[7px]">
+          <span
+            aria-hidden
+            className="h-[6px] w-[6px] flex-none rounded-full"
+            style={{
+              background: task ? taskStatusColor(task.status) : 'var(--color-muted-2)',
+            }}
+          />
+          <span className="font-mono text-base text-dim">{taskId}</span>
+        </div>
+        {task ? <span className="text-md leading-[1.45] text-ink-2">{task.title}</span> : null}
+      </button>
+    </section>
   )
 }
 

@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { PlanEventPayload, SessionEventPayload } from '@shared/ipc'
+import type { PlanEventPayload, SessionEventPayload, TaskEventPayload } from '@shared/ipc'
 import type { UpdateState } from '@shared/types'
 import { App } from '@/App'
 import { useRoster } from '@/state/store'
@@ -137,6 +137,42 @@ describe('App — live subscriptions', () => {
     act(() => push?.({ type: 'plan-updated', plan }))
 
     await waitFor(() => expect(useRoster.getState().plans['plan-1']?.plan.version).toBe(2))
+  })
+
+  test('re-reads the roster when a mention opens a session', async () => {
+    let pushTask: ((event: TaskEventPayload) => void) | undefined
+    const api = loadedApi({
+      tasks: {
+        onEvent: vi.fn((listener: (event: TaskEventPayload) => void) => {
+          pushTask = listener
+          return () => {}
+        }),
+      },
+    })
+    render(<App />)
+    await screen.findByText(/configured/)
+    const before = (api.sessions.listAll as ReturnType<typeof vi.fn>).mock.calls.length
+
+    act(() =>
+      pushTask?.({
+        type: 'task-session',
+        taskId: 'ROS-1',
+        link: {
+          taskId: 'ROS-1',
+          agentId: 'debugging',
+          sessionId: 'session-9',
+          createdAt: 1_700_000_000_000,
+        },
+      }),
+    )
+
+    // Otherwise the new session is missing from the sidebar until the agent
+    // finishes answering — the only other thing that refreshes this list.
+    await waitFor(() =>
+      expect((api.sessions.listAll as ReturnType<typeof vi.fn>).mock.calls.length).toBe(
+        before + 1,
+      ),
+    )
   })
 
   test('unsubscribes on unmount, so a closed window stops receiving events', async () => {

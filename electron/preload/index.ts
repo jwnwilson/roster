@@ -123,6 +123,7 @@ const api: RosterApi = {
     remove: (taskId) => ipcRenderer.invoke(CHANNELS.tasksDelete, taskId),
     comments: (taskId) => ipcRenderer.invoke(CHANNELS.tasksComments, taskId),
     comment: (taskId, text) => ipcRenderer.invoke(CHANNELS.tasksComment, taskId, text),
+    sessions: (taskId) => ipcRenderer.invoke(CHANNELS.tasksSessions, taskId),
     onEvent: (listener) => subscribe<TaskEventPayload>(CHANNELS.tasksEvent, listener),
   },
 

@@ -33,6 +33,31 @@ describe('migrations', () => {
 
     expect(columns).toContain('total_tokens')
   })
+
+  test('refuses a database written by a newer build', () => {
+    // The loop only runs forward, so a database ahead of this build used to
+    // pass straight through it: every migration skipped, no error, and the
+    // first query against a column this build expects fails somewhere deep
+    // in a feature. Two Roster builds sharing one ~/roster is enough to
+    // produce it, which is exactly how it was found.
+    db.pragma(`user_version = ${MIGRATIONS.length + 1}`)
+
+    expect(() => migrate(db)).toThrow(/newer version of Roster/i)
+  })
+
+  test('names both versions, so the message says what to do about it', () => {
+    db.pragma(`user_version = ${MIGRATIONS.length + 2}`)
+
+    expect(() => migrate(db)).toThrow(
+      new RegExp(`${MIGRATIONS.length + 2}[\\s\\S]*${MIGRATIONS.length}`),
+    )
+  })
+
+  test('still accepts a database exactly at this build’s version', () => {
+    // The boundary: equal is up to date, not ahead.
+    expect(version(db)).toBe(MIGRATIONS.length)
+    expect(() => migrate(db)).not.toThrow()
+  })
 })
 
 describe('migration 2 — total tokens', () => {
@@ -663,6 +688,118 @@ describe('migration 9 — quoting a plan in a comment', () => {
     expect(old.prepare('SELECT text, quote FROM plan_comments').get()).toEqual({
       text: 'change section 3',
       quote: null,
+    })
+    old.close()
+  })
+})
+
+describe('migration 10 — a session can be attached to a task', () => {
+  /** A database stopped at version 9, as an install from before this would be. */
+  function atVersion9() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < 9; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma('user_version = 9')
+    return old
+  }
+
+  const insertTask = (target: ReturnType<typeof atVersion9>, id: string) =>
+    target
+      .prepare(
+        'INSERT INTO tasks (id, title, status, priority, labels, created_at, updated_at)' +
+          ` VALUES ('${id}', 'Fix pool leak', 'todo', 'medium', '[]', 0, 0)`,
+      )
+      .run()
+
+  const insertSession = (
+    target: ReturnType<typeof atVersion9>,
+    id: string,
+    agent: string,
+    task: string | null,
+  ) =>
+    target
+      .prepare(
+        `INSERT INTO sessions (id, agent_id, title, origin, status, created_at, task_id)
+         VALUES (?, ?, 'x', 'you', 'idle', 0, ?)`,
+      )
+      .run(id, agent, task)
+
+  test('adds the column to a database that predates it', () => {
+    const old = atVersion9()
+    expect(
+      (old.pragma('table_info(sessions)') as { name: string }[]).map((c) => c.name),
+    ).not.toContain('task_id')
+
+    migrate(old)
+
+    expect(
+      (old.pragma('table_info(sessions)') as { name: string }[]).map((c) => c.name),
+    ).toContain('task_id')
+    old.close()
+  })
+
+  test('a session that predates the column is attached to nothing', () => {
+    const old = atVersion9()
+    old.prepare(
+      `INSERT INTO sessions (id, agent_id, title, origin, status, created_at)
+       VALUES ('s1', 'debugging', 'Session leak on 504', 'you', 'done', 17)`,
+    ).run()
+
+    migrate(old)
+
+    expect(old.prepare('SELECT title, task_id FROM sessions').get()).toEqual({
+      title: 'Session leak on 504',
+      task_id: null,
+    })
+    old.close()
+  })
+
+  test('one agent cannot hold two sessions on the same task', () => {
+    const old = atVersion9()
+    migrate(old)
+    insertTask(old, 'ROS-1')
+    insertSession(old, 's1', 'debugging', 'ROS-1')
+
+    // The invariant is the database's, not the coordinator's — two
+    // dispatches racing must not produce two sessions for one pair.
+    expect(() => insertSession(old, 's2', 'debugging', 'ROS-1')).toThrow()
+    old.close()
+  })
+
+  test('but two agents can each hold one on the same task', () => {
+    const old = atVersion9()
+    migrate(old)
+    insertTask(old, 'ROS-1')
+    insertSession(old, 's1', 'debugging', 'ROS-1')
+
+    expect(() => insertSession(old, 's2', 'review', 'ROS-1')).not.toThrow()
+    old.close()
+  })
+
+  test('and any number of sessions are attached to no task at all', () => {
+    const old = atVersion9()
+    migrate(old)
+
+    // A partial index: uniqueness applies to attached sessions, or the
+    // second ordinary session would be rejected.
+    insertSession(old, 's1', 'debugging', null)
+    expect(() => insertSession(old, 's2', 'debugging', null)).not.toThrow()
+    old.close()
+  })
+
+  test('deleting a task detaches its sessions rather than destroying them', () => {
+    const old = atVersion9()
+    migrate(old)
+    insertTask(old, 'ROS-1')
+    insertSession(old, 's1', 'debugging', 'ROS-1')
+
+    old.prepare("DELETE FROM tasks WHERE id = 'ROS-1'").run()
+
+    // Those turns cost money and their usage rows feed the Spend screen.
+    // The task goes; the transcript survives, unattached.
+    expect(old.prepare('SELECT id, task_id FROM sessions').get()).toEqual({
+      id: 's1',
+      task_id: null,
     })
     old.close()
   })

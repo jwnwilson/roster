@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { AgentDetail } from '@/screens/AgentDetail'
 import { useRoster } from '@/state/store'
 import type { Session } from '@shared/types'
-import { anAgent, aProject, aSession } from './factories'
+import { anAgent, aProject, aSession, aTask } from './factories'
 import { installRosterApi } from './rosterApi'
 
 // xterm needs a real canvas and devicePixelRatio, which jsdom does not
@@ -700,5 +700,57 @@ describe('AgentDetail — finding a question again', () => {
 
     await screen.findByText('Bash')
     expect(screen.queryByRole('button', { name: 'Show question' })).not.toBeInTheDocument()
+  })
+})
+
+describe('AgentDetail — the task a session answers', () => {
+  const TASK = aTask({
+    id: 'ROS-1',
+    title: 'Fix connection pool leak on 504',
+    status: 'in_progress',
+  })
+
+  test('says nothing about a task for an ordinary session', async () => {
+    withSessions([aSession({ id: 'session-1' })])
+    useRoster.setState({ tasks: [TASK] })
+    render(<AgentDetail />)
+
+    await screen.findByText('Debugging Agent')
+    // A session opened from the sidebar answers no task, so the rail should
+    // read exactly as it did before this existed.
+    expect(screen.queryByRole('button', { name: /^Open ROS/ })).not.toBeInTheDocument()
+  })
+
+  test('names the task a mention opened the session from', async () => {
+    withSessions([aSession({ id: 'session-1', taskId: 'ROS-1' })])
+    useRoster.setState({ tasks: [TASK] })
+    render(<AgentDetail />)
+
+    const link = await screen.findByRole('button', { name: 'Open ROS-1' })
+    expect(within(link).getByText('ROS-1')).toBeInTheDocument()
+    expect(within(link).getByText('Fix connection pool leak on 504')).toBeInTheDocument()
+  })
+
+  test('opens the task on the board when the link is clicked', async () => {
+    withSessions([aSession({ id: 'session-1', taskId: 'ROS-1' })])
+    useRoster.setState({ tasks: [TASK] })
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open ROS-1' }))
+
+    const state = useRoster.getState()
+    expect(state.screen).toBe('tasks')
+    expect(state.openTaskId).toBe('ROS-1')
+  })
+
+  test('still names the task when the board has not been loaded', async () => {
+    withSessions([aSession({ id: 'session-1', taskId: 'ROS-1' })])
+    // The key lives on the session itself, so the link survives a board the
+    // renderer has not read yet.
+    useRoster.setState({ tasks: [] })
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: 'Open ROS-1' })).toBeInTheDocument()
   })
 })

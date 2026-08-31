@@ -3,6 +3,8 @@ import { useShallow } from 'zustand/shallow'
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
+  type Agent,
+  type Status,
   type Task,
   type TaskComment,
   type TaskPriority,
@@ -12,10 +14,12 @@ import { taskPriorityLabel, taskStatusLabel } from '@shared/tasks'
 import type { TaskChange } from '@shared/ipc'
 import { Markdown } from '@/components/Markdown'
 import { TrashIcon } from '@/components/icons'
-import { IconButton, SectionLabel, Segmented, Select } from '@/components/primitives'
+import { MentionInput } from '@/components/MentionInput'
+import { IconButton, SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import {
   NO_COMMENTS,
+  NO_TASK_SESSIONS,
   agentStatus,
   projectOptionLabel,
   projectPickerProjects,
@@ -64,12 +68,19 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
     ),
   )
   const thread = useRoster(useShallow((s) => s.taskComments[task.id] ?? NO_COMMENTS))
+  const setTaskSessions = useRoster((s) => s.setTaskSessions)
+  const openAgent = useRoster((s) => s.openAgent)
+  const closeTask = useRoster((s) => s.closeTask)
+  const attached = useRoster(useShallow((s) => s.taskSessions[task.id] ?? NO_TASK_SESSIONS))
 
   const [error, setError] = useState<string | null>(null)
   const taskId = task.id
 
-  // The thread is read when the task is opened, not with the board — a
-  // hundred cards would otherwise mean a hundred threads nobody asked for.
+  // The thread and the attached sessions are both read when the task is
+  // opened, not with the board — a hundred cards would otherwise mean a
+  // hundred threads and session lists nobody asked for. One effect, one
+  // cancelled flag: either fetch settling after the task has changed (or
+  // the panel closed) must not write state for the wrong task.
   useEffect(() => {
     let cancelled = false
 
@@ -82,10 +93,19 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
         if (!cancelled) setError(messageFor(cause))
       })
 
+    void window.roster.tasks
+      .sessions(taskId)
+      .then((loaded) => {
+        if (!cancelled) setTaskSessions(taskId, loaded)
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(messageFor(cause))
+      })
+
     return () => {
       cancelled = true
     }
-  }, [taskId, setTaskComments])
+  }, [taskId, setTaskComments, setTaskSessions])
 
   async function apply(change: TaskChange): Promise<void> {
     setError(null)
@@ -132,7 +152,7 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
           onSave={(value) => void apply({ field: 'description', value })}
         />
 
-        <Thread taskId={task.id} comments={thread} />
+        <Thread taskId={task.id} comments={thread} agents={agents} statuses={statuses} />
 
         {error ? <p className="m-0 text-md text-error">{error}</p> : null}
       </div>
@@ -194,6 +214,38 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
             onRemove={(value) => void apply({ field: 'removeLabel', value })}
           />
         </Rail>
+
+        {/* Only once a mention has put a session here — an untouched task's
+            rail should read exactly as it did before. */}
+        {attached.length > 0 ? (
+          <Rail label="Sessions">
+            <div className="flex flex-col gap-[2px]">
+              {attached.map((link) => {
+                const agent = agents.find((candidate) => candidate.id === link.agentId)
+                const name = agent?.name ?? link.agentId
+
+                return (
+                  <button
+                    key={link.sessionId}
+                    type="button"
+                    aria-label={`Open ${name}`}
+                    onClick={() => {
+                      // Leaving it open would pop the modal back over the
+                      // session the moment the user returned to Tasks.
+                      closeTask()
+                      openAgent(link.agentId, link.sessionId)
+                    }}
+                    className="flex cursor-pointer items-center gap-[7px] rounded-chip border-0 bg-transparent px-[6px] py-[4px] text-left hover:bg-accent-surface-2"
+                    data-hoverable
+                  >
+                    <StatusDot status={statuses[link.agentId] ?? 'idle'} />
+                    <span className="truncate text-md text-ink-2">{name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </Rail>
+        ) : null}
 
         {/* Last, and set apart by the rule above it: everything else in the
             rail is reversible and this is not. Directly under the fields
@@ -352,6 +404,8 @@ function Description({ value, onSave }: DescriptionProps) {
 interface ThreadProps {
   taskId: string
   comments: readonly TaskComment[]
+  agents: readonly Agent[]
+  statuses: Record<string, Status>
 }
 
 const TABS = [
@@ -359,24 +413,32 @@ const TABS = [
   { value: 'history' as const, label: 'History' },
 ]
 
-function Thread({ taskId, comments }: ThreadProps) {
+function Thread({ taskId, comments, agents, statuses }: ThreadProps) {
   const tab = useRoster((s) => s.taskTab)
   const setTaskTab = useRoster((s) => s.setTaskTab)
   const setTaskComments = useRoster((s) => s.setTaskComments)
   const [text, setText] = useState('')
   const [posting, setPosting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const shown = comments.filter((comment) => comment.isSystem === (tab === 'history'))
 
   async function post(): Promise<void> {
     const body = text.trim()
-    if (body === '') return
+    // Guarded here rather than only on the button, because Enter reaches
+    // this too — and a comment that mentions an agent starts a paid turn, so
+    // a double post is two turns, not just two comments.
+    if (body === '' || posting) return
     setPosting(true)
+    setError(null)
 
     try {
       await window.roster.tasks.comment(taskId, body)
       setTaskComments(taskId, await window.roster.tasks.comments(taskId))
       setText('')
+    } catch (cause) {
+      // Silence would read as though the comment had posted.
+      setError(messageFor(cause))
     } finally {
       setPosting(false)
     }
@@ -410,7 +472,7 @@ function Thread({ taskId, comments }: ThreadProps) {
               >
                 {comment.author}
               </span>
-              <span className="text-md leading-[1.55] text-ink-2">{comment.text}</span>
+              <Markdown>{comment.text}</Markdown>
             </div>
           ))}
         </div>
@@ -418,17 +480,14 @@ function Thread({ taskId, comments }: ThreadProps) {
 
       {tab === 'comments' ? (
         <div className="flex items-center gap-[8px]">
-          <input
-            type="text"
-            aria-label="Add a comment"
-            placeholder="Add a comment"
+          <MentionInput
+            ariaLabel="Add a comment"
+            placeholder="Add a comment, or @mention an agent"
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation()
-              if (e.key === 'Enter') void post()
-            }}
-            className="flex-1 rounded-chip border border-line-card bg-card px-[10px] py-[6px] font-ui text-md text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
+            onChange={setText}
+            onSubmit={() => void post()}
+            agents={agents}
+            statuses={statuses}
           />
           <button
             type="button"
@@ -440,6 +499,8 @@ function Thread({ taskId, comments }: ThreadProps) {
           </button>
         </div>
       ) : null}
+
+      {error ? <p className="m-0 text-md text-error">{error}</p> : null}
     </section>
   )
 }

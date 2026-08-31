@@ -83,6 +83,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       remove: vi.fn().mockResolvedValue(true),
       comments: vi.fn().mockResolvedValue([]),
       comment: vi.fn().mockResolvedValue(null),
+      sessions: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
     plans: {

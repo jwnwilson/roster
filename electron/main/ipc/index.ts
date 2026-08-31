@@ -17,6 +17,7 @@ import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
 import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
+import { TaskMentions } from '../sessions/mentions'
 import { AgentStore } from '../store/agents'
 import { McpStore, withServer } from '../store/mcp'
 import { ProjectStore } from '../store/projects'
@@ -46,6 +47,7 @@ let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
 let planStore: PlanStore | null = null
 let planFlow: PlanFlow | null = null
+let mentions: TaskMentions | null = null
 let notionStore: NotionStore | null = null
 let notionPush: NotionPush | null = null
 
@@ -96,6 +98,11 @@ function requirePlanFlow(): PlanFlow {
 function requireSessions(): SessionStore {
   if (!sessionStore) throw new Error('session store is not initialised')
   return sessionStore
+}
+
+function requireMentions(): TaskMentions {
+  if (!mentions) throw new Error('task mentions are not initialised')
+  return mentions
 }
 
 function requireProjects(): ProjectStore {
@@ -190,6 +197,16 @@ export async function initStores(): Promise<void> {
   // The same bridge for plans: an agent revising one mid-turn has to reach an
   // open modal, and a second window has to see it too.
   planStore.subscribe((event) => broadcast(CHANNELS.plansEvent, event))
+  // Mentioning an agent in a task's thread opens a session for it. The
+  // attachment is broadcast on the board's own channel, since the task
+  // detail panel is what shows it.
+  mentions = new TaskMentions(
+    () => agentStore.findAll(),
+    sessionStore,
+    taskStore,
+    manager,
+    (link) => broadcast(CHANNELS.tasksEvent, { type: 'task-session', taskId: link.taskId, link }),
+  )
   // A second subscriber: what changes here is written back to the Notion page
   // it came from. Silent for tasks that did not come from Notion.
   notionPush = new NotionPush(
@@ -493,8 +510,23 @@ export function registerIpc(): void {
     return true
   })
   ipcMain.handle(CHANNELS.tasksComments, (_e, taskId: string) => requireTasks().comments(taskId))
-  ipcMain.handle(CHANNELS.tasksComment, (_e, taskId: string, text: string) =>
-    requireTasks().comment(taskId, { author: YOU.name, tone: YOU.tone, text }),
+  ipcMain.handle(CHANNELS.tasksComment, (_e, taskId: string, text: string) => {
+    const comment = requireTasks().comment(taskId, {
+      author: YOU.name,
+      tone: YOU.tone,
+      text,
+    })
+
+    // Deliberately not awaited: a turn runs for as long as the agent takes,
+    // and posting a comment must not wait for it. A failure reaches the
+    // thread as a comment rather than as a rejection here.
+    void requireMentions().dispatch(taskId, text)
+
+    return comment
+  })
+
+  ipcMain.handle(CHANNELS.tasksSessions, (_e, taskId: string) =>
+    requireSessions().linksForTask(taskId),
   )
 
   ipcMain.handle(CHANNELS.plansListBySession, (_e, sessionId: string) =>

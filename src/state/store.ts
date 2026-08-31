@@ -16,6 +16,7 @@ import type {
   PlanDocument,
   Task,
   TaskComment,
+  TaskSessionLink,
   TaskStatus,
   TranscriptLine,
   UpdateState,
@@ -80,6 +81,8 @@ export interface RosterState {
   plans: Record<string, PlanDocument>
   /** planId -> its thread, loaded alongside the plan. */
   planComments: Record<string, PlanComment[]>
+  /** Sessions attached to a task, keyed by task id. Loaded when it is opened. */
+  taskSessions: Record<string, TaskSessionLink[]>
   loaded: boolean
 
   /* ---- navigation --------------------------------------------------- */
@@ -164,6 +167,7 @@ export interface RosterState {
   setTaskComments(taskId: string, comments: TaskComment[]): void
   setPlan(document: PlanDocument): void
   setPlanComments(planId: string, comments: PlanComment[]): void
+  setTaskSessions(taskId: string, links: TaskSessionLink[]): void
   /** Applies one live board change from the main process. */
   applyTaskEvent(event: TaskEventPayload): void
   /** Applies one live event from the main process. */
@@ -228,6 +232,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   taskComments: {},
   plans: {},
   planComments: {},
+  taskSessions: {},
   loaded: false,
 
   screen: 'grid',
@@ -295,6 +300,8 @@ export const useRoster = create<RosterState>((set, get) => ({
     set((s) => ({ plans: { ...s.plans, [document.plan.id]: document } })),
   setPlanComments: (planId, comments) =>
     set((s) => ({ planComments: { ...s.planComments, [planId]: comments } })),
+  setTaskSessions: (taskId, links) =>
+    set((s) => ({ taskSessions: { ...s.taskSessions, [taskId]: links } })),
 
   applySessionEvent: (event) => set((s) => reduceSessionEvent(s, event)),
   applyTaskEvent: (event) => set((s) => reduceTaskEvent(s, event)),
@@ -475,6 +482,8 @@ export const NO_COMMENTS: readonly TaskComment[] = Object.freeze([])
 
 /** The same, for a plan whose thread is empty. */
 export const NO_PLAN_COMMENTS: readonly PlanComment[] = Object.freeze([])
+/** A stable empty list, so a task with no sessions does not re-render forever. */
+export const NO_TASK_SESSIONS: readonly TaskSessionLink[] = Object.freeze([])
 
 /**
  * The list with one task added, unless it is already in it.
@@ -788,6 +797,7 @@ export function reduceTaskEvent(
         // pointing at a task that no longer exists.
         ...(state.openTaskId === event.taskId ? { openTaskId: null } : {}),
         taskComments: withoutKey(state.taskComments, event.taskId),
+        taskSessions: withoutKey(state.taskSessions, event.taskId),
       }
 
     case 'comment': {
@@ -801,6 +811,21 @@ export function reduceTaskEvent(
         taskComments: {
           ...state.taskComments,
           [event.taskId]: [...existing, event.comment],
+        },
+      }
+    }
+
+    case 'task-session': {
+      const existing = state.taskSessions[event.taskId]
+      // A panel that was never opened has nothing to append to — the list
+      // will be read in full when it is.
+      if (existing === undefined) return {}
+      if (existing.some((link) => link.sessionId === event.link.sessionId)) return {}
+
+      return {
+        taskSessions: {
+          ...state.taskSessions,
+          [event.taskId]: [...existing, event.link],
         },
       }
     }
