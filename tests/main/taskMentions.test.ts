@@ -407,3 +407,50 @@ describe('TaskMentions.dispatch — when opening the session fails', () => {
     })
   })
 })
+
+describe('TaskMentions.dispatch — when reading messages fails', () => {
+  // `sessions.messages` is read twice per ask: once for `before`, right
+  // after the session is resolved, and once inside `replySince` after the
+  // turn completes. Both sit on the same synchronous store call as
+  // `sessions.create`, so either can throw the same way.
+  test('resolves rather than rejects, and reports the reason in the thread', async () => {
+    const id = aTask()
+    vi.spyOn(sessions, 'messages').mockImplementation(() => {
+      throw new Error('database is locked')
+    })
+
+    await expect(mentions.dispatch(id, '@tech-lead why?')).resolves.toBeUndefined()
+
+    // The failure is at the `before` read, ahead of the turn — the agent is
+    // never asked.
+    expect(send).not.toHaveBeenCalled()
+    expect(written(id)).toContainEqual({
+      author: 'Tech Lead',
+      text: 'Couldn\'t answer — database is locked',
+    })
+  })
+
+  test('reports the reason when only the reply read fails, after a successful turn', async () => {
+    const id = aTask()
+    replyWith('An answer nobody will see.')
+    const originalMessages = sessions.messages.bind(sessions)
+    let calls = 0
+    vi.spyOn(sessions, 'messages').mockImplementation((sessionId: string) => {
+      calls += 1
+      // Let the `before` read through; fail only the one inside
+      // `replySince`, once the turn has already sent.
+      if (calls > 1) throw new Error('database is locked')
+      return originalMessages(sessionId)
+    })
+
+    await expect(mentions.dispatch(id, '@tech-lead why?')).resolves.toBeUndefined()
+
+    expect(send).toHaveBeenCalled()
+    expect(written(id)).toContainEqual({
+      author: 'Tech Lead',
+      text: 'Couldn\'t answer — database is locked',
+    })
+    // Exactly one comment for this mention — not the reply and the failure.
+    expect(written(id).filter((entry) => entry.author === 'Tech Lead')).toHaveLength(1)
+  })
+})

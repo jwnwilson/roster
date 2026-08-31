@@ -77,50 +77,45 @@ export class TaskMentions {
    * `dispatch` is called as `void mentions.dispatch(...)` from the comment
    * handler — nothing awaits it, so a rejection here would surface as an
    * unhandled promise rejection in the main process rather than as anything
-   * a user could see. Opening the session (a unique-index race, an FK
-   * violation) is exactly as fallible as sending the turn, so it gets the
-   * same containment: report the failure into the thread, the way a failed
-   * turn already does.
+   * a user could see. Every step below touches the same store — resolving
+   * or opening the session, counting its messages, sending the turn, reading
+   * the reply back — and all of it is one `try`: a throw from any of those
+   * (a unique-index race, an FK violation, any other store failure) is
+   * reported into the thread exactly the way a failed turn already was,
+   * without needing to know which step produced it.
    */
   private async ask(task: Task, agent: Agent, comment: string): Promise<void> {
-    let session: Session
     try {
-      session = this.sessions.findByTask(task.id, agent.id) ?? this.open(task, agent)
-    } catch (cause) {
-      this.safePost(task.id, agent, failureFor(agent, cause))
-      return
-    }
+      const session = this.sessions.findByTask(task.id, agent.id) ?? this.open(task, agent)
 
-    // What the session held before this turn, so the reply is this turn's
-    // prose and not the answer to the last question.
-    const before = this.sessions.messages(session.id).length
+      // What the session held before this turn, so the reply is this turn's
+      // prose and not the answer to the last question.
+      const before = this.sessions.messages(session.id).length
 
-    try {
       // The key leads, so a resumed session knows which task is being asked
       // about without re-reading the brief.
       await this.runner.send(session.id, `On ${task.id}: ${comment}`)
+
+      const reply = this.replySince(session.id, before)
+      this.safePost(
+        task.id,
+        agent,
+        reply === ''
+          ? `Answered in "${session.title}" — nothing to quote here.`
+          : reply,
+      )
     } catch (cause) {
       this.safePost(task.id, agent, failureFor(agent, cause))
-      return
     }
-
-    const reply = this.replySince(session.id, before)
-    this.safePost(
-      task.id,
-      agent,
-      reply === ''
-        ? `Answered in "${session.title}" — nothing to quote here.`
-        : reply,
-    )
   }
 
   /**
    * `post`, but swallowing its own failure.
    *
-   * Reached only when the store that would carry the failure message is
-   * itself the thing that broke — there is no thread left to write into, and
-   * letting that second error escape would still leave `dispatch` rejecting,
-   * which is the exact outcome this containment exists to prevent.
+   * Reached when the store that would carry the failure message is itself
+   * the thing that broke — there is nothing left to report to at that
+   * point. `safePost` never throws, so calling it from `ask`'s `catch`
+   * cannot produce a second, uncaught error there.
    */
   private safePost(taskId: string, agent: Agent, text: string): void {
     try {
