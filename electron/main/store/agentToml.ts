@@ -26,6 +26,8 @@ export interface AgentConfig {
   systemPrompt: string
   skills: string[]
   mcpServers: string[]
+  /** Kept off the sidebar and the agent grid. Everything else still sees it. */
+  hidden: boolean
   custom?: CustomRunnerSpec
 }
 
@@ -68,6 +70,19 @@ function optionalStringList(
   return value as string[]
 }
 
+function optionalBoolean(
+  agentId: string,
+  table: Record<string, unknown>,
+  key: string,
+): boolean {
+  const value = table[key]
+  if (value === undefined) return false
+  if (typeof value !== 'boolean') {
+    throw new AgentConfigError(agentId, `"${key}" must be true or false`)
+  }
+  return value
+}
+
 function parseCustom(agentId: string, table: Record<string, unknown>): CustomRunnerSpec {
   const custom = table['custom']
   if (custom === null || typeof custom !== 'object' || Array.isArray(custom)) {
@@ -104,6 +119,7 @@ export function parseAgentToml(agentId: string, source: string): AgentConfig {
     systemPrompt: typeof table['system_prompt'] === 'string' ? table['system_prompt'] : '',
     skills: optionalStringList(agentId, table, 'skills'),
     mcpServers: optionalStringList(agentId, table, 'mcp_servers'),
+    hidden: optionalBoolean(agentId, table, 'hidden'),
   }
 
   if (!isBuiltin) config.custom = parseCustom(agentId, table)
@@ -119,6 +135,7 @@ export function serializeAgentToml(config: AgentConfig): string {
     system_prompt: config.systemPrompt,
     skills: config.skills,
     mcp_servers: config.mcpServers,
+    hidden: config.hidden,
   }
   if (config.custom) {
     table['custom'] = { command: config.custom.command, args: config.custom.args }

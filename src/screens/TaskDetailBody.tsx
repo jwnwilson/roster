@@ -13,7 +13,14 @@ import type { TaskChange } from '@shared/ipc'
 import { Markdown } from '@/components/Markdown'
 import { SectionLabel, Segmented, Select } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
-import { NO_COMMENTS, agentStatus, useRoster, type TaskTab } from '@/state/store'
+import {
+  NO_COMMENTS,
+  agentStatus,
+  projectOptionLabel,
+  projectPickerProjects,
+  useRoster,
+  type TaskTab,
+} from '@/state/store'
 import { AssigneeField } from '@/components/AssigneeField'
 import { LabelChips } from './TaskFields'
 
@@ -41,7 +48,12 @@ interface TaskDetailBodyProps {
 export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
   const setTaskComments = useRoster((s) => s.setTaskComments)
   const agents = useRoster(useShallow((s) => s.agents))
-  const projects = useRoster(useShallow((s) => s.projects))
+  // The task's own project stays on the list even once archived — a
+  // native select renders blank on a value it has no option for, and the
+  // task would read as unfiled.
+  const projectOptions = useRoster(
+    useShallow((s) => projectPickerProjects(s, task.projectId)),
+  )
   // A map, not a function: a selector returning a fresh closure re-renders
   // forever under zustand v5, exactly as store.ts warns.
   const statuses = useRoster(
@@ -147,7 +159,10 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
             }
             options={[
               { value: NO_PROJECT, label: 'No project' },
-              ...projects.map((project) => ({ value: project.id, label: project.name })),
+              ...projectOptions.map((project) => ({
+                value: project.id,
+                label: projectOptionLabel(project),
+              })),
             ]}
           />
         </Rail>

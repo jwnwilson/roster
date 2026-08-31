@@ -361,13 +361,32 @@ export const useRoster = create<RosterState>((set, get) => ({
 /** Shared empty array so "no sessions" is a stable reference. */
 export const NO_SESSIONS: readonly Session[] = Object.freeze([])
 
+/** The default for callers with no archived projects to hide. */
+const NO_ARCHIVED: ReadonlySet<string> = new Set<string>()
+
 /** Likewise for an agent that has not said anything yet. */
 export const NO_LINES: readonly TranscriptLine[] = Object.freeze([])
 
+/**
+ * The roster minus anything hidden in the Manage agents modal.
+ *
+ * Returns `state.agents` itself when nothing is hidden — the common case, and
+ * a fresh array there would re-render every consumer forever.
+ *
+ * Hiding stops here: task assignees, the handoff tool and the Skills and MCP
+ * screens all read `state.agents` directly, because a hidden agent is only
+ * off the two roster surfaces, not off the roster.
+ */
+export function selectVisibleAgents(state: RosterState): Agent[] {
+  if (!state.agents.some((agent) => agent.hidden)) return state.agents
+  return state.agents.filter((agent) => !agent.hidden)
+}
+
 export function selectSidebarAgents(state: RosterState): Agent[] {
+  const visible = selectVisibleAgents(state)
   const q = state.query.trim().toLowerCase()
-  if (q === '') return state.agents
-  return state.agents.filter((a) => a.name.toLowerCase().includes(q))
+  if (q === '') return visible
+  return visible.filter((a) => a.name.toLowerCase().includes(q))
 }
 
 /**
@@ -381,29 +400,40 @@ export function selectSidebarAgents(state: RosterState): Agent[] {
 export function sessionsInProject(
   sessions: readonly Session[],
   projectFilter: string,
+  archived: ReadonlySet<string> = NO_ARCHIVED,
 ): readonly Session[] {
-  if (projectFilter === ALL_PROJECTS) return sessions
-  return sessions.filter((session) => session.projectId === projectFilter)
+  // Nothing to narrow: hand back the same array, or every card re-renders.
+  if (projectFilter === ALL_PROJECTS && archived.size === 0) return sessions
+
+  return sessions.filter((session) => {
+    const projectId = session.projectId ?? null
+    if (isHidden(projectId, archived)) return false
+    return projectFilter === ALL_PROJECTS || projectId === projectFilter
+  })
 }
 
 export function selectGridAgents(state: RosterState): Agent[] {
   const q = state.gridQuery.trim().toLowerCase()
   const project = state.projectFilter
+  const archived = archivedProjectIds(state)
 
   return state.agents.filter((agent) => {
+    if (agent.hidden) return false
+
     const sessions = state.sessions[agent.id] ?? NO_SESSIONS
+    const visible = sessionsInProject(sessions, project, archived)
 
     // An agent belongs to a project only through its sessions — it has no
-    // project of its own, so one with none is filtered out entirely.
-    if (sessionsInProject(sessions, project).length === 0 && project !== ALL_PROJECTS) {
+    // project of its own, so one with none is filtered out entirely. An
+    // agent whose every session sits under an archived project goes the
+    // same way; one that simply has no sessions yet is new, and stays.
+    if (visible.length === 0 && (project !== ALL_PROJECTS || sessions.length > 0)) {
       return false
     }
 
     if (q === '') return true
     if (agent.name.toLowerCase().includes(q)) return true
-    return sessionsInProject(sessions, project).some((s) =>
-      s.title.toLowerCase().includes(q),
-    )
+    return visible.some((s) => s.title.toLowerCase().includes(q))
   })
 }
 
@@ -429,14 +459,31 @@ export function withTask(tasks: Task[], task: Task): Task[] {
   return tasks.some((existing) => existing.id === task.id) ? tasks : [...tasks, task]
 }
 
+/**
+ * Every task the app is willing to show at all — the whole board plus the
+ * whole backlog, minus anything under an archived project.
+ *
+ * This is the denominator the "N of M match" summaries count against.
+ * Counting hidden work in M would have an unfiltered board claim more tasks
+ * than it is showing, with nothing on screen to explain the gap.
+ */
+export function selectVisibleTasks(state: RosterState): Task[] {
+  const archived = archivedProjectIds(state)
+  return state.tasks.filter((task) => !isHidden(task.projectId, archived))
+}
+
 /** Tasks left by the board's text filter and its project filter. */
 export function selectFilteredTasks(state: RosterState): Task[] {
   const q = state.taskQuery.trim().toLowerCase()
   const project = state.projectFilter
+  const archived = archivedProjectIds(state)
 
   return state.tasks.filter((task) => {
     // Backlog work is off the board by definition; it has its own view.
     if (task.status === 'backlog') return false
+    // An archived project takes its work with it. Nothing is deleted, so
+    // restoring the project puts every one of these cards back.
+    if (isHidden(task.projectId, archived)) return false
     if (project !== ALL_PROJECTS && task.projectId !== project) return false
     if (q === '') return true
     // The key is searchable too: "ROS-101" is how people refer to a task.
@@ -474,9 +521,11 @@ export function selectBacklogTasks(state: RosterState): Task[] {
   const q = state.backlogQuery.trim().toLowerCase()
   const project = state.projectFilter
   const priority = state.backlogPriority
+  const archived = archivedProjectIds(state)
 
   return state.tasks.filter((task) => {
     if (task.status !== 'backlog') return false
+    if (isHidden(task.projectId, archived)) return false
     if (project !== ALL_PROJECTS && task.projectId !== project) return false
     if (priority !== ALL_PRIORITIES && task.priority !== priority) return false
     if (q === '') return true
@@ -491,6 +540,73 @@ export function selectOpenTask(state: RosterState): Task | null {
 export function projectById(state: RosterState, id: string | null): Project | null {
   if (id === null) return null
   return state.projects.find((project) => project.id === id) ?? null
+}
+
+/* ---------------------------------------------------------------------
+ * Archived projects.
+ *
+ * `state.projects` holds every project, archived ones included, because
+ * Spend and every task card resolve a name by id and old work must keep
+ * naming the project it belonged to. What changes when a project is
+ * archived is only what the app still offers and still shows.
+ * ------------------------------------------------------------------ */
+
+/** The projects still on offer — everything a picker should list. */
+export function activeProjects(state: RosterState): Project[] {
+  return state.projects.filter((project) => project.archivedAt === null)
+}
+
+/** The ones put away, newest first: the order the archived list reads in. */
+export function archivedProjects(state: RosterState): Project[] {
+  return state.projects
+    .filter((project) => project.archivedAt !== null)
+    .sort((a, b) => (b.archivedAt ?? 0) - (a.archivedAt ?? 0))
+}
+
+/**
+ * The ids whose work is hidden.
+ *
+ * Built fresh on each call and never returned from a component selector —
+ * a new Set as a selector's result would re-render forever under zustand v5.
+ */
+export function archivedProjectIds(state: RosterState): ReadonlySet<string> {
+  const ids = new Set<string>()
+  for (const project of state.projects) {
+    if (project.archivedAt !== null) ids.add(project.id)
+  }
+  return ids
+}
+
+/** Whether this task or session is hidden by the project it belongs to. */
+function isHidden(projectId: string | null, archived: ReadonlySet<string>): boolean {
+  return projectId !== null && archived.has(projectId)
+}
+
+/**
+ * The projects a picker should offer: the active ones, plus whatever is
+ * already selected even when that has been archived.
+ *
+ * Select is a native `<select>`, which renders blank on a value it has no
+ * option for — so without the second half, a task filed under an archived
+ * project would look unfiled, and saving the form would silently move it.
+ *
+ * Returns the store's own Project objects rather than freshly built option
+ * records: `useShallow` compares one level deep, so new objects every call
+ * would re-render forever. Call sites map these to options in render, where
+ * a fresh array is harmless.
+ */
+export function projectPickerProjects(state: RosterState, current: string | null): Project[] {
+  const options = activeProjects(state)
+
+  const selected = projectById(state, current)
+  if (selected === null || selected.archivedAt === null) return options
+
+  return [...options, selected]
+}
+
+/** How a picker names a project. An archived one says so. */
+export function projectOptionLabel(project: Project): string {
+  return project.archivedAt === null ? project.name : `${project.name} (archived)`
 }
 
 /** What a drop landed on: a column, or the column of the card under it. */
@@ -656,8 +772,21 @@ export function reduceTaskEvent(
       }
     }
 
-    case 'projects':
-      return { projects: event.projects }
+    case 'projects': {
+      // The filter can only offer active projects, so one pointing at a
+      // project archived or deleted in another window has to let go — a
+      // filter with no matching option shows an empty board and no reason.
+      const stillOffered = event.projects.some(
+        (project) => project.id === state.projectFilter && project.archivedAt === null,
+      )
+
+      return {
+        projects: event.projects,
+        ...(state.projectFilter !== ALL_PROJECTS && !stillOffered
+          ? { projectFilter: ALL_PROJECTS }
+          : {}),
+      }
+    }
   }
 }
 

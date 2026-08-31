@@ -49,6 +49,7 @@ const AGENTS: Agent[] = [
     systemPrompt: 'Reproduce before you fix.',
     skills: ['repro-harness'],
     mcpServers: ['filesystem'],
+    hidden: false,
     status: 'idle',
   },
   {
@@ -61,6 +62,7 @@ const AGENTS: Agent[] = [
     systemPrompt: 'Review for correctness.',
     skills: [],
     mcpServers: [],
+    hidden: false,
     status: 'idle',
   },
 ]

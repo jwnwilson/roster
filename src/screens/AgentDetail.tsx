@@ -7,7 +7,15 @@ import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
-import { agentStatus, NO_SESSIONS, selectCurrentAgent, useRoster, type PaneMode } from '@/state/store'
+import {
+  agentStatus,
+  NO_SESSIONS,
+  projectOptionLabel,
+  projectPickerProjects,
+  selectCurrentAgent,
+  useRoster,
+  type PaneMode,
+} from '@/state/store'
 
 /** The "no project" option value, distinct from a real project id. */
 const NO_PROJECT = 'none'
@@ -467,15 +475,19 @@ function SessionCard() {
  * reads.
  */
 function SessionProject({ sessionId }: { sessionId: string }) {
-  const projects = useRoster(useShallow((s) => s.projects))
   const agentId = useRoster((s) => s.agentId)
   const current = useRoster((s) =>
     (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
       (session) => session.id === sessionId,
     ),
   )
+  // The session's own project stays listed even once archived, so a session
+  // filed under one does not read as unfiled.
+  const projectOptions = useRoster(
+    useShallow((s) => projectPickerProjects(s, current?.projectId ?? null)),
+  )
 
-  if (projects.length === 0) return null
+  if (projectOptions.length === 0) return null
 
   async function choose(value: string): Promise<void> {
     const projectId = value === NO_PROJECT ? null : value
@@ -500,7 +512,10 @@ function SessionProject({ sessionId }: { sessionId: string }) {
         onChange={(value) => void choose(value)}
         options={[
           { value: NO_PROJECT, label: 'No project' },
-          ...projects.map((project) => ({ value: project.id, label: project.name })),
+          ...projectOptions.map((project) => ({
+            value: project.id,
+            label: projectOptionLabel(project),
+          })),
         ]}
       />
     </div>

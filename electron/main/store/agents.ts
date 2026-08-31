@@ -106,6 +106,7 @@ export class AgentStore {
       systemPrompt: input.systemPrompt,
       skills: input.skills,
       mcpServers: input.mcpServers ?? [],
+      hidden: false,
     }
 
     await mkdir(agentDir(id), { recursive: true })
@@ -130,7 +131,13 @@ export class AgentStore {
 
   async update(id: string, patch: AgentPatch): Promise<Agent> {
     const current = this.configs.get(id)
-    if (!current) throw new Error(`unknown agent "${id}"`)
+    if (!current) {
+      // Naming the parse error beats "unknown agent", which sends you looking
+      // for a directory that is in fact right there.
+      const failure = this.failures.get(id)
+      if (failure) throw new Error(`cannot change an agent that does not parse — ${failure}`)
+      throw new Error(`unknown agent "${id}"`)
+    }
 
     const next: AgentConfig = {
       ...current,
@@ -140,6 +147,7 @@ export class AgentStore {
       ...(patch.skills !== undefined ? { skills: patch.skills } : {}),
       ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
       ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
+      ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
     }
 
     // A new working directory must exist before the agent runs there.
@@ -207,6 +215,7 @@ export class AgentStore {
       systemPrompt: config.systemPrompt,
       skills: config.skills,
       mcpServers: config.mcpServers,
+      hidden: config.hidden,
       ...(config.custom ? { custom: config.custom } : {}),
       status: unusable ? 'error' : 'idle',
       ...(unusable
@@ -227,6 +236,8 @@ function brokenAgent(id: string, detail: string): Agent {
     systemPrompt: '',
     skills: [],
     mcpServers: [],
+    // Never hidden: the error is the entire reason to show this row.
+    hidden: false,
     status: 'error',
     statusDetail: detail,
   }

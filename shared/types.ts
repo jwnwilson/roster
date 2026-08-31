@@ -59,6 +59,12 @@ export interface Agent {
   systemPrompt: string
   skills: string[]
   mcpServers: string[]
+  /**
+   * Kept off the sidebar roster and the agent grid. Hiding is a view control
+   * only: a hidden agent is still assignable, still a handoff target, and
+   * still spends.
+   */
+  hidden: boolean
   /** Only present when runner is not a builtin. */
   custom?: CustomRunnerSpec
   /** Derived, not persisted. */
@@ -262,6 +268,14 @@ export interface Project {
   color: string
   description: string
   createdAt: number
+  /**
+   * When it was archived, or null while it is active.
+   *
+   * Archiving takes a project out of every picker and takes its work off the
+   * board, but keeps the row and everything pointing at it — so restoring it
+   * brings the whole grouping back.
+   */
+  archivedAt: number | null
 }
 
 export interface Task {

@@ -192,6 +192,12 @@ interface ToggleChipProps {
   /** Skills use a rounded square dot; MCP servers use a circle. */
   dotShape?: 'square' | 'circle'
   mono?: boolean
+  /**
+   * Overrides the accessible name. Needed when the visible label is the state
+   * itself ("Shown" / "Hidden") rather than what the control acts on, which
+   * would otherwise read as "Shown, pressed".
+   */
+  ariaLabel?: string
 }
 
 export function ToggleChip({
@@ -200,11 +206,13 @@ export function ToggleChip({
   onToggle,
   dotShape = 'square',
   mono = false,
+  ariaLabel,
 }: ToggleChipProps) {
   return (
     <button
       type="button"
       aria-pressed={on}
+      {...(ariaLabel !== undefined ? { 'aria-label': ariaLabel } : {})}
       onClick={onToggle}
       className={`flex cursor-pointer items-center gap-[7px] rounded-[20px] border px-[11px] py-[6px] text-md ${
         on
@@ -300,6 +308,16 @@ interface ModalProps {
   maxWidth?: number
   /** The task modal is a fixed-height two-column layout, not a form. */
   fixedHeight?: boolean
+  /**
+   * A floor for the card's height, in px.
+   *
+   * A modal listing things sized to its contents jumps every time the list
+   * changes underneath it — paging, filtering, opening a row's editor — and
+   * moves its own buttons out from under the pointer. A floor holds it still
+   * without pinning it the way `fixedHeight` does, so a long list can still
+   * grow to the viewport.
+   */
+  minHeight?: number
 }
 
 /**
@@ -318,6 +336,7 @@ export function Modal({
   children,
   maxWidth = 520,
   fixedHeight = false,
+  minHeight,
 }: ModalProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -344,7 +363,14 @@ export function Modal({
         className="flex w-full flex-col overflow-hidden rounded-modal border border-line-card bg-app shadow-[0_24px_60px_rgba(0,0,0,0.5)]"
         style={{
           maxWidth,
-          ...(fixedHeight ? { height: 'min(680px, 100%)' } : { maxHeight: '100%' }),
+          ...(fixedHeight
+            ? { height: 'min(680px, 100%)' }
+            : {
+                maxHeight: '100%',
+                // Capped at the viewport as well, or the floor would push the
+                // card off a short screen.
+                ...(minHeight === undefined ? {} : { minHeight: `min(${minHeight}px, 100%)` }),
+              }),
         }}
       >
         <header className="flex flex-none items-center gap-[10px] border-b border-line px-[18px] py-[13px]">

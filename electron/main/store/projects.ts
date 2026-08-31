@@ -8,6 +8,7 @@ interface ProjectRow {
   color: string
   description: string
   created_at: number
+  archived_at: number | null
 }
 
 export interface NewProjectInput {
@@ -27,6 +28,14 @@ export type ProjectPatch = Partial<Pick<Project, 'name' | 'color' | 'description
 export class ProjectStore {
   constructor(private readonly db: Db) {}
 
+  /**
+   * Every project, archived ones included.
+   *
+   * Deliberately unfiltered: Spend and every task card resolve a project name
+   * by id, and old work filed under an archived project would read as unfiled
+   * if the row stopped being listed. Which projects are still offered is a
+   * question for the renderer, not for the store.
+   */
   findAll(): Project[] {
     const rows = this.db
       .prepare('SELECT * FROM projects ORDER BY created_at')
@@ -48,6 +57,7 @@ export class ProjectStore {
       color: input.color,
       description: input.description ?? '',
       createdAt: Date.now(),
+      archivedAt: null,
     }
 
     this.db
@@ -70,6 +80,26 @@ export class ProjectStore {
       .run(next.name, next.color, next.description, id)
 
     return next
+  }
+
+  /**
+   * Puts a project away, or brings it back.
+   *
+   * The row and everything pointing at it are untouched — only whether the
+   * app still offers it changes. That is the whole difference from delete:
+   * archiving is a decision you can take back.
+   *
+   * Separate from `update` on purpose, so saving the edit form can never
+   * archive or restore a project as a side effect of renaming it.
+   */
+  setArchived(id: string, archived: boolean): Project {
+    const current = this.findById(id)
+    if (!current) throw new Error(`unknown project "${id}"`)
+
+    const archivedAt = archived ? Date.now() : null
+    this.db.prepare('UPDATE projects SET archived_at = ? WHERE id = ?').run(archivedAt, id)
+
+    return { ...current, archivedAt }
   }
 
   /**
@@ -96,5 +126,6 @@ function toProject(row: ProjectRow): Project {
     color: row.color,
     description: row.description,
     createdAt: row.created_at,
+    archivedAt: row.archived_at,
   }
 }

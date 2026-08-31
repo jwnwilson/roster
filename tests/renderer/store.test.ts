@@ -3,9 +3,18 @@ import {
   useRoster,
   selectGridAgents,
   selectSidebarAgents,
+  selectVisibleAgents,
   selectCurrentAgent,
+  activeProjects,
+  archivedProjects,
+  archivedProjectIds,
+  projectById,
+  projectPickerProjects,
+  projectOptionLabel,
+  sessionsInProject,
+  ALL_PROJECTS,
 } from '@/state/store'
-import { anAgent, aSession } from './factories'
+import { anAgent, aProject, aSession } from './factories'
 
 const INITIAL = useRoster.getState()
 
@@ -86,6 +95,56 @@ describe('filtering', () => {
   test('the grid returns nothing when neither name nor session matches', () => {
     useRoster.setState({ gridQuery: 'nonexistent' })
     expect(selectGridAgents(useRoster.getState())).toEqual([])
+  })
+})
+
+describe('hidden agents', () => {
+  beforeEach(() => {
+    useRoster.setState({
+      agents: [...AGENTS.slice(0, 2), anAgent({ id: 'review', name: 'Review Agent', hidden: true })],
+    })
+  })
+
+  test('omits hidden agents from the sidebar roster', () => {
+    expect(selectSidebarAgents(useRoster.getState()).map((a) => a.id)).toEqual([
+      'architect',
+      'debugging',
+    ])
+  })
+
+  test('omits hidden agents from the grid', () => {
+    expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual([
+      'architect',
+      'debugging',
+    ])
+  })
+
+  test('a hidden agent cannot be surfaced by searching for it', () => {
+    useRoster.setState({ query: 'Review', gridQuery: 'Review' })
+
+    expect(selectSidebarAgents(useRoster.getState())).toEqual([])
+    expect(selectGridAgents(useRoster.getState())).toEqual([])
+  })
+
+  test('keeps hidden agents available to assign, since hiding is only a view', () => {
+    // Task assignees, the handoff tool and the Skills/MCP screens all read
+    // state.agents directly. Hiding must not reach them.
+    expect(useRoster.getState().agents.map((a) => a.id)).toContain('review')
+  })
+
+  test('selectVisibleAgents returns the roster itself when nothing is hidden', () => {
+    useRoster.setState({ agents: AGENTS })
+    const state = useRoster.getState()
+
+    // Reference equality matters: a fresh array here re-renders forever.
+    expect(selectVisibleAgents(state)).toBe(state.agents)
+  })
+
+  test('selectVisibleAgents drops the hidden ones', () => {
+    expect(selectVisibleAgents(useRoster.getState()).map((a) => a.id)).toEqual([
+      'architect',
+      'debugging',
+    ])
   })
 })
 
@@ -185,5 +244,123 @@ describe('tool expansion', () => {
     useRoster.getState().toggleTool('t1')
 
     expect(useRoster.getState().openTools['t1']).toBe(false)
+  })
+})
+
+describe('active and archived projects', () => {
+  const ACTIVE = aProject({ id: 'p1', name: 'API reliability' })
+  const PUT_AWAY = aProject({ id: 'p2', name: 'Q3 planning', archivedAt: 1_700_000_500_000 })
+
+  beforeEach(() => {
+    useRoster.setState({ projects: [ACTIVE, PUT_AWAY] })
+  })
+
+  test('activeProjects leaves out the archived ones', () => {
+    expect(activeProjects(useRoster.getState()).map((p) => p.id)).toEqual(['p1'])
+  })
+
+  test('archivedProjects keeps only those', () => {
+    expect(archivedProjects(useRoster.getState()).map((p) => p.id)).toEqual(['p2'])
+  })
+
+  test('archivedProjectIds is the set of ids to hide work for', () => {
+    const ids = archivedProjectIds(useRoster.getState())
+
+    expect(ids.has('p2')).toBe(true)
+    expect(ids.has('p1')).toBe(false)
+  })
+
+  test('projectById still resolves an archived project', () => {
+    // Spend and every task card name a project by id; an archived one that
+    // stopped resolving would make old work read as unfiled.
+    expect(projectById(useRoster.getState(), 'p2')?.name).toBe('Q3 planning')
+  })
+})
+
+describe('projectPickerProjects', () => {
+  const ACTIVE = aProject({ id: 'p1', name: 'API reliability' })
+  const PUT_AWAY = aProject({ id: 'p2', name: 'Q3 planning', archivedAt: 1_700_000_500_000 })
+
+  beforeEach(() => {
+    useRoster.setState({ projects: [ACTIVE, PUT_AWAY] })
+  })
+
+  test('offers the active projects', () => {
+    expect(projectPickerProjects(useRoster.getState(), null).map((p) => p.id)).toEqual(['p1'])
+  })
+
+  test('keeps the current value even when it is archived', () => {
+    // Select is a native <select>: a value with no matching option renders
+    // blank, so a task filed under an archived project would look unfiled.
+    expect(projectPickerProjects(useRoster.getState(), 'p2').map((p) => p.id)).toEqual([
+      'p1',
+      'p2',
+    ])
+  })
+
+  test('says which one is archived', () => {
+    expect(projectOptionLabel(PUT_AWAY)).toBe('Q3 planning (archived)')
+    expect(projectOptionLabel(ACTIVE)).toBe('API reliability')
+  })
+
+  test('does not list an active current value twice', () => {
+    expect(projectPickerProjects(useRoster.getState(), 'p1').map((p) => p.id)).toEqual(['p1'])
+  })
+
+  test('ignores a current value that no longer exists', () => {
+    expect(projectPickerProjects(useRoster.getState(), 'gone').map((p) => p.id)).toEqual(['p1'])
+  })
+
+  test('hands back the store’s own objects, so useShallow can compare them', () => {
+    const state = useRoster.getState()
+    // Freshly built option records here would re-render forever.
+    expect(projectPickerProjects(state, null)[0]).toBe(state.projects[0])
+  })
+})
+
+describe('archiving a project takes its sessions off the grid', () => {
+  const ACTIVE = aProject({ id: 'p1' })
+  const PUT_AWAY = aProject({ id: 'p2', archivedAt: 1_700_000_500_000 })
+
+  beforeEach(() => {
+    useRoster.setState({
+      agents: AGENTS,
+      projects: [ACTIVE, PUT_AWAY],
+      sessions: {
+        architect: [aSession({ agentId: 'architect', projectId: 'p1' })],
+        debugging: [aSession({ agentId: 'debugging', projectId: 'p2' })],
+        review: [aSession({ agentId: 'review', projectId: null })],
+      },
+    })
+  })
+
+  test('sessionsInProject drops the ones whose project is archived', () => {
+    const state = useRoster.getState()
+    const sessions = state.sessions['debugging'] ?? []
+
+    expect(sessionsInProject(sessions, ALL_PROJECTS, archivedProjectIds(state))).toEqual([])
+  })
+
+  test('an agent whose only work is archived leaves the grid', () => {
+    expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual([
+      'architect',
+      'review',
+    ])
+  })
+
+  test('restoring the project brings the agent back', () => {
+    useRoster.setState({ projects: [ACTIVE, { ...PUT_AWAY, archivedAt: null }] })
+
+    expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual([
+      'architect',
+      'debugging',
+      'review',
+    ])
+  })
+
+  test('with no archived projects, sessionsInProject is unchanged', () => {
+    const sessions = useRoster.getState().sessions['debugging'] ?? []
+
+    expect(sessionsInProject(sessions, ALL_PROJECTS)).toBe(sessions)
   })
 })

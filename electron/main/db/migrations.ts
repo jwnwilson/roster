@@ -189,4 +189,16 @@ export const MIGRATIONS: readonly string[] = [
     created_at     INTEGER NOT NULL
   );
   `,
+
+  // 7 — a project can be put away instead of destroyed. NULL means active;
+  // an epoch means the moment it was archived, which is also how the archived
+  // list sorts. Its tasks and sessions keep pointing at it either way — an
+  // archive that lost the work it grouped would be a delete with extra steps.
+  //
+  // A plain ADD COLUMN, like migration 6: nothing to widen, so none of
+  // migration 5's rebuild. Every project that predates the column reads as
+  // active, which is what an existing install expects to wake up to.
+  `
+  ALTER TABLE projects ADD COLUMN archived_at INTEGER;
+  `,
 ]

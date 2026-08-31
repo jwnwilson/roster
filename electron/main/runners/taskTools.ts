@@ -17,6 +17,13 @@ export interface TaskTools {
   comments(taskId: string): TaskComment[]
   /** Resolves a project id to its name, for display. */
   projectName(projectId: string): string | null
+  /**
+   * Whether that project has been archived.
+   *
+   * Filing a task under an archived project would put it somewhere no board
+   * shows, so create_task refuses rather than letting the work disappear.
+   */
+  isArchivedProject(projectId: string): boolean
   /** Resolves an agent id to its display name. */
   agentName(agentId: string): string | null
   create(input: {
@@ -78,7 +85,13 @@ export async function createTasksMcpServer(
 
 type ToolFactory = typeof import('@anthropic-ai/claude-agent-sdk').tool
 
-function buildTaskTools(tasks: TaskTools, currentAgentId: string, tool: ToolFactory) {
+/**
+ * The tool definitions themselves, given a factory to build them with.
+ *
+ * Exported so the handlers can be exercised without standing up the SDK:
+ * pass a factory that simply records what it is handed.
+ */
+export function buildTaskTools(tasks: TaskTools, currentAgentId: string, tool: ToolFactory) {
   const text = (body: string, isError = false) => ({
     content: [{ type: 'text' as const, text: body }],
     ...(isError ? { isError: true } : {}),
@@ -188,11 +201,18 @@ function buildTaskTools(tasks: TaskTools, currentAgentId: string, tool: ToolFact
       priority?: TaskPriority
       project_id?: string | null
     }) => {
+      const projectId = args.project_id ?? null
+      if (projectId !== null && tasks.isArchivedProject(projectId)) {
+        // Silently filing it there would create a task nobody ever sees.
+        const name = tasks.projectName(projectId) ?? projectId
+        return text(`Project "${name}" is archived; pick an active one or none.`, true)
+      }
+
       const created = tasks.create({
         title: args.title,
         description: args.description ?? '',
         priority: args.priority ?? 'medium',
-        projectId: args.project_id ?? null,
+        projectId,
       })
 
       return text(`Created ${created.id}.`)

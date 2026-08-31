@@ -25,6 +25,7 @@ import {
   columnsFor,
   moveTask,
   selectFilteredTasks,
+  selectVisibleTasks,
   useRoster,
   type TaskView,
 } from '@/state/store'
@@ -45,8 +46,12 @@ export function Tasks() {
   const taskView = useRoster((s) => s.taskView)
   const setTaskView = useRoster((s) => s.setTaskView)
   const tasks = useRoster(useShallow(selectFilteredTasks))
-  const total = useRoster((s) => s.tasks.length)
-  const inReview = useRoster((s) => s.tasks.filter((t) => t.status === 'in_review').length)
+  // Work under an archived project is not on the board, so counting it here
+  // would have an unfiltered board claim more tasks than it is showing.
+  const total = useRoster((s) => selectVisibleTasks(s).length)
+  const inReview = useRoster(
+    (s) => selectVisibleTasks(s).filter((t) => t.status === 'in_review').length,
+  )
   const taskQuery = useRoster((s) => s.taskQuery)
   const setTaskQuery = useRoster((s) => s.setTaskQuery)
   const projectFilter = useRoster((s) => s.projectFilter)

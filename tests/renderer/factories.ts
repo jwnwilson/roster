@@ -22,6 +22,7 @@ export function anAgent(overrides: Partial<Agent> = {}): Agent {
     systemPrompt: 'Reproduce before you fix.',
     skills: ['repro-harness'],
     mcpServers: ['filesystem'],
+    hidden: false,
     status: 'idle',
     ...overrides,
   }
@@ -76,6 +77,7 @@ export function aProject(overrides: Partial<Project> = {}): Project {
     color: 'var(--color-project-4)',
     description: 'Close out connection-handling bugs.',
     createdAt: 1_700_000_000_000,
+    archivedAt: null,
     ...overrides,
   }
 }

@@ -156,6 +156,7 @@ describe('registry', () => {
       systemPrompt: '',
       skills: [],
       mcpServers: [],
+      hidden: false,
       custom: { command: 'my-cli', args: ['--json'] },
       status: 'idle',
     }
@@ -177,6 +178,7 @@ describe('registry', () => {
         systemPrompt: '',
         skills: [],
         mcpServers: [],
+        hidden: false,
         status: 'idle',
       },
     ])
@@ -197,6 +199,7 @@ describe('registry', () => {
         systemPrompt: '',
         skills: [],
         mcpServers: [],
+        hidden: false,
         status: 'idle',
       },
     ])
@@ -353,6 +356,7 @@ describe('in-process tool allowlists', () => {
         find: () => null,
         comments: () => [],
         projectName: () => null,
+        isArchivedProject: () => false,
         agentName: () => null,
         create: () => ({}) as never,
         update: () => ({}) as never,

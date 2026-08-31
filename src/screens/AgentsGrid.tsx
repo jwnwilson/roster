@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Agent, Session, TranscriptLine } from '@shared/types'
 import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
@@ -6,11 +7,14 @@ import {
   agentStatus,
   useRoster,
   selectGridAgents,
+  selectVisibleAgents,
   sessionsInProject,
+  archivedProjectIds,
   NO_LINES,
   NO_SESSIONS,
 } from '@/state/store'
 import {
+  GhostButton,
   PrimaryButton,
   ScreenHeader,
   StatusDot,
@@ -19,23 +23,36 @@ import {
 import { ProjectFilter } from '@/components/ProjectFilter'
 import { formatCost, formatTokens } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
+import { ManageAgentsModal } from './ManageAgentsModal'
 
 export function AgentsGrid() {
   const agents = useRoster(useShallow(selectGridAgents))
-  const total = useRoster((s) => s.agents.length)
+  // Counts are measured against the visible roster, never the whole one: a
+  // number the user cannot reconcile with the cards in front of them is worse
+  // than no number.
+  const visible = useRoster((s) => selectVisibleAgents(s).length)
+  const hidden = useRoster((s) => s.agents.length - selectVisibleAgents(s).length)
   const gridQuery = useRoster((s) => s.gridQuery)
   const setGridQuery = useRoster((s) => s.setGridQuery)
   const projectFilter = useRoster((s) => s.projectFilter)
   const go = useRoster((s) => s.go)
+  const [managing, setManaging] = useState(false)
 
   // A count, not an array: a fresh array here re-renders forever.
   const running = useRoster(
     (s) => agents.filter((agent) => agentStatus(s, agent) === 'running').length,
   )
-  const filtering = gridQuery.trim() !== '' || projectFilter !== ALL_PROJECTS
+  // An agent whose every session sits under an archived project leaves the
+  // grid too, so a shorter list than `visible` is itself a kind of filtering —
+  // without this the header would claim more agents than it is showing.
+  const filtering =
+    gridQuery.trim() !== '' || projectFilter !== ALL_PROJECTS || agents.length !== visible
+
   const summary = filtering
-    ? `${agents.length} of ${total} match`
-    : `${total} configured · ${running} running`
+    ? `${agents.length} of ${visible} match`
+    : hidden > 0
+      ? `${visible} shown · ${hidden} hidden · ${running} running`
+      : `${visible} configured · ${running} running`
 
   return (
     <div className="flex h-screen flex-col">
@@ -50,13 +67,18 @@ export function AgentsGrid() {
             onChange={setGridQuery}
             className="w-[200px]"
           />
+          <GhostButton onClick={() => setManaging(true)}>Manage</GhostButton>
           <PrimaryButton onClick={() => go('new')}>New agent</PrimaryButton>
         </div>
       </ScreenHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
         {agents.length === 0 ? (
-          <EmptyState filtered={filtering} />
+          <EmptyState
+            filtered={filtering}
+            allHidden={hidden > 0 && visible === 0}
+            onManage={() => setManaging(true)}
+          />
         ) : (
           <div className="grid min-h-full grid-cols-2 gap-[24px] [grid-auto-rows:minmax(268px,1fr)]">
             {agents.map((agent) => (
@@ -67,6 +89,8 @@ export function AgentsGrid() {
       </div>
 
       <StatusBar />
+
+      {managing ? <ManageAgentsModal onClose={() => setManaging(false)} /> : null}
     </div>
   )
 }
@@ -81,7 +105,9 @@ function AgentCard({ agent }: AgentCardProps) {
   // The same predicate the card list used. If these two ever disagreed, a
   // card would render with no chips in it.
   const sessions = useRoster(
-    useShallow((s) => sessionsInProject(s.sessions[agent.id] ?? NO_SESSIONS, projectFilter)),
+    useShallow((s) =>
+      sessionsInProject(s.sessions[agent.id] ?? NO_SESSIONS, projectFilter, archivedProjectIds(s)),
+    ),
   )
   const selected = useRoster((s) => s.sess[agent.id])
   const status = useRoster((s) => agentStatus(s, agent))
@@ -242,17 +268,37 @@ function SessionChip({ session, agentId, active }: SessionChipProps) {
 
 interface EmptyStateProps {
   filtered: boolean
+  /** Every agent exists but each is hidden — a different problem entirely. */
+  allHidden: boolean
+  onManage: () => void
 }
 
-function EmptyState({ filtered }: EmptyStateProps) {
+function EmptyState({ filtered, allHidden, onManage }: EmptyStateProps) {
   const go = useRoster((s) => s.go)
+
+  // Order matters: an all-hidden roster is not empty, and offering "New agent"
+  // there would answer a question nobody asked.
+  if (filtered) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-[10px]">
+        <p className="m-0 text-md text-dim">No agents match that filter.</p>
+      </div>
+    )
+  }
+
+  if (allHidden) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-[10px]">
+        <p className="m-0 text-md text-dim">Every agent is hidden.</p>
+        <PrimaryButton onClick={onManage}>Manage agents</PrimaryButton>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-[10px]">
-      <p className="m-0 text-md text-dim">
-        {filtered ? 'No agents match that filter.' : 'No agents configured yet.'}
-      </p>
-      {filtered ? null : <PrimaryButton onClick={() => go('new')}>New agent</PrimaryButton>}
+      <p className="m-0 text-md text-dim">No agents configured yet.</p>
+      <PrimaryButton onClick={() => go('new')}>New agent</PrimaryButton>
     </div>
   )
 }

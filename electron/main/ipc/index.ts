@@ -419,11 +419,32 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.projectsUpdate, (_e, id: string, patch: ProjectPatch) =>
     requireProjects().update(id, patch),
   )
-  ipcMain.handle(CHANNELS.projectsDelete, (_e, id: string) => {
+  ipcMain.handle(CHANNELS.projectsSetArchived, (_e, id: string, archived: boolean) => {
+    const project = requireProjects().setArchived(id, archived)
+    // Archiving takes a project's work off the board and out of every picker,
+    // so every window needs the new list — not just the one that clicked.
+    broadcast(CHANNELS.tasksEvent, { type: 'projects', projects: requireProjects().findAll() })
+    return project
+  })
+
+  ipcMain.handle(CHANNELS.projectsDelete, async (e, id: string) => {
+    const project = requireProjects().findById(id)
+    if (!project) return false
+
+    // Archiving is the reversible everyday verb; this is the one that cannot
+    // be taken back, so it asks first — as removing a skill does.
+    const confirmed = await confirmDelete(
+      e,
+      project.name,
+      'Its tasks and sessions are kept — they only lose the grouping. This cannot be undone.',
+    )
+    if (!confirmed) return false
+
     requireProjects().delete(id)
     // Deleting a project changes every card that referenced it, so the board
     // needs the new list as well as the detached tasks.
     broadcast(CHANNELS.tasksEvent, { type: 'projects', projects: requireProjects().findAll() })
+    return true
   })
 
   ipcMain.handle(CHANNELS.tasksList, () => requireTasks().findAll())

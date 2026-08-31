@@ -6,6 +6,8 @@ import {
   reduceTaskEvent,
   selectBacklogTasks,
   selectFilteredTasks,
+  selectVisibleTasks,
+  ALL_PROJECTS,
   useRoster,
   withTask,
 } from '@/state/store'
@@ -317,5 +319,108 @@ describe('the board and the backlog divide the tasks between them', () => {
   test('a backlog task is not a drop target, so nothing can be dropped onto it', () => {
     expect(columnOf('ROS-2', TASKS)).toBeNull()
     expect(columnOf('backlog', TASKS)).toBeNull()
+  })
+})
+
+describe('archiving a project takes its work off the board', () => {
+  const ACTIVE = aProject({ id: 'p1', name: 'API reliability' })
+  const PUT_AWAY = aProject({ id: 'p2', name: 'Q3 planning', archivedAt: 1_700_000_500_000 })
+
+  const TASKS = [
+    aTask({ id: 'ROS-1', title: 'Live work', status: 'todo', projectId: 'p1' }),
+    aTask({ id: 'ROS-2', title: 'Shipped work', status: 'todo', projectId: 'p2' }),
+    aTask({ id: 'ROS-3', title: 'Unfiled work', status: 'todo', projectId: null }),
+    aTask({ id: 'ROS-4', title: 'Live idea', status: 'backlog', projectId: 'p1' }),
+    aTask({ id: 'ROS-5', title: 'Shipped idea', status: 'backlog', projectId: 'p2' }),
+  ]
+
+  beforeEach(() => {
+    useRoster.setState({ projects: [ACTIVE, PUT_AWAY], tasks: TASKS })
+  })
+
+  test('the board drops the archived project’s cards', () => {
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual([
+      'ROS-1',
+      'ROS-3',
+    ])
+  })
+
+  test('the backlog drops them too', () => {
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-4'])
+  })
+
+  test('work with no project at all is never hidden', () => {
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toContain('ROS-3')
+  })
+
+  test('restoring the project brings every card back', () => {
+    useRoster.setState({ projects: [ACTIVE, { ...PUT_AWAY, archivedAt: null }] })
+
+    // Nothing was deleted, so this has to be the whole board again.
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual([
+      'ROS-1',
+      'ROS-2',
+      'ROS-3',
+    ])
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-4', 'ROS-5'])
+  })
+
+  test('the tasks themselves are untouched — they are hidden, not detached', () => {
+    selectFilteredTasks(useRoster.getState())
+
+    expect(useRoster.getState().tasks.find((t) => t.id === 'ROS-2')?.projectId).toBe('p2')
+  })
+
+  test('selectVisibleTasks is what the board counts against', () => {
+    // The header reads "N of M match". Counting hidden work in M would have
+    // an unfiltered board claim more tasks than it is showing.
+    expect(selectVisibleTasks(useRoster.getState()).map((t) => t.id)).toEqual([
+      'ROS-1',
+      'ROS-3',
+      'ROS-4',
+    ])
+  })
+})
+
+describe('reduceTaskEvent — a project list arriving from another window', () => {
+  const ACTIVE = aProject({ id: 'p1' })
+  const PUT_AWAY = aProject({ id: 'p2', archivedAt: 1_700_000_500_000 })
+
+  test('replaces the list', () => {
+    const patch = reduceTaskEvent(state(), { type: 'projects', projects: [ACTIVE] })
+
+    expect(patch.projects).toEqual([ACTIVE])
+  })
+
+  test('clears a filter pointing at a project just archived elsewhere', () => {
+    useRoster.setState({ projects: [ACTIVE, aProject({ id: 'p2' })], projectFilter: 'p2' })
+
+    const patch = reduceTaskEvent(state(), { type: 'projects', projects: [ACTIVE, PUT_AWAY] })
+
+    // The dropdown no longer offers it, so leaving the filter set would show
+    // an empty board with no way to tell why.
+    expect(patch.projectFilter).toBe(ALL_PROJECTS)
+  })
+
+  test('clears a filter pointing at a project deleted elsewhere', () => {
+    useRoster.setState({ projects: [ACTIVE, aProject({ id: 'p2' })], projectFilter: 'p2' })
+
+    const patch = reduceTaskEvent(state(), { type: 'projects', projects: [ACTIVE] })
+
+    expect(patch.projectFilter).toBe(ALL_PROJECTS)
+  })
+
+  test('leaves a filter on a project that is still active alone', () => {
+    useRoster.setState({ projects: [ACTIVE, PUT_AWAY], projectFilter: 'p1' })
+
+    const patch = reduceTaskEvent(state(), { type: 'projects', projects: [ACTIVE, PUT_AWAY] })
+
+    expect(patch.projectFilter).toBeUndefined()
+  })
+
+  test('leaves the all-projects filter alone', () => {
+    const patch = reduceTaskEvent(state(), { type: 'projects', projects: [PUT_AWAY] })
+
+    expect(patch.projectFilter).toBeUndefined()
   })
 })

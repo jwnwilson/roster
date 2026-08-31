@@ -12,6 +12,7 @@ export function anAgentRecord(overrides: Partial<Agent> = {}): Agent {
     systemPrompt: '',
     skills: [],
     mcpServers: [],
+    hidden: false,
     status: 'idle',
     ...overrides,
   }
