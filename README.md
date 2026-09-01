@@ -25,7 +25,7 @@ available, the app still runs — agents just show `error` with the reason, e.g.
 
 ## Install
 
-**One-line installer** — the same result without Homebrew:
+**One-line installer**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jwnwilson/roster/main/scripts/install.sh | sh
