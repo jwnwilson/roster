@@ -108,6 +108,46 @@ describe('CustomRunner — argument templating', () => {
 })
 
 describe('CodexRunner', () => {
+  test('passes the sandbox and working directory to an initial turn', async () => {
+    const cli = await argvEchoCli()
+    const runner = new CodexRunner()
+    ;(runner as unknown as { binary: string }).binary = cli
+
+    const events = await collect(runner.run('go', options()))
+
+    expect(events.filter((event) => event.kind === 'text').map((event) => event.delta)).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--sandbox',
+      'workspace-write',
+      '-C',
+      dir,
+      '--model',
+      'my-model',
+      'go',
+    ])
+  })
+
+  test('uses only resume-supported options for a follow-up turn', async () => {
+    const cli = await argvEchoCli()
+    const runner = new CodexRunner()
+    ;(runner as unknown as { binary: string }).binary = cli
+
+    const events = await collect(runner.run('go again', options({ resumeFrom: 'thread-1' })))
+
+    expect(events.filter((event) => event.kind === 'text').map((event) => event.delta)).toEqual([
+      'exec',
+      'resume',
+      '--json',
+      '--skip-git-repo-check',
+      '--model',
+      'my-model',
+      'thread-1',
+      'go again',
+    ])
+  })
+
   test('falls back to a known model list when the cache is unreadable', async () => {
     const runner = new CodexRunner()
     const models = await runner.models()
