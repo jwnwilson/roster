@@ -76,22 +76,31 @@ export class CodexRunner implements Runner {
   }
 
   run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
-    const args = [
-      'exec',
-      '--json',
-      '--skip-git-repo-check',
-      '--sandbox',
-      'workspace-write',
-      '-C',
-      options.cwd,
-      '--model',
-      options.model,
-    ]
-
-    // Codex resumes by thread id rather than a flag on the base command.
-    if (options.resumeFrom !== undefined && options.resumeFrom !== '') {
-      args.splice(1, 0, 'resume', options.resumeFrom)
-    }
+    // `exec resume` has its own option set. In particular, its working
+    // directory and sandbox are inherited from the stored session, so it
+    // rejects the base `exec` command's `-C` and `--sandbox` options.
+    const args =
+      options.resumeFrom !== undefined && options.resumeFrom !== ''
+        ? [
+            'exec',
+            'resume',
+            '--json',
+            '--skip-git-repo-check',
+            '--model',
+            options.model,
+            options.resumeFrom,
+          ]
+        : [
+            'exec',
+            '--json',
+            '--skip-git-repo-check',
+            '--sandbox',
+            'workspace-write',
+            '-C',
+            options.cwd,
+            '--model',
+            options.model,
+          ]
 
     args.push(composePrompt(prompt, options.systemPrompt))
 
