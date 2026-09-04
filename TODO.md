@@ -17,6 +17,7 @@
 - [x] Add ability to delete tasks
 - [x] Render .md plans and allow user to add comments and work on it with the agent that created it 
 - [x] Design @ agent in comment function to send a message to an agent and attach a session to the task for the agent to answer the question. If a session already exists the message will go the existing session.
+- [ ] I want to be able to name session and encourage users to do that
 - [ ] Setup Agent setup workflow and add default agents on startup with tech lead being initial agent to work with
 - [ ] Agent, global & per project context when it's working.
 - [ ] Design build and publish an SPA on github for this tool
