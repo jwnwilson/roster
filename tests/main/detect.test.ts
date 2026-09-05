@@ -112,6 +112,33 @@ describe('detectRunner — codex', () => {
     expect(status.auth).toBe('none')
     expect(status.detail).toMatch(/codex login/)
   })
+
+  test('rejects versions too old to enforce permission profiles', async () => {
+    const status = await detectRunner(
+      'codex',
+      deps({
+        which: async () => '/usr/bin/codex',
+        version: async () => '0.137.0',
+        readFile: async () => JSON.stringify({ auth_mode: 'chatgpt' }),
+      }),
+    )
+
+    expect(status.ready).toBe(false)
+    expect(status.detail).toMatch(/0\.138\.0 or newer/)
+  })
+
+  test('accepts the first version that supports permission profiles', async () => {
+    const status = await detectRunner(
+      'codex',
+      deps({
+        which: async () => '/usr/bin/codex',
+        version: async () => '0.138.0',
+        readFile: async () => JSON.stringify({ auth_mode: 'chatgpt' }),
+      }),
+    )
+
+    expect(status.ready).toBe(true)
+  })
 })
 
 describe('detectRunner — custom', () => {
