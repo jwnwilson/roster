@@ -457,8 +457,9 @@ export class SessionManager {
 
     // The notes sit at the top of the brief, under the same budget: an agent
     // that has not enabled the memory server still reads what the project
-    // decided, it simply cannot add to it.
-    const notes = this.notes?.read(projectId) ?? ''
+    // decided, it simply cannot add to it. `body` rather than `read`, so the
+    // starter block Roster wrote for the reader is not paid for every turn.
+    const notes = this.notes?.body(projectId) ?? ''
 
     const brief = buildProjectBrief({
       project,
@@ -877,7 +878,9 @@ export class SessionManager {
     if (!agent.mcpServers.includes(MEMORY_SERVER)) return undefined
 
     return {
-      recall: () => notes.read(projectId),
+      // `body`, like the brief: a file holding nothing but the starter has no
+      // notes yet, and saying so beats reading Roster's own words back.
+      recall: () => notes.body(projectId),
       remember: (note) => notes.append(projectId, { author: agent.name, note }),
     }
   }

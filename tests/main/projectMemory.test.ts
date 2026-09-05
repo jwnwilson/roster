@@ -350,6 +350,32 @@ describe('notes and the brief', () => {
     expect(lastPrompt()).toContain('a standing decision')
   })
 
+  test('do not spend the budget on the starter Roster wrote for the reader', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    await notes.append(project.id, { author: 'Debugging Agent', note: 'a finding' })
+
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'go')
+
+    const prompt = lastPrompt()
+    expect(prompt).toContain('a finding')
+    expect(prompt).not.toContain('Agents append dated lines here')
+  })
+
+  test('read as no notes at all when only the starter has been written', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'go')
+
+    // A file created and then emptied of its one line is not a project with
+    // notes, and recall should not read Roster's own words back as though it
+    // were.
+    await lastMemoryTools().remember('a finding')
+    await notes.write(project.id, notes.read(project.id).replace(/^- .*$/m, ''))
+
+    expect(lastMemoryTools().recall().trim()).toBe('')
+  })
+
   test('are left out entirely when the file is empty', async () => {
     const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
     await notes.write(project.id, '\n\n')

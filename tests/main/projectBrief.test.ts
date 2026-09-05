@@ -190,7 +190,41 @@ describe('buildProjectBrief — notes', () => {
     const text = brief(huge)
     expect(text.length).toBeLessThanOrEqual(PROJECT_BRIEF_BUDGET)
     expect(text).toContain(task.id)
-    expect(text).toMatch(/\(\+\d+ more lines — use recall\)/)
+    expect(text).toMatch(/\(\+\d+ earlier lines — use recall\)/)
+  })
+
+  test('keeps the newest notes when it cannot keep them all', () => {
+    // `remember` appends, so the recent end of the file is the bottom of it.
+    // Cutting from the bottom would mean that the longer a project ran, the
+    // less of what it had just learned reached the next agent.
+    const long = [
+      ...Array.from({ length: 60 }, (_, n) => `- 2026-01-01 Debugging Agent: stale finding ${n}`),
+      '- 2026-09-05 Review Agent: the thing we worked out today',
+    ].join('\n')
+
+    const text = brief(long)
+    expect(text).toContain('the thing we worked out today')
+    expect(text).not.toContain('stale finding 0')
+  })
+
+  test('says the lines it dropped were the earlier ones, above the ones it kept', () => {
+    const long = Array.from(
+      { length: 60 },
+      (_, n) => `- 2026-01-01 Debugging Agent: finding ${n}`,
+    ).join('\n')
+
+    const text = brief(long)
+    const trailer = text.match(/\(\+\d+ earlier lines — use recall\)/)
+    expect(trailer).not.toBeNull()
+    // The dropped lines came off the top, so the admission belongs there too.
+    expect(text.indexOf(trailer?.[0] as string)).toBeLessThan(text.indexOf('finding 59'))
+  })
+
+  test('leaves the notes in the order the file has them', () => {
+    const text = brief('# Conventions\n\n- one pool per process\n- retries are idempotent')
+
+    expect(text.indexOf('# Conventions')).toBeLessThan(text.indexOf('one pool per process'))
+    expect(text.indexOf('one pool per process')).toBeLessThan(text.indexOf('retries are idempotent'))
   })
 
   test('says nothing at all about notes when the file is empty', () => {

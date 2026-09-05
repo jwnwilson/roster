@@ -79,6 +79,23 @@ describe('ProjectNotesStore', () => {
     expect(notes.read('p1')).toBe('after')
     watcher.dispose()
   })
+
+  test('notices a NOTES.md deleted outside Roster', async () => {
+    await notes.write('p1', 'before')
+
+    let seen: string | null = null
+    const watcher = notes.watch((projectId, contents) => {
+      if (projectId === 'p1') seen = contents
+    })
+
+    await rm(projectNotesPath('p1'))
+    // Without this the store — and any open editor — would go on showing
+    // notes that are no longer there, and so would every agent's brief.
+    await until(() => notes.read('p1') === '', 'the watcher to see the file go')
+
+    expect(seen).toBe('')
+    watcher.dispose()
+  })
 })
 
 describe('ProjectNotesStore.append', () => {
@@ -149,6 +166,36 @@ describe('ProjectNotesStore.append', () => {
 
     expect(seen).toContain('a finding')
     watcher.dispose()
+  })
+})
+
+describe('ProjectNotesStore.body', () => {
+  test('leaves out the starter Roster wrote for the reader', async () => {
+    await notes.append('p1', { author: 'Debugging Agent', note: 'a finding' })
+
+    // The starter block is written for the person who opens NOTES.md. Every
+    // agent on the project would otherwise pay for it in every prompt.
+    expect(notes.read('p1')).toContain('# Project notes')
+    expect(notes.body('p1')).not.toContain('# Project notes')
+    expect(notes.body('p1')).toContain('a finding')
+  })
+
+  test('keeps every word of a file somebody wrote themselves', async () => {
+    await notes.write('p1', '# Conventions\n\nOne pool per process.\n')
+
+    expect(notes.body('p1')).toContain('# Conventions')
+    expect(notes.body('p1')).toContain('One pool per process.')
+  })
+
+  test('keeps a starter the user has since edited, because it is theirs now', async () => {
+    await notes.append('p1', { author: 'Debugging Agent', note: 'a finding' })
+    await notes.write('p1', notes.read('p1').replace('# Project notes', '# API reliability'))
+
+    expect(notes.body('p1')).toContain('# API reliability')
+  })
+
+  test('has nothing to say about a project with no notes', () => {
+    expect(notes.body('p1')).toBe('')
   })
 })
 

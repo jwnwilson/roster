@@ -51,6 +51,21 @@ export class ProjectNotesStore {
     return this.notes.get(this.checked(projectId)) ?? ''
   }
 
+  /**
+   * The notes as an agent should be charged for them: the file, less the
+   * starter block Roster wrote itself.
+   *
+   * That block explains the file to the person who opens it, which is worth
+   * having on disk and worth nothing in a prompt — and every agent on the
+   * project pays for it on every turn. Only an untouched starter is dropped:
+   * once somebody has edited those words they are theirs, and theirs go to
+   * the model like anything else they wrote.
+   */
+  body(projectId: string): string {
+    const contents = this.read(projectId)
+    return contents.startsWith(STARTER) ? contents.slice(STARTER.length) : contents
+  }
+
   /** Absolute path of the file, whether or not it exists yet. */
   pathOf(projectId: string): string {
     return projectNotesPath(this.checked(projectId))
@@ -103,7 +118,7 @@ export class ProjectNotesStore {
   /** Publishes a change and keeps the in-memory copy in step with the file. */
   private remember(projectId: string, contents: string): void {
     this.notes.set(projectId, contents)
-    for (const listener of this.listeners) listener(projectId, contents)
+    this.publish(projectId, contents)
   }
 
   /**
@@ -153,8 +168,20 @@ export class ProjectNotesStore {
 
     for (const [projectId, contents] of this.notes) {
       if (before.get(projectId) === contents) continue
-      for (const listener of this.listeners) listener(projectId, contents)
+      this.publish(projectId, contents)
     }
+
+    // A file that has gone is a change too. Without this the store, every
+    // brief built from it and any open editor would go on showing notes that
+    // are not there any more.
+    for (const projectId of before.keys()) {
+      if (this.notes.has(projectId)) continue
+      this.publish(projectId, '')
+    }
+  }
+
+  private publish(projectId: string, contents: string): void {
+    for (const listener of this.listeners) listener(projectId, contents)
   }
 
   private stopWatching(): void {

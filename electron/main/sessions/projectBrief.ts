@@ -101,6 +101,14 @@ interface Block {
   more: (dropped: number) => string
   /** A share of the whole budget this block may not exceed. */
   share?: number
+  /**
+   * Which end of the block is worth keeping when it does not all fit.
+   *
+   * Defaults to the head, because the board and the comments are already
+   * ordered with what matters first. The notes are not — they are a file
+   * that grows at the bottom.
+   */
+  keep?: 'head' | 'tail'
 }
 
 function blocksOf(input: ProjectBriefInput): Block[] {
@@ -111,8 +119,13 @@ function blocksOf(input: ProjectBriefInput): Block[] {
     {
       heading: 'Project notes',
       lines: noteLines(input.notes),
-      more: (n) => `(+${n} more lines — use recall)`,
+      more: (n) => `(+${n} earlier lines — use recall)`,
       share: NOTES_BUDGET_SHARE,
+      // `remember` appends, so the recent end of the file is the bottom of
+      // it. Keeping the head would mean the longer a project ran, the less
+      // of what it had just learned reached the next agent — the feature
+      // inverting exactly as it started to pay off.
+      keep: 'tail',
     },
     {
       heading: 'Open tasks',
@@ -200,9 +213,10 @@ function excerpt(text: string): string {
  *
  * Deliberately not reordered: NOTES.md is a document the user writes in too,
  * and shuffling somebody's headings away from what sits under them would
- * make nonsense of the file they are reading in the editor. What keeps a
- * stale note from reading as fact is that `remember` dates and attributes
- * every line it appends.
+ * make nonsense of the file they are reading in the editor. Recency wins by
+ * the block keeping its tail instead — see Block.keep. What keeps a stale
+ * note from reading as fact is that `remember` dates and attributes every
+ * line it appends.
  */
 function noteLines(notes: string | undefined): string[] {
   if (notes === undefined) return []
@@ -214,11 +228,12 @@ function noteLines(notes: string | undefined): string[] {
 /**
  * A block, cut to what it is allowed to spend.
  *
- * Lines are taken in order until the next one would not fit; then the
- * trailer saying how many were dropped has to fit too, which is why lines
- * come back off the end until it does. A block whose heading alone does not
- * fit, or which has nothing left once the trailer is paid for, is left out
- * entirely rather than shown as an empty heading.
+ * Lines are taken from the end the block says is worth keeping until the
+ * next one would not fit; then the trailer saying how many were dropped has
+ * to fit too, which is why lines come back off again until it does. A block
+ * whose heading alone does not fit, or which has nothing left once the
+ * trailer is paid for, is left out entirely rather than shown as an empty
+ * heading.
  */
 function fit(block: Block, allowance: number): string | null {
   if (block.lines.length === 0) return null
@@ -226,10 +241,15 @@ function fit(block: Block, allowance: number): string | null {
   const opening = `\n\n${block.heading}\n`
   if (opening.length >= allowance) return null
 
+  // Walked from the kept end, so whichever lines fall off are the ones the
+  // block cares least about. Put back the right way round by `join`.
+  const fromTail = block.keep === 'tail'
+  const candidates = fromTail ? [...block.lines].reverse() : block.lines
+
   let taken = 0
   let used = opening.length
 
-  for (const line of block.lines) {
+  for (const line of candidates) {
     const cost = line.length + 1
     if (used + cost > allowance) break
     used += cost
@@ -237,22 +257,34 @@ function fit(block: Block, allowance: number): string | null {
   }
 
   // Room for the admission, taken back off the end if that is what it costs.
-  while (taken > 0 && taken < block.lines.length) {
-    const trailer = block.more(block.lines.length - taken)
+  while (taken > 0 && taken < candidates.length) {
+    const trailer = block.more(candidates.length - taken)
     if (used + trailer.length + 1 <= allowance) {
-      return join(opening, block.lines.slice(0, taken), trailer)
+      return join(opening, candidates.slice(0, taken), trailer, fromTail)
     }
-    const dropped = block.lines[taken - 1]
+    const dropped = candidates[taken - 1]
     used -= (dropped?.length ?? 0) + 1
     taken -= 1
   }
 
   if (taken === 0) return null
-  return join(opening, block.lines.slice(0, taken), null)
+  return join(opening, candidates.slice(0, taken), null, fromTail)
 }
 
-function join(opening: string, lines: readonly string[], trailer: string | null): string {
-  const body = [...lines, ...(trailer === null ? [] : [trailer])]
+/**
+ * The kept lines, back in the block's own order, with the trailer on the
+ * side the dropped ones were on — so `(+N earlier lines)` sits above the
+ * notes it stands in for, and `(+N more tasks)` below the tasks.
+ */
+function join(
+  opening: string,
+  kept: readonly string[],
+  trailer: string | null,
+  fromTail: boolean,
+): string {
+  const lines = fromTail ? [...kept].reverse() : kept
+  const admission = trailer === null ? [] : [trailer]
+  const body = fromTail ? [...admission, ...lines] : [...lines, ...admission]
   // The opening already ends in a newline, so the lines are joined by one.
   return opening + body.join('\n')
 }
