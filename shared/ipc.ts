@@ -323,6 +323,8 @@ export interface NewAgentInput {
   /** Defaults to ~/roster/workspace when omitted. */
   cwd?: string
   mcpServers?: string[]
+  /** The project this agent's sessions are filed under. Null for none. */
+  defaultProjectId?: string | null
 }
 
 export interface PtySize {

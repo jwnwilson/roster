@@ -478,6 +478,28 @@ describe('AgentStore — default project', () => {
     )
   })
 
+  test('keeps a default given at creation, so the form need not set it twice', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({
+      name: 'Review Agent',
+      runner: 'claude',
+      model: 'claude-opus-5',
+      cwd: join(home, 'workspace'),
+      systemPrompt: '',
+      skills: [],
+      mcpServers: ['filesystem'],
+      defaultProjectId: 'proj-reliability',
+    })
+
+    expect(created.defaultProjectId).toBe('proj-reliability')
+    expect(created.mcpServers).toEqual(['filesystem'])
+    // On disk, not merely in the returned object: a reload has to agree.
+    const toml = await readFile(join(home, 'agents', 'review-agent', 'agent.toml'), 'utf8')
+    expect(toml).toContain('default_project = "proj-reliability"')
+  })
+
   test('clears it when set back to null', async () => {
     await writeAgent('debug', `${VALID}default_project = "proj-reliability"\n`)
     const store = new AgentStore(statusMap(READY))

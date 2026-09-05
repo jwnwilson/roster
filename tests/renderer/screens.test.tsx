@@ -612,6 +612,70 @@ describe('NewAgent', () => {
     )
   })
 
+  test('offers the MCP servers, so a new agent does not need a second pass', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ mcpServers: [anMcpServer({ name: 'filesystem' })] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: /filesystem/ }))
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ mcpServers: ['filesystem'] }),
+      ),
+    )
+  })
+
+  test('offers the default project, so a new agent can be filed on creation', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability' })] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.selectOptions(screen.getByLabelText('Default project'), 'proj-reliability')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultProjectId: 'proj-reliability' }),
+      ),
+    )
+  })
+
+  test('leaves both out of the payload when neither was chosen', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [aProject()], mcpServers: [anMcpServer()] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    // No default is null, not the first project in the list, and no servers
+    // is an empty list rather than an absent field.
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultProjectId: null, mcpServers: [] }),
+      ),
+    )
+  })
+
+  test('says there are no projects yet rather than hiding the field', async () => {
+    useRoster.setState({ projects: [] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    // Hiding it entirely is indistinguishable from the setting not existing,
+    // which is exactly how it reads on a fresh install.
+    expect(screen.getByText('Default project')).toBeInTheDocument()
+    expect(screen.getByText(/No projects yet/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Default project')).not.toBeInTheDocument()
+  })
+
   test('shows why creation failed instead of silently returning', async () => {
     const user = userEvent.setup()
     installRosterApi({
@@ -897,10 +961,15 @@ describe('EditAgentModal', () => {
     expect(screen.getByRole('option', { name: 'Old work (archived)' })).toBeInTheDocument()
   })
 
-  test('hides the field entirely when there are no projects to pick', () => {
+  test('says there are no projects yet rather than hiding the field', () => {
     useRoster.setState({ projects: [] })
     render(<EditAgentModal agent={AGENT} />)
 
+    // The field used to vanish, which reads as the setting not existing —
+    // and on a fresh install, with no projects anywhere, that is every
+    // agent. The label stays and says what is missing.
+    expect(screen.getByText('Default project')).toBeInTheDocument()
+    expect(screen.getByText(/No projects yet/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Default project')).not.toBeInTheDocument()
   })
 
