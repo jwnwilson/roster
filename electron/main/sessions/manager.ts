@@ -19,6 +19,7 @@ import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
 import { describeActivity, THINKING } from './activity'
 import { resolveSessionProject } from './defaultProject'
+import { buildProjectBrief } from './projectBrief'
 
 /** Per-turn choices the caller makes, rather than the agent's configuration. */
 export interface SendOptions {
@@ -382,7 +383,7 @@ export class SessionManager {
         }
       }
 
-      const stream = runner.run(prompt, {
+      const stream = runner.run(this.withProjectBrief(session, prompt), {
         cwd: agent.cwd,
         model: agent.model,
         systemPrompt: agent.systemPrompt,
@@ -413,6 +414,40 @@ export class SessionManager {
       run.finish()
       this.drain(sessionId)
     }
+  }
+
+  /**
+   * The prompt as the agent actually receives it: what the project already
+   * knows, then what was said to it.
+   *
+   * Only for a session somebody filed under a project. An unfiled one is sent
+   * exactly what it was sent before, which is also why this returns the
+   * prompt rather than an empty string — there is no brief to prepend.
+   *
+   * Deliberately not recorded: the brief is prompt context, not transcript,
+   * and writing it into `messages` would put a wall of generated text in the
+   * user's chat every turn.
+   */
+  private withProjectBrief(session: Session, prompt: string): string {
+    const board = this.board
+    const projectId = session.projectId
+    if (!board || projectId === null || projectId === undefined) return prompt
+
+    // A project row can be deleted while a session still names it. Nothing to
+    // say is not a turn to fail.
+    const project = board.projects.findById(projectId)
+    if (!project) return prompt
+
+    const filed = board.tasks.findAll().filter((task) => task.projectId === projectId)
+
+    const brief = buildProjectBrief({
+      project,
+      tasks: filed,
+      comments: filed.flatMap((task) => board.tasks.comments(task.id)),
+      agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
+    })
+
+    return `${brief}\n\n${prompt}`
   }
 
   /**
