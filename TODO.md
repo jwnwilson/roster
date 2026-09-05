@@ -26,4 +26,3 @@
 - [ ] Design build and publish an SPA on github for this tool
 - [ ] Look at making agents for multi repos or directories check how workspaces work
 - [ ] Ability to minimise folders in skills to make the UI more compact for larger skills
-- [ ] Investigate bug """Usage: codex exec resume --json --skip-git-repo-check <SESSION_ID> [PROMPT]
