@@ -128,6 +128,8 @@ describe('CodexRunner', () => {
       '--config',
       'permissions.roster-worktree.extends=":workspace"',
       '--config',
+      'permissions.roster-worktree.network.enabled=true',
+      '--config',
       `permissions.roster-worktree.filesystem={${[
         join(dir, '.git'),
         worktreesDir(),
@@ -160,6 +162,8 @@ describe('CodexRunner', () => {
       '--config',
       'permissions.roster-worktree.extends=":workspace"',
       '--config',
+      'permissions.roster-worktree.network.enabled=true',
+      '--config',
       `permissions.roster-worktree.filesystem={${[
         join(dir, '.git'),
         worktreesDir(),
@@ -183,6 +187,7 @@ describe('CodexRunner', () => {
     expect(codexPermissionOverrides(checkout, join(dir, 'Roster Worktrees'))).toEqual([
       'default_permissions="roster-worktree"',
       'permissions.roster-worktree.extends=":workspace"',
+      'permissions.roster-worktree.network.enabled=true',
       `permissions.roster-worktree.filesystem={${[
         gitDir,
         common,
