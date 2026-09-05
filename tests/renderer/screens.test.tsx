@@ -716,6 +716,74 @@ describe('EditAgentModal', () => {
     )
   })
 
+  test('the name is editable, seeded from the agent', () => {
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.getByLabelText('Agent name')).toHaveValue('Debugging Agent')
+  })
+
+  test('Save writes the new name back to agent.toml', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, 'Triage Agent')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ name: 'Triage Agent' }),
+      ),
+    )
+  })
+
+  test('Save trims the name rather than writing the spaces', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, '  Triage Agent  ')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ name: 'Triage Agent' }),
+      ),
+    )
+  })
+
+  test('Save is unavailable while the name is blank', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.clear(screen.getByLabelText('Agent name'))
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  })
+
+  test('surfaces a rejected rename instead of closing', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      runners: { models: vi.fn().mockResolvedValue([{ id: 'claude-opus-5', price: '' }]) },
+      agents: {
+        update: vi.fn().mockRejectedValue(new Error('there is already an agent named "Review"')),
+      },
+    })
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, 'Review')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText(/already an agent named/)).toBeInTheDocument()
+    expect(useRoster.getState().editOpen).toBe(true)
+  })
+
   test('Save closes the modal and discards the draft', async () => {
     const user = userEvent.setup()
     render(<EditAgentModal agent={AGENT} />)

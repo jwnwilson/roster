@@ -42,6 +42,8 @@ export const ALL_PRIORITIES = 'all'
 
 /** Staged edits from the Edit modal, committed to the agent only on Save. */
 export interface Draft {
+  /** Display name only — the agent's id never changes with it. */
+  name: string
   runner: string
   model: string
   systemPrompt: string
@@ -368,6 +370,7 @@ export const useRoster = create<RosterState>((set, get) => ({
     set({
       editOpen: true,
       draft: {
+        name: agent.name,
         runner: agent.runner,
         model: agent.model,
         systemPrompt: agent.systemPrompt,

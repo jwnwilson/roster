@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from 'node:fs'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import type { Agent, RunnerStatus } from '../../../shared/types'
 import type { AgentPatch } from '../../../shared/ipc'
+import { assertNameIsFree, normalizeAgentName } from '../../../shared/agentName'
 import {
   AgentConfigError,
   collapseHome,
@@ -95,11 +96,13 @@ export class AgentStore {
    * since it is also the directory name.
    */
   async create(input: NewAgentInput): Promise<Agent> {
-    const id = this.uniqueId(slugify(input.name))
+    const name = normalizeAgentName(input.name)
+    assertNameIsFree(name, this.configs.values())
+    const id = this.uniqueId(slugify(name))
 
     const config: AgentConfig = {
       id,
-      name: input.name,
+      name,
       runner: input.runner,
       model: input.model,
       cwd: input.cwd,
@@ -139,8 +142,14 @@ export class AgentStore {
       throw new Error(`unknown agent "${id}"`)
     }
 
+    // The name is a label, not an identity: the id and the directory stay put
+    // so sessions, tasks, plans and mentions keep pointing at the same agent.
+    const name = patch.name === undefined ? current.name : normalizeAgentName(patch.name)
+    if (patch.name !== undefined) assertNameIsFree(name, this.configs.values(), id)
+
     const next: AgentConfig = {
       ...current,
+      name,
       ...(patch.runner !== undefined ? { runner: patch.runner } : {}),
       ...(patch.model !== undefined ? { model: patch.model } : {}),
       ...(patch.systemPrompt !== undefined ? { systemPrompt: patch.systemPrompt } : {}),

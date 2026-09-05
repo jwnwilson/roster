@@ -179,6 +179,7 @@ describe('edit draft', () => {
     useRoster.getState().openEdit()
 
     expect(useRoster.getState().draft).toEqual({
+      name: 'Debugging Agent',
       runner: 'claude',
       model: 'claude-opus-5',
       systemPrompt: 'Reproduce before you fix.',
@@ -187,6 +188,14 @@ describe('edit draft', () => {
       cwd: '/Users/test/work/api',
       cwdLabel: '~/work/api',
     })
+  })
+
+  test('renaming in the draft does not touch the agent until it is saved', () => {
+    useRoster.getState().openEdit()
+    useRoster.getState().patchDraft({ name: 'Triage Agent' })
+
+    expect(useRoster.getState().draft?.name).toBe('Triage Agent')
+    expect(useRoster.getState().agents[0]?.name).toBe('Debugging Agent')
   })
 
   test('editing the draft does not touch the agent', () => {

@@ -303,3 +303,147 @@ describe('AgentStore.watch', () => {
     store.dispose()
   })
 })
+
+describe('AgentStore.update — renaming', () => {
+  test('writes the new name back to agent.toml', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const renamed = await store.update('debug', { name: 'Triage Agent' })
+
+    expect(renamed.name).toBe('Triage Agent')
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).toContain(
+      'Triage Agent',
+    )
+  })
+
+  test('keeps the id, so sessions and tasks stay attributed', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const renamed = await store.update('debug', { name: 'Triage Agent' })
+
+    expect(renamed.id).toBe('debug')
+    expect(store.findById('debug')?.name).toBe('Triage Agent')
+  })
+
+  test('survives a reload', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+    await store.update('debug', { name: 'Triage Agent' })
+
+    const reopened = new AgentStore(statusMap(READY))
+    await reopened.load()
+
+    expect(reopened.findById('debug')?.name).toBe('Triage Agent')
+  })
+
+  test('trims surrounding whitespace', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect((await store.update('debug', { name: '  Triage Agent  ' })).name).toBe('Triage Agent')
+  })
+
+  test('rejects a blank name', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: '   ' })).rejects.toThrow(/needs a name/)
+    expect(store.findById('debug')?.name).toBe('Debugging Agent')
+  })
+
+  test('rejects a name that is not text at all, since IPC input is untrusted', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: 42 as unknown as string })).rejects.toThrow(
+      /must be text/,
+    )
+  })
+
+  test('rejects a name longer than the limit', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: 'x'.repeat(61) })).rejects.toThrow(
+      /60 characters/,
+    )
+  })
+
+  test('rejects a name another agent already answers to, whatever the case', async () => {
+    await writeAgent('debug', VALID)
+    await writeAgent('review', VALID.replace('Debugging Agent', 'Review Agent'))
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: 'review agent' })).rejects.toThrow(
+      /already an agent named/,
+    )
+  })
+
+  test('lets an agent keep its own name while recasing it', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect((await store.update('debug', { name: 'DEBUGGING AGENT' })).name).toBe('DEBUGGING AGENT')
+  })
+
+  test('leaves the name alone when the patch does not mention it', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect((await store.update('debug', { model: 'claude-sonnet-5' })).name).toBe('Debugging Agent')
+  })
+})
+
+describe('AgentStore.create — name validation', () => {
+  const base = {
+    runner: 'claude',
+    model: 'claude-opus-5',
+    systemPrompt: '',
+    skills: [],
+  }
+
+  test('trims the name it is given', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({
+      ...base,
+      name: '  Review Agent  ',
+      cwd: join(home, 'workspace'),
+    })
+
+    expect(created.name).toBe('Review Agent')
+    expect(created.id).toBe('review-agent')
+  })
+
+  test('refuses a blank name rather than writing an unnameable agent', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(
+      store.create({ ...base, name: '  ', cwd: join(home, 'workspace') }),
+    ).rejects.toThrow(/needs a name/)
+  })
+
+  test('refuses a name already in the roster', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(
+      store.create({ ...base, name: 'debugging agent', cwd: join(home, 'workspace') }),
+    ).rejects.toThrow(/already an agent named/)
+  })
+})

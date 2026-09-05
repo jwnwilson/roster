@@ -1,3 +1,4 @@
+import { MAX_AGENT_NAME_LENGTH } from '@shared/agentName'
 import type { ModelInfo, RunnerStatus } from '@shared/types'
 import { Field, ToggleChip } from './primitives'
 
@@ -5,6 +6,33 @@ import { Field, ToggleChip } from './primitives'
  * The fields shared by the Edit modal and the New Agent form. The handoff
  * specifies both as the same controls, so they are written once.
  * ---------------------------------------------------------------------- */
+
+interface NameFieldProps {
+  value: string
+  onChange: (value: string) => void
+}
+
+/**
+ * The agent's display name, on both the New Agent form and the Edit modal.
+ *
+ * Editable in both because a name is a label: renaming an agent leaves its id,
+ * its directory and everything pointing at it exactly where they were.
+ */
+export function NameField({ value, onChange }: NameFieldProps) {
+  return (
+    <Field label="Name">
+      <input
+        type="text"
+        value={value}
+        aria-label="Agent name"
+        placeholder="Architect Agent"
+        maxLength={MAX_AGENT_NAME_LENGTH}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-field border border-line-card bg-card px-[12px] py-[9px] font-ui text-xl text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
+      />
+    </Field>
+  )
+}
 
 interface ProviderPickerProps {
   runners: RunnerStatus[]
