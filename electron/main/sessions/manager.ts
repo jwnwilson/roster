@@ -117,6 +117,14 @@ export class SessionManager {
   private listeners = new Set<(event: SessionEvent) => void>()
   /** Turns Roster owes a session once its current one ends. See enqueue. */
   private queued = new Map<string, { prompt: string; options: SendOptions }>()
+  /**
+   * The last project brief each session was sent, so an unchanged one is not
+   * sent twice. See withProjectBrief.
+   *
+   * Dropped when a session is stopped, which is also how a delete unwinds a
+   * turn. A session that simply ends holds one brief until the app closes.
+   */
+  private lastBrief = new Map<string, string>()
 
   constructor(
     private readonly agents: AgentStore,
@@ -469,7 +477,27 @@ export class SessionManager {
       ...(notes.trim() === '' ? {} : { notes }),
     })
 
+    if (this.hasAlreadyRead(session, brief)) return prompt
+
+    this.lastBrief.set(session.id, brief)
     return `${brief}\n\n${prompt}`
+  }
+
+  /**
+   * Whether this exact brief is already in front of the agent.
+   *
+   * A turn resumes the runner's own thread, so a brief sent on an earlier
+   * turn is still there to be read. Sending it again would spend the budget
+   * a second time on text the model already has — and it is the sessions
+   * that run longest, which is to say the ones the brief is for, that would
+   * pay most. A brief that has *changed* is sent, because that is news.
+   *
+   * Only when there is a thread to have kept it: without a runner session
+   * the next turn starts cold, and what it was sent last time went nowhere.
+   */
+  private hasAlreadyRead(session: Session, brief: string): boolean {
+    if (session.runnerSessionId === undefined) return false
+    return this.lastBrief.get(session.id) === brief
   }
 
   /**
@@ -537,6 +565,9 @@ export class SessionManager {
    */
   async stop(sessionId: string): Promise<void> {
     this.queued.delete(sessionId)
+    // A delete stops the turn first, so this is also where what the manager
+    // remembers about a session stops outliving it.
+    this.lastBrief.delete(sessionId)
 
     const run = this.active.get(sessionId)
     if (!run) return

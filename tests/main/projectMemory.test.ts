@@ -386,3 +386,82 @@ describe('notes and the brief', () => {
     expect(lastPrompt()).not.toContain('Project notes')
   })
 })
+
+/**
+ * What the agent is sent a *second* time.
+ *
+ * A turn resumes the runner's own thread, so every brief already sent is
+ * still sitting in it. Prepending the same one again each turn would spend
+ * the budget over and over on text the model has in front of it — and the
+ * longer and more useful the session, the more it would spend.
+ */
+describe('the brief on a session already under way', () => {
+  test('is not repeated when nothing about the project has moved', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    tasks.create({ title: 'Fix connection pool leak on 504', projectId: project.id })
+
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'first')
+    expect(lastPrompt()).toContain('Project: API reliability')
+
+    await manager.send(session.id, 'second')
+
+    // The thread still holds the first one; saying it twice buys nothing.
+    expect(lastPrompt()).toBe('second')
+  })
+
+  test('is sent again as soon as the project has moved', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    tasks.create({ title: 'Fix connection pool leak on 504', projectId: project.id })
+
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'first')
+
+    tasks.create({ title: 'Retry storm after the 504 handler fires', projectId: project.id })
+    await manager.send(session.id, 'second')
+
+    const prompt = lastPrompt()
+    expect(prompt).toContain('Retry storm after the 504 handler fires')
+    expect(prompt.endsWith('second')).toBe(true)
+  })
+
+  test('is sent again when there is no thread to have kept it', async () => {
+    // A turn that never reported a runner session leaves nothing to resume,
+    // so the next one starts cold and has to carry the project itself.
+    runnerStub.run.mockImplementation(async function* () {
+      yield { kind: 'done' }
+    })
+
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    tasks.create({ title: 'Fix connection pool leak on 504', projectId: project.id })
+
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'first')
+    await manager.send(session.id, 'second')
+
+    expect(lastPrompt()).toContain('Project: API reliability')
+  })
+
+  test('is sent again after the session has been stopped', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    tasks.create({ title: 'Fix connection pool leak on 504', projectId: project.id })
+
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'first')
+
+    // Stopping is also how a delete unwinds a turn, so what the manager
+    // remembers about a session cannot outlive it.
+    await manager.stop(session.id)
+    await manager.send(session.id, 'second')
+
+    expect(lastPrompt()).toContain('Project: API reliability')
+  })
+
+  test('still leaves a session with no project untouched on every turn', async () => {
+    const session = manager.create('debugging', 'Work', null)
+    await manager.send(session.id, 'first')
+    await manager.send(session.id, 'second')
+
+    expect(lastPrompt()).toBe('second')
+  })
+})
