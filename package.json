@@ -1,6 +1,6 @@
 {
   "name": "roster",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Desktop app for managing a roster of AI coding agents",
   "main": "out/main/index.js",
   "author": "jwnwilson88@gmail.com",
