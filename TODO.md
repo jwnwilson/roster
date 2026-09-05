@@ -22,7 +22,7 @@
 - [x] I want to be able to name agent sessions and encourage users to do that
 - [x] I want to set a default project for agents for sessions are auto linked to it
 - [x] Setup Agent setup workflow and add default agents on startup with tech lead being initial agent to work with
-- [ ] Agent, global & per project context when it's working.
-- [ ] Design build and publish an SPA on github for this tool
-- [ ] Look at making agents for multi repos or directories check how workspaces work
 - [ ] Ability to minimise folders in skills to make the UI more compact for larger skills
+- [ ] An option to allow tech lead and architect Agents to build up an index of saved and compressed context so they make better decisions the more tasks they complete.
+- [ ] Design build and publish an SPA on github for this tool
+- [ ] Plan for extending agents to work with multi repos and for the context logic to updated to work per project
