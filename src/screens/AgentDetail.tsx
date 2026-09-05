@@ -2,11 +2,13 @@ import { useEffect } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { EXIT_PLAN_MODE } from '@shared/plans'
+import { sessionLabel } from '@shared/sessions'
 import { statusColor } from '@shared/status'
 import { taskStatusColor } from '@shared/tasks'
 import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
+import { SessionName } from './SessionName'
 import { PlanModal } from './PlanModal'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
@@ -69,6 +71,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const setUsage = useRoster((s) => s.setUsage)
   const setApprovals = useRoster((s) => s.setApprovals)
   const selectSession = useRoster((s) => s.selectSession)
+  const setNamingSession = useRoster((s) => s.setNamingSession)
   const editOpen = useRoster((s) => s.editOpen)
   const openPlanId = useRoster((s) => s.openPlanId)
   const status = useRoster((s) => agentStatus(s, agent))
@@ -140,6 +143,9 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
     const created = await window.roster.sessions.create(agent.id)
     setSessions(agent.id, [...sessions, created])
     selectSession(agent.id, created.id)
+    // The nudge. The session already exists and the composer already works;
+    // this only puts the cursor where a name would go.
+    setNamingSession(created.id)
   }
 
   return (
@@ -267,7 +273,7 @@ function SessionTabs({ sessions, activeId, onSelect, onNew }: SessionTabsProps) 
             >
               {session.origin === 'agent' ? '↳' : '•'}
             </span>
-            <span className="text-md font-medium">{session.title}</span>
+            <span className="text-md font-medium">{sessionLabel(session)}</span>
             <span className="text-xs text-faint">{session.from ?? 'you'}</span>
             <StatusDot status={session.status} />
           </button>
@@ -498,6 +504,12 @@ function SessionTask() {
 function SessionCard() {
   const agentId = useRoster((s) => s.agentId)
   const activeId = useRoster((s) => (agentId ? s.sess[agentId] : undefined))
+  const session = useRoster(
+    (s) =>
+      (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
+        (candidate) => candidate.id === activeId,
+      ) ?? null,
+  )
   const usage = useRoster((s) => (activeId ? s.usage[activeId] : undefined))
   const model = useRoster((s) => s.agents.find((a) => a.id === agentId)?.model ?? '')
 
@@ -524,6 +536,9 @@ function SessionCard() {
   return (
     <section className="flex flex-col gap-[9px]">
       <SectionLabel>Session</SectionLabel>
+      {/* Above the totals, and keyed by session: what it is called reads
+          before what it has cost, and switching tabs starts a clean draft. */}
+      {session === null ? null : <SessionName key={session.id} session={session} />}
       <div className="flex flex-col gap-[7px] rounded-field border border-line bg-card p-[11px]">
         <div className="flex items-baseline">
           <span className="text-base text-dim">Tokens</span>
@@ -576,6 +591,7 @@ function SessionProject({ sessionId }: { sessionId: string }) {
   const projectOptions = useRoster(
     useShallow((s) => projectPickerProjects(s, current?.projectId ?? null)),
   )
+  const replaceSession = useRoster((s) => s.replaceSession)
 
   if (projectOptions.length === 0) return null
 
@@ -583,14 +599,7 @@ function SessionProject({ sessionId }: { sessionId: string }) {
     const projectId = value === NO_PROJECT ? null : value
     const updated = await window.roster.sessions.setProject(sessionId, projectId)
 
-    useRoster.setState((s) => ({
-      sessions: Object.fromEntries(
-        Object.entries(s.sessions).map(([id, list]) => [
-          id,
-          list.map((session) => (session.id === updated.id ? updated : session)),
-        ]),
-      ),
-    }))
+    replaceSession(updated)
   }
 
   return (

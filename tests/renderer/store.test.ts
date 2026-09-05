@@ -92,6 +92,19 @@ describe('filtering', () => {
     expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
   })
 
+  test('the grid matches a session by the name it was given', () => {
+    // A named session is listed by its name, so that is what searching it
+    // has to match — its title is still "New session".
+    useRoster.setState({
+      gridQuery: 'pool',
+      sessions: {
+        review: [aSession({ agentId: 'review', title: 'New session', name: 'Pool leak on 504' })],
+      },
+    })
+
+    expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
+  })
+
   test('the grid returns nothing when neither name nor session matches', () => {
     useRoster.setState({ gridQuery: 'nonexistent' })
     expect(selectGridAgents(useRoster.getState())).toEqual([])

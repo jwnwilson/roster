@@ -404,6 +404,11 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsSetProject, (_e, sessionId: string, projectId: string | null) =>
     requireSessions().setProject(sessionId, projectId),
   )
+  // The store normalizes and rejects an unknown id, so the handler stays a
+  // pass-through: one place decides what a name is.
+  ipcMain.handle(CHANNELS.sessionsSetName, (_e, sessionId: string, name: string | null) =>
+    requireSessions().setName(sessionId, name),
+  )
 
   ipcMain.handle(CHANNELS.notionInspect, async (_e, databaseInput: string) => {
     const databaseId = databaseIdFrom(databaseInput)

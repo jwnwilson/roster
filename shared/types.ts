@@ -87,6 +87,13 @@ export interface Session {
   id: string
   agentId: string
   title: string
+  /**
+   * What you call this session, given by hand from the config rail. Null
+   * until somebody names it — every session that predates naming is in that
+   * state, and so is every one nobody has got round to. `sessionLabel` in
+   * shared/sessions.ts is what turns either state into something to render.
+   */
+  name?: string | null
   origin: SessionOrigin
   /** Display name of the agent that opened this session, when origin is 'agent'. */
   from?: string
