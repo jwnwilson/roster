@@ -29,6 +29,8 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       spendSummary: vi.fn().mockResolvedValue({ byAgent: {}, byProject: {} }),
       send: vi.fn().mockResolvedValue(undefined),
       cancel: vi.fn().mockResolvedValue(undefined),
+      // The real handler resolves false when the confirmation was dismissed.
+      remove: vi.fn().mockResolvedValue(true),
       setProject: vi.fn().mockResolvedValue(null),
       setName: vi.fn().mockResolvedValue(null),
       respondToApproval: vi.fn().mockResolvedValue(undefined),

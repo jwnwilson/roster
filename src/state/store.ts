@@ -835,7 +835,90 @@ export function reduceSessionEvent(
         },
       }
     }
+
+    case 'session-deleted':
+      return forgetSession(state, event.sessionId)
   }
+}
+
+/**
+ * Everything this window was holding about a session that no longer exists.
+ *
+ * Applied twice by design: once by the screen that asked for the delete, so
+ * the tab strip does not sit on a session that has gone, and again when the
+ * broadcast reaches every window. Both passes have to be safe, and a window
+ * that never knew the session has to come away unchanged.
+ */
+function forgetSession(state: RosterState, sessionId: string): Partial<RosterState> {
+  // Every plan of this session, not merely the first: a session that planned
+  // more than once has a document per revision approved, and stopping at one
+  // would leave the rest unreadable in state with no session behind them.
+  const planIds = Object.values(state.plans)
+    .filter((document) => document.plan.sessionId === sessionId)
+    .map((document) => document.plan.id)
+
+  return {
+    sessions: withoutSession(state.sessions, sessionId),
+    messages: withoutKey(state.messages, sessionId),
+    streaming: withoutKey(state.streaming, sessionId),
+    activity: withoutKey(state.activity, sessionId),
+    approvals: withoutKey(state.approvals, sessionId),
+    usage: withoutKey(state.usage, sessionId),
+    planMode: withoutKey(state.planMode, sessionId),
+    taskSessions: withoutSessionLinks(state.taskSessions, sessionId),
+    // The selection is dropped rather than moved: AgentDetail lands on the
+    // newest remaining session on its own, and choosing here would mean two
+    // places deciding what "the open session" is.
+    sess: withoutValue(state.sess, sessionId),
+    // A plan is a document about a conversation; without the conversation
+    // there is nothing left to read, and nothing left to answer it with.
+    ...(planIds.length > 0
+      ? {
+          plans: withoutKeys(state.plans, planIds),
+          planComments: withoutKeys(state.planComments, planIds),
+          ...(state.openPlanId !== null && planIds.includes(state.openPlanId)
+            ? { openPlanId: null }
+            : {}),
+        }
+      : {}),
+  }
+}
+
+/** The per-agent lists with one session gone, leaving untouched lists alone. */
+function withoutSession(
+  sessions: Record<string, Session[]>,
+  sessionId: string,
+): Record<string, Session[]> {
+  const next: Record<string, Session[]> = {}
+
+  for (const [agentId, list] of Object.entries(sessions)) {
+    next[agentId] = list.some((session) => session.id === sessionId)
+      ? list.filter((session) => session.id !== sessionId)
+      : list
+  }
+
+  return next
+}
+
+/** Task rails stop offering a transcript that is no longer there. */
+function withoutSessionLinks(
+  taskSessions: Record<string, TaskSessionLink[]>,
+  sessionId: string,
+): Record<string, TaskSessionLink[]> {
+  const next: Record<string, TaskSessionLink[]> = {}
+
+  for (const [taskId, links] of Object.entries(taskSessions)) {
+    next[taskId] = links.some((link) => link.sessionId === sessionId)
+      ? links.filter((link) => link.sessionId !== sessionId)
+      : links
+  }
+
+  return next
+}
+
+/** Every key pointing at this value, dropped. */
+function withoutValue(record: Record<string, string>, value: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).filter(([, held]) => held !== value))
 }
 
 /**
@@ -956,6 +1039,12 @@ export function reducePlanEvent(
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   const { [key]: _removed, ...rest } = record
   return rest
+}
+
+/** The same, for the several keys a single session can account for. */
+function withoutKeys<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
+  const dropped = new Set(keys)
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !dropped.has(key)))
 }
 
 /** Session status lives inside the per-agent lists, so update it in place. */

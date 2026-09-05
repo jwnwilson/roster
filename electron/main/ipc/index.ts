@@ -17,6 +17,8 @@ import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
 import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
+import { removeSession } from '../sessions/remove'
+import { sessionLabel } from '../../../shared/sessions'
 import { TaskMentions } from '../sessions/mentions'
 import { AgentStore } from '../store/agents'
 import { McpStore, withServer } from '../store/mcp'
@@ -322,6 +324,43 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsCancel, (_e, sessionId: string) =>
     requireManager().cancel(sessionId),
   )
+
+  ipcMain.handle(CHANNELS.sessionsDelete, async (e, sessionId: string) => {
+    const session = requireSessions().findById(sessionId)
+    if (!session) return false
+
+    // A transcript is the record of turns that cost real money, and there is
+    // no archive to fall back on the way a project has — so this asks first,
+    // as deleting a task or a skill does.
+    const confirmed = await confirmDelete(
+      e,
+      // What the user calls it, which is what the tab they clicked says.
+      sessionLabel(session),
+      'Its transcript, its plans and its spend go with it. A turn in flight is ' +
+        'stopped first. This cannot be undone.',
+    )
+    if (!confirmed) return false
+
+    const removed = await removeSession(
+      {
+        sessions: requireSessions(),
+        plans: requirePlans(),
+        stopTurn: (id) => requireManager().stop(id),
+        closeTerminal: (id) => ptyManager.close(id),
+      },
+      sessionId,
+    )
+    if (!removed) return false
+
+    // Every window: the grid's chips, an open task rail and the agent screen
+    // are all holding this session, and only one of them asked for it to go.
+    broadcast(CHANNELS.sessionsEvent, {
+      type: 'session-deleted',
+      sessionId,
+      agentId: removed.agentId,
+    })
+    return true
+  })
   ipcMain.handle(
     CHANNELS.sessionsRespondToApproval,
     (
