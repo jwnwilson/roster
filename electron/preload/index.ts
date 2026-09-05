@@ -52,6 +52,7 @@ const api: RosterApi = {
     cancel: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsCancel, sessionId),
     setProject: (sessionId, projectId) =>
       ipcRenderer.invoke(CHANNELS.sessionsSetProject, sessionId, projectId),
+    setName: (sessionId, name) => ipcRenderer.invoke(CHANNELS.sessionsSetName, sessionId, name),
     respondToApproval: (sessionId, approvalId, approved, answers) =>
       ipcRenderer.invoke(
         CHANNELS.sessionsRespondToApproval,

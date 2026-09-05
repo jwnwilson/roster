@@ -24,6 +24,7 @@ import type {
   Usage,
 } from '@shared/types'
 import type { PlanEventPayload, SessionEventPayload, TaskEventPayload } from '@shared/ipc'
+import { sessionLabel } from '@shared/sessions'
 import { rollUpAgentStatus } from '@shared/status'
 import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
@@ -115,6 +116,14 @@ export interface RosterState {
    * says nothing about the tab beside it.
    */
   planMode: Record<string, boolean>
+  /**
+   * The session whose name box is open, or null.
+   *
+   * Transient UI rather than a property of the session: it is opened by the
+   * rail's own affordance, and again the moment a session is created, which
+   * is how naming gets encouraged without ever blocking the composer.
+   */
+  namingSessionId: string | null
   query: string
   gridQuery: string
   /** What the updater last reported; drives the sidebar's update row. */
@@ -196,6 +205,10 @@ export interface RosterState {
   setBacklogQuery(value: string): void
   setBacklogPriority(value: string): void
   selectBacklogTask(taskId: string): void
+  /** Replaces one session wherever it is listed, after it has been written. */
+  replaceSession(session: Session): void
+  /** Opens the name box on a session, or closes it with null. */
+  setNamingSession(sessionId: string | null): void
   toggleTool(id: string): void
   togglePlanMode(sessionId: string): void
   setPlanMode(sessionId: string, on: boolean): void
@@ -257,6 +270,7 @@ export const useRoster = create<RosterState>((set, get) => ({
 
   openTools: {},
   planMode: {},
+  namingSessionId: null,
   query: '',
   gridQuery: '',
   update: { status: 'idle' },
@@ -340,6 +354,18 @@ export const useRoster = create<RosterState>((set, get) => ({
   setBacklogQuery: (backlogQuery) => set({ backlogQuery }),
   setBacklogPriority: (backlogPriority) => set({ backlogPriority }),
   selectBacklogTask: (backlogSelectedId) => set({ backlogSelectedId, taskTab: 'comments' }),
+  replaceSession: (session) =>
+    set((s) => ({
+      sessions: Object.fromEntries(
+        Object.entries(s.sessions).map(([agentId, list]) => [
+          agentId,
+          list.map((candidate) => (candidate.id === session.id ? session : candidate)),
+        ]),
+      ),
+    })),
+
+  setNamingSession: (namingSessionId) => set({ namingSessionId }),
+
   toggleTool: (id) => set((s) => ({ openTools: { ...s.openTools, [id]: !s.openTools[id] } })),
   togglePlanMode: (sessionId) =>
     set((s) => ({ planMode: { ...s.planMode, [sessionId]: !s.planMode[sessionId] } })),
@@ -487,7 +513,7 @@ export function selectGridAgents(state: RosterState): Agent[] {
 
     if (q === '') return true
     if (agent.name.toLowerCase().includes(q)) return true
-    return visible.some((s) => s.title.toLowerCase().includes(q))
+    return visible.some((session) => sessionLabel(session).toLowerCase().includes(q))
   })
 }
 

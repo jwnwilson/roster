@@ -269,6 +269,20 @@ describe('AgentsGrid — sessions', () => {
     expect(within(chip as HTMLElement).getByText('•')).toBeInTheDocument()
   })
 
+  test('a chip is labelled by the name the session was given', () => {
+    useRoster.setState({
+      sessions: {
+        review: [
+          aSession({ id: 'r1', agentId: 'review', title: 'New session', name: 'Pool leak' }),
+        ],
+      },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('Pool leak')).toBeInTheDocument()
+    expect(screen.queryByText('New session')).not.toBeInTheDocument()
+  })
+
   test('says so when an agent has no sessions yet', () => {
     render(<AgentsGrid />)
     expect(screen.getAllByText('no sessions yet').length).toBe(3)

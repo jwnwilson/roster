@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Agent, Session, TranscriptLine } from '@shared/types'
+import { sessionLabel } from '@shared/sessions'
 import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
 import {
@@ -262,7 +263,7 @@ function SessionChip({ session, agentId, active }: SessionChipProps) {
       <span aria-hidden className="text-dim-2">
         {session.origin === 'agent' ? '↳' : '•'}
       </span>
-      <span className="truncate">{session.title}</span>
+      <span className="truncate">{sessionLabel(session)}</span>
       <StatusDot status={session.status} size={5} />
     </span>
   )

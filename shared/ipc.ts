@@ -73,6 +73,12 @@ export interface RosterApi {
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
     /**
+     * Names the session, or clears the name with null. A name that is blank
+     * once trimmed clears it too — an unnamed session is a state the app
+     * renders, not an error it refuses.
+     */
+    setName(sessionId: string, name: string | null): Promise<Session>
+    /**
      * Answers a pending approval. `answers` is only for a question: it is
      * keyed by question text and reaches the tool as its own input, so
      * answering and allowing are one call.
@@ -384,6 +390,7 @@ export const CHANNELS = {
   mcpSave: 'mcp:save',
 
   sessionsSetProject: 'sessions:setProject',
+  sessionsSetName: 'sessions:setName',
 
   notionInspect: 'notion:inspect',
   notionConnect: 'notion:connect',

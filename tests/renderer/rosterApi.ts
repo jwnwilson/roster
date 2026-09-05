@@ -30,6 +30,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       send: vi.fn().mockResolvedValue(undefined),
       cancel: vi.fn().mockResolvedValue(undefined),
       setProject: vi.fn().mockResolvedValue(null),
+      setName: vi.fn().mockResolvedValue(null),
       respondToApproval: vi.fn().mockResolvedValue(undefined),
       pendingApprovals: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn().mockReturnValue(() => {}),
