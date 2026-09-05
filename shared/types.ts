@@ -484,3 +484,25 @@ export interface PlanComment {
   version: number
   createdAt: number
 }
+
+/* -------------------------------------------------------------------------
+ * First-run setup — what a brand-new install is offered before it has a
+ * roster of its own.
+ *
+ * Derived in the main process from a marker file, never from "the roster is
+ * empty": a user who deletes every agent has an empty roster and must not be
+ * handed a new one.
+ * ---------------------------------------------------------------------- */
+export interface SetupState {
+  /** The first-run card is still worth showing. */
+  pending: boolean
+  /**
+   * The agent to start with — the Tech Lead. Null once it has been deleted,
+   * or when nothing could be seeded.
+   */
+  startingAgentId: string | null
+  /** Agents seeded on first run, in the order they were created. */
+  seededAgentIds: string[]
+  /** No CLI Roster can drive was installed, so nothing was seeded. */
+  noRunner: boolean
+}

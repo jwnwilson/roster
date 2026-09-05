@@ -10,6 +10,7 @@ import type {
   Project,
   RunnerStatus,
   Session,
+  SetupState,
   Skill,
   Status,
   Task,
@@ -186,6 +187,12 @@ export interface RosterApi {
     approve(planId: string): Promise<Plan>
     /** Live plan changes — a revision arriving, or a note from either side. */
     onEvent(listener: (event: PlanEventPayload) => void): () => void
+  }
+  setup: {
+    /** Whether the first-run card is still worth showing, and what it offers. */
+    state(): Promise<SetupState>
+    /** Puts the card away for good. Resolves the state it leaves behind. */
+    dismiss(): Promise<SetupState>
   }
   update: {
     /** Look for a newer release; the result arrives on onStatus. */
@@ -394,6 +401,9 @@ export const CHANNELS = {
   tasksComment: 'tasks:comment',
   tasksSessions: 'tasks:sessions',
   tasksEvent: 'tasks:event', // broadcast, not invoke
+
+  setupState: 'setup:state',
+  setupDismiss: 'setup:dismiss',
 
   updateCheck: 'update:check',
   updateDownload: 'update:download',

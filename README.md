@@ -67,8 +67,12 @@ npm install     # also rebuilds better-sqlite3 and node-pty for Electron
 npm run dev     # launches the app with hot reload
 ```
 
-On first run Roster seeds `~/roster` with four example agents, five skills, and an
-MCP config. Nothing is overwritten if that directory already has agents in it.
+On first run Roster seeds `~/roster` with a starter roster — a Tech Lead, an
+Implementer and a Reviewer — plus five skills and an MCP config, and opens onto a
+dismissable card pointing at the Tech Lead. The agents are pointed at whichever
+CLI is actually installed, and none are created if none is. This happens once
+ever: `~/roster/setup.json` records it, so agents you delete stay deleted and an
+existing `~/roster` is never seeded over.
 
 Point it somewhere else while developing:
 
@@ -182,6 +186,7 @@ writing a normalizer and, ideally, recording a fixture from a real run.
   skills/<name>/SKILL.md   the shared skill library, nested files and all
   workspace/               default working directory for seeded agents
   mcp.json                 MCP servers: launch command and environment
+  setup.json               first-run marker: what was seeded, and when it was dismissed
   roster.db                sessions, messages, approvals, usage, tasks, projects
 ```
 

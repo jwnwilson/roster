@@ -20,6 +20,7 @@ import {
   StatusDot,
   TextInput,
 } from '@/components/primitives'
+import { FirstRunCard } from '@/components/FirstRunCard'
 import { ProjectFilter } from '@/components/ProjectFilter'
 import { formatCost, formatTokens } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
@@ -73,6 +74,7 @@ export function AgentsGrid() {
       </ScreenHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
+        <FirstRunCard />
         {agents.length === 0 ? (
           <EmptyState
             filtered={filtering}
