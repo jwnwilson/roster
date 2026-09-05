@@ -65,6 +65,16 @@ export interface RosterApi {
     spendSummary(): Promise<SpendSummary>
     send(sessionId: string, prompt: string, options?: SendOptions): Promise<void>
     cancel(sessionId: string): Promise<void>
+    /**
+     * Confirms, then deletes the session outright: its transcript, its usage,
+     * its plans and the link any task held to it all go with it. A turn in
+     * flight is stopped first, and its terminal is killed.
+     *
+     * The confirmation happens in the main process, so a caller in the
+     * renderer cannot skip it; a dismissal resolves false rather than
+     * rejecting.
+     */
+    remove(sessionId: string): Promise<boolean>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
     /**
@@ -303,7 +313,11 @@ export interface PtyInfo {
   history: string
 }
 
-/** Mirrors SessionManager's event union across the IPC boundary. */
+/**
+ * Mirrors SessionManager's event union across the IPC boundary, plus the one
+ * event the manager cannot raise: a session being deleted is not part of a
+ * turn, so it is broadcast by the handler that removed it.
+ */
 export type SessionEventPayload =
   | { type: 'message'; sessionId: string; message: Message }
   | { type: 'message-updated'; sessionId: string; message: Message }
@@ -313,6 +327,7 @@ export type SessionEventPayload =
   | { type: 'approval-resolved'; sessionId: string; approvalId: string }
   | { type: 'streaming'; sessionId: string; active: boolean }
   | { type: 'activity'; sessionId: string; text: string }
+  | { type: 'session-deleted'; sessionId: string; agentId: string }
 
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
@@ -338,6 +353,7 @@ export const CHANNELS = {
   sessionsSpendSummary: 'sessions:spendSummary',
   sessionsSend: 'sessions:send',
   sessionsCancel: 'sessions:cancel',
+  sessionsDelete: 'sessions:delete',
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsEvent: 'sessions:event',

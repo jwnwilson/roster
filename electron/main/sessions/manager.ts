@@ -57,6 +57,13 @@ interface ActiveRun {
   /** Prose received but not yet written or broadcast. */
   pendingText: string
   flushTimer: NodeJS.Timeout | null
+  /**
+   * Settles once the turn has finished writing, not merely once the stream
+   * has stopped. `stop` waits on this, so that a caller about to delete the
+   * session knows nothing else will write to it.
+   */
+  done: Promise<void>
+  finish: () => void
 }
 
 /**
@@ -214,6 +221,11 @@ export class SessionManager {
     // crash mid-turn.
     this.record(sessionId, { sessionId, kind: 'text', role: 'user', who: 'you', text: prompt })
 
+    let finish = (): void => {}
+    const done = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+
     const run: ActiveRun = {
       abort: new AbortController(),
       toolMessages: new Map(),
@@ -222,6 +234,8 @@ export class SessionManager {
       runnerId: agent.runner,
       pendingText: '',
       flushTimer: null,
+      done,
+      finish,
     }
     this.active.set(sessionId, run)
 
@@ -296,6 +310,9 @@ export class SessionManager {
       // Only when nothing is waiting: approving a plan queues the build behind
       // the planning turn, and settling here would cancel it before it ran.
       if (!this.queued.has(sessionId)) this.settleBuild(sessionId)
+      // Last, and after every write above: anyone waiting on this turn is
+      // waiting to be sure the session is no longer being written to.
+      run.finish()
       this.drain(sessionId)
     }
   }
@@ -343,6 +360,28 @@ export class SessionManager {
 
   cancel(sessionId: string): void {
     this.active.get(sessionId)?.abort.abort()
+  }
+
+  /**
+   * Brings a session to a halt and waits for it to get there.
+   *
+   * `cancel` only raises the signal; the turn goes on writing until the
+   * runner's stream unwinds. Deleting a session in that window would leave
+   * the tail of a turn inserting rows against an id that has gone, so this
+   * is what a delete waits on. The queued turn is dropped too — resuming a
+   * session somebody is stopping is never what was meant.
+   *
+   * Resolves immediately when nothing is running, including for a session
+   * that does not exist.
+   */
+  async stop(sessionId: string): Promise<void> {
+    this.queued.delete(sessionId)
+
+    const run = this.active.get(sessionId)
+    if (!run) return
+
+    run.abort.abort()
+    await run.done
   }
 
   /* ---- event handling ---------------------------------------------------- */

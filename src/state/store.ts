@@ -769,7 +769,85 @@ export function reduceSessionEvent(
         },
       }
     }
+
+    case 'session-deleted':
+      return forgetSession(state, event.sessionId)
   }
+}
+
+/**
+ * Everything this window was holding about a session that no longer exists.
+ *
+ * Applied twice by design: once by the screen that asked for the delete, so
+ * the tab strip does not sit on a session that has gone, and again when the
+ * broadcast reaches every window. Both passes have to be safe, and a window
+ * that never knew the session has to come away unchanged.
+ */
+function forgetSession(state: RosterState, sessionId: string): Partial<RosterState> {
+  const plan = Object.values(state.plans).find(
+    (document) => document.plan.sessionId === sessionId,
+  )
+
+  return {
+    sessions: withoutSession(state.sessions, sessionId),
+    messages: withoutKey(state.messages, sessionId),
+    streaming: withoutKey(state.streaming, sessionId),
+    activity: withoutKey(state.activity, sessionId),
+    approvals: withoutKey(state.approvals, sessionId),
+    usage: withoutKey(state.usage, sessionId),
+    planMode: withoutKey(state.planMode, sessionId),
+    taskSessions: withoutSessionLinks(state.taskSessions, sessionId),
+    // The selection is dropped rather than moved: AgentDetail lands on the
+    // newest remaining session on its own, and choosing here would mean two
+    // places deciding what "the open session" is.
+    sess: withoutValue(state.sess, sessionId),
+    // A plan is a document about a conversation; without the conversation
+    // there is nothing left to read, and nothing left to answer it with.
+    ...(plan
+      ? {
+          plans: withoutKey(state.plans, plan.plan.id),
+          planComments: withoutKey(state.planComments, plan.plan.id),
+          ...(state.openPlanId === plan.plan.id ? { openPlanId: null } : {}),
+        }
+      : {}),
+  }
+}
+
+/** The per-agent lists with one session gone, leaving untouched lists alone. */
+function withoutSession(
+  sessions: Record<string, Session[]>,
+  sessionId: string,
+): Record<string, Session[]> {
+  const next: Record<string, Session[]> = {}
+
+  for (const [agentId, list] of Object.entries(sessions)) {
+    next[agentId] = list.some((session) => session.id === sessionId)
+      ? list.filter((session) => session.id !== sessionId)
+      : list
+  }
+
+  return next
+}
+
+/** Task rails stop offering a transcript that is no longer there. */
+function withoutSessionLinks(
+  taskSessions: Record<string, TaskSessionLink[]>,
+  sessionId: string,
+): Record<string, TaskSessionLink[]> {
+  const next: Record<string, TaskSessionLink[]> = {}
+
+  for (const [taskId, links] of Object.entries(taskSessions)) {
+    next[taskId] = links.some((link) => link.sessionId === sessionId)
+      ? links.filter((link) => link.sessionId !== sessionId)
+      : links
+  }
+
+  return next
+}
+
+/** Every key pointing at this value, dropped. */
+function withoutValue(record: Record<string, string>, value: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).filter(([, held]) => held !== value))
 }
 
 /**
