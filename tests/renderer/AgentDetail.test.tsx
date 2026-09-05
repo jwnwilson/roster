@@ -762,7 +762,9 @@ describe('AgentDetail — naming a session', () => {
     withSessions([{ ...UNNAMED, name: 'Pool leak on 504' }])
     render(<AgentDetail />)
 
-    expect(await screen.findByRole('button', { name: /Pool leak on 504/ })).toBeInTheDocument()
+    // Anchored: the tab's own delete control is labelled "Delete session
+    // <name>", so an unanchored match finds both of them.
+    expect(await screen.findByRole('button', { name: /^Pool leak on 504/ })).toBeInTheDocument()
     // "New session" is what every session is created as; showing it on a tab
     // that has been named would be showing the wrong one of the two facts.
     expect(screen.queryByText('New session')).not.toBeInTheDocument()
