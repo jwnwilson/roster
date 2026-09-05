@@ -444,7 +444,7 @@ describe('in-process tool allowlists', () => {
     const { ROSTER_TOOL_NAMES, createRosterMcpServer } = await import('@main/runners/handoffTool')
 
     const server = (await createRosterMcpServer(
-      { listAgents: () => [], openSession: () => ({ sessionId: 's', label: 'l' }) },
+      { listAgents: () => [], openSession: () => ({ sessionId: 's', label: 'l', started: true }) },
       'me',
     )) as { instance?: { _registeredTools?: Record<string, unknown> } }
 

@@ -30,7 +30,7 @@ vi.mock('@main/runners/handoffTool', () => ({
 const { openDatabase } = await import('@main/db')
 const { SessionStore } = await import('@main/store/sessions')
 const { UsageStore } = await import('@main/store/usage')
-const { SessionManager } = await import('@main/sessions/manager')
+const { SessionManager, MAX_HANDOFF_DEPTH } = await import('@main/sessions/manager')
 
 let home: string
 let manager: InstanceType<typeof SessionManager>
@@ -714,6 +714,110 @@ describe('SessionManager.handOff', () => {
     expect(handoff).toMatchObject({
       links: [{ agentId: 'review', sessionId: session.id, label: 'Review Agent · PR #482' }],
     })
+  })
+
+  test('runs the receiving session, with the brief as its prompt', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const from = manager.create('debugging', 'Leak')
+
+    manager.handOff({
+      fromAgentId: 'debugging',
+      fromSessionId: from.id,
+      toAgentId: 'review',
+      title: 'PR #482',
+      brief: 'Review the fix.',
+    })
+
+    // The whole point of a handoff: the other agent picks the work up on its
+    // own. Opening a session and leaving it idle is a note nobody reads.
+    await vi.waitFor(() =>
+      expect(runnerStub.run).toHaveBeenCalledWith('Review the fix.', expect.anything()),
+    )
+  })
+
+  test('says the receiving agent has started', () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const from = manager.create('debugging', 'Leak')
+
+    const { started } = manager.handOff({
+      fromAgentId: 'debugging',
+      fromSessionId: from.id,
+      toAgentId: 'review',
+      title: 'PR #482',
+      brief: 'Review the fix.',
+    })
+
+    expect(started).toBe(true)
+  })
+
+  test('the brief is not printed twice in the receiving transcript', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const from = manager.create('debugging', 'Leak')
+
+    const { session } = manager.handOff({
+      fromAgentId: 'debugging',
+      fromSessionId: from.id,
+      toAgentId: 'review',
+      title: 'PR #482',
+      brief: 'Review the fix.',
+    })
+
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalled())
+
+    // The spawn message already carries the brief, attributed to the agent
+    // that wrote it. Recording it again would print it twice and put another
+    // agent's words under "you".
+    const carrying = sessions
+      .messages(session.id)
+      .filter((message) => 'text' in message && message.text === 'Review the fix.')
+    expect(carrying).toHaveLength(1)
+    expect(carrying[0]?.kind).toBe('spawn')
+  })
+
+  /** A chain of handoffs, each one spawned from the session before it. */
+  function chainOf(hops: number): ReturnType<typeof manager.handOff> {
+    let current = manager.create('debugging', 'Leak')
+    let last!: ReturnType<typeof manager.handOff>
+
+    for (let hop = 1; hop <= hops; hop += 1) {
+      const forward = hop % 2 === 1
+      last = manager.handOff({
+        fromAgentId: forward ? 'debugging' : 'review',
+        fromSessionId: current.id,
+        toAgentId: forward ? 'review' : 'debugging',
+        title: `Hop ${hop}`,
+        brief: `Brief ${hop}`,
+      })
+      current = last.session
+    }
+
+    return last
+  }
+
+  test('stops starting turns once the chain of handoffs is too deep', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    // Without a ceiling, two agents holding the roster tools can hand work
+    // back and forth for as long as the user's subscription lasts.
+    const last = chainOf(MAX_HANDOFF_DEPTH + 1)
+
+    expect(last.started).toBe(false)
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledTimes(MAX_HANDOFF_DEPTH))
+    expect(runnerStub.run).not.toHaveBeenCalledWith(
+      `Brief ${MAX_HANDOFF_DEPTH + 1}`,
+      expect.anything(),
+    )
+  })
+
+  test('the too-deep session is still opened, so the work is not lost', () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    // Refusing to run it is not the same as throwing it away: it is on the
+    // grid with its brief, for a person to pick up by hand.
+    const last = chainOf(MAX_HANDOFF_DEPTH + 1)
+
+    const [spawn] = sessions.messages(last.session.id)
+    expect(spawn).toMatchObject({ kind: 'spawn', text: `Brief ${MAX_HANDOFF_DEPTH + 1}` })
   })
 })
 

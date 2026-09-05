@@ -10,10 +10,14 @@ import type { Agent } from '../../../shared/types'
  */
 export interface RosterTools {
   listAgents(): Agent[]
-  /** Returns the label to show on the handoff pill. */
+  /**
+   * Returns the label to show on the handoff pill, and whether the receiving
+   * agent's turn was actually started — see SessionManager.MAX_HANDOFF_DEPTH.
+   */
   openSession(input: { toAgentId: string; title: string; brief: string }): {
     sessionId: string
     label: string
+    started: boolean
   }
 }
 
@@ -82,14 +86,25 @@ export async function createRosterMcpServer(
         }
       }
 
-      const { label } = tools.openSession({
+      const { label, started } = tools.openSession({
         toAgentId: args.agent_id,
         title: args.title,
         brief: args.brief,
       })
 
+      // Said plainly either way: the agent decides what to do next based on
+      // this sentence, and "it will pick the work up" when nothing did is
+      // how a handoff turns into work quietly going missing.
       return {
-        content: [{ type: 'text' as const, text: `Opened "${label}". It will pick the work up.` }],
+        content: [
+          {
+            type: 'text' as const,
+            text: started
+              ? `Opened "${label}" and it is working on the brief now.`
+              : `Opened "${label}", but too many handoffs deep to start it automatically. ` +
+                'It is on the roster with the brief, waiting for a person to send it.',
+          },
+        ],
       }
     },
   )
