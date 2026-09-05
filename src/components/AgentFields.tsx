@@ -232,11 +232,21 @@ interface DefaultProjectFieldProps {
  * an agent that only ever works on one piece of work should not need saying
  * so every time. Choosing "No project" clears the default again.
  *
- * Hidden entirely when there is nothing to choose: a roster with no projects
- * has no default to set.
+ * With no projects to choose from the label stays and says so, the way an
+ * empty skill or server list does. Removing the field was worse than useless:
+ * it is indistinguishable from the setting not existing, and a fresh install
+ * — no projects anywhere — is exactly where somebody goes looking for it.
  */
 export function DefaultProjectField({ projects, value, onChange }: DefaultProjectFieldProps) {
-  if (projects.length === 0) return null
+  if (projects.length === 0) {
+    return (
+      <Field label="Default project">
+        <p className="m-0 text-md text-dim">
+          No projects yet — create one to file this agent&apos;s sessions under it.
+        </p>
+      </Field>
+    )
+  }
 
   return (
     <Field

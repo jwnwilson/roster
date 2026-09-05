@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/shallow'
 import type { ModelInfo } from '@shared/types'
 import {
   ChipField,
+  DefaultProjectField,
   ModelPicker,
   NameField,
   ProviderPicker,
   SystemPromptField,
   WorkingDirectory,
 } from '@/components/AgentFields'
-import { useRoster } from '@/state/store'
+import { projectPickerProjects, useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
 
 /**
@@ -28,8 +30,15 @@ export function NewAgent() {
   const newPrompt = useRoster((s) => s.newPrompt)
   const setNewPrompt = useRoster((s) => s.setNewPrompt)
 
+  const mcpServers = useRoster((s) => s.mcpServers)
+  // Null current: nothing archived can be selected on a form that has not
+  // created the agent yet, so the picker offers the active projects.
+  const projectOptions = useRoster(useShallow((s) => projectPickerProjects(s, null)))
+
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState<string | null>(null)
+  const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null)
+  const [mcp, setMcp] = useState<Record<string, boolean>>({})
   const [models, setModels] = useState<ModelInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -62,6 +71,12 @@ export function NewAgent() {
         skills: Object.entries(picked)
           .filter(([, on]) => on)
           .map(([skill]) => skill),
+        mcpServers: Object.entries(mcp)
+          .filter(([, on]) => on)
+          .map(([server]) => server),
+        // Sent even when null: "no default" is an answer, and the agent.toml
+        // writer omits the key rather than writing an empty one.
+        defaultProjectId,
         // Omitted means the default workspace, which the main process fills in.
         ...(cwd !== null ? { cwd } : {}),
       })
@@ -100,12 +115,30 @@ export function NewAgent() {
           onChange={setCwd}
         />
 
+        <DefaultProjectField
+          projects={projectOptions}
+          value={defaultProjectId}
+          onChange={setDefaultProjectId}
+        />
+
         <ChipField
           label="Skills"
           names={skills.map((s) => s.name)}
           enabled={picked}
           onToggle={togglePicked}
           emptyText="No skills in the library yet."
+        />
+
+        {/* No "Manage servers" link here, unlike the Edit modal: leaving for
+            the MCP screen mid-create would throw the half-filled form away. */}
+        <ChipField
+          label="MCP servers"
+          names={mcpServers.map((s) => s.name)}
+          enabled={mcp}
+          onToggle={(server) => setMcp((current) => ({ ...current, [server]: !current[server] }))}
+          emptyText="No MCP servers configured."
+          mono
+          dotShape="circle"
         />
 
         {error ? <p className="m-0 text-md text-error">{error}</p> : null}
