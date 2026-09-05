@@ -6,6 +6,7 @@ import {
   type RosterApi,
   type SessionEventPayload,
   type PlanEventPayload,
+  type ProjectNotesPayload,
   type TaskEventPayload,
 } from '../../shared/ipc'
 import type { Agent, UpdateState } from '../../shared/types'
@@ -117,6 +118,11 @@ const api: RosterApi = {
     setArchived: (id, archived) =>
       ipcRenderer.invoke(CHANNELS.projectsSetArchived, id, archived),
     remove: (id) => ipcRenderer.invoke(CHANNELS.projectsDelete, id),
+    readNotes: (id) => ipcRenderer.invoke(CHANNELS.projectsReadNotes, id),
+    writeNotes: (id, contents) =>
+      ipcRenderer.invoke(CHANNELS.projectsWriteNotes, id, contents),
+    onNotesChanged: (listener) =>
+      subscribe<ProjectNotesPayload>(CHANNELS.projectsNotesChanged, listener),
   },
 
   tasks: {

@@ -33,6 +33,7 @@ import { detectMapping, unmappedStatuses } from '../notion/mapping'
 import { NotionPush, importConnection } from '../notion/sync'
 import { NOTION_SERVER, NOTION_TOKEN_ENV } from '../../../shared/mcp'
 import { SkillStore } from '../store/skills'
+import { ProjectNotesStore } from '../store/projectNotes'
 import { UsageStore } from '../store/usage'
 import { Updater } from '../update/updater'
 import { databasePath, mcpConfigPath, rosterHome } from '../store/paths'
@@ -86,6 +87,7 @@ const EMPTY_SPEND: SpendSummary = { byAgent: {}, byProject: {} }
 
 const agentStore = new AgentStore(() => runners)
 const skillStore = new SkillStore()
+const projectNotesStore = new ProjectNotesStore()
 const mcpStore = new McpStore()
 const ptyManager = new PtyManager()
 
@@ -171,6 +173,7 @@ export async function initStores(): Promise<void> {
   setup = await prepareFirstRun(agentStore, runners)
   await skillStore.load()
   await mcpStore.load()
+  await projectNotesStore.load()
 
   // Bring your own CLI: agents naming a custom command get a runner.
   registerCustomRunners(agentStore.findAll())
@@ -207,6 +210,7 @@ export async function initStores(): Promise<void> {
     usageStore,
     { tasks: taskStore, projects: projectStore },
     planStore,
+    projectNotesStore,
   )
   planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
@@ -238,6 +242,13 @@ export async function initStores(): Promise<void> {
   taskStore.subscribe((event) => {
     if (event.type === 'task-updated') notionPush?.taskChanged(event.task.id)
   })
+  // Notes have the same two writers the board has — the person editing them
+  // and any agent holding the memory tools — so a change has to reach an open
+  // editor, and the watch is also what keeps the copy the brief reads current
+  // when NOTES.md is edited outside Roster.
+  projectNotesStore.watch((projectId, notes) =>
+    broadcast(CHANNELS.projectsNotesChanged, { projectId, notes }),
+  )
   ptyManager.onData((sessionId, data) => broadcast(CHANNELS.ptyData, { sessionId, data }))
   ptyManager.onExit((sessionId, code) => broadcast(CHANNELS.ptyExit, { sessionId, code }))
   agentStore.watch((agents) => {
@@ -549,6 +560,11 @@ export function registerIpc(): void {
     return true
   })
 
+  ipcMain.handle(CHANNELS.projectsReadNotes, (_e, id: string) => projectNotesStore.read(id))
+  ipcMain.handle(CHANNELS.projectsWriteNotes, (_e, id: string, contents: string) =>
+    projectNotesStore.write(id, contents),
+  )
+
   ipcMain.handle(CHANNELS.tasksList, () => requireTasks().findAll())
   ipcMain.handle(CHANNELS.tasksCreate, (_e, input: NewTaskInput) => requireTasks().create(input))
   ipcMain.handle(CHANNELS.tasksApply, (_e, taskId: string, change: TaskChange) => {
@@ -680,6 +696,7 @@ export function disposeStores(): void {
   agentStore.dispose()
   skillStore.dispose()
   mcpStore.dispose()
+  projectNotesStore.dispose()
   notionPush?.dispose()
   db?.close()
 }

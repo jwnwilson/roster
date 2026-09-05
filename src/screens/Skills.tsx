@@ -12,7 +12,7 @@ import { TrashIcon } from '@/components/icons'
 import { useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
 import { relativeTime } from '@/state/format'
-import { CodeEditor } from '@/components/CodeEditor'
+import { FileEditor } from '@/components/FileEditor'
 
 /** A row in the file tree: a skill folder or one of its files. */
 interface TreeRow {
@@ -123,7 +123,6 @@ export function Skills() {
     }
   }, [openPath])
 
-  const dirty = contents !== saved
   const openRow = rows.find((r) => r.path === openPath) ?? null
   const selected = rows.find((r) => r.key === selectedKey) ?? null
 
@@ -306,48 +305,16 @@ export function Skills() {
           )}
         </nav>
 
-        <div className="flex min-w-0 flex-1 flex-col bg-sunken">
-          <div className="flex flex-none items-center gap-[10px] border-b border-line px-[16px] py-[8px]">
-            <span className="truncate font-mono text-md text-ink-3">
-              {openRow ? `${openRow.skill.name} / ${openRow.name}` : 'no file open'}
-            </span>
-            {dirty ? (
-              <>
-                <span aria-hidden className="h-[5px] w-[5px] flex-none rounded-full bg-amber" />
-                <span className="flex-none text-sm text-dim">unsaved</span>
-              </>
-            ) : null}
-            <div className="ml-auto flex flex-none gap-[7px]">
-              <button
-                type="button"
-                onClick={() => setContents(saved)}
-                disabled={!dirty}
-                className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[10px] py-[4px] font-ui text-base text-muted hover:border-line-hover disabled:cursor-default disabled:opacity-40"
-                data-hoverable
-              >
-                Revert
-              </button>
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={!dirty}
-                className="cursor-pointer rounded-chip border-0 bg-accent-surface-3 px-[10px] py-[4px] font-ui text-base font-semibold text-accent-text disabled:cursor-default disabled:opacity-40"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-
-          {error ? (
-            <p className="m-0 px-[20px] py-[14px] text-md text-error">{error}</p>
-          ) : (
-            <CodeEditor
-              value={contents}
-              onChange={setContents}
-              ariaLabel="Skill file contents"
-            />
-          )}
-        </div>
+        <FileEditor
+          label={openRow ? `${openRow.skill.name} / ${openRow.name}` : 'no file open'}
+          value={contents}
+          saved={saved}
+          onChange={setContents}
+          onRevert={() => setContents(saved)}
+          onSave={() => void save()}
+          error={error}
+          ariaLabel="Skill file contents"
+        />
 
         <aside className="w-meta flex flex-none flex-col gap-[16px] border-l border-line bg-rail p-[16px]">
           <section className="flex flex-col gap-[8px]">

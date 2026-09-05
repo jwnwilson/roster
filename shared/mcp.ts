@@ -19,6 +19,15 @@ export const TASKS_SERVER = 'tasks'
 /** Reporting the pull request a built plan ended in. */
 export const PLANS_SERVER = 'plans'
 
+/**
+ * The project's notes: recall them, and append to them.
+ *
+ * Gated per agent like the board, and for a sharper reason: a project's
+ * notes go to the model on every turn, and they are as sensitive as its
+ * tasks. Enabling this is what opts an agent into the project's memory.
+ */
+export const MEMORY_SERVER = 'memory'
+
 export const BUILTIN_MCP_SERVERS: readonly BuiltinMcpServer[] = [
   {
     name: TASKS_SERVER,
@@ -29,6 +38,10 @@ export const BUILTIN_MCP_SERVERS: readonly BuiltinMcpServer[] = [
   {
     name: PLANS_SERVER,
     description: 'Report the pull request a plan was built into, so Roster can link to it.',
+  },
+  {
+    name: MEMORY_SERVER,
+    description: "Recall and add to the project's notes, so each session starts where the last left off.",
   },
 ]
 
