@@ -9,6 +9,12 @@
  * Names are still held apart from one another, case-insensitively, because a
  * roster with two "Review Agent"s is ambiguous everywhere a person reads one —
  * the assignee picker, the sidebar, the Notion assignee mapping.
+ *
+ * One place does read the name as meaning rather than as a label: Notion
+ * import matches a person to an agent by name (`agentIdFor` in
+ * electron/main/notion/sync.ts). Renaming an agent therefore changes which
+ * Notion people land on it, which is the point — the name is what says the
+ * two are the same one. Uniqueness is what makes that match deterministic.
  */
 
 /** Long enough for a sentence-ish name, short enough to fit a sidebar row. */
