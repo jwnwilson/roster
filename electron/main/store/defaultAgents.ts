@@ -32,8 +32,6 @@ const DEFAULT_MODEL: Record<string, string> = {
 interface DefaultAgent {
   name: string
   systemPrompt: string
-  /** Names from the seeded skill library; missing ones are simply not used. */
-  skills: string[]
 }
 
 const DEFAULTS: readonly DefaultAgent[] = [
@@ -48,7 +46,6 @@ const DEFAULTS: readonly DefaultAgent[] = [
       'done by another agent on the roster, hand it to them and say what you',
       'expect back.',
     ].join('\n'),
-    skills: ['adr-writer', 'estimate-breakdown'],
   },
   {
     name: 'Implementer',
@@ -58,7 +55,6 @@ const DEFAULTS: readonly DefaultAgent[] = [
       'Reproduce a bug with a failing test before you touch source. Make the',
       'smallest change that passes, then say what you did not do.',
     ].join('\n'),
-    skills: ['repro-harness', 'stack-triage'],
   },
   {
     name: 'Reviewer',
@@ -68,7 +64,6 @@ const DEFAULTS: readonly DefaultAgent[] = [
       'Correctness first, style last. Separate blocking notes from nits, quote',
       'the line you are reacting to, and say so first when a change has no test.',
     ].join('\n'),
-    skills: ['pr-review'],
   },
 ]
 
@@ -91,7 +86,10 @@ export function defaultAgentsFor(runners: Map<string, RunnerStatus>): NewAgentIn
     model,
     cwd,
     systemPrompt: agent.systemPrompt,
-    skills: [...agent.skills],
+    // No skills: a fresh install's library is empty, and naming skills that
+    // are not there would ship three agents advertising what they cannot do.
+    // The prompts stand on their own, and skills are added per agent later.
+    skills: [],
     mcpServers: [],
   }))
 }

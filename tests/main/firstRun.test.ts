@@ -86,6 +86,18 @@ describe('defaultAgentsFor', () => {
     }
   })
 
+  test('names no skills, because a fresh install has no skill library', () => {
+    const defaults = defaultAgentsFor(runnerMap(CLAUDE_READY))
+
+    // SkillStore reads ~/roster/skills, which a new install creates empty.
+    // A seeded agent naming a skill that is not there is dead configuration:
+    // the manager filters it out at run time, so all it does is claim an
+    // ability on the Edit modal that the agent does not have.
+    for (const spec of defaults) {
+      expect(spec.skills).toEqual([])
+    }
+  })
+
   test('uses a runner that is installed and signed in', () => {
     const defaults = defaultAgentsFor(runnerMap(CLAUDE_READY, CODEX_READY))
     expect(defaults.every((spec) => spec.runner === 'claude')).toBe(true)
