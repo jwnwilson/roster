@@ -151,10 +151,9 @@ export function codexPermissionOverrides(
   return [
     `default_permissions=${tomlString(WORKTREE_PERMISSION_PROFILE)}`,
     `permissions.${WORKTREE_PERMISSION_PROFILE}.extends=${tomlString(':workspace')}`,
-    ...writablePaths.map(
-      (path) =>
-        `permissions.${WORKTREE_PERMISSION_PROFILE}.filesystem.${tomlString(path)}="write"`,
-    ),
+    `permissions.${WORKTREE_PERMISSION_PROFILE}.filesystem={${writablePaths
+      .map((path) => `${tomlString(path)}="write"`)
+      .join(',')}}`,
   ]
 }
 

@@ -128,9 +128,10 @@ describe('CodexRunner', () => {
       '--config',
       'permissions.roster-worktree.extends=":workspace"',
       '--config',
-      `permissions.roster-worktree.filesystem.${JSON.stringify(join(dir, '.git'))}="write"`,
-      '--config',
-      `permissions.roster-worktree.filesystem.${JSON.stringify(worktreesDir())}="write"`,
+      `permissions.roster-worktree.filesystem={${[
+        join(dir, '.git'),
+        worktreesDir(),
+      ].map((path) => `${JSON.stringify(path)}="write"`)}}`,
       '-C',
       dir,
       '--model',
@@ -159,9 +160,10 @@ describe('CodexRunner', () => {
       '--config',
       'permissions.roster-worktree.extends=":workspace"',
       '--config',
-      `permissions.roster-worktree.filesystem.${JSON.stringify(join(dir, '.git'))}="write"`,
-      '--config',
-      `permissions.roster-worktree.filesystem.${JSON.stringify(worktreesDir())}="write"`,
+      `permissions.roster-worktree.filesystem={${[
+        join(dir, '.git'),
+        worktreesDir(),
+      ].map((path) => `${JSON.stringify(path)}="write"`)}}`,
       '--model',
       'my-model',
       'thread-1',
@@ -181,9 +183,11 @@ describe('CodexRunner', () => {
     expect(codexPermissionOverrides(checkout, join(dir, 'Roster Worktrees'))).toEqual([
       'default_permissions="roster-worktree"',
       'permissions.roster-worktree.extends=":workspace"',
-      `permissions.roster-worktree.filesystem.${JSON.stringify(gitDir)}="write"`,
-      `permissions.roster-worktree.filesystem.${JSON.stringify(common)}="write"`,
-      `permissions.roster-worktree.filesystem.${JSON.stringify(join(dir, 'Roster Worktrees'))}="write"`,
+      `permissions.roster-worktree.filesystem={${[
+        gitDir,
+        common,
+        join(dir, 'Roster Worktrees'),
+      ].map((path) => `${JSON.stringify(path)}="write"`)}}`,
     ])
   })
 
@@ -196,11 +200,15 @@ describe('CodexRunner', () => {
     const overrides = codexPermissionOverrides(checkout, destination)
 
     expect(overrides).toContain(
-      `permissions.roster-worktree.filesystem.${JSON.stringify(gitDir)}="write"`,
+      `permissions.roster-worktree.filesystem={${[gitDir, destination].map(
+        (path) => `${JSON.stringify(path)}="write"`,
+      )}}`,
     )
-    expect(overrides).toContain(
-      `permissions.roster-worktree.filesystem.${JSON.stringify(destination)}="write"`,
-    )
+    expect(
+      overrides.some((override) =>
+        override.startsWith('permissions.roster-worktree.filesystem."'),
+      ),
+    ).toBe(false)
   })
 
   test('falls back to a known model list when the cache is unreadable', async () => {
