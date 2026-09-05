@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Agent } from '../../../shared/types'
+import { ROSTER_SERVER } from '../../../shared/mcp'
 
 /**
  * The roster tools an agent can call.
@@ -52,6 +53,28 @@ export async function createRosterMcpServer(
 ): Promise<unknown> {
   const { createSdkMcpServer, tool } = await import('@anthropic-ai/claude-agent-sdk')
 
+  return createSdkMcpServer({
+    name: ROSTER_SERVER,
+    version: '1.0.0',
+    tools: buildRosterTools(tools, currentAgentId, tool),
+  })
+}
+
+type ToolFactory = typeof import('@anthropic-ai/claude-agent-sdk').tool
+
+/**
+ * The tool definitions themselves, given a factory to build them with.
+ *
+ * Exported for the same reason its siblings are: the handlers can be
+ * exercised without standing up the SDK, and — since a Codex agent gets these
+ * same tools through a stdio server rather than an in-process one — there is
+ * one definition of each tool rather than one per runner.
+ */
+export function buildRosterTools(
+  tools: RosterTools,
+  currentAgentId: string,
+  tool: ToolFactory,
+) {
   const listAgents = tool(
     'list_agents',
     'List the other agents on this roster, so you can choose one to hand work to.',
@@ -109,11 +132,7 @@ export async function createRosterMcpServer(
     },
   )
 
-  return createSdkMcpServer({
-    name: 'roster',
-    version: '1.0.0',
-    tools: [listAgents, openSession],
-  })
+  return [listAgents, openSession]
 }
 
 function firstLine(prompt: string): string {

@@ -79,10 +79,12 @@ export class CodexRunner implements Runner {
   }
 
   run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
-    const permissions = codexPermissionOverrides(options.cwd).flatMap((override) => [
-      '--config',
-      override,
-    ])
+    // Sandbox first, then servers: both are `--config`, and both are repeated
+    // on a resume because `exec resume` is its own process and keeps neither.
+    const permissions = [
+      ...codexPermissionOverrides(options.cwd),
+      ...codexMcpOverrides(options.mcpServers),
+    ].flatMap((override) => ['--config', override])
 
     // `exec resume` has its own option set. Its working directory is inherited
     // from the stored session, so it rejects the base `exec` command's `-C`.
@@ -163,6 +165,50 @@ export function codexPermissionOverrides(
 /** JSON string syntax is also valid TOML basic-string syntax. */
 function tomlString(value: string): string {
   return JSON.stringify(value)
+}
+
+/**
+ * Build the command-line TOML overrides that register an agent's MCP servers.
+ *
+ * Codex reads servers from `~/.codex/config.toml`, which Roster deliberately
+ * ignores — the agent's own `mcp_servers` is what decides this, not whatever
+ * the user has configured for their own Codex. So each one is passed as a
+ * config override instead, under the same `mcp_servers.<name>` keys that
+ * `codex mcp add` writes into that file.
+ *
+ * This is also how a Codex agent reaches Roster's own tools: the session
+ * manager puts the bridge in this map like any other stdio server. See
+ * mcpBridge.ts for why that indirection exists.
+ */
+export function codexMcpOverrides(servers: StartOptions['mcpServers']): string[] {
+  return Object.entries(servers).flatMap(([name, spec]) => {
+    // The name becomes a dotted path in a `--config` argument, so a name with
+    // a dot or a quote in it would nest the server somewhere it was never
+    // meant to go. Names come from mcp.json, which the user writes by hand.
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+      process.stderr.write(
+        `[mcp] "${name}" is not a name Codex can be given; rename it in mcp.json\n`,
+      )
+      return []
+    }
+
+    const key = `mcp_servers.${name}`
+    const entries = Object.entries(spec.env)
+
+    return [
+      `${key}.command=${tomlString(spec.command)}`,
+      ...(spec.args.length > 0
+        ? [`${key}.args=[${spec.args.map(tomlString).join(',')}]`]
+        : []),
+      ...(entries.length > 0
+        ? [
+            `${key}.env={${entries
+              .map(([variable, value]) => `${tomlString(variable)}=${tomlString(value)}`)
+              .join(',')}}`,
+          ]
+        : []),
+    ]
+  })
 }
 
 /**
