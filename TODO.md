@@ -22,8 +22,8 @@
 - [x] I want to be able to name agent sessions and encourage users to do that
 - [x] I want to set a default project for agents for sessions are auto linked to it
 - [x] Setup Agent setup workflow and add default agents on startup with tech lead being initial agent to work with
-- [ ] Ability to minimise folders in skills to make the UI more compact for larger skills
-- [ ] An option to allow tech lead and architect Agents to build up an index of saved and compressed context so they make better decisions the more tasks they complete.
+- [x] Ability to minimise folders in skills to make the UI more compact for larger skills
+- [x] An option to allow tech lead and architect Agents to build up an index of saved and compressed context so they make better decisions the more tasks they complete.
 - [ ] Design build and publish an SPA on github for this tool
 - [ ] Plan for extending agents to work with multi repos and for the context logic to updated to work per project
 - [ ] Give Codex agents the roster, tasks and plans tools so they can hand work off too. Today `SessionManager.send` gates the in-process MCP servers on `runner instanceof ClaudeRunner`, and `CodexRunner.run` ignores `options.mcpServers` and `options.skillPaths` entirely — so a Codex agent has no MCP servers of any kind and answers "NO ROSTER TOOLS" when asked to hand off. An in-process SDK server cannot be handed to a separate CLI process, so this needs a real stdio or HTTP MCP server that `codex exec` is pointed at with `--config`. Receiving a handoff already works: a Codex agent handed work opens a session and now runs it.

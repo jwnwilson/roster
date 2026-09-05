@@ -6,6 +6,7 @@ import { Modal, Segmented, TextInput } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import { relativeTime } from '@/state/format'
 import { ALL_PROJECTS, activeProjects, archivedProjects, useRoster } from '@/state/store'
+import { ProjectNotes } from './ProjectNotes'
 
 interface Draft {
   name: string
@@ -54,6 +55,8 @@ export function ProjectsModal() {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<Draft>(BLANK)
   const [error, setError] = useState<string | null>(null)
+  /** The project whose NOTES.md fills the card, in place of the list. */
+  const [notesFor, setNotesFor] = useState<Project | null>(null)
 
   const showing = tab === 'active' ? active : archived
   const matching = useMemo(() => matchingProjects(showing, query), [showing, query])
@@ -155,25 +158,29 @@ export function ProjectsModal() {
       maxWidth={MODAL_WIDTH}
       minHeight={MODAL_MIN_HEIGHT}
       header={
-        <div className="flex items-center gap-[12px]">
-          <h2 className="m-0 text-2xl font-semibold">Projects</h2>
-          <Segmented
-            ariaLabel="Projects view"
-            options={TABS}
-            value={tab}
-            onChange={(next) => {
-              setTab(next)
-              setPage(0)
-              // A form left open on the other tab would reopen against a
-              // project this one does not show.
-              setEditing(null)
-              setCreating(false)
-            }}
-          />
-        </div>
+        notesFor ? (
+          <h2 className="m-0 text-2xl font-semibold">Notes</h2>
+        ) : (
+          <div className="flex items-center gap-[12px]">
+            <h2 className="m-0 text-2xl font-semibold">Projects</h2>
+            <Segmented
+              ariaLabel="Projects view"
+              options={TABS}
+              value={tab}
+              onChange={(next) => {
+                setTab(next)
+                setPage(0)
+                // A form left open on the other tab would reopen against a
+                // project this one does not show.
+                setEditing(null)
+                setCreating(false)
+              }}
+            />
+          </div>
+        )
       }
       footer={
-        pageCount > 1 ? (
+        notesFor === null && pageCount > 1 ? (
           <>
             <span className="text-md text-dim">
               Page {current + 1} of {pageCount}
@@ -194,81 +201,86 @@ export function ProjectsModal() {
         ) : undefined
       }
     >
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex flex-none items-center gap-[10px] border-b border-line px-[18px] py-[10px]">
-          <TextInput
-            ariaLabel="Filter projects"
-            placeholder="Filter projects"
-            value={query}
-            onChange={changeQuery}
-            className="w-[220px]"
-          />
-          <span className="text-md text-dim">{summary}</span>
-        </div>
+      {notesFor ? (
+        <ProjectNotes project={notesFor} onBack={() => setNotesFor(null)} />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="flex flex-none items-center gap-[10px] border-b border-line px-[18px] py-[10px]">
+            <TextInput
+              ariaLabel="Filter projects"
+              placeholder="Filter projects"
+              value={query}
+              onChange={changeQuery}
+              className="w-[220px]"
+            />
+            <span className="text-md text-dim">{summary}</span>
+          </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-[10px] overflow-y-auto px-[18px] py-[14px]">
-          {visible.map((project) => (
-            <div
-              key={project.id}
-              className="flex flex-col gap-[9px] rounded-[9px] border border-line px-[13px] py-[11px]"
-            >
-              {editing === project.id ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-[10px] overflow-y-auto px-[18px] py-[14px]">
+            {visible.map((project) => (
+              <div
+                key={project.id}
+                className="flex flex-col gap-[9px] rounded-[9px] border border-line px-[13px] py-[11px]"
+              >
+                {editing === project.id ? (
+                  <Editor
+                    draft={draft}
+                    setDraft={setDraft}
+                    onCancel={() => setEditing(null)}
+                    onSave={() => void save(project.id)}
+                    saveLabel="Save"
+                  />
+                ) : (
+                  <ProjectRow
+                    project={project}
+                    taskCount={tasks.filter((task) => task.projectId === project.id).length}
+                    onNotes={() => setNotesFor(project)}
+                    onEdit={() => beginEdit(project)}
+                    onArchive={() => void setArchived(project, true)}
+                    onRestore={() => void setArchived(project, false)}
+                    onDelete={() => void remove(project)}
+                  />
+                )}
+              </div>
+            ))}
+
+            {matching.length === 0 ? (
+              <p className="m-0 text-md text-dim">
+                {emptyMessage(tab, filtering, archived.length)}
+              </p>
+            ) : null}
+
+            {tab === 'archived' ? null : creating ? (
+              <div className="flex flex-col gap-[9px] rounded-[9px] border border-line-card px-[13px] py-[12px]">
                 <Editor
                   draft={draft}
                   setDraft={setDraft}
-                  onCancel={() => setEditing(null)}
-                  onSave={() => void save(project.id)}
-                  saveLabel="Save"
+                  onCancel={() => {
+                    setCreating(false)
+                    setDraft(BLANK)
+                  }}
+                  onSave={() => void create()}
+                  saveLabel="Create"
                 />
-              ) : (
-                <ProjectRow
-                  project={project}
-                  taskCount={tasks.filter((task) => task.projectId === project.id).length}
-                  onEdit={() => beginEdit(project)}
-                  onArchive={() => void setArchived(project, true)}
-                  onRestore={() => void setArchived(project, false)}
-                  onDelete={() => void remove(project)}
-                />
-              )}
-            </div>
-          ))}
-
-          {matching.length === 0 ? (
-            <p className="m-0 text-md text-dim">
-              {emptyMessage(tab, filtering, archived.length)}
-            </p>
-          ) : null}
-
-          {tab === 'archived' ? null : creating ? (
-            <div className="flex flex-col gap-[9px] rounded-[9px] border border-line-card px-[13px] py-[12px]">
-              <Editor
-                draft={draft}
-                setDraft={setDraft}
-                onCancel={() => {
-                  setCreating(false)
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
                   setDraft(BLANK)
+                  setCreating(true)
                 }}
-                onSave={() => void create()}
-                saveLabel="Create"
-              />
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setDraft(BLANK)
-                setCreating(true)
-              }}
-              className="cursor-pointer rounded-[9px] border border-dashed border-line-dashed bg-transparent p-[9px] font-ui text-lg text-dim hover:border-line-hover-strong hover:text-ink"
-              data-hoverable
-            >
-              + New project
-            </button>
-          )}
+                className="cursor-pointer rounded-[9px] border border-dashed border-line-dashed bg-transparent p-[9px] font-ui text-lg text-dim hover:border-line-hover-strong hover:text-ink"
+                data-hoverable
+              >
+                + New project
+              </button>
+            )}
 
-          {error ? <p className="m-0 text-md text-error">{error}</p> : null}
+            {error ? <p className="m-0 text-md text-error">{error}</p> : null}
+          </div>
         </div>
-      </div>
+      )}
     </Modal>
   )
 }
@@ -304,6 +316,7 @@ function clearFilterOn(projectId: string): void {
 interface ProjectRowProps {
   project: Project
   taskCount: number
+  onNotes: () => void
   onEdit: () => void
   onArchive: () => void
   onRestore: () => void
@@ -313,6 +326,7 @@ interface ProjectRowProps {
 function ProjectRow({
   project,
   taskCount,
+  onNotes,
   onEdit,
   onArchive,
   onRestore,
@@ -345,12 +359,15 @@ function ProjectRow({
             <span className="text-sm text-dim-2">
               Archived {relativeTime(project.archivedAt as number)}
             </span>
-            <SecondaryButton label="Restore" onClick={onRestore} className="ml-auto" />
+            {/* Still readable: a project is archived, not forgotten. */}
+            <SecondaryButton label="Notes" onClick={onNotes} className="ml-auto" />
+            <SecondaryButton label="Restore" onClick={onRestore} />
             <SecondaryButton label="Delete" onClick={onDelete} destructive />
           </>
         ) : (
           <>
-            <SecondaryButton label="Edit" onClick={onEdit} className="ml-auto" />
+            <SecondaryButton label="Notes" onClick={onNotes} className="ml-auto" />
+            <SecondaryButton label="Edit" onClick={onEdit} />
             {/* Not destructive: nothing is lost, and it can be taken back. */}
             <SecondaryButton label="Archive" onClick={onArchive} />
           </>

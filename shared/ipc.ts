@@ -166,6 +166,19 @@ export interface RosterApi {
     setArchived(id: string, archived: boolean): Promise<Project>
     /** Resolves false when the confirmation dialog was dismissed. */
     remove(id: string): Promise<boolean>
+    /**
+     * The project's NOTES.md — what it knows that is not a task. Resolves an
+     * empty string when nobody has written any yet.
+     */
+    readNotes(id: string): Promise<string>
+    /** Replaces the whole file, as the editor does. Agents only ever append. */
+    writeNotes(id: string, contents: string): Promise<void>
+    /**
+     * Fires when a project's notes change: an agent appending mid-turn, or an
+     * edit made in another editor. Without it an open notes editor would show
+     * a file that has since moved on.
+     */
+    onNotesChanged(listener: (payload: ProjectNotesPayload) => void): () => void
   }
   tasks: {
     list(): Promise<Task[]>
@@ -288,6 +301,12 @@ export type TaskChange =
 export type PlanEventPayload =
   | { type: 'plan-updated'; plan: Plan }
   | { type: 'comment'; planId: string; comment: PlanComment }
+
+/** One project's notes, as they now stand on disk. */
+export interface ProjectNotesPayload {
+  projectId: string
+  notes: string
+}
 
 export type TaskEventPayload =
   | { type: 'task-created'; task: Task }
@@ -421,6 +440,9 @@ export const CHANNELS = {
   projectsUpdate: 'projects:update',
   projectsSetArchived: 'projects:setArchived',
   projectsDelete: 'projects:delete',
+  projectsReadNotes: 'projects:readNotes',
+  projectsWriteNotes: 'projects:writeNotes',
+  projectsNotesChanged: 'projects:notesChanged', // broadcast, not invoke
 
   plansListBySession: 'plans:listBySession',
   plansRead: 'plans:read',

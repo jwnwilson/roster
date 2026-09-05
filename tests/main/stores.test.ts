@@ -9,7 +9,7 @@ import { SkillStore } from '@main/store/skills'
 import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
 import { agentsDir, mcpConfigPath, skillsDir } from '@main/store/paths'
-import { TASKS_SERVER, PLANS_SERVER } from '@shared/mcp'
+import { TASKS_SERVER, PLANS_SERVER, MEMORY_SERVER } from '@shared/mcp'
 import { NO_PROJECT, type McpServer } from '@shared/types'
 
 let home: string
@@ -821,6 +821,7 @@ describe('McpStore — built-in servers', () => {
     expect(store.findAll().map((server) => server.name)).toEqual([
       TASKS_SERVER,
       PLANS_SERVER,
+      MEMORY_SERVER,
       'linear',
     ])
   })

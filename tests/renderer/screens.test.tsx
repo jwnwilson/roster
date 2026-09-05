@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { EditAgentModal } from '@/screens/EditAgentModal'
@@ -1354,6 +1354,217 @@ describe('Skills — the file tree', () => {
   })
 })
 
+
+describe('Skills — collapsing folders', () => {
+  const ADR = aSkill({ name: 'adr-writer', path: '/skills/adr-writer', files: ['SKILL.md'] })
+  const REPRO = aSkill({
+    name: 'repro-harness',
+    path: '/skills/repro-harness',
+    files: [
+      'SKILL.md',
+      'templates/',
+      'templates/case.md',
+      'templates/deep/',
+      'templates/deep/notes.md',
+    ],
+  })
+
+  /** The tree only. The metadata rail lists full paths and would match twice. */
+  function renderTree() {
+    const { container } = render(<Skills />)
+    return within(container.querySelector('nav')!)
+  }
+
+  beforeEach(() => {
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# ADR Writer'),
+        list: vi.fn().mockResolvedValue([ADR, REPRO]),
+      },
+    })
+    useRoster.setState({ skills: [ADR, REPRO], agents: [] })
+  })
+
+  test('everything starts expanded, so the tree arrives as it always did', () => {
+    const tree = renderTree()
+
+    expect(tree.getByText('templates')).toBeInTheDocument()
+    expect(tree.getByText('notes.md')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse repro-harness' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
+  test('collapsing a skill hides its whole subtree, not just its direct children', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+
+    expect(tree.queryByText('templates')).not.toBeInTheDocument()
+    expect(tree.queryByText('case.md')).not.toBeInTheDocument()
+    expect(tree.queryByText('deep')).not.toBeInTheDocument()
+    expect(tree.queryByText('notes.md')).not.toBeInTheDocument()
+    // The skill itself stays, and its neighbour is untouched.
+    expect(tree.getByText('repro-harness')).toBeInTheDocument()
+    expect(tree.getByText('adr-writer')).toBeInTheDocument()
+  })
+
+  test('expanding puts the subtree back', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+    await user.click(screen.getByRole('button', { name: 'Expand repro-harness' }))
+
+    expect(tree.getByText('templates')).toBeInTheDocument()
+    expect(tree.getByText('notes.md')).toBeInTheDocument()
+  })
+
+  test('collapsing a nested folder hides only what is under it', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse deep' }))
+
+    expect(tree.queryByText('notes.md')).not.toBeInTheDocument()
+    expect(tree.getByText('deep')).toBeInTheDocument()
+    expect(tree.getByText('case.md')).toBeInTheDocument()
+    expect(tree.getByText('templates')).toBeInTheDocument()
+  })
+
+  test('the disclosure announces its state rather than only drawing it', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse templates' }))
+
+    expect(screen.getByRole('button', { name: 'Expand templates' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+
+  test('a file row has no disclosure, since nothing is under it', () => {
+    render(<Skills />)
+
+    expect(screen.queryByRole('button', { name: 'Collapse notes.md' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand notes.md' })).not.toBeInTheDocument()
+  })
+
+  test('collapsing neither selects the folder nor changes the open file', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+    await screen.findByLabelText('Skill file contents')
+
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+
+    expect(screen.getByRole('button', { name: 'repro-harness' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(screen.getByText('adr-writer / SKILL.md')).toBeInTheDocument()
+    expect(window.roster.skills.read).toHaveBeenCalledTimes(1)
+  })
+
+  test('creating inside a collapsed folder opens it, so the name row can be seen', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse templates' }))
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+
+    expect(screen.getByLabelText('New file name')).toBeInTheDocument()
+    // Reopened rather than left collapsed: the new row belongs among these.
+    expect(tree.getByText('case.md')).toBeInTheDocument()
+  })
+
+  test('a file opened while its skill is collapsed is revealed, not stranded', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# Repro'),
+        remove: vi.fn().mockResolvedValue(true),
+        // What the library looks like once repro-harness/SKILL.md has gone.
+        list: vi.fn().mockResolvedValue([ADR, aSkill({ ...REPRO, files: [] })]),
+      },
+    })
+    useRoster.setState({ skills: [ADR, REPRO], agents: [] })
+    const tree = renderTree()
+
+    // Work in repro-harness, with adr-writer folded away. Both skills hold a
+    // SKILL.md, so each row is taken by position while both are on show.
+    const [, reproFile] = tree.getAllByRole('button', { name: 'SKILL.md' })
+    const [, deleteReproFile] = tree.getAllByRole('button', { name: 'Delete SKILL.md' })
+    await user.click(reproFile!)
+    await user.click(screen.getByRole('button', { name: 'Collapse adr-writer' }))
+    expect(tree.queryByText('SKILL.md')).toBeInTheDocument()
+
+    // Deleting the open file falls back to the first SKILL.md — inside the
+    // folder that was just collapsed.
+    await user.click(deleteReproFile!)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Collapse adr-writer' })).toBeInTheDocument(),
+    )
+    expect(tree.getByText('SKILL.md')).toBeInTheDocument()
+  })
+
+  test('a folder that goes away and comes back is not still collapsed', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse templates' }))
+    // Re-listed without it and then with it again: deleted and recreated, or
+    // changed on disk by something that is not Roster.
+    act(() => useRoster.setState({ skills: [ADR, aSkill({ ...REPRO, files: ['SKILL.md'] })] }))
+    act(() => useRoster.setState({ skills: [ADR, REPRO] }))
+
+    expect(tree.getByText('case.md')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse templates' })).toBeInTheDocument()
+  })
+
+  test('an empty folder has no disclosure, since there is nothing to fold', () => {
+    useRoster.setState({
+      skills: [
+        aSkill({ name: 'repro-harness', path: '/skills/repro-harness', files: ['SKILL.md', 'empty/'] }),
+      ],
+      agents: [],
+    })
+    const tree = renderTree()
+
+    // The row is still there, and still deletable — it just cannot fold.
+    expect(tree.getByText('empty')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete empty' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Collapse empty' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse repro-harness' })).toBeInTheDocument()
+  })
+
+  test('a name row whose folder disappears is abandoned, not left to come back empty', async () => {
+    const user = userEvent.setup()
+    renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+    await user.type(screen.getByLabelText('New file name'), 'case2')
+
+    // templates goes while the name is half typed, then comes back.
+    act(() => useRoster.setState({ skills: [ADR, aSkill({ ...REPRO, files: ['SKILL.md'] })] }))
+    act(() => useRoster.setState({ skills: [ADR, REPRO] }))
+
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+  })
+
+  test('collapsing above a name row leaves no phantom input behind it', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+    await user.click(screen.getByRole('button', { name: 'Expand repro-harness' }))
+
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+  })
+})
 
 describe('Skills — deleting', () => {
   const SKILL = aSkill({

@@ -75,3 +75,24 @@ export function databasePath(): string {
 export function setupStatePath(): string {
   return join(rosterHome(), 'setup.json')
 }
+
+/**
+ * Where a project's files live, keyed on its id rather than its name.
+ *
+ * Two projects may be called the same thing, and renaming one must not
+ * orphan what was written under it — a slug does neither. The name is for
+ * the UI; this is for the disk. Projects keep their SQLite row as the source
+ * of identity; the folder is only for files.
+ */
+export function projectsDir(): string {
+  return join(rosterHome(), 'projects')
+}
+
+export function projectDir(projectId: string): string {
+  return join(projectsDir(), projectId)
+}
+
+/** The project's standing knowledge: decisions, conventions, gotchas. */
+export function projectNotesPath(projectId: string): string {
+  return join(projectDir(projectId), 'NOTES.md')
+}

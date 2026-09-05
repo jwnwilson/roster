@@ -184,6 +184,7 @@ writing a normalizer and, ideally, recording a fixture from a real run.
 ~/roster/
   agents/<id>/agent.toml   one file per agent — hand-editable
   skills/<name>/SKILL.md   the shared skill library, nested files and all
+  projects/<id>/NOTES.md   a project's standing notes — keyed on its id, not its name
   workspace/               default working directory for seeded agents
   mcp.json                 MCP servers: launch command and environment
   setup.json               first-run marker: what was seeded, and when it was dismissed

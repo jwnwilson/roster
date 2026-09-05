@@ -78,6 +78,9 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       setArchived: vi.fn().mockResolvedValue(null),
       // The real handler resolves false when the confirmation was dismissed.
       remove: vi.fn().mockResolvedValue(true),
+      readNotes: vi.fn().mockResolvedValue(''),
+      writeNotes: vi.fn().mockResolvedValue(undefined),
+      onNotesChanged: vi.fn().mockReturnValue(() => {}),
     },
     tasks: {
       list: vi.fn().mockResolvedValue([]),
