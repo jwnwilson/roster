@@ -24,7 +24,26 @@ import { resolveSessionProject } from './defaultProject'
 export interface SendOptions {
   /** Research and propose only; see StartOptions.planMode. */
   planMode?: boolean
+  /**
+   * Whether to record the prompt as a user message. Defaults to true.
+   *
+   * False when the transcript already shows it. A handed-off session opens
+   * with a spawn message carrying the brief, attributed to the agent that
+   * wrote it; recording it again would print it twice and put another
+   * agent's words under "you".
+   */
+  recordPrompt?: boolean
 }
+
+/**
+ * How many handoffs deep Roster will keep starting turns by itself.
+ *
+ * Every agent holding the roster tools can hand work on, including one that
+ * was handed work — so A→B→A is a loop that spends the user's subscription
+ * with nobody watching. Past this depth the session is still opened and the
+ * brief is still recorded; it just waits for a person to press send.
+ */
+export const MAX_HANDOFF_DEPTH = 3
 
 /** Everything the manager emits so the renderer can follow a live turn. */
 export type SessionEvent =
@@ -148,6 +167,11 @@ export class SessionManager {
    *
    * Both sides are recorded: the new session gets a spawn message naming its
    * origin, and the handing-off session gets a handoff message linking to it.
+   * Then the receiving agent's turn is started with the brief as its prompt,
+   * which is what makes this a handoff rather than a note left on a desk.
+   *
+   * `started` is false when the chain has hit MAX_HANDOFF_DEPTH: the session
+   * exists and holds the brief, but nothing runs until a person sends it.
    */
   handOff(input: {
     fromAgentId: string
@@ -155,7 +179,7 @@ export class SessionManager {
     toAgentId: string
     title: string
     brief: string
-  }): { session: Session; label: string } {
+  }): { session: Session; label: string; started: boolean } {
     const from = this.agents.findById(input.fromAgentId)
     const to = this.agents.findById(input.toAgentId)
     const fromLabel = from ? `${from.name} · ${input.title}` : input.title
@@ -202,7 +226,33 @@ export class SessionManager {
       ],
     })
 
-    return { session, label: toLabel }
+    // The brief travels as the prompt, not only as the spawn message: the
+    // runner is handed exactly one string, so anything not in there is not
+    // in the conversation. `recordPrompt` keeps the spawn the single copy.
+    const started = this.handoffDepth(session.id) <= MAX_HANDOFF_DEPTH
+    if (started) this.enqueue(session.id, input.brief, { recordPrompt: false })
+
+    return { session, label: toLabel, started }
+  }
+
+  /**
+   * How many handoffs stand between this session and the one a person opened.
+   *
+   * Walked rather than stored: `spawnedFrom` already records each link, so
+   * the chain is derivable and there is nothing to migrate or keep in step.
+   * The walk is bounded by MAX_HANDOFF_DEPTH, so a cycle written into the
+   * database by hand cannot spin here.
+   */
+  private handoffDepth(sessionId: string): number {
+    let depth = 0
+    let current = this.sessions.findById(sessionId)
+
+    while (current?.spawnedFrom !== undefined && depth <= MAX_HANDOFF_DEPTH) {
+      depth += 1
+      current = this.sessions.findById(current.spawnedFrom.sessionId)
+    }
+
+    return depth
   }
 
   isStreaming(sessionId: string): boolean {
@@ -255,8 +305,11 @@ export class SessionManager {
     }
 
     // The user's own message is persisted before the run, so it survives a
-    // crash mid-turn.
-    this.record(sessionId, { sessionId, kind: 'text', role: 'user', who: 'you', text: prompt })
+    // crash mid-turn. Skipped when the transcript already carries the prompt;
+    // see SendOptions.recordPrompt.
+    if (options.recordPrompt !== false) {
+      this.record(sessionId, { sessionId, kind: 'text', role: 'user', who: 'you', text: prompt })
+    }
 
     let finish = (): void => {}
     const done = new Promise<void>((resolve) => {
@@ -302,7 +355,11 @@ export class SessionManager {
                   title,
                   brief,
                 })
-                return { sessionId: result.session.id, label: result.label }
+                return {
+                  sessionId: result.session.id,
+                  label: result.label,
+                  started: result.started,
+                }
               },
             },
             agent.id,
