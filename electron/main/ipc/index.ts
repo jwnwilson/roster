@@ -11,7 +11,7 @@ import {
   type NewConnectionInput,
   type TaskChange,
 } from '../../../shared/ipc'
-import type { PlanDocument, RunnerStatus, SpendSummary } from '../../../shared/types'
+import type { PlanDocument, RunnerStatus, SetupState, SpendSummary } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
@@ -37,6 +37,7 @@ import { databasePath, mcpConfigPath, rosterHome } from '../store/paths'
 import { join } from 'node:path'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
+import { dismissSetup, prepareFirstRun } from '../store/firstRun'
 
 let runners = new Map<string, RunnerStatus>()
 let db: Db | null = null
@@ -50,6 +51,19 @@ let planFlow: PlanFlow | null = null
 let mentions: TaskMentions | null = null
 let notionStore: NotionStore | null = null
 let notionPush: NotionPush | null = null
+
+/**
+ * What first-run setup decided, held for the renderer to ask for.
+ *
+ * Defaults to "nothing to offer", so a window opening before initStores has
+ * finished never flashes a setup card at an established user.
+ */
+let setup: SetupState = {
+  pending: false,
+  startingAgentId: null,
+  seededAgentIds: [],
+  noRunner: false,
+}
 
 /**
  * Built lazily, because app.getVersion() and the downloads path are only
@@ -146,9 +160,13 @@ function requireTasks(): TaskStore {
 export async function initStores(): Promise<void> {
   await seedIfEmpty(mcpConfigPath())
 
-  // Detect first: an agent's status depends on whether its runner is usable.
+  // Detect first: an agent's status depends on whether its runner is usable,
+  // and first-run seeding will only point agents at a CLI that is installed.
   runners = await detectAllRunners()
   await agentStore.load()
+
+  // Seeds the starter roster, once ever, on a genuinely fresh install.
+  setup = await prepareFirstRun(agentStore, runners)
   await skillStore.load()
   await mcpStore.load()
 
@@ -545,6 +563,12 @@ export function registerIpc(): void {
     requirePlanFlow().submit(planId, text, quote),
   )
   ipcMain.handle(CHANNELS.plansApprove, (_e, planId: string) => requirePlanFlow().approve(planId))
+
+  ipcMain.handle(CHANNELS.setupState, () => setup)
+  ipcMain.handle(CHANNELS.setupDismiss, async () => {
+    setup = await dismissSetup()
+    return setup
+  })
 
   ipcMain.handle(CHANNELS.updateVersion, () => app.getVersion())
   ipcMain.handle(CHANNELS.updateCheck, () => requireUpdater().check())

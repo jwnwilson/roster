@@ -8,6 +8,7 @@ import type {
   Project,
   RunnerStatus,
   Session,
+  SetupState,
   Skill,
   SpendSummary,
   Status,
@@ -83,6 +84,13 @@ export interface RosterState {
   planComments: Record<string, PlanComment[]>
   /** Sessions attached to a task, keyed by task id. Loaded when it is opened. */
   taskSessions: Record<string, TaskSessionLink[]>
+  /**
+   * What first-run setup left behind, or null until it has been read.
+   *
+   * Null rather than a default object, so the setup card can tell "not asked
+   * yet" from "asked, nothing to offer" and never flashes on startup.
+   */
+  setup: SetupState | null
   loaded: boolean
 
   /* ---- navigation --------------------------------------------------- */
@@ -162,6 +170,7 @@ export interface RosterState {
   setSkills(skills: Skill[]): void
   setProjects(projects: Project[]): void
   setTasks(tasks: Task[]): void
+  setSetup(setup: SetupState): void
   /** Replaces a session's pending approvals, as read back from the main process. */
   setApprovals(sessionId: string, approvals: Approval[]): void
   setTaskComments(taskId: string, comments: TaskComment[]): void
@@ -233,6 +242,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   plans: {},
   planComments: {},
   taskSessions: {},
+  setup: null,
   loaded: false,
 
   screen: 'grid',
@@ -290,6 +300,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   setSkills: (skills) => set({ skills }),
   setProjects: (projects) => set({ projects }),
   setTasks: (tasks) => set({ tasks }),
+  setSetup: (setup) => set({ setup }),
   setApprovals: (sessionId, approvals) =>
     set((s) => ({ approvals: { ...s.approvals, [sessionId]: approvals } })),
 
@@ -687,6 +698,29 @@ export async function moveTask(taskId: string, status: BoardStatus): Promise<str
     return null
   } catch (cause) {
     useRoster.setState((s) => ({ tasks: withTaskStatus(s.tasks, taskId, previous.status) }))
+    return messageFor(cause)
+  }
+}
+
+/**
+ * Puts the first-run card away.
+ *
+ * The card goes immediately and comes back if the marker could not be
+ * written, the same bargain `moveTask` strikes: a button that appears to do
+ * nothing is worse than one that undoes itself with a reason. Resolves an
+ * error message, or null when it worked.
+ */
+export async function dismissSetup(): Promise<string | null> {
+  const previous = useRoster.getState().setup
+  if (!previous) return null
+
+  useRoster.setState({ setup: { ...previous, pending: false } })
+
+  try {
+    useRoster.setState({ setup: await window.roster.setup.dismiss() })
+    return null
+  } catch (cause) {
+    useRoster.setState({ setup: previous })
     return messageFor(cause)
   }
 }

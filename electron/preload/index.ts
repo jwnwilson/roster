@@ -137,6 +137,11 @@ const api: RosterApi = {
     onEvent: (listener) => subscribe<PlanEventPayload>(CHANNELS.plansEvent, listener),
   },
 
+  setup: {
+    state: () => ipcRenderer.invoke(CHANNELS.setupState),
+    dismiss: () => ipcRenderer.invoke(CHANNELS.setupDismiss),
+  },
+
   update: {
     check: () => ipcRenderer.invoke(CHANNELS.updateCheck),
     download: () => ipcRenderer.invoke(CHANNELS.updateDownload),

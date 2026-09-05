@@ -94,6 +94,20 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       approve: vi.fn().mockResolvedValue(undefined),
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
+    setup: {
+      state: vi.fn().mockResolvedValue({
+        pending: false,
+        startingAgentId: null,
+        seededAgentIds: [],
+        noRunner: false,
+      }),
+      dismiss: vi.fn().mockResolvedValue({
+        pending: false,
+        startingAgentId: null,
+        seededAgentIds: [],
+        noRunner: false,
+      }),
+    },
     update: {
       check: vi.fn().mockResolvedValue(undefined),
       download: vi.fn().mockResolvedValue(undefined),
