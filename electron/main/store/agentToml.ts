@@ -86,7 +86,12 @@ function optionalString(
   if (typeof value !== 'string') {
     throw new AgentConfigError(agentId, `"${key}" must be a string`)
   }
-  return value.trim() === '' ? null : value
+  // Trimmed, not merely tested for blankness: this file is edited by hand,
+  // and a value padded with spaces is a project id that matches nothing. A
+  // default that resolves to no project is ignored in silence, so the stray
+  // whitespace would cost the user a setting with nothing to show why.
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
 }
 
 function optionalBoolean(

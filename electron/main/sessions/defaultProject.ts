@@ -12,7 +12,11 @@ export interface SessionProjectInput {
    */
   explicit?: string | null
   agent: Agent | null
-  /** Omitted when nothing can resolve a project id, in which case no default applies. */
+  /**
+   * Omitted when nothing can resolve a project id, in which case no default
+   * applies. That is not a gap: a manager built without the board has no
+   * projects to file anything under, so there is no default to honour.
+   */
   projects?: ProjectLookup
 }
 

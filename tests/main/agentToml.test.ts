@@ -133,6 +133,19 @@ describe('agent.toml — default project', () => {
     expect(parseAgentToml('debug', `${VALID}default_project = ""\n`).defaultProjectId).toBeNull()
   })
 
+  test('trims a hand-edited default_project', () => {
+    // agent.toml is edited by hand. Padding survives into the id otherwise,
+    // matches no project, and is then ignored in silence at session time —
+    // a setting that quietly does nothing with no error to explain it.
+    const cfg = parseAgentToml('debug', `${VALID}default_project = "  proj-reliability  "\n`)
+
+    expect(cfg.defaultProjectId).toBe('proj-reliability')
+  })
+
+  test('reads a whitespace-only default_project as no default', () => {
+    expect(parseAgentToml('debug', `${VALID}default_project = "   "\n`).defaultProjectId).toBeNull()
+  })
+
   test('rejects a default_project that is not a string', () => {
     const bad = `${VALID}default_project = 3\n`
     expect(() => parseAgentToml('debug', bad)).toThrow(AgentConfigError)
