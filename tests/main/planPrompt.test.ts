@@ -131,9 +131,12 @@ describe('the prompt that asks for the work', () => {
   const prompt = buildPrompt({ plan: PLAN, body: BODY, comments: [note('keep the tasks')] })
 
   test('sends the agent to a worktree rather than the checkout it is sitting in', () => {
+    expect(prompt).toContain('git worktree list --porcelain')
     expect(prompt).toContain('git worktree add')
     expect(prompt).toContain(worktreeFor(PLAN))
     expect(prompt).toContain(branchFor(PLAN))
+    expect(prompt).toMatch(/reuse it/i)
+    expect(prompt).toMatch(/do not remove or prune/i)
   })
 
   test('asks for a pull request whose body is the plan', () => {

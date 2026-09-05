@@ -3,6 +3,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
+import { gitMetadata } from '../sessions/repo'
+import { worktreesDir } from '../store/paths'
 import { normalizeCodexMessage } from './normalizeCodex'
 import { streamJsonLines } from './subprocess'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
@@ -25,10 +27,11 @@ const EXCLUDED_SLUGS = new Set(['codex-auto-review'])
  * Backs an agent with Codex CLI, running on whatever account the user has
  * already logged in with.
  *
- * Codex enforces permissions through its own sandbox rather than a callback,
- * so Roster runs it in `workspace-write` — writes inside the working
- * directory are allowed, anything wider is refused by Codex itself. Roster's
- * approval banner is not wired to this runner; see respondToApproval.
+ * Codex enforces permissions through its own sandbox rather than a callback.
+ * Roster extends Codex's workspace profile with the two narrow exceptions Git
+ * needs to manage worktrees: the repository metadata and Roster's worktree
+ * directory. Roster's approval banner is not wired to this runner; see
+ * respondToApproval.
  */
 export class CodexRunner implements Runner {
   readonly id = 'codex'
@@ -76,9 +79,15 @@ export class CodexRunner implements Runner {
   }
 
   run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
-    // `exec resume` has its own option set. In particular, its working
-    // directory and sandbox are inherited from the stored session, so it
-    // rejects the base `exec` command's `-C` and `--sandbox` options.
+    const permissions = codexPermissionOverrides(options.cwd).flatMap((override) => [
+      '--config',
+      override,
+    ])
+
+    // `exec resume` has its own option set. Its working directory is inherited
+    // from the stored session, so it rejects the base `exec` command's `-C`.
+    // Config overrides are accepted by both commands and are repeated so a
+    // resumed agent retains the same least-privilege Git access.
     const args =
       options.resumeFrom !== undefined && options.resumeFrom !== ''
         ? [
@@ -86,6 +95,9 @@ export class CodexRunner implements Runner {
             'resume',
             '--json',
             '--skip-git-repo-check',
+            '--ignore-user-config',
+            '--strict-config',
+            ...permissions,
             '--model',
             options.model,
             options.resumeFrom,
@@ -94,8 +106,9 @@ export class CodexRunner implements Runner {
             'exec',
             '--json',
             '--skip-git-repo-check',
-            '--sandbox',
-            'workspace-write',
+            '--ignore-user-config',
+            '--strict-config',
+            ...permissions,
             '-C',
             options.cwd,
             '--model',
@@ -115,6 +128,39 @@ export class CodexRunner implements Runner {
     // nothing for Roster to release. Left explicit rather than silently
     // absent so the asymmetry with the Claude runner is visible.
   }
+}
+
+const WORKTREE_PERMISSION_PROFILE = 'roster-worktree'
+
+/**
+ * Build command-line TOML overrides for the smallest useful Codex sandbox.
+ *
+ * `:workspace` keeps Codex's normal protections, including read-only `.git`
+ * and `.codex` directories. The exact Git directories are then made writable,
+ * along with only the directory where Roster tells agents to create worktrees.
+ */
+export function codexPermissionOverrides(
+  cwd: string,
+  worktreeRoot = worktreesDir(),
+): string[] {
+  const metadata = gitMetadata(cwd)
+  const writablePaths = metadata
+    ? [...new Set([metadata.gitDir, metadata.commonDir, worktreeRoot])]
+    : [worktreeRoot]
+
+  return [
+    `default_permissions=${tomlString(WORKTREE_PERMISSION_PROFILE)}`,
+    `permissions.${WORKTREE_PERMISSION_PROFILE}.extends=${tomlString(':workspace')}`,
+    ...writablePaths.map(
+      (path) =>
+        `permissions.${WORKTREE_PERMISSION_PROFILE}.filesystem.${tomlString(path)}="write"`,
+    ),
+  ]
+}
+
+/** JSON string syntax is also valid TOML basic-string syntax. */
+function tomlString(value: string): string {
+  return JSON.stringify(value)
 }
 
 /**
