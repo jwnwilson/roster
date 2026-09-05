@@ -1,0 +1,55 @@
+# Publishes site/ to GitHub Pages.
+#
+# Deliberately separate from release.yml, and deliberately narrow:
+#
+#   * The paths filter means a normal push to main — including the version-bump
+#     commit release.yml pushes back — does not run this at all. Only a change
+#     to the site does.
+#   * Its concurrency group is `pages`, not `release`, so the two never queue
+#     behind or cancel one another.
+#   * It reads the repository and writes nothing to it. There is no tag, no
+#     commit, and no release asset in this workflow.
+#
+# The site is a static index.html; there is no build step and no npm install.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # `enablement: true` turns Pages on for the repository and sets its
+      # source to GitHub Actions, so the first run needs no visit to Settings.
+      # If the org or repo forbids that, this step fails loudly rather than
+      # deploying somewhere unexpected — enable Pages by hand and re-run.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4
