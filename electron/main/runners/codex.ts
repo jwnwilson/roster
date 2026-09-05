@@ -138,6 +138,8 @@ const WORKTREE_PERMISSION_PROFILE = 'roster-worktree'
  * `:workspace` keeps Codex's normal protections, including read-only `.git`
  * and `.codex` directories. The exact Git directories are then made writable,
  * along with only the directory where Roster tells agents to create worktrees.
+ * Network access lets commands resolve DNS and reach the internet while the
+ * filesystem remains constrained by the profile.
  */
 export function codexPermissionOverrides(
   cwd: string,
@@ -151,6 +153,7 @@ export function codexPermissionOverrides(
   return [
     `default_permissions=${tomlString(WORKTREE_PERMISSION_PROFILE)}`,
     `permissions.${WORKTREE_PERMISSION_PROFILE}.extends=${tomlString(':workspace')}`,
+    `permissions.${WORKTREE_PERMISSION_PROFILE}.network.enabled=true`,
     `permissions.${WORKTREE_PERMISSION_PROFILE}.filesystem={${writablePaths
       .map((path) => `${tomlString(path)}="write"`)
       .join(',')}}`,
