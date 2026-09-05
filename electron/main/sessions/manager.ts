@@ -45,6 +45,22 @@ export type SessionEvent =
  */
 const FLUSH_INTERVAL_MS = 60
 
+/**
+ * How long `stop` waits for a turn to finish writing before going ahead
+ * without it.
+ *
+ * Long enough that an unwinding stream is never cut short, short enough that
+ * a runner ignoring its abort signal cannot wedge a delete for good.
+ */
+const STOP_TIMEOUT_MS = 10_000
+
+/** Unref'd, so a stop that is still waiting can never hold the process open. */
+function afterStopTimeout(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, STOP_TIMEOUT_MS).unref()
+  })
+}
+
 interface ActiveRun {
   abort: AbortController
   /** Tool messages awaiting their result, keyed by the runner's tool id. */
@@ -239,51 +255,55 @@ export class SessionManager {
     }
     this.active.set(sessionId, run)
 
-    this.setStatus(sessionId, 'running')
-    this.emit({ type: 'streaming', sessionId, active: true })
-    this.emit({ type: 'activity', sessionId, text: THINKING })
-
-    // Only the Claude runner supports in-process MCP, so only it can be
-    // given Roster's own servers; other runners simply cannot hand off yet.
-    let inProcessMcpServers: Record<string, unknown> | undefined
-    if (runner instanceof ClaudeRunner) {
-      runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
-      inProcessMcpServers = {
-        roster: await createRosterMcpServer(
-          {
-            listAgents: () => this.agents.findAll(),
-            openSession: ({ toAgentId, title, brief }) => {
-              const result = this.handOff({
-                fromAgentId: agent.id,
-                fromSessionId: sessionId,
-                toAgentId,
-                title,
-                brief,
-              })
-              return { sessionId: result.session.id, label: result.label }
-            },
-          },
-          agent.id,
-        ),
-      }
-
-      // The board is opt-in per agent, like any other MCP server. An agent
-      // that does not enable it is never given the tools at all, so there is
-      // nothing for it to be refused.
-      const tasks = this.taskToolsFor(agent)
-      if (tasks) {
-        inProcessMcpServers[TASKS_SERVER] = await createTasksMcpServer(tasks, agent.id)
-      }
-
-      // Reporting a pull request is opt-in the same way. Without it a plan
-      // still gets built; Roster simply never learns where the work landed.
-      const planTools = this.planToolsFor(agent)
-      if (planTools) {
-        inProcessMcpServers[PLANS_SERVER] = await createPlansMcpServer(planTools)
-      }
-    }
-
+    // The try opens here rather than at the runner call: the MCP servers
+    // below are built with await, and a throw there used to escape send()
+    // with the run still in `active` and its `done` promise unresolved —
+    // which is precisely what stop() waits on before a session is deleted.
     try {
+      this.setStatus(sessionId, 'running')
+      this.emit({ type: 'streaming', sessionId, active: true })
+      this.emit({ type: 'activity', sessionId, text: THINKING })
+
+      // Only the Claude runner supports in-process MCP, so only it can be
+      // given Roster's own servers; other runners simply cannot hand off yet.
+      let inProcessMcpServers: Record<string, unknown> | undefined
+      if (runner instanceof ClaudeRunner) {
+        runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
+        inProcessMcpServers = {
+          roster: await createRosterMcpServer(
+            {
+              listAgents: () => this.agents.findAll(),
+              openSession: ({ toAgentId, title, brief }) => {
+                const result = this.handOff({
+                  fromAgentId: agent.id,
+                  fromSessionId: sessionId,
+                  toAgentId,
+                  title,
+                  brief,
+                })
+                return { sessionId: result.session.id, label: result.label }
+              },
+            },
+            agent.id,
+          ),
+        }
+
+        // The board is opt-in per agent, like any other MCP server. An agent
+        // that does not enable it is never given the tools at all, so there is
+        // nothing for it to be refused.
+        const tasks = this.taskToolsFor(agent)
+        if (tasks) {
+          inProcessMcpServers[TASKS_SERVER] = await createTasksMcpServer(tasks, agent.id)
+        }
+
+        // Reporting a pull request is opt-in the same way. Without it a plan
+        // still gets built; Roster simply never learns where the work landed.
+        const planTools = this.planToolsFor(agent)
+        if (planTools) {
+          inProcessMcpServers[PLANS_SERVER] = await createPlansMcpServer(planTools)
+        }
+      }
+
       const stream = runner.run(prompt, {
         cwd: agent.cwd,
         model: agent.model,
@@ -373,6 +393,12 @@ export class SessionManager {
    *
    * Resolves immediately when nothing is running, including for a session
    * that does not exist.
+   *
+   * The wait is bounded. A runner that never honours its abort signal would
+   * otherwise hold the caller for good — the delete waiting on this would
+   * never return and the control that asked for it would read as dead. Past
+   * the timeout the delete goes ahead: a turn still unwinding then finds its
+   * session gone, which `enqueue` already treats as nothing to report.
    */
   async stop(sessionId: string): Promise<void> {
     this.queued.delete(sessionId)
@@ -381,7 +407,7 @@ export class SessionManager {
     if (!run) return
 
     run.abort.abort()
-    await run.done
+    await Promise.race([run.done, afterStopTimeout()])
   }
 
   /* ---- event handling ---------------------------------------------------- */

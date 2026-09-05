@@ -513,6 +513,30 @@ describe('reduceSessionEvent — a session being deleted', () => {
     expect(next.plans).not.toHaveProperty('plan-1')
   })
 
+  test('forgets every plan of that session, not merely the first', () => {
+    withDeletedSession()
+    useRoster.setState({
+      openPlanId: 'plan-2',
+      plans: {
+        'plan-1': { plan: aPlan({ id: 'plan-1', sessionId: 's1' }), body: '# One' },
+        'plan-2': { plan: aPlan({ id: 'plan-2', sessionId: 's1' }), body: '# Two' },
+        'plan-3': { plan: aPlan({ id: 'plan-3', sessionId: 's2' }), body: '# Other' },
+      },
+      planComments: { 'plan-1': [], 'plan-2': [], 'plan-3': [] },
+    })
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    // A session can plan more than once. Stopping at the first would leave
+    // the rest in state with no session behind them — and the open one here
+    // is the second, so it is the one that would have been left showing.
+    expect(next.plans).not.toHaveProperty('plan-1')
+    expect(next.plans).not.toHaveProperty('plan-2')
+    expect(next.plans).toHaveProperty('plan-3')
+    expect(next.planComments).not.toHaveProperty('plan-2')
+    expect(next.openPlanId).toBeNull()
+  })
+
   test('leaves a plan from another session open', () => {
     withDeletedSession()
     useRoster.setState({

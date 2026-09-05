@@ -784,9 +784,12 @@ export function reduceSessionEvent(
  * that never knew the session has to come away unchanged.
  */
 function forgetSession(state: RosterState, sessionId: string): Partial<RosterState> {
-  const plan = Object.values(state.plans).find(
-    (document) => document.plan.sessionId === sessionId,
-  )
+  // Every plan of this session, not merely the first: a session that planned
+  // more than once has a document per revision approved, and stopping at one
+  // would leave the rest unreadable in state with no session behind them.
+  const planIds = Object.values(state.plans)
+    .filter((document) => document.plan.sessionId === sessionId)
+    .map((document) => document.plan.id)
 
   return {
     sessions: withoutSession(state.sessions, sessionId),
@@ -803,11 +806,13 @@ function forgetSession(state: RosterState, sessionId: string): Partial<RosterSta
     sess: withoutValue(state.sess, sessionId),
     // A plan is a document about a conversation; without the conversation
     // there is nothing left to read, and nothing left to answer it with.
-    ...(plan
+    ...(planIds.length > 0
       ? {
-          plans: withoutKey(state.plans, plan.plan.id),
-          planComments: withoutKey(state.planComments, plan.plan.id),
-          ...(state.openPlanId === plan.plan.id ? { openPlanId: null } : {}),
+          plans: withoutKeys(state.plans, planIds),
+          planComments: withoutKeys(state.planComments, planIds),
+          ...(state.openPlanId !== null && planIds.includes(state.openPlanId)
+            ? { openPlanId: null }
+            : {}),
         }
       : {}),
   }
@@ -968,6 +973,12 @@ export function reducePlanEvent(
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   const { [key]: _removed, ...rest } = record
   return rest
+}
+
+/** The same, for the several keys a single session can account for. */
+function withoutKeys<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
+  const dropped = new Set(keys)
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !dropped.has(key)))
 }
 
 /** Session status lives inside the per-agent lists, so update it in place. */
