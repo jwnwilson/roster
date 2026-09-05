@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { EditAgentModal } from '@/screens/EditAgentModal'
@@ -1508,6 +1508,61 @@ describe('Skills — collapsing folders', () => {
       expect(screen.getByRole('button', { name: 'Collapse adr-writer' })).toBeInTheDocument(),
     )
     expect(tree.getByText('SKILL.md')).toBeInTheDocument()
+  })
+
+  test('a folder that goes away and comes back is not still collapsed', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse templates' }))
+    // Re-listed without it and then with it again: deleted and recreated, or
+    // changed on disk by something that is not Roster.
+    act(() => useRoster.setState({ skills: [ADR, aSkill({ ...REPRO, files: ['SKILL.md'] })] }))
+    act(() => useRoster.setState({ skills: [ADR, REPRO] }))
+
+    expect(tree.getByText('case.md')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse templates' })).toBeInTheDocument()
+  })
+
+  test('an empty folder has no disclosure, since there is nothing to fold', () => {
+    useRoster.setState({
+      skills: [
+        aSkill({ name: 'repro-harness', path: '/skills/repro-harness', files: ['SKILL.md', 'empty/'] }),
+      ],
+      agents: [],
+    })
+    const tree = renderTree()
+
+    // The row is still there, and still deletable — it just cannot fold.
+    expect(tree.getByText('empty')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete empty' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Collapse empty' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse repro-harness' })).toBeInTheDocument()
+  })
+
+  test('a name row whose folder disappears is abandoned, not left to come back empty', async () => {
+    const user = userEvent.setup()
+    renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+    await user.type(screen.getByLabelText('New file name'), 'case2')
+
+    // templates goes while the name is half typed, then comes back.
+    act(() => useRoster.setState({ skills: [ADR, aSkill({ ...REPRO, files: ['SKILL.md'] })] }))
+    act(() => useRoster.setState({ skills: [ADR, REPRO] }))
+
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+  })
+
+  test('collapsing above a name row leaves no phantom input behind it', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+    await user.click(screen.getByRole('button', { name: 'Expand repro-harness' }))
+
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
   })
 })
 

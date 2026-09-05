@@ -61,6 +61,8 @@ export function Skills() {
     () => rows.filter((row) => !isHidden(row.key, collapsed)),
     [rows, collapsed],
   )
+  /** Which folders hold anything. Worked out once, not per row. */
+  const filledFolders = useMemo(() => foldersWithChildren(rows), [rows])
 
   // Open the first SKILL.md so the editor is never empty on arrival.
   useEffect(() => {
@@ -82,6 +84,23 @@ export function Skills() {
 
     setCollapsed((current) => withRevealed(current, row.key))
   }, [openPath, rows])
+
+  // Folders that no longer exist are forgotten, so a folder deleted and made
+  // again does not come back folded — and so the set cannot only ever grow.
+  useEffect(() => {
+    setCollapsed((current) => withoutMissing(current, rows))
+  }, [rows])
+
+  // A name row is only worth keeping while the row it belongs inside is on
+  // show. Once that goes, so does what was typed, and holding on to it only
+  // means an empty box reappearing later.
+  useEffect(() => {
+    if (creating === null) return
+    if (visibleRows.some((row) => row.key === creating.parent.key)) return
+
+    setCreating(null)
+    setError(null)
+  }, [creating, visibleRows])
 
   useEffect(() => {
     if (openPath === null) return
@@ -255,6 +274,7 @@ export function Skills() {
                   row={row}
                   isOpen={row.path !== undefined && row.path === openPath}
                   isSelected={row.key === selectedKey}
+                  isExpandable={row.isDir && filledFolders.has(row.key)}
                   isExpanded={!collapsed.has(row.key)}
                   onToggle={() => toggleFolder(row.key)}
                   onSelect={() => {
@@ -394,6 +414,35 @@ function subtreePrefixOf(key: string): string {
   return key.endsWith('/') ? key : `${key}/`
 }
 
+/**
+ * The folder a row sits in, as that folder's own row key — or null for a skill
+ * row, which sits in the library rather than in any folder.
+ */
+function parentKeyOf(key: string): string | null {
+  const trimmed = key.endsWith('/') ? key.slice(0, -1) : key
+  const cut = trimmed.lastIndexOf('/')
+  if (cut === -1) return null
+
+  const parent = trimmed.slice(0, cut)
+  // A folder's key keeps the trailing slash its path had; a skill's has none.
+  return parent.includes('/') ? `${parent}/` : parent
+}
+
+/**
+ * Every folder that holds something. A folder nobody has put anything in gets
+ * no disclosure: a control that visibly does nothing is worse than no control.
+ */
+function foldersWithChildren(rows: TreeRow[]): ReadonlySet<string> {
+  const filled = new Set<string>()
+
+  for (const row of rows) {
+    const parent = parentKeyOf(row.key)
+    if (parent !== null) filled.add(parent)
+  }
+
+  return filled
+}
+
 /** Whether a collapsed folder somewhere above this row is hiding it. */
 function isHidden(key: string, collapsed: ReadonlySet<string>): boolean {
   // Matched on the key, not on depth: the tree is a flat list, where a
@@ -421,6 +470,22 @@ function withRevealed(collapsed: ReadonlySet<string>, key: string): ReadonlySet<
   return next
 }
 
+/**
+ * Forgets folders that are no longer in the tree. Returns the set unchanged
+ * when they all still exist, on the same terms as `withRevealed`.
+ */
+function withoutMissing(collapsed: ReadonlySet<string>, rows: TreeRow[]): ReadonlySet<string> {
+  if (collapsed.size === 0) return collapsed
+
+  const present = new Set(rows.map((row) => row.key))
+  const gone = [...collapsed].filter((folder) => !present.has(folder))
+  if (gone.length === 0) return collapsed
+
+  const next = new Set(collapsed)
+  for (const folder of gone) next.delete(folder)
+  return next
+}
+
 /** A row's path relative to its own skill, which is what the store takes. */
 function relativePathOf(row: TreeRow): string {
   // The key is "<skill>/<relative path>"; the skill name is not part of it.
@@ -439,6 +504,8 @@ interface TreeRowViewProps {
   row: TreeRow
   isOpen: boolean
   isSelected: boolean
+  /** Whether this row is a folder with something inside it to fold away. */
+  isExpandable: boolean
   /** Folders only: whether this row's subtree is showing. */
   isExpanded: boolean
   onToggle: () => void
@@ -451,6 +518,7 @@ function TreeRowView({
   row,
   isOpen,
   isSelected,
+  isExpandable,
   isExpanded,
   onToggle,
   onSelect,
@@ -481,7 +549,7 @@ function TreeRowView({
         style={{ width: TREE_GUTTER_PX + row.depth * INDENT_PX }}
       />
 
-      {row.isDir ? (
+      {isExpandable ? (
         <button
           type="button"
           // Announced, not merely drawn: a caret alone says nothing aloud.
@@ -495,7 +563,8 @@ function TreeRowView({
           <ChevronIcon expanded={isExpanded} />
         </button>
       ) : (
-        // A file keeps the column, so its name lines up with its folder's.
+        // A file, or an empty folder, keeps the column so its name still lines
+        // up with the rows that do fold.
         <span aria-hidden className="flex-none" style={{ width: DISCLOSURE_PX }} />
       )}
 
