@@ -3,11 +3,12 @@ import type { Agent, ModelInfo } from "@shared/types";
 import {
   ChipField,
   ModelPicker,
+  NameField,
   ProviderPicker,
   SystemPromptField,
   WorkingDirectory,
 } from "@/components/AgentFields";
-import { Field, Modal } from "@/components/primitives";
+import { Modal } from "@/components/primitives";
 import { useRoster } from "@/state/store";
 import { messageFor } from "@/lib/errors";
 
@@ -58,6 +59,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
 
     try {
       await window.roster.agents.update(agent.id, {
+        name: draft.name.trim(),
         runner: draft.runner,
         model: draft.model,
         systemPrompt: draft.systemPrompt,
@@ -107,7 +109,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || draft.model === ""}
+            disabled={saving || draft.model === "" || draft.name.trim() === ""}
             className="cursor-pointer rounded-pill border-0 bg-accent px-[15px] py-[7px] font-ui text-lg font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save changes"}
@@ -116,11 +118,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[20px] overflow-y-auto p-[18px]">
-        <Field label="Name">
-          <span className="rounded-field border border-line-card bg-card px-[12px] py-[9px] text-xl text-ink">
-            {agent.name}
-          </span>
-        </Field>
+        <NameField value={draft.name} onChange={(name) => patchDraft({ name })} />
 
         <SystemPromptField
           value={draft.systemPrompt}

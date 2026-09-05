@@ -271,6 +271,11 @@ export type TaskEventPayload =
   | { type: 'projects'; projects: Project[] }
 
 export interface AgentPatch {
+  /**
+   * A new display name. The id never changes with it — everything that points
+   * at an agent points at the id, so a rename leaves attribution alone.
+   */
+  name?: string
   runner?: string
   model?: string
   systemPrompt?: string
