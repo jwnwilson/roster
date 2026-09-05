@@ -25,6 +25,12 @@ interface TreeRow {
   path?: string
 }
 
+/** Row indentation, in px: where depth 0 starts, and what each level adds. */
+const TREE_GUTTER_PX = 12
+const INDENT_PX = 14
+/** The disclosure column, which every row reserves so the names line up. */
+const DISCLOSURE_PX = 13
+
 export function Skills() {
   const skills = useRoster((s) => s.skills)
   const agents = useRoster((s) => s.agents)
@@ -40,9 +46,21 @@ export function Skills() {
   )
   /** Which tree row is selected. Files also open; folders and skills only select. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  /**
+   * Folders the user has folded away, by row key.
+   *
+   * Collapsed rather than expanded, so everything starts open: the tree looks
+   * the way it always has until somebody asks for it not to, and no file is
+   * hidden by a default nobody chose.
+   */
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
   const setSkills = useRoster((st) => st.setSkills)
 
   const rows = useMemo(() => buildTree(skills), [skills])
+  const visibleRows = useMemo(
+    () => rows.filter((row) => !isHidden(row.key, collapsed)),
+    [rows, collapsed],
+  )
 
   // Open the first SKILL.md so the editor is never empty on arrival.
   useEffect(() => {
@@ -53,6 +71,17 @@ export function Skills() {
       setSelectedKey(first.key)
     }
   }, [rows, openPath])
+
+  // Whatever the editor is showing must be reachable in the tree, so opening a
+  // file reopens the folders above it. This runs on open, not on every render,
+  // so a folder collapsed afterwards stays collapsed.
+  useEffect(() => {
+    if (openPath === null) return
+    const row = rows.find((r) => r.path === openPath)
+    if (row === undefined) return
+
+    setCollapsed((current) => withRevealed(current, row.key))
+  }, [openPath, rows])
 
   useEffect(() => {
     if (openPath === null) return
@@ -124,6 +153,14 @@ export function Skills() {
     } finally {
       setBusy(false)
     }
+  }
+
+  function toggleFolder(key: string): void {
+    setCollapsed((current) => {
+      const next = new Set(current)
+      if (!next.delete(key)) next.add(key)
+      return next
+    })
   }
 
   /**
@@ -212,18 +249,24 @@ export function Skills() {
           {rows.length === 0 ? (
             <p className="m-0 px-[8px] text-md text-dim">No skills yet.</p>
           ) : (
-            rows.map((row) => (
+            visibleRows.map((row) => (
               <Fragment key={row.key}>
                 <TreeRowView
                   row={row}
                   isOpen={row.path !== undefined && row.path === openPath}
                   isSelected={row.key === selectedKey}
+                  isExpanded={!collapsed.has(row.key)}
+                  onToggle={() => toggleFolder(row.key)}
                   onSelect={() => {
                     setSelectedKey(row.key)
                     // A folder or skill row selects without changing the editor.
                     if (row.path) setOpenPath(row.path)
                   }}
-                  onCreate={(kind) => setCreating({ kind, parent: row })}
+                  onCreate={(kind) => {
+                    // The name row goes inside this one, so it has to be open.
+                    setCollapsed((current) => withRevealed(current, row.key))
+                    setCreating({ kind, parent: row })
+                  }}
                   onDelete={() => void remove(row)}
                 />
 
@@ -343,6 +386,41 @@ function containsOpenFile(row: TreeRow, openPath: string): boolean {
   return openPath.startsWith(`${root}/`)
 }
 
+/**
+ * The key prefix every row inside a folder shares. A folder's own key already
+ * carries the trailing slash its path had; a skill row's key does not.
+ */
+function subtreePrefixOf(key: string): string {
+  return key.endsWith('/') ? key : `${key}/`
+}
+
+/** Whether a collapsed folder somewhere above this row is hiding it. */
+function isHidden(key: string, collapsed: ReadonlySet<string>): boolean {
+  // Matched on the key, not on depth: the tree is a flat list, where a
+  // grandchild sits next to its parent's siblings and looks no different.
+  for (const folder of collapsed) {
+    if (key !== folder && key.startsWith(subtreePrefixOf(folder))) return true
+  }
+
+  return false
+}
+
+/**
+ * Reopens every folder that would hide this row, the row itself included.
+ * Returns the set unchanged when nothing was hiding it, so an effect can call
+ * this without setting state on every pass.
+ */
+function withRevealed(collapsed: ReadonlySet<string>, key: string): ReadonlySet<string> {
+  const hiding = [...collapsed].filter(
+    (folder) => key === folder || key.startsWith(subtreePrefixOf(folder)),
+  )
+  if (hiding.length === 0) return collapsed
+
+  const next = new Set(collapsed)
+  for (const folder of hiding) next.delete(folder)
+  return next
+}
+
 /** A row's path relative to its own skill, which is what the store takes. */
 function relativePathOf(row: TreeRow): string {
   // The key is "<skill>/<relative path>"; the skill name is not part of it.
@@ -361,6 +439,9 @@ interface TreeRowViewProps {
   row: TreeRow
   isOpen: boolean
   isSelected: boolean
+  /** Folders only: whether this row's subtree is showing. */
+  isExpanded: boolean
+  onToggle: () => void
   onSelect: () => void
   onCreate: (kind: 'file' | 'folder') => void
   onDelete: () => void
@@ -370,6 +451,8 @@ function TreeRowView({
   row,
   isOpen,
   isSelected,
+  isExpanded,
+  onToggle,
   onSelect,
   onCreate,
   onDelete,
@@ -390,12 +473,37 @@ function TreeRowView({
         isSelected ? 'bg-[#1c1e26]' : 'bg-transparent'
       }`}
     >
+      {/* The indent is a column of its own, so the disclosure sits at the
+          row's own level rather than inside the button that opens the file. */}
+      <span
+        aria-hidden
+        className="flex-none"
+        style={{ width: TREE_GUTTER_PX + row.depth * INDENT_PX }}
+      />
+
+      {row.isDir ? (
+        <button
+          type="button"
+          // Announced, not merely drawn: a caret alone says nothing aloud.
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${row.name}`}
+          title={`${isExpanded ? 'Collapse' : 'Expand'} ${row.name}`}
+          onClick={onToggle}
+          style={{ width: DISCLOSURE_PX }}
+          className="flex h-[16px] flex-none cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-dim-2 hover:text-ink"
+        >
+          <ChevronIcon expanded={isExpanded} />
+        </button>
+      ) : (
+        // A file keeps the column, so its name lines up with its folder's.
+        <span aria-hidden className="flex-none" style={{ width: DISCLOSURE_PX }} />
+      )}
+
       <button
         type="button"
         aria-current={isSelected ? 'true' : undefined}
         onClick={onSelect}
-        style={{ paddingLeft: 12 + row.depth * 14 }}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-[7px] border-0 bg-transparent py-[5px] text-left"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-[7px] border-0 bg-transparent py-[5px] pl-[4px] text-left"
       >
         <span
           // The link marker takes the icon's own slot rather than a pill
@@ -458,6 +566,28 @@ function FolderIcon() {
         d="M1.75 12.75v-9.5a.75.75 0 0 1 .75-.75h3.1a.75.75 0 0 1 .6.3l1.05 1.4h6a.75.75 0 0 1 .75.75v7.8a.75.75 0 0 1-.75.75H2.5a.75.75 0 0 1-.75-.75Z"
         stroke="currentColor"
         strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+interface ChevronIconProps {
+  expanded: boolean
+}
+
+/**
+ * The disclosure caret. Down for open, right for shut — the same mark turned,
+ * so the two states read as one control rather than two different glyphs.
+ */
+function ChevronIcon({ expanded }: ChevronIconProps) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d={expanded ? 'm4.5 6.5 3.5 3.5 3.5-3.5' : 'm6.5 4.5 3.5 3.5-3.5 3.5'}
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
@@ -542,7 +672,8 @@ function NewEntryRow({ kind, depth, onCommit, onCancel }: NewEntryRowProps) {
   return (
     <div
       className="flex items-center gap-[7px] py-[5px] pr-[8px]"
-      style={{ paddingLeft: 12 + depth * 14 }}
+      // Past the disclosure column too, so it lines up with the names above it.
+      style={{ paddingLeft: TREE_GUTTER_PX + depth * INDENT_PX + DISCLOSURE_PX }}
     >
       <span
         aria-hidden
