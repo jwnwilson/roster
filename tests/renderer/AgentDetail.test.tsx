@@ -903,10 +903,25 @@ describe('AgentDetail — naming a session', () => {
 
     await user.click(await screen.findByRole('button', { name: '+ New session' }))
 
-    // The nudge: the box is open and focused, but the session already exists
-    // and the composer is usable — walking away simply leaves it unnamed.
+    // The nudge: the box is open and waiting, but it does not take the caret.
+    // The composer sets autoFocus={false}, so grabbing focus here would put
+    // the first thing typed at a brand-new agent into the name field.
     const box = await screen.findByLabelText('Session name')
-    expect(box).toHaveFocus()
+    expect(box).not.toHaveFocus()
     expect(useRoster.getState().namingSessionId).toBe('s2')
+  })
+
+  test('naming a session deliberately does take the caret', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      sessions: { listByAgent: vi.fn().mockResolvedValue([UNNAMED]) },
+    })
+    useRoster.setState({ sessions: { debugging: [UNNAMED] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Name this session' }))
+
+    // Asked for, rather than offered: here the caret is the whole point.
+    expect(await screen.findByLabelText('Session name')).toHaveFocus()
   })
 })

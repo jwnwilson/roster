@@ -16,7 +16,8 @@ interface SessionNameProps {
  * optional furniture and a button reads as something to do. The same
  * affordance opens by itself the moment a session is created — the nudge —
  * and closing it without typing leaves the session unnamed and working,
- * labelled by its title.
+ * labelled by its title. The nudge opens the box but does not focus it: the
+ * caret belongs to whoever asked for it, and nobody asked here.
  *
  * Mount it with `key={session.id}` so switching sessions starts a fresh
  * draft rather than carrying the last one across.
@@ -28,6 +29,14 @@ export function SessionName({ session }: SessionNameProps) {
 
   const [draft, setDraft] = useState(session.name ?? '')
   const [error, setError] = useState<string | null>(null)
+  /**
+   * Whether the box should take the caret, which only a deliberate open
+   * earns. The nudge opens the same box on a session that has just been
+   * created, and the composer sets `autoFocus={false}`, so focusing here
+   * would put the first thing typed at a new agent into the name field.
+   * Open and waiting is invitation enough.
+   */
+  const [focusOnOpen, setFocusOnOpen] = useState(false)
   // Enter saves and closes, which pulls the focused input out of the tree —
   // and that fires blur, which would save the same name a second time.
   const saving = useRef(false)
@@ -36,11 +45,13 @@ export function SessionName({ session }: SessionNameProps) {
     setDraft(session.name ?? '')
     setError(null)
     saving.current = false
+    setFocusOnOpen(true)
     setNamingSession(session.id)
   }
 
   function close(): void {
     setError(null)
+    setFocusOnOpen(false)
     setNamingSession(null)
   }
 
@@ -89,7 +100,7 @@ export function SessionName({ session }: SessionNameProps) {
         <span className="text-base text-dim">Name</span>
         <input
           type="text"
-          autoFocus
+          autoFocus={focusOnOpen}
           aria-label="Session name"
           placeholder="What is this session for?"
           maxLength={SESSION_NAME_MAX_LENGTH}
