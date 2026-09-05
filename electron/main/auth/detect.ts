@@ -24,6 +24,7 @@ interface RunnerSpec {
 }
 
 const CLAUDE_KEYCHAIN_SERVICE = 'Claude Code-credentials'
+const MINIMUM_CODEX_PERMISSION_PROFILE_VERSION = '0.138.0'
 
 const SPECS: Record<string, RunnerSpec> = {
   claude: {
@@ -120,17 +121,39 @@ export async function detectRunner(
   // An explicit key in the environment takes precedence over a stored login,
   // matching how the CLIs themselves resolve credentials.
   const auth: AuthKind = hasApiKey(spec, deps.env) ? 'api-key' : await spec.resolveAuth(deps)
+  const unsupportedCodex =
+    id === 'codex' &&
+    version !== null &&
+    !versionAtLeast(version, MINIMUM_CODEX_PERMISSION_PROFILE_VERSION)
 
   return {
     id,
     provider: spec.provider,
     installed: true,
-    ready: auth !== 'none',
+    ready: auth !== 'none' && !unsupportedCodex,
     auth,
     path,
     ...(version !== null ? { version } : {}),
-    ...(auth === 'none' ? { detail: `not signed in — ${spec.loginHint}` } : {}),
+    ...(unsupportedCodex
+      ? {
+          detail: `Codex ${MINIMUM_CODEX_PERMISSION_PROFILE_VERSION} or newer is required for safe worktree permissions`,
+        }
+      : auth === 'none'
+        ? { detail: `not signed in — ${spec.loginHint}` }
+        : {}),
   }
+}
+
+function versionAtLeast(actual: string, minimum: string): boolean {
+  const parts = (value: string): number[] => value.split('.').map((part) => Number(part))
+  const left = parts(actual)
+  const right = parts(minimum)
+
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const difference = (left[index] ?? 0) - (right[index] ?? 0)
+    if (difference !== 0) return difference > 0
+  }
+  return true
 }
 
 export function builtinRunnerIds(): string[] {

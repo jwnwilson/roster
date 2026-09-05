@@ -1,13 +1,14 @@
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Agent } from '@shared/types'
 import { CustomRunner } from '@main/runners/custom'
-import { CodexRunner } from '@main/runners/codex'
+import { CodexRunner, codexPermissionOverrides } from '@main/runners/codex'
 import { getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
 import { ClaudeRunner, describeCommand } from '@main/runners/claude'
 import type { RunnerEvent, StartOptions } from '@main/runners/types'
+import { worktreesDir } from '@main/store/paths'
 
 let dir: string
 
@@ -39,10 +40,10 @@ async function collect(iterable: AsyncIterable<RunnerEvent>): Promise<RunnerEven
 
 /** A CLI that prints the argv it was given, one JSON line per argument. */
 async function argvEchoCli(): Promise<string> {
-  const path = join(dir, 'argv-cli.sh')
+  const path = join(dir, 'argv-cli.js')
   await writeFile(
     path,
-    `#!/bin/sh\nfor a in "$@"; do printf '{"type":"item.completed","item":{"id":"i","type":"agent_message","text":"%s"}}\\n' "$a"; done\n`,
+    `#!/usr/bin/env node\nfor (const text of process.argv.slice(2)) console.log(JSON.stringify({ type: 'item.completed', item: { id: 'i', type: 'agent_message', text } }))\n`,
     'utf8',
   )
   await chmod(path, 0o755)
@@ -108,8 +109,9 @@ describe('CustomRunner — argument templating', () => {
 })
 
 describe('CodexRunner', () => {
-  test('passes the sandbox and working directory to an initial turn', async () => {
+  test('passes least-privilege Git permissions and the working directory to an initial turn', async () => {
     const cli = await argvEchoCli()
+    await mkdir(join(dir, '.git'))
     const runner = new CodexRunner()
     ;(runner as unknown as { binary: string }).binary = cli
 
@@ -119,8 +121,16 @@ describe('CodexRunner', () => {
       'exec',
       '--json',
       '--skip-git-repo-check',
-      '--sandbox',
-      'workspace-write',
+      '--ignore-user-config',
+      '--strict-config',
+      '--config',
+      'default_permissions="roster-worktree"',
+      '--config',
+      'permissions.roster-worktree.extends=":workspace"',
+      '--config',
+      `permissions.roster-worktree.filesystem.${JSON.stringify(join(dir, '.git'))}="write"`,
+      '--config',
+      `permissions.roster-worktree.filesystem.${JSON.stringify(worktreesDir())}="write"`,
       '-C',
       dir,
       '--model',
@@ -131,6 +141,7 @@ describe('CodexRunner', () => {
 
   test('uses only resume-supported options for a follow-up turn', async () => {
     const cli = await argvEchoCli()
+    await mkdir(join(dir, '.git'))
     const runner = new CodexRunner()
     ;(runner as unknown as { binary: string }).binary = cli
 
@@ -141,11 +152,55 @@ describe('CodexRunner', () => {
       'resume',
       '--json',
       '--skip-git-repo-check',
+      '--ignore-user-config',
+      '--strict-config',
+      '--config',
+      'default_permissions="roster-worktree"',
+      '--config',
+      'permissions.roster-worktree.extends=":workspace"',
+      '--config',
+      `permissions.roster-worktree.filesystem.${JSON.stringify(join(dir, '.git'))}="write"`,
+      '--config',
+      `permissions.roster-worktree.filesystem.${JSON.stringify(worktreesDir())}="write"`,
       '--model',
       'my-model',
       'thread-1',
       'go again',
     ])
+  })
+
+  test('allows both worktree-specific and common Git metadata', async () => {
+    const checkout = join(dir, 'checkout')
+    const common = join(dir, 'main', '.git')
+    const gitDir = join(common, 'worktrees', 'checkout')
+    await mkdir(checkout)
+    await mkdir(gitDir, { recursive: true })
+    await writeFile(join(checkout, '.git'), `gitdir: ${gitDir}\n`, 'utf8')
+    await writeFile(join(gitDir, 'commondir'), '../..\n', 'utf8')
+
+    expect(codexPermissionOverrides(checkout, join(dir, 'Roster Worktrees'))).toEqual([
+      'default_permissions="roster-worktree"',
+      'permissions.roster-worktree.extends=":workspace"',
+      `permissions.roster-worktree.filesystem.${JSON.stringify(gitDir)}="write"`,
+      `permissions.roster-worktree.filesystem.${JSON.stringify(common)}="write"`,
+      `permissions.roster-worktree.filesystem.${JSON.stringify(join(dir, 'Roster Worktrees'))}="write"`,
+    ])
+  })
+
+  test('quotes permission paths as TOML keys', async () => {
+    const checkout = join(dir, 'a "quoted" checkout')
+    const gitDir = join(checkout, '.git')
+    await mkdir(gitDir, { recursive: true })
+    const destination = join(dir, 'slash\\and "quote"')
+
+    const overrides = codexPermissionOverrides(checkout, destination)
+
+    expect(overrides).toContain(
+      `permissions.roster-worktree.filesystem.${JSON.stringify(gitDir)}="write"`,
+    )
+    expect(overrides).toContain(
+      `permissions.roster-worktree.filesystem.${JSON.stringify(destination)}="write"`,
+    )
   })
 
   test('falls back to a known model list when the cache is unreadable', async () => {
