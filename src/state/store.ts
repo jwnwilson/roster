@@ -8,6 +8,7 @@ import type {
   Project,
   RunnerStatus,
   Session,
+  SetupState,
   Skill,
   SpendSummary,
   Status,
@@ -23,6 +24,7 @@ import type {
   Usage,
 } from '@shared/types'
 import type { PlanEventPayload, SessionEventPayload, TaskEventPayload } from '@shared/ipc'
+import { sessionLabel } from '@shared/sessions'
 import { rollUpAgentStatus } from '@shared/status'
 import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
@@ -41,6 +43,8 @@ export const ALL_PRIORITIES = 'all'
 
 /** Staged edits from the Edit modal, committed to the agent only on Save. */
 export interface Draft {
+  /** Display name only — the agent's id never changes with it. */
+  name: string
   runner: string
   model: string
   systemPrompt: string
@@ -49,6 +53,8 @@ export interface Draft {
   /** Absolute path, with a display label alongside it. */
   cwd: string
   cwdLabel: string
+  /** The project new sessions on this agent are filed under; null for none. */
+  defaultProjectId: string | null
 }
 
 export interface RosterState {
@@ -83,6 +89,13 @@ export interface RosterState {
   planComments: Record<string, PlanComment[]>
   /** Sessions attached to a task, keyed by task id. Loaded when it is opened. */
   taskSessions: Record<string, TaskSessionLink[]>
+  /**
+   * What first-run setup left behind, or null until it has been read.
+   *
+   * Null rather than a default object, so the setup card can tell "not asked
+   * yet" from "asked, nothing to offer" and never flashes on startup.
+   */
+  setup: SetupState | null
   loaded: boolean
 
   /* ---- navigation --------------------------------------------------- */
@@ -103,6 +116,14 @@ export interface RosterState {
    * says nothing about the tab beside it.
    */
   planMode: Record<string, boolean>
+  /**
+   * The session whose name box is open, or null.
+   *
+   * Transient UI rather than a property of the session: it is opened by the
+   * rail's own affordance, and again the moment a session is created, which
+   * is how naming gets encouraged without ever blocking the composer.
+   */
+  namingSessionId: string | null
   query: string
   gridQuery: string
   /** What the updater last reported; drives the sidebar's update row. */
@@ -162,6 +183,7 @@ export interface RosterState {
   setSkills(skills: Skill[]): void
   setProjects(projects: Project[]): void
   setTasks(tasks: Task[]): void
+  setSetup(setup: SetupState): void
   /** Replaces a session's pending approvals, as read back from the main process. */
   setApprovals(sessionId: string, approvals: Approval[]): void
   setTaskComments(taskId: string, comments: TaskComment[]): void
@@ -183,6 +205,10 @@ export interface RosterState {
   setBacklogQuery(value: string): void
   setBacklogPriority(value: string): void
   selectBacklogTask(taskId: string): void
+  /** Replaces one session wherever it is listed, after it has been written. */
+  replaceSession(session: Session): void
+  /** Opens the name box on a session, or closes it with null. */
+  setNamingSession(sessionId: string | null): void
   toggleTool(id: string): void
   togglePlanMode(sessionId: string): void
   setPlanMode(sessionId: string, on: boolean): void
@@ -233,6 +259,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   plans: {},
   planComments: {},
   taskSessions: {},
+  setup: null,
   loaded: false,
 
   screen: 'grid',
@@ -243,6 +270,7 @@ export const useRoster = create<RosterState>((set, get) => ({
 
   openTools: {},
   planMode: {},
+  namingSessionId: null,
   query: '',
   gridQuery: '',
   update: { status: 'idle' },
@@ -290,6 +318,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   setSkills: (skills) => set({ skills }),
   setProjects: (projects) => set({ projects }),
   setTasks: (tasks) => set({ tasks }),
+  setSetup: (setup) => set({ setup }),
   setApprovals: (sessionId, approvals) =>
     set((s) => ({ approvals: { ...s.approvals, [sessionId]: approvals } })),
 
@@ -325,6 +354,18 @@ export const useRoster = create<RosterState>((set, get) => ({
   setBacklogQuery: (backlogQuery) => set({ backlogQuery }),
   setBacklogPriority: (backlogPriority) => set({ backlogPriority }),
   selectBacklogTask: (backlogSelectedId) => set({ backlogSelectedId, taskTab: 'comments' }),
+  replaceSession: (session) =>
+    set((s) => ({
+      sessions: Object.fromEntries(
+        Object.entries(s.sessions).map(([agentId, list]) => [
+          agentId,
+          list.map((candidate) => (candidate.id === session.id ? session : candidate)),
+        ]),
+      ),
+    })),
+
+  setNamingSession: (namingSessionId) => set({ namingSessionId }),
+
   toggleTool: (id) => set((s) => ({ openTools: { ...s.openTools, [id]: !s.openTools[id] } })),
   togglePlanMode: (sessionId) =>
     set((s) => ({ planMode: { ...s.planMode, [sessionId]: !s.planMode[sessionId] } })),
@@ -357,6 +398,7 @@ export const useRoster = create<RosterState>((set, get) => ({
     set({
       editOpen: true,
       draft: {
+        name: agent.name,
         runner: agent.runner,
         model: agent.model,
         systemPrompt: agent.systemPrompt,
@@ -364,6 +406,7 @@ export const useRoster = create<RosterState>((set, get) => ({
         mcp: Object.fromEntries(agent.mcpServers.map((name) => [name, true])),
         cwd: agent.cwd,
         cwdLabel: agent.cwdLabel,
+        defaultProjectId: agent.defaultProjectId ?? null,
       },
     })
   },
@@ -470,7 +513,7 @@ export function selectGridAgents(state: RosterState): Agent[] {
 
     if (q === '') return true
     if (agent.name.toLowerCase().includes(q)) return true
-    return visible.some((s) => s.title.toLowerCase().includes(q))
+    return visible.some((session) => sessionLabel(session).toLowerCase().includes(q))
   })
 }
 
@@ -691,6 +734,29 @@ export async function moveTask(taskId: string, status: BoardStatus): Promise<str
   }
 }
 
+/**
+ * Puts the first-run card away.
+ *
+ * The card goes immediately and comes back if the marker could not be
+ * written, the same bargain `moveTask` strikes: a button that appears to do
+ * nothing is worse than one that undoes itself with a reason. Resolves an
+ * error message, or null when it worked.
+ */
+export async function dismissSetup(): Promise<string | null> {
+  const previous = useRoster.getState().setup
+  if (!previous) return null
+
+  useRoster.setState({ setup: { ...previous, pending: false } })
+
+  try {
+    useRoster.setState({ setup: await window.roster.setup.dismiss() })
+    return null
+  } catch (cause) {
+    useRoster.setState({ setup: previous })
+    return messageFor(cause)
+  }
+}
+
 export function selectCurrentAgent(state: RosterState): Agent | null {
   return state.agents.find((a) => a.id === state.agentId) ?? null
 }
@@ -769,7 +835,90 @@ export function reduceSessionEvent(
         },
       }
     }
+
+    case 'session-deleted':
+      return forgetSession(state, event.sessionId)
   }
+}
+
+/**
+ * Everything this window was holding about a session that no longer exists.
+ *
+ * Applied twice by design: once by the screen that asked for the delete, so
+ * the tab strip does not sit on a session that has gone, and again when the
+ * broadcast reaches every window. Both passes have to be safe, and a window
+ * that never knew the session has to come away unchanged.
+ */
+function forgetSession(state: RosterState, sessionId: string): Partial<RosterState> {
+  // Every plan of this session, not merely the first: a session that planned
+  // more than once has a document per revision approved, and stopping at one
+  // would leave the rest unreadable in state with no session behind them.
+  const planIds = Object.values(state.plans)
+    .filter((document) => document.plan.sessionId === sessionId)
+    .map((document) => document.plan.id)
+
+  return {
+    sessions: withoutSession(state.sessions, sessionId),
+    messages: withoutKey(state.messages, sessionId),
+    streaming: withoutKey(state.streaming, sessionId),
+    activity: withoutKey(state.activity, sessionId),
+    approvals: withoutKey(state.approvals, sessionId),
+    usage: withoutKey(state.usage, sessionId),
+    planMode: withoutKey(state.planMode, sessionId),
+    taskSessions: withoutSessionLinks(state.taskSessions, sessionId),
+    // The selection is dropped rather than moved: AgentDetail lands on the
+    // newest remaining session on its own, and choosing here would mean two
+    // places deciding what "the open session" is.
+    sess: withoutValue(state.sess, sessionId),
+    // A plan is a document about a conversation; without the conversation
+    // there is nothing left to read, and nothing left to answer it with.
+    ...(planIds.length > 0
+      ? {
+          plans: withoutKeys(state.plans, planIds),
+          planComments: withoutKeys(state.planComments, planIds),
+          ...(state.openPlanId !== null && planIds.includes(state.openPlanId)
+            ? { openPlanId: null }
+            : {}),
+        }
+      : {}),
+  }
+}
+
+/** The per-agent lists with one session gone, leaving untouched lists alone. */
+function withoutSession(
+  sessions: Record<string, Session[]>,
+  sessionId: string,
+): Record<string, Session[]> {
+  const next: Record<string, Session[]> = {}
+
+  for (const [agentId, list] of Object.entries(sessions)) {
+    next[agentId] = list.some((session) => session.id === sessionId)
+      ? list.filter((session) => session.id !== sessionId)
+      : list
+  }
+
+  return next
+}
+
+/** Task rails stop offering a transcript that is no longer there. */
+function withoutSessionLinks(
+  taskSessions: Record<string, TaskSessionLink[]>,
+  sessionId: string,
+): Record<string, TaskSessionLink[]> {
+  const next: Record<string, TaskSessionLink[]> = {}
+
+  for (const [taskId, links] of Object.entries(taskSessions)) {
+    next[taskId] = links.some((link) => link.sessionId === sessionId)
+      ? links.filter((link) => link.sessionId !== sessionId)
+      : links
+  }
+
+  return next
+}
+
+/** Every key pointing at this value, dropped. */
+function withoutValue(record: Record<string, string>, value: string): Record<string, string> {
+  return Object.fromEntries(Object.entries(record).filter(([, held]) => held !== value))
 }
 
 /**
@@ -890,6 +1039,12 @@ export function reducePlanEvent(
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   const { [key]: _removed, ...rest } = record
   return rest
+}
+
+/** The same, for the several keys a single session can account for. */
+function withoutKeys<T>(record: Record<string, T>, keys: string[]): Record<string, T> {
+  const dropped = new Set(keys)
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !dropped.has(key)))
 }
 
 /** Session status lives inside the per-agent lists, so update it in place. */

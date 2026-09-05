@@ -271,4 +271,19 @@ export const MIGRATIONS: readonly string[] = [
   CREATE UNIQUE INDEX ux_sessions_task_agent
     ON sessions (task_id, agent_id) WHERE task_id IS NOT NULL;
   `,
+
+  // 11 — a session can be given a name.
+  //
+  // Separate from title rather than replacing it: title is what opened the
+  // session — "New session", or the brief an agent handed over with — and
+  // name is what you decided to call it. Overwriting title with the name
+  // would lose the handoff's own words, which are the only record of why
+  // that session exists.
+  //
+  // NULL means unnamed, which is a state the app has to render rather than
+  // an error: every session in every existing install starts here, and
+  // naming is encouraged everywhere and required nowhere.
+  `
+  ALTER TABLE sessions ADD COLUMN name TEXT;
+  `,
 ]

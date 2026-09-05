@@ -49,6 +49,23 @@ describe('SessionStore.create', () => {
     })
   })
 
+  test('files a session under a project when one is given', () => {
+    const session = store.create({
+      agentId: 'debug',
+      title: 'Session leak',
+      origin: 'you',
+      projectId: 'proj-reliability',
+    })
+
+    expect(session.projectId).toBe('proj-reliability')
+    expect(store.findById(session.id)?.projectId).toBe('proj-reliability')
+  })
+
+  test('leaves a session unfiled when no project is given', () => {
+    const session = store.create({ agentId: 'debug', title: 'Session leak', origin: 'you' })
+    expect(session.projectId).toBeNull()
+  })
+
   test('round-trips the spawn origin through the database', () => {
     const created = store.create({
       agentId: 'debug',

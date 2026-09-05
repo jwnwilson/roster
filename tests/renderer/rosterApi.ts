@@ -29,7 +29,10 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       spendSummary: vi.fn().mockResolvedValue({ byAgent: {}, byProject: {} }),
       send: vi.fn().mockResolvedValue(undefined),
       cancel: vi.fn().mockResolvedValue(undefined),
+      // The real handler resolves false when the confirmation was dismissed.
+      remove: vi.fn().mockResolvedValue(true),
       setProject: vi.fn().mockResolvedValue(null),
+      setName: vi.fn().mockResolvedValue(null),
       respondToApproval: vi.fn().mockResolvedValue(undefined),
       pendingApprovals: vi.fn().mockResolvedValue([]),
       onEvent: vi.fn().mockReturnValue(() => {}),
@@ -93,6 +96,20 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       submit: vi.fn().mockResolvedValue(undefined),
       approve: vi.fn().mockResolvedValue(undefined),
       onEvent: vi.fn().mockReturnValue(() => {}),
+    },
+    setup: {
+      state: vi.fn().mockResolvedValue({
+        pending: false,
+        startingAgentId: null,
+        seededAgentIds: [],
+        noRunner: false,
+      }),
+      dismiss: vi.fn().mockResolvedValue({
+        pending: false,
+        startingAgentId: null,
+        seededAgentIds: [],
+        noRunner: false,
+      }),
     },
     update: {
       check: vi.fn().mockResolvedValue(undefined),

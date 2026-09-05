@@ -1,18 +1,22 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { EXIT_PLAN_MODE } from '@shared/plans'
+import { sessionLabel } from '@shared/sessions'
 import { statusColor } from '@shared/status'
 import { taskStatusColor } from '@shared/tasks'
 import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
+import { SessionName } from './SessionName'
 import { PlanModal } from './PlanModal'
+import { messageFor } from '@/lib/errors'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
 import {
   agentStatus,
   NO_SESSIONS,
+  reduceSessionEvent,
   projectOptionLabel,
   projectPickerProjects,
   selectCurrentAgent,
@@ -69,9 +73,11 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const setUsage = useRoster((s) => s.setUsage)
   const setApprovals = useRoster((s) => s.setApprovals)
   const selectSession = useRoster((s) => s.selectSession)
+  const setNamingSession = useRoster((s) => s.setNamingSession)
   const editOpen = useRoster((s) => s.editOpen)
   const openPlanId = useRoster((s) => s.openPlanId)
   const status = useRoster((s) => agentStatus(s, agent))
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Sessions come from SQLite, not from the agent config, so they load per
   // agent rather than at startup.
@@ -140,6 +146,41 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
     const created = await window.roster.sessions.create(agent.id)
     setSessions(agent.id, [...sessions, created])
     selectSession(agent.id, created.id)
+    // The nudge. The session already exists and the composer already works;
+    // this only puts the cursor where a name would go.
+    setNamingSession(created.id)
+  }
+
+  /**
+   * Deletes a session, transcript and all.
+   *
+   * The confirmation lives in the main process, as it does for a task or a
+   * skill, so a dismissal comes back as false rather than as a rejection and
+   * nothing here should move. Spend and the grid's preview lines both counted
+   * this session, so both are re-read once it has gone.
+   */
+  async function deleteSession(sessionId: string): Promise<void> {
+    setDeleteError(null)
+
+    try {
+      const deleted = await window.roster.sessions.remove(sessionId)
+      if (!deleted) return
+
+      // The same event the broadcast will carry, applied now so the tab strip
+      // stops showing a session that is gone. Applying it twice is safe.
+      useRoster.setState((state) =>
+        reduceSessionEvent(state, { type: 'session-deleted', sessionId, agentId: agent.id }),
+      )
+
+      const [spend, transcripts] = await Promise.all([
+        window.roster.sessions.spendSummary(),
+        window.roster.sessions.recentByAgent(),
+      ])
+      useRoster.getState().setSpend(spend)
+      useRoster.getState().setTranscripts(transcripts)
+    } catch (cause) {
+      setDeleteError(messageFor(cause))
+    }
   }
 
   return (
@@ -183,7 +224,17 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
         activeId={activeId ?? null}
         onSelect={(id) => selectSession(agent.id, id)}
         onNew={() => void newSession()}
+        onDelete={(id) => void deleteSession(id)}
       />
+
+      {deleteError === null ? null : (
+        <p
+          role="alert"
+          className="m-0 flex-none border-b border-line bg-sunken px-[18px] py-[6px] text-md text-error"
+        >
+          {deleteError}
+        </p>
+      )}
 
       {/* The banner is for commands only; a question is answered where it was
           asked. With both pending, both are shown. */}
@@ -237,42 +288,21 @@ interface SessionTabsProps {
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
+  onDelete: (id: string) => void
 }
 
-function SessionTabs({ sessions, activeId, onSelect, onNew }: SessionTabsProps) {
+function SessionTabs({ sessions, activeId, onSelect, onNew, onDelete }: SessionTabsProps) {
   return (
     <div className="flex flex-none items-stretch gap-[4px] overflow-x-auto border-b border-line bg-sunken px-[12px] py-[6px]">
-      {sessions.map((session) => {
-        const on = session.id === activeId
-        return (
-          <button
-            key={session.id}
-            type="button"
-            aria-current={on ? 'true' : undefined}
-            onClick={() => onSelect(session.id)}
-            className={`flex cursor-pointer items-center gap-[8px] rounded-pill border px-[11px] py-[5px] whitespace-nowrap hover:bg-[#1a1c23] ${
-              on
-                ? 'border-line-active bg-[#1c1e26] text-ink'
-                : 'border-transparent bg-transparent text-muted-2'
-            }`}
-            data-hoverable
-          >
-            <span
-              aria-hidden
-              className="text-sm"
-              style={{
-                color:
-                  session.origin === 'agent' ? 'var(--color-accent-light)' : 'var(--color-faint)',
-              }}
-            >
-              {session.origin === 'agent' ? '↳' : '•'}
-            </span>
-            <span className="text-md font-medium">{session.title}</span>
-            <span className="text-xs text-faint">{session.from ?? 'you'}</span>
-            <StatusDot status={session.status} />
-          </button>
-        )
-      })}
+      {sessions.map((session) => (
+        <SessionTab
+          key={session.id}
+          session={session}
+          active={session.id === activeId}
+          onSelect={() => onSelect(session.id)}
+          onDelete={() => onDelete(session.id)}
+        />
+      ))}
 
       <button
         type="button"
@@ -281,6 +311,66 @@ function SessionTabs({ sessions, activeId, onSelect, onNew }: SessionTabsProps) 
         data-hoverable
       >
         + New session
+      </button>
+    </div>
+  )
+}
+
+interface SessionTabProps {
+  session: Session
+  active: boolean
+  onSelect: () => void
+  onDelete: () => void
+}
+
+/**
+ * One tab, and the only place a session can be destroyed from.
+ *
+ * The delete control is a sibling of the tab rather than a child of it —
+ * a button inside a button is not valid, and a click on it must not also
+ * select the tab it sits in. It stays out of the way until the tab is
+ * hovered or something in it has focus, so the strip does not read as a row
+ * of close buttons.
+ */
+function SessionTab({ session, active, onSelect, onDelete }: SessionTabProps) {
+  return (
+    <div
+      className={`group flex items-center rounded-pill border pr-[6px] whitespace-nowrap hover:bg-[#1a1c23] ${
+        active
+          ? 'border-line-active bg-[#1c1e26] text-ink'
+          : 'border-transparent bg-transparent text-muted-2'
+      }`}
+    >
+      <button
+        type="button"
+        aria-current={active ? 'true' : undefined}
+        onClick={onSelect}
+        className="flex cursor-pointer items-center gap-[8px] border-0 bg-transparent px-[11px] py-[5px] font-ui text-inherit"
+        data-hoverable
+      >
+        <span
+          aria-hidden
+          className="text-sm"
+          style={{
+            color: session.origin === 'agent' ? 'var(--color-accent-light)' : 'var(--color-faint)',
+          }}
+        >
+          {session.origin === 'agent' ? '↳' : '•'}
+        </span>
+        <span className="text-md font-medium">{sessionLabel(session)}</span>
+        <span className="text-xs text-faint">{session.from ?? 'you'}</span>
+        <StatusDot status={session.status} />
+      </button>
+
+      <button
+        type="button"
+        aria-label={`Delete session ${sessionLabel(session)}`}
+        title="Delete session"
+        onClick={onDelete}
+        className="cursor-pointer rounded-full border-0 bg-transparent px-[5px] py-0 font-ui text-md leading-none text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-error"
+        data-hoverable
+      >
+        ×
       </button>
     </div>
   )
@@ -498,6 +588,12 @@ function SessionTask() {
 function SessionCard() {
   const agentId = useRoster((s) => s.agentId)
   const activeId = useRoster((s) => (agentId ? s.sess[agentId] : undefined))
+  const session = useRoster(
+    (s) =>
+      (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
+        (candidate) => candidate.id === activeId,
+      ) ?? null,
+  )
   const usage = useRoster((s) => (activeId ? s.usage[activeId] : undefined))
   const model = useRoster((s) => s.agents.find((a) => a.id === agentId)?.model ?? '')
 
@@ -524,6 +620,9 @@ function SessionCard() {
   return (
     <section className="flex flex-col gap-[9px]">
       <SectionLabel>Session</SectionLabel>
+      {/* Above the totals, and keyed by session: what it is called reads
+          before what it has cost, and switching tabs starts a clean draft. */}
+      {session === null ? null : <SessionName key={session.id} session={session} />}
       <div className="flex flex-col gap-[7px] rounded-field border border-line bg-card p-[11px]">
         <div className="flex items-baseline">
           <span className="text-base text-dim">Tokens</span>
@@ -576,6 +675,7 @@ function SessionProject({ sessionId }: { sessionId: string }) {
   const projectOptions = useRoster(
     useShallow((s) => projectPickerProjects(s, current?.projectId ?? null)),
   )
+  const replaceSession = useRoster((s) => s.replaceSession)
 
   if (projectOptions.length === 0) return null
 
@@ -583,14 +683,7 @@ function SessionProject({ sessionId }: { sessionId: string }) {
     const projectId = value === NO_PROJECT ? null : value
     const updated = await window.roster.sessions.setProject(sessionId, projectId)
 
-    useRoster.setState((s) => ({
-      sessions: Object.fromEntries(
-        Object.entries(s.sessions).map(([id, list]) => [
-          id,
-          list.map((session) => (session.id === updated.id ? updated : session)),
-        ]),
-      ),
-    }))
+    replaceSession(updated)
   }
 
   return (

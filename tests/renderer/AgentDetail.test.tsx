@@ -81,7 +81,7 @@ describe('AgentDetail — sessions', () => {
     useRoster.setState({ sess: { debugging: 's2' } })
     render(<AgentDetail />)
 
-    const active = await screen.findByRole('button', { name: /Second/ })
+    const active = await screen.findByRole('button', { name: /^Second/ })
     expect(active).toHaveAttribute('aria-current', 'true')
   })
 
@@ -90,7 +90,7 @@ describe('AgentDetail — sessions', () => {
     withSessions([aSession({ id: 's1', title: 'First' }), aSession({ id: 's2', title: 'Second' })])
     render(<AgentDetail />)
 
-    await user.click(await screen.findByRole('button', { name: /Second/ }))
+    await user.click(await screen.findByRole('button', { name: /^Second/ }))
     expect(useRoster.getState().sess['debugging']).toBe('s2')
   })
 
@@ -98,7 +98,7 @@ describe('AgentDetail — sessions', () => {
     withSessions([aSession({ id: 's1', origin: 'agent', from: 'Architect Agent' })])
     render(<AgentDetail />)
 
-    const tab = await screen.findByRole('button', { name: /Session leak/ })
+    const tab = await screen.findByRole('button', { name: /^Session leak/ })
     expect(within(tab).getByText('↳')).toBeInTheDocument()
     expect(within(tab).getByText('Architect Agent')).toBeInTheDocument()
   })
@@ -752,5 +752,276 @@ describe('AgentDetail — the task a session answers', () => {
     render(<AgentDetail />)
 
     expect(await screen.findByRole('button', { name: 'Open ROS-1' })).toBeInTheDocument()
+  })
+})
+
+describe('AgentDetail — naming a session', () => {
+  const UNNAMED = aSession({ id: 's1', agentId: 'debugging', title: 'New session' })
+
+  test('a named session is listed by its name, not by what opened it', async () => {
+    withSessions([{ ...UNNAMED, name: 'Pool leak on 504' }])
+    render(<AgentDetail />)
+
+    // Anchored: the tab's own delete control is labelled "Delete session
+    // <name>", so an unanchored match finds both of them.
+    expect(await screen.findByRole('button', { name: /^Pool leak on 504/ })).toBeInTheDocument()
+    // "New session" is what every session is created as; showing it on a tab
+    // that has been named would be showing the wrong one of the two facts.
+    expect(screen.queryByText('New session')).not.toBeInTheDocument()
+  })
+
+  test('an unnamed session still reads as something, and asks to be named', async () => {
+    withSessions([UNNAMED])
+    render(<AgentDetail />)
+
+    // The tab still reads as something — the title it was created with.
+    expect(await screen.findByText('New session')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Name this session' })).toBeInTheDocument()
+  })
+
+  test('a named session offers a rename instead of the nudge', async () => {
+    withSessions([{ ...UNNAMED, name: 'Pool leak on 504' }])
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: 'Rename session' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Name this session' })).not.toBeInTheDocument()
+  })
+
+  test('naming one writes through and relabels it everywhere', async () => {
+    const user = userEvent.setup()
+    const named = { ...UNNAMED, name: 'Pool leak on 504' }
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([UNNAMED]),
+        setName: vi.fn().mockResolvedValue(named),
+      },
+    })
+    useRoster.setState({ sessions: { debugging: [UNNAMED] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Name this session' }))
+    await user.type(screen.getByLabelText('Session name'), 'Pool leak on 504{Enter}')
+
+    await waitFor(() =>
+      expect(window.roster.sessions.setName).toHaveBeenCalledWith('s1', 'Pool leak on 504'),
+    )
+    await waitFor(() =>
+      expect(useRoster.getState().sessions['debugging']?.[0]?.name).toBe('Pool leak on 504'),
+    )
+  })
+
+  test('a name that is only whitespace leaves the session unnamed', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([UNNAMED]),
+        setName: vi.fn().mockResolvedValue(UNNAMED),
+      },
+    })
+    useRoster.setState({ sessions: { debugging: [UNNAMED] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Name this session' }))
+    await user.type(screen.getByLabelText('Session name'), '   {Enter}')
+
+    // Never blocking: the box closes, the session carries on unnamed, and
+    // nothing is written that would have to be undone.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Name this session' })).toBeInTheDocument(),
+    )
+    expect(window.roster.sessions.setName).not.toHaveBeenCalled()
+  })
+
+  test('clicking away saves what was typed rather than discarding it', async () => {
+    const user = userEvent.setup()
+    const named = { ...UNNAMED, name: 'Pool leak' }
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([UNNAMED]),
+        setName: vi.fn().mockResolvedValue(named),
+      },
+    })
+    useRoster.setState({ sessions: { debugging: [UNNAMED] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Name this session' }))
+    await user.type(screen.getByLabelText('Session name'), 'Pool leak')
+    await user.tab()
+
+    await waitFor(() => expect(window.roster.sessions.setName).toHaveBeenCalledWith('s1', 'Pool leak'))
+    // Once only: Enter closes the box, and a close that also fired blur
+    // would write the same name twice.
+    expect(window.roster.sessions.setName).toHaveBeenCalledTimes(1)
+  })
+
+  test('Escape abandons the edit and keeps the name it had', async () => {
+    const user = userEvent.setup()
+    const named = { ...UNNAMED, name: 'Pool leak on 504' }
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([named]),
+        setName: vi.fn().mockResolvedValue(named),
+      },
+    })
+    useRoster.setState({ sessions: { debugging: [named] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Rename session' }))
+    await user.type(screen.getByLabelText('Session name'), ' rewritten{Escape}')
+
+    expect(window.roster.sessions.setName).not.toHaveBeenCalled()
+    expect(await screen.findByRole('button', { name: 'Rename session' })).toBeInTheDocument()
+  })
+
+  test('a failed write says so rather than showing a name nothing holds', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([UNNAMED]),
+        setName: vi.fn().mockRejectedValue(new Error('unknown session "s1"')),
+      },
+    })
+    useRoster.setState({ sessions: { debugging: [UNNAMED] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Name this session' }))
+    await user.type(screen.getByLabelText('Session name'), 'Pool leak{Enter}')
+
+    expect(await screen.findByText(/unknown session/)).toBeInTheDocument()
+    expect(useRoster.getState().sessions['debugging']?.[0]?.name).toBeNull()
+  })
+
+  test('opening a new session asks for its name straight away', async () => {
+    const user = userEvent.setup()
+    const created = aSession({ id: 's2', agentId: 'debugging', title: 'New session' })
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([UNNAMED]),
+        create: vi.fn().mockResolvedValue(created),
+      },
+    })
+    useRoster.setState({ sessions: { debugging: [UNNAMED] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: '+ New session' }))
+
+    // The nudge: the box is open and waiting, but it does not take the caret.
+    // The composer sets autoFocus={false}, so grabbing focus here would put
+    // the first thing typed at a brand-new agent into the name field.
+    const box = await screen.findByLabelText('Session name')
+    expect(box).not.toHaveFocus()
+    expect(useRoster.getState().namingSessionId).toBe('s2')
+  })
+
+  test('naming a session deliberately does take the caret', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      sessions: { listByAgent: vi.fn().mockResolvedValue([UNNAMED]) },
+    })
+    useRoster.setState({ sessions: { debugging: [UNNAMED] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Name this session' }))
+
+    // Asked for, rather than offered: here the caret is the whole point.
+    expect(await screen.findByLabelText('Session name')).toHaveFocus()
+  })
+})
+
+describe('AgentDetail — deleting a session', () => {
+  function twoSessions(): void {
+    withSessions([aSession({ id: 's1', title: 'First' }), aSession({ id: 's2', title: 'Second' })])
+    useRoster.setState({ sess: { debugging: 's1' } })
+  }
+
+  test('offers a delete control on every session tab', async () => {
+    twoSessions()
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: 'Delete session First' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete session Second' })).toBeInTheDocument()
+  })
+
+  test('asks the main process to delete it, and drops the tab when it does', async () => {
+    const user = userEvent.setup()
+    twoSessions()
+    const remove = vi.fn().mockResolvedValue(true)
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([
+          aSession({ id: 's1', title: 'First' }),
+          aSession({ id: 's2', title: 'Second' }),
+        ]),
+        remove,
+      },
+    })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
+
+    expect(remove).toHaveBeenCalledWith('s1')
+    await waitFor(() =>
+      expect(useRoster.getState().sessions['debugging']?.map((s) => s.id)).toEqual(['s2']),
+    )
+  })
+
+  test('falls back to another session when the open one goes', async () => {
+    const user = userEvent.setup()
+    twoSessions()
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([
+          aSession({ id: 's1', title: 'First' }),
+          aSession({ id: 's2', title: 'Second' }),
+        ]),
+        remove: vi.fn().mockResolvedValue(true),
+      },
+    })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
+
+    await waitFor(() => expect(useRoster.getState().sess['debugging']).toBe('s2'))
+  })
+
+  test('keeps the session when the confirmation was dismissed', async () => {
+    const user = userEvent.setup()
+    twoSessions()
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([
+          aSession({ id: 's1', title: 'First' }),
+          aSession({ id: 's2', title: 'Second' }),
+        ]),
+        // The dialog lives in the main process; dismissing it resolves false.
+        remove: vi.fn().mockResolvedValue(false),
+      },
+    })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
+
+    await waitFor(() => expect(useRoster.getState().sessions['debugging']).toHaveLength(2))
+    expect(useRoster.getState().sess['debugging']).toBe('s1')
+  })
+
+  test('says why when the delete failed', async () => {
+    const user = userEvent.setup()
+    twoSessions()
+    installRosterApi({
+      sessions: {
+        listByAgent: vi.fn().mockResolvedValue([
+          aSession({ id: 's1', title: 'First' }),
+          aSession({ id: 's2', title: 'Second' }),
+        ]),
+        remove: vi.fn().mockRejectedValue(new Error('database is locked')),
+      },
+    })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
+
+    expect(await screen.findByText(/database is locked/)).toBeInTheDocument()
+    expect(useRoster.getState().sessions['debugging']).toHaveLength(2)
   })
 })

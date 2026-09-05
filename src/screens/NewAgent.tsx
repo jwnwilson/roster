@@ -3,11 +3,11 @@ import type { ModelInfo } from '@shared/types'
 import {
   ChipField,
   ModelPicker,
+  NameField,
   ProviderPicker,
   SystemPromptField,
   WorkingDirectory,
 } from '@/components/AgentFields'
-import { Field } from '@/components/primitives'
 import { useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
 
@@ -86,16 +86,7 @@ export function NewAgent() {
 
         <div className="h-[1px] bg-line" />
 
-        <Field label="Name">
-          <input
-            type="text"
-            value={name}
-            aria-label="Agent name"
-            placeholder="Architect Agent"
-            onChange={(e) => setName(e.target.value)}
-            className="rounded-field border border-line-card bg-card px-[12px] py-[9px] font-ui text-xl text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
-          />
-        </Field>
+        <NameField value={name} onChange={setName} />
 
         <SystemPromptField value={newPrompt} onChange={setNewPrompt} />
 

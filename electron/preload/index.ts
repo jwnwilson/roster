@@ -42,15 +42,18 @@ const api: RosterApi = {
     listByAgent: (agentId) => ipcRenderer.invoke(CHANNELS.sessionsListByAgent, agentId),
     recentByAgent: () => ipcRenderer.invoke(CHANNELS.sessionsRecentByAgent),
     listAll: () => ipcRenderer.invoke(CHANNELS.sessionsListAll),
-    create: (agentId, title) => ipcRenderer.invoke(CHANNELS.sessionsCreate, agentId, title),
+    create: (agentId, title, projectId) =>
+      ipcRenderer.invoke(CHANNELS.sessionsCreate, agentId, title, projectId),
     messages: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsMessages, sessionId),
     usage: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsUsage, sessionId),
     spendSummary: () => ipcRenderer.invoke(CHANNELS.sessionsSpendSummary),
     send: (sessionId, prompt, options) =>
       ipcRenderer.invoke(CHANNELS.sessionsSend, sessionId, prompt, options),
     cancel: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsCancel, sessionId),
+    remove: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsDelete, sessionId),
     setProject: (sessionId, projectId) =>
       ipcRenderer.invoke(CHANNELS.sessionsSetProject, sessionId, projectId),
+    setName: (sessionId, name) => ipcRenderer.invoke(CHANNELS.sessionsSetName, sessionId, name),
     respondToApproval: (sessionId, approvalId, approved, answers) =>
       ipcRenderer.invoke(
         CHANNELS.sessionsRespondToApproval,
@@ -135,6 +138,11 @@ const api: RosterApi = {
       ipcRenderer.invoke(CHANNELS.plansSubmit, planId, text, quote),
     approve: (planId: string) => ipcRenderer.invoke(CHANNELS.plansApprove, planId),
     onEvent: (listener) => subscribe<PlanEventPayload>(CHANNELS.plansEvent, listener),
+  },
+
+  setup: {
+    state: () => ipcRenderer.invoke(CHANNELS.setupState),
+    dismiss: () => ipcRenderer.invoke(CHANNELS.setupDismiss),
   },
 
   update: {

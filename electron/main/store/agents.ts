@@ -2,6 +2,7 @@ import { watch, type FSWatcher } from 'node:fs'
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import type { Agent, RunnerStatus } from '../../../shared/types'
 import type { AgentPatch } from '../../../shared/ipc'
+import { assertNameIsFree, normalizeAgentName } from '../../../shared/agentName'
 import {
   AgentConfigError,
   collapseHome,
@@ -23,6 +24,8 @@ export interface NewAgentInput {
   systemPrompt: string
   skills: string[]
   mcpServers?: string[]
+  /** Sessions opened on this agent are filed here unless the caller says otherwise. */
+  defaultProjectId?: string | null
 }
 
 /** Agent ids double as directory names, so they must be filesystem-safe. */
@@ -95,11 +98,13 @@ export class AgentStore {
    * since it is also the directory name.
    */
   async create(input: NewAgentInput): Promise<Agent> {
-    const id = this.uniqueId(slugify(input.name))
+    const name = normalizeAgentName(input.name)
+    assertNameIsFree(name, this.configs.values())
+    const id = this.uniqueId(slugify(name))
 
     const config: AgentConfig = {
       id,
-      name: input.name,
+      name,
       runner: input.runner,
       model: input.model,
       cwd: input.cwd,
@@ -107,6 +112,7 @@ export class AgentStore {
       skills: input.skills,
       mcpServers: input.mcpServers ?? [],
       hidden: false,
+      defaultProjectId: input.defaultProjectId ?? null,
     }
 
     await mkdir(agentDir(id), { recursive: true })
@@ -139,8 +145,14 @@ export class AgentStore {
       throw new Error(`unknown agent "${id}"`)
     }
 
+    // The name is a label, not an identity: the id and the directory stay put
+    // so sessions, tasks, plans and mentions keep pointing at the same agent.
+    const name = patch.name === undefined ? current.name : normalizeAgentName(patch.name)
+    if (patch.name !== undefined) assertNameIsFree(name, this.configs.values(), id)
+
     const next: AgentConfig = {
       ...current,
+      name,
       ...(patch.runner !== undefined ? { runner: patch.runner } : {}),
       ...(patch.model !== undefined ? { model: patch.model } : {}),
       ...(patch.systemPrompt !== undefined ? { systemPrompt: patch.systemPrompt } : {}),
@@ -148,6 +160,10 @@ export class AgentStore {
       ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
       ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
       ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
+      // Null is a value here, not an omission: it is how the default is cleared.
+      ...(patch.defaultProjectId !== undefined
+        ? { defaultProjectId: patch.defaultProjectId }
+        : {}),
     }
 
     // A new working directory must exist before the agent runs there.
@@ -216,6 +232,7 @@ export class AgentStore {
       skills: config.skills,
       mcpServers: config.mcpServers,
       hidden: config.hidden,
+      defaultProjectId: config.defaultProjectId,
       ...(config.custom ? { custom: config.custom } : {}),
       status: unusable ? 'error' : 'idle',
       ...(unusable
@@ -238,6 +255,7 @@ function brokenAgent(id: string, detail: string): Agent {
     mcpServers: [],
     // Never hidden: the error is the entire reason to show this row.
     hidden: false,
+    defaultProjectId: null,
     status: 'error',
     statusDetail: detail,
   }

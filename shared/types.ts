@@ -65,6 +65,12 @@ export interface Agent {
    * still spends.
    */
   hidden: boolean
+  /**
+   * The project a new session on this agent is filed under when the caller
+   * names none. Null when the agent has no default, and ignored at session
+   * time if it names a project that has since been archived or deleted.
+   */
+  defaultProjectId?: string | null
   /** Only present when runner is not a builtin. */
   custom?: CustomRunnerSpec
   /** Derived, not persisted. */
@@ -87,6 +93,13 @@ export interface Session {
   id: string
   agentId: string
   title: string
+  /**
+   * What you call this session, given by hand from the config rail. Null
+   * until somebody names it — every session that predates naming is in that
+   * state, and so is every one nobody has got round to. `sessionLabel` in
+   * shared/sessions.ts is what turns either state into something to render.
+   */
+  name?: string | null
   origin: SessionOrigin
   /** Display name of the agent that opened this session, when origin is 'agent'. */
   from?: string
@@ -483,4 +496,26 @@ export interface PlanComment {
   /** The version it was written against, so it keeps its meaning after a rewrite. */
   version: number
   createdAt: number
+}
+
+/* -------------------------------------------------------------------------
+ * First-run setup — what a brand-new install is offered before it has a
+ * roster of its own.
+ *
+ * Derived in the main process from a marker file, never from "the roster is
+ * empty": a user who deletes every agent has an empty roster and must not be
+ * handed a new one.
+ * ---------------------------------------------------------------------- */
+export interface SetupState {
+  /** The first-run card is still worth showing. */
+  pending: boolean
+  /**
+   * The agent to start with — the Tech Lead. Null once it has been deleted,
+   * or when nothing could be seeded.
+   */
+  startingAgentId: string | null
+  /** Agents seeded on first run, in the order they were created. */
+  seededAgentIds: string[]
+  /** No CLI Roster can drive was installed, so nothing was seeded. */
+  noRunner: boolean
 }

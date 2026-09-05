@@ -63,3 +63,15 @@ export function mcpConfigPath(): string {
 export function databasePath(): string {
   return join(rosterHome(), 'roster.db')
 }
+
+/**
+ * The first-run marker.
+ *
+ * An explicit file rather than "the agents directory is empty": a user who
+ * deletes every seeded agent has an empty directory, and re-seeding them
+ * would undo a deliberate act. Its presence alone means first-run setup has
+ * already happened, whatever it says inside.
+ */
+export function setupStatePath(): string {
+  return join(rosterHome(), 'setup.json')
+}

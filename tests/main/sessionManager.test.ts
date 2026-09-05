@@ -815,3 +815,107 @@ describe('SessionManager.enqueue', () => {
     await vi.waitFor(() => expect(runnerStub.run).not.toHaveBeenCalled())
   })
 })
+
+describe('SessionManager.stop', () => {
+  /** A turn that runs until its signal is aborted, as a real runner does. */
+  function abortableTurn(): void {
+    runnerStub.run.mockImplementation(async function* (
+      _prompt: string,
+      options: { signal: AbortSignal },
+    ) {
+      await new Promise<void>((resolve) => {
+        if (options.signal.aborted) resolve()
+        else options.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield { kind: 'done', runnerSessionId: 'r1' } as RunnerEvent
+    })
+  }
+
+  test('resolves straight away when nothing is in flight', async () => {
+    const session = manager.create('debugging', 'x')
+
+    await expect(manager.stop(session.id)).resolves.toBeUndefined()
+  })
+
+  test('resolves for a session that never existed', async () => {
+    await expect(manager.stop('ghost')).resolves.toBeUndefined()
+  })
+
+  test('aborts the turn in flight and waits for it to wind down', async () => {
+    abortableTurn()
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'go')
+    await vi.waitFor(() => expect(manager.isStreaming(session.id)).toBe(true))
+
+    await manager.stop(session.id)
+
+    // Not merely aborted: the turn's own bookkeeping has finished, so nothing
+    // is left that could write to the session after this returns.
+    expect(manager.isStreaming(session.id)).toBe(false)
+    await turn
+  })
+
+  test('gives up on a runner that never honours its abort signal', async () => {
+    // A turn that ignores the signal altogether. Unbounded, the stop below
+    // would never resolve, the delete waiting on it would never return, and
+    // the control that asked for it would read as dead.
+    let release = (): void => {}
+    runnerStub.run.mockImplementation(async function* () {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      yield { kind: 'done', runnerSessionId: 'r1' } as RunnerEvent
+    })
+
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'go')
+    await vi.waitFor(() => expect(manager.isStreaming(session.id)).toBe(true))
+
+    vi.useFakeTimers()
+    try {
+      const stopped = manager.stop(session.id)
+      await vi.advanceTimersByTimeAsync(10_000)
+      await expect(stopped).resolves.toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+
+    release()
+    await turn
+  })
+
+  test('a turn that fails before it streams is still stoppable', async () => {
+    // Setting up a turn does work of its own — statuses, events, and for the
+    // Claude runner a set of MCP servers built with await. A throw in any of
+    // it must still settle the turn, or stop() waits on a promise nothing
+    // will ever resolve.
+    const session = manager.create('debugging', 'x')
+    const stop = manager.subscribe((event) => {
+      if (event.type === 'streaming' && event.active) throw new Error('listener blew up')
+    })
+
+    // Recorded on the turn rather than thrown out of send: the failure now
+    // happens inside the turn's own try, which is the whole point.
+    await expect(manager.send(session.id, 'go')).resolves.toBeUndefined()
+    stop()
+
+    // The turn settled, so nothing is left in flight and stop has something
+    // to return. Before, this waited on a promise nothing would resolve.
+    expect(manager.isStreaming(session.id)).toBe(false)
+    await expect(manager.stop(session.id)).resolves.toBeUndefined()
+  })
+
+  test('drops the turn queued behind the one it stops', async () => {
+    abortableTurn()
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'first')
+    await vi.waitFor(() => expect(manager.isStreaming(session.id)).toBe(true))
+    manager.enqueue(session.id, 'second')
+
+    await manager.stop(session.id)
+    await turn
+
+    expect(runnerStub.run).toHaveBeenCalledTimes(1)
+    expect(runnerStub.run).not.toHaveBeenCalledWith('second', expect.anything())
+  })
+})

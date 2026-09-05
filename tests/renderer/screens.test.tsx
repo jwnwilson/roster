@@ -666,6 +666,7 @@ describe('EditAgentModal', () => {
       runners: [aRunner()],
       skills: [aSkill({ name: 'repro-harness' }), aSkill({ name: 'stack-triage' })],
       mcpServers: [anMcpServer({ name: 'filesystem' }), anMcpServer({ name: 'github' })],
+      projects: [],
     })
     useRoster.getState().openEdit()
   })
@@ -716,6 +717,74 @@ describe('EditAgentModal', () => {
     )
   })
 
+  test('the name is editable, seeded from the agent', () => {
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.getByLabelText('Agent name')).toHaveValue('Debugging Agent')
+  })
+
+  test('Save writes the new name back to agent.toml', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, 'Triage Agent')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ name: 'Triage Agent' }),
+      ),
+    )
+  })
+
+  test('Save trims the name rather than writing the spaces', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, '  Triage Agent  ')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ name: 'Triage Agent' }),
+      ),
+    )
+  })
+
+  test('Save is unavailable while the name is blank', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.clear(screen.getByLabelText('Agent name'))
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  })
+
+  test('surfaces a rejected rename instead of closing', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      runners: { models: vi.fn().mockResolvedValue([{ id: 'claude-opus-5', price: '' }]) },
+      agents: {
+        update: vi.fn().mockRejectedValue(new Error('there is already an agent named "Review"')),
+      },
+    })
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, 'Review')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText(/already an agent named/)).toBeInTheDocument()
+    expect(useRoster.getState().editOpen).toBe(true)
+  })
+
   test('Save closes the modal and discards the draft', async () => {
     const user = userEvent.setup()
     render(<EditAgentModal agent={AGENT} />)
@@ -757,6 +826,82 @@ describe('EditAgentModal', () => {
 
     expect(await screen.findByText(/EROFS: read-only/)).toBeInTheDocument()
     expect(useRoster.getState().editOpen).toBe(true)
+  })
+
+  test('offers the agent default project, with none chosen by default', () => {
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('none')
+  })
+
+  test('shows the default the agent already has', () => {
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('proj-reliability')
+  })
+
+  test('Save writes the chosen default project back to agent.toml', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.selectOptions(screen.getByLabelText('Default project'), 'proj-reliability')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ defaultProjectId: 'proj-reliability' }),
+      ),
+    )
+  })
+
+  test('clearing the default saves it as none', async () => {
+    const user = userEvent.setup()
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    await user.selectOptions(screen.getByLabelText('Default project'), 'none')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ defaultProjectId: null }),
+      ),
+    )
+  })
+
+  test('keeps an archived default listed, so it does not read as unset', () => {
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-old' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-old', name: 'Old work', archivedAt: 1 })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('proj-old')
+    expect(screen.getByRole('option', { name: 'Old work (archived)' })).toBeInTheDocument()
+  })
+
+  test('hides the field entirely when there are no projects to pick', () => {
+    useRoster.setState({ projects: [] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.queryByLabelText('Default project')).not.toBeInTheDocument()
   })
 
   test('Manage servers leaves for the MCP screen', async () => {

@@ -92,6 +92,19 @@ describe('filtering', () => {
     expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
   })
 
+  test('the grid matches a session by the name it was given', () => {
+    // A named session is listed by its name, so that is what searching it
+    // has to match — its title is still "New session".
+    useRoster.setState({
+      gridQuery: 'pool',
+      sessions: {
+        review: [aSession({ agentId: 'review', title: 'New session', name: 'Pool leak on 504' })],
+      },
+    })
+
+    expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
+  })
+
   test('the grid returns nothing when neither name nor session matches', () => {
     useRoster.setState({ gridQuery: 'nonexistent' })
     expect(selectGridAgents(useRoster.getState())).toEqual([])
@@ -179,6 +192,7 @@ describe('edit draft', () => {
     useRoster.getState().openEdit()
 
     expect(useRoster.getState().draft).toEqual({
+      name: 'Debugging Agent',
       runner: 'claude',
       model: 'claude-opus-5',
       systemPrompt: 'Reproduce before you fix.',
@@ -186,7 +200,25 @@ describe('edit draft', () => {
       mcp: { filesystem: true },
       cwd: '/Users/test/work/api',
       cwdLabel: '~/work/api',
+      defaultProjectId: null,
     })
+  })
+
+  test('renaming in the draft does not touch the agent until it is saved', () => {
+    useRoster.getState().openEdit()
+    useRoster.getState().patchDraft({ name: 'Triage Agent' })
+
+    expect(useRoster.getState().draft?.name).toBe('Triage Agent')
+    expect(useRoster.getState().agents[0]?.name).toBe('Debugging Agent')
+  })
+
+  test('snapshots the agent default project into the draft', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })],
+    })
+    useRoster.getState().openEdit()
+
+    expect(useRoster.getState().draft?.defaultProjectId).toBe('proj-reliability')
   })
 
   test('editing the draft does not touch the agent', () => {

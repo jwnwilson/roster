@@ -804,3 +804,65 @@ describe('migration 10 — a session can be attached to a task', () => {
     old.close()
   })
 })
+
+describe('migration 11 — a session can be given a name', () => {
+  /** A database stopped at version 10, as an install from before this would be. */
+  function atVersion10() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < 10; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma('user_version = 10')
+    return old
+  }
+
+  test('adds the column to a database that predates it', () => {
+    const old = atVersion10()
+    expect(
+      (old.pragma('table_info(sessions)') as { name: string }[]).map((c) => c.name),
+    ).not.toContain('name')
+
+    migrate(old)
+
+    expect(
+      (old.pragma('table_info(sessions)') as { name: string }[]).map((c) => c.name),
+    ).toContain('name')
+    old.close()
+  })
+
+  test('every session that predates the column is simply unnamed', () => {
+    const old = atVersion10()
+    old.prepare(
+      `INSERT INTO sessions (id, agent_id, title, origin, status, created_at)
+       VALUES ('s1', 'debugging', 'Session leak on 504', 'you', 'done', 17)`,
+    ).run()
+
+    migrate(old)
+
+    // NULL means unnamed, and the title it has always shown carries on
+    // labelling it. An existing install must not wake up to a wall of
+    // blank tabs.
+    expect(old.prepare('SELECT title, name FROM sessions').get()).toEqual({
+      title: 'Session leak on 504',
+      name: null,
+    })
+    old.close()
+  })
+
+  test('naming one leaves the title it was created with alone', () => {
+    const old = atVersion10()
+    migrate(old)
+    old.prepare(
+      `INSERT INTO sessions (id, agent_id, title, origin, status, created_at)
+       VALUES ('s1', 'debugging', 'New session', 'you', 'idle', 0)`,
+    ).run()
+
+    old.prepare("UPDATE sessions SET name = 'Pool leak on 504' WHERE id = 's1'").run()
+
+    // Two separate facts: what opened the session, and what you call it.
+    expect(old.prepare('SELECT title, name FROM sessions').get()).toEqual({
+      title: 'New session',
+      name: 'Pool leak on 504',
+    })
+    old.close()
+  })
+})

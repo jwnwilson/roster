@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Agent, Session, TranscriptLine } from '@shared/types'
+import { sessionLabel } from '@shared/sessions'
 import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
 import {
@@ -20,6 +21,7 @@ import {
   StatusDot,
   TextInput,
 } from '@/components/primitives'
+import { FirstRunCard } from '@/components/FirstRunCard'
 import { ProjectFilter } from '@/components/ProjectFilter'
 import { formatCost, formatTokens } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
@@ -73,6 +75,7 @@ export function AgentsGrid() {
       </ScreenHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
+        <FirstRunCard />
         {agents.length === 0 ? (
           <EmptyState
             filtered={filtering}
@@ -260,7 +263,7 @@ function SessionChip({ session, agentId, active }: SessionChipProps) {
       <span aria-hidden className="text-dim-2">
         {session.origin === 'agent' ? '↳' : '•'}
       </span>
-      <span className="truncate">{session.title}</span>
+      <span className="truncate">{sessionLabel(session)}</span>
       <StatusDot status={session.status} size={5} />
     </span>
   )
