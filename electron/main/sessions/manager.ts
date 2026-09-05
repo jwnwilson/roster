@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { Agent, Approval, Message, Session, Usage } from '../../../shared/types'
-import { isBuiltinMcpServer, PLANS_SERVER, TASKS_SERVER } from '../../../shared/mcp'
+import { isBuiltinMcpServer, MEMORY_SERVER, PLANS_SERVER, TASKS_SERVER } from '../../../shared/mcp'
 import { EXIT_PLAN_MODE, planFromToolInput } from '../../../shared/plans'
 import type { AgentStore } from '../store/agents'
 import type { McpStore } from '../store/mcp'
@@ -11,12 +11,14 @@ import type { UsageStore } from '../store/usage'
 import type { TaskStore } from '../store/tasks'
 import type { ProjectStore } from '../store/projects'
 import type { PlanStore } from '../store/plans'
+import type { ProjectNotesStore } from '../store/projectNotes'
 import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
 import { createRosterMcpServer } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
+import { createMemoryMcpServer, type MemoryTools } from '../runners/memoryTools'
 import { describeActivity, THINKING } from './activity'
 import { resolveSessionProject } from './defaultProject'
 import { buildProjectBrief } from './projectBrief'
@@ -133,6 +135,11 @@ export class SessionManager {
      * manager without one runs turns exactly as before and captures nothing.
      */
     private readonly plans?: PlanStore,
+    /**
+     * Each project's NOTES.md. Optional like the others: without it the brief
+     * carries only the board, and no agent is offered the memory tools.
+     */
+    private readonly notes?: ProjectNotesStore,
   ) {}
 
   subscribe(listener: (event: SessionEvent) => void): () => void {
@@ -375,6 +382,14 @@ export class SessionManager {
           inProcessMcpServers[TASKS_SERVER] = await createTasksMcpServer(tasks, agent.id)
         }
 
+        // The project's notes, opt-in the same way — and additionally only
+        // where there is a project, since which notes an agent may reach is
+        // decided by the session rather than by an argument it could pass.
+        const memory = this.memoryToolsFor(agent, session)
+        if (memory) {
+          inProcessMcpServers[MEMORY_SERVER] = await createMemoryMcpServer(memory)
+        }
+
         // Reporting a pull request is opt-in the same way. Without it a plan
         // still gets built; Roster simply never learns where the work landed.
         const planTools = this.planToolsFor(agent)
@@ -440,11 +455,17 @@ export class SessionManager {
 
     const filed = board.tasks.findAll().filter((task) => task.projectId === projectId)
 
+    // The notes sit at the top of the brief, under the same budget: an agent
+    // that has not enabled the memory server still reads what the project
+    // decided, it simply cannot add to it.
+    const notes = this.notes?.read(projectId) ?? ''
+
     const brief = buildProjectBrief({
       project,
       tasks: filed,
       comments: filed.flatMap((task) => board.tasks.comments(task.id)),
       agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
+      ...(notes.trim() === '' ? {} : { notes }),
     })
 
     return `${brief}\n\n${prompt}`
@@ -835,6 +856,29 @@ export class SessionManager {
       comment: (taskId, text) => {
         tasks.comment(taskId, { author: agent.name, tone: 'agent', text })
       },
+    }
+  }
+
+  /**
+   * The project's notes, bound to this session's project.
+   *
+   * Absent when no notes store was supplied, when the session is not filed
+   * under a project, and when the agent has not enabled the built-in
+   * "memory" server — that last is the control the TODO calls an option, and
+   * the same one that already decides who may change the board.
+   *
+   * `remember` is bound to the agent's own name, so a line in NOTES.md always
+   * says who wrote it and an agent cannot sign as somebody else.
+   */
+  private memoryToolsFor(agent: Agent, session: Session): MemoryTools | undefined {
+    const notes = this.notes
+    const projectId = session.projectId
+    if (!notes || projectId === null || projectId === undefined) return undefined
+    if (!agent.mcpServers.includes(MEMORY_SERVER)) return undefined
+
+    return {
+      recall: () => notes.read(projectId),
+      remember: (note) => notes.append(projectId, { author: agent.name, note }),
     }
   }
 

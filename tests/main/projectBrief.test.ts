@@ -128,6 +128,31 @@ describe('buildProjectBrief', () => {
     expect(text).toMatch(/\(\+\d+ more tasks — use list_tasks\)/)
   })
 
+  test('admits to the comments it could not fit', () => {
+    const task = tasks.create({ title: 'Fix pool leak', projectId: project.id })
+    for (let n = 0; n < 40; n += 1) {
+      tasks.comment(task.id, {
+        author: 'Debugging Agent',
+        tone: 'agent',
+        text: `Finding number ${n}, written out at enough length to cost real characters.`,
+      })
+    }
+
+    const text = brief()
+    expect(text.length).toBeLessThanOrEqual(PROJECT_BRIEF_BUDGET)
+    expect(text).toMatch(/\(\+\d+ more comments — use read_task\)/)
+  })
+
+  test('names an assignee Roster no longer knows by its id rather than dropping it', () => {
+    const task = tasks.create({ title: 'Orphaned', projectId: project.id })
+    tasks.apply(task.id, { field: 'assignee', value: 'deleted-agent' }, {
+      name: 'You',
+      tone: 'you',
+    })
+
+    expect(brief()).toContain('(deleted-agent)')
+  })
+
   test('says nothing about what it left out when nothing was left out', () => {
     tasks.create({ title: 'The only task', projectId: project.id })
 

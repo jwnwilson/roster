@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Agent } from '@shared/types'
 import type { TaskTools } from '@main/runners/taskTools'
+import type { MemoryTools } from '@main/runners/memoryTools'
 
 /**
  * What one session filed under a project knows about the rest of it.
@@ -36,12 +37,17 @@ vi.mock('@main/runners/handoffTool', () => ({ createRosterMcpServer }))
 const createTasksMcpServer = vi.fn().mockResolvedValue({ fake: 'tasks' })
 vi.mock('@main/runners/taskTools', () => ({ createTasksMcpServer }))
 
+/** Stubbed for the same reason: it is how the MemoryTools are got hold of. */
+const createMemoryMcpServer = vi.fn().mockResolvedValue({ fake: 'memory' })
+vi.mock('@main/runners/memoryTools', () => ({ createMemoryMcpServer }))
+
 const { openDatabase } = await import('@main/db')
 const { SessionStore } = await import('@main/store/sessions')
 const { UsageStore } = await import('@main/store/usage')
 const { ProjectStore } = await import('@main/store/projects')
 const { TaskStore } = await import('@main/store/tasks')
 const { ClaudeRunner } = await import('@main/runners/claude')
+const { ProjectNotesStore } = await import('@main/store/projectNotes')
 const { SessionManager } = await import('@main/sessions/manager')
 
 const AGENTS: Agent[] = [
@@ -54,7 +60,7 @@ const AGENTS: Agent[] = [
     cwdLabel: '~/work/api',
     systemPrompt: '',
     skills: [],
-    mcpServers: ['tasks'],
+    mcpServers: ['tasks', 'memory'],
     hidden: false,
     status: 'idle',
   },
@@ -67,6 +73,20 @@ const AGENTS: Agent[] = [
     cwdLabel: '~/work/api',
     systemPrompt: '',
     skills: [],
+    mcpServers: ['tasks', 'memory'],
+    hidden: false,
+    status: 'idle',
+  },
+  {
+    id: 'estimation',
+    name: 'Estimation Agent',
+    runner: 'claude',
+    model: 'claude-haiku-4-5',
+    cwd: '/work/api',
+    cwdLabel: '~/work/api',
+    systemPrompt: '',
+    skills: [],
+    // Deliberately without the project's memory.
     mcpServers: ['tasks'],
     hidden: false,
     status: 'idle',
@@ -77,6 +97,7 @@ let home: string
 let sessions: InstanceType<typeof SessionStore>
 let projects: InstanceType<typeof ProjectStore>
 let tasks: InstanceType<typeof TaskStore>
+let notes: InstanceType<typeof ProjectNotesStore>
 let manager: InstanceType<typeof SessionManager>
 
 beforeEach(async () => {
@@ -87,6 +108,8 @@ beforeEach(async () => {
   sessions = new SessionStore(db)
   projects = new ProjectStore(db)
   tasks = new TaskStore(db, (id) => AGENTS.find((a) => a.id === id)?.name ?? null)
+  notes = new ProjectNotesStore(() => new Date(2026, 8, 5, 12, 0, 0))
+  await notes.load()
 
   // Roster's own servers are only given to a Claude runner.
   Object.setPrototypeOf(runnerStub, ClaudeRunner.prototype)
@@ -101,9 +124,12 @@ beforeEach(async () => {
     { findAll: () => [] } as never,
     new UsageStore(db),
     { tasks, projects },
+    undefined,
+    notes,
   )
 
   createTasksMcpServer.mockClear()
+  createMemoryMcpServer.mockClear()
   runnerStub.run.mockReset()
   runnerStub.run.mockImplementation(async function* () {
     yield { kind: 'done', runnerSessionId: 'r1' }
@@ -111,6 +137,7 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  notes.dispose()
   delete process.env['ROSTER_HOME']
   await rm(home, { recursive: true, force: true })
 })
@@ -119,6 +146,14 @@ afterEach(async () => {
 function lastPrompt(): string {
   const call = runnerStub.run.mock.calls.at(-1)
   return (call?.[0] as string | undefined) ?? ''
+}
+
+/** The MemoryTools the manager built on the most recent turn. */
+function lastMemoryTools(): MemoryTools {
+  const call = createMemoryMcpServer.mock.calls.at(-1)
+  const tools = call?.[0] as MemoryTools | undefined
+  if (!tools) throw new Error('the manager passed no memory tools')
+  return tools
 }
 
 /** The TaskTools the manager built on the most recent turn. */
@@ -211,5 +246,117 @@ describe('the project brief a filed session is sent with', () => {
 
     await manager.send(session.id, 'still here?')
     expect(lastPrompt()).toBe('still here?')
+  })
+})
+
+describe('the memory server an agent may be given', () => {
+  test('is offered to an agent that enabled it on a filed session', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'go')
+
+    expect(createMemoryMcpServer).toHaveBeenCalled()
+  })
+
+  test('is withheld from an agent that has not enabled it', async () => {
+    // Nothing changes for an agent nobody opted in: the board is still there,
+    // the project's memory simply is not.
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    const session = manager.create('estimation', 'Work', project.id)
+    await manager.send(session.id, 'go')
+
+    expect(createMemoryMcpServer).not.toHaveBeenCalled()
+    expect(createTasksMcpServer).toHaveBeenCalled()
+  })
+
+  test('is withheld from a session with no project, since there is nothing to recall', async () => {
+    const session = manager.create('debugging', 'Work', null)
+    await manager.send(session.id, 'go')
+
+    expect(createMemoryMcpServer).not.toHaveBeenCalled()
+  })
+
+  test('is withheld from a manager that has no notes store', async () => {
+    const db = openDatabase(':memory:')
+    const bare = new SessionManager(
+      {
+        findAll: () => AGENTS,
+        findById: (id: string) => AGENTS.find((a) => a.id === id) ?? null,
+      } as never,
+      new SessionStore(db),
+      { findAll: () => [] } as never,
+      { findAll: () => [] } as never,
+      new UsageStore(db),
+      { tasks, projects },
+    )
+
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    const session = bare.create('debugging', 'Work', project.id)
+    await bare.send(session.id, 'go')
+
+    expect(createMemoryMcpServer).not.toHaveBeenCalled()
+  })
+
+  test('reads and writes only its own session’s project', async () => {
+    const ours = projects.create({ name: 'Ours', color: '#7c5cff' })
+    const theirs = projects.create({ name: 'Theirs', color: '#7c5cff' })
+    await notes.append(theirs.id, { author: 'Someone', note: 'not for us' })
+
+    const session = manager.create('debugging', 'Work', ours.id)
+    await manager.send(session.id, 'go')
+
+    const memory = lastMemoryTools()
+    await memory.remember('ours alone')
+
+    expect(memory.recall()).not.toContain('not for us')
+    expect(notes.read(ours.id)).toContain('ours alone')
+    expect(notes.read(theirs.id)).not.toContain('ours alone')
+  })
+
+  test('signs a remembered line with the agent that wrote it', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    const session = manager.create('review', 'Work', project.id)
+    await manager.send(session.id, 'go')
+
+    await lastMemoryTools().remember('one pool per process')
+    expect(notes.read(project.id)).toContain(
+      '- 2026-09-05 Review Agent: one pool per process',
+    )
+  })
+})
+
+describe('notes and the brief', () => {
+  test('reach the next agent on the project without it being told to look', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+
+    const debugging = manager.create('debugging', 'Investigate', project.id)
+    await manager.send(debugging.id, 'find the leak')
+    await lastMemoryTools().remember('the pool is not safe to share across forks')
+
+    const review = manager.create('review', 'Review', project.id)
+    await manager.send(review.id, 'is this ready to ship?')
+
+    expect(lastPrompt()).toContain('the pool is not safe to share across forks')
+  })
+
+  test('reach an agent that cannot write them', async () => {
+    // Reading the project is not the thing that is gated; adding to it is.
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    await notes.append(project.id, { author: 'Debugging Agent', note: 'a standing decision' })
+
+    const session = manager.create('estimation', 'Estimate', project.id)
+    await manager.send(session.id, 'how long?')
+
+    expect(lastPrompt()).toContain('a standing decision')
+  })
+
+  test('are left out entirely when the file is empty', async () => {
+    const project = projects.create({ name: 'API reliability', color: '#7c5cff' })
+    await notes.write(project.id, '\n\n')
+
+    const session = manager.create('debugging', 'Work', project.id)
+    await manager.send(session.id, 'go')
+
+    expect(lastPrompt()).not.toContain('Project notes')
   })
 })

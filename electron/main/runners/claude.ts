@@ -8,6 +8,7 @@ import { parseQuestions, summariseQuestions } from './questions'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
 import { TASK_TOOL_NAMES } from './taskTools'
 import { PLAN_TOOL_NAMES } from './planTools'
+import { MEMORY_TOOL_NAMES } from './memoryTools'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
 
 /**
@@ -80,7 +81,12 @@ export class ClaudeRunner implements Runner {
         // session or move a card would be friction with nothing behind it.
         // Who may touch the board is decided by whether the "tasks" server is
         // registered for this agent at all, not by this gate.
-        allowedTools: [...ROSTER_TOOL_NAMES, ...TASK_TOOL_NAMES, ...PLAN_TOOL_NAMES],
+        allowedTools: [
+          ...ROSTER_TOOL_NAMES,
+          ...TASK_TOOL_NAMES,
+          ...PLAN_TOOL_NAMES,
+          ...MEMORY_TOOL_NAMES,
+        ],
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
