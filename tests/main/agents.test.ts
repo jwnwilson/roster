@@ -303,3 +303,65 @@ describe('AgentStore.watch', () => {
     store.dispose()
   })
 })
+
+describe('AgentStore — default project', () => {
+  test('an agent without one reports no default', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('debug')?.defaultProjectId).toBeNull()
+  })
+
+  test('exposes the one named in agent.toml', async () => {
+    await writeAgent('debug', `${VALID}default_project = "proj-reliability"\n`)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('debug')?.defaultProjectId).toBe('proj-reliability')
+  })
+
+  test('writes a new default back to agent.toml', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { defaultProjectId: 'proj-reliability' })
+
+    expect(updated.defaultProjectId).toBe('proj-reliability')
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).toContain(
+      'default_project = "proj-reliability"',
+    )
+  })
+
+  test('clears it when set back to null', async () => {
+    await writeAgent('debug', `${VALID}default_project = "proj-reliability"\n`)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { defaultProjectId: null })
+
+    expect(updated.defaultProjectId).toBeNull()
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).not.toContain(
+      'default_project',
+    )
+  })
+
+  test('leaves the default alone when the patch does not mention it', async () => {
+    await writeAgent('debug', `${VALID}default_project = "proj-reliability"\n`)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { model: 'claude-sonnet-5' })
+
+    expect(updated.defaultProjectId).toBe('proj-reliability')
+  })
+
+  test('a broken agent reports no default rather than throwing', async () => {
+    await writeAgent('bad', 'name = "Broken"\nrunner = "claude"\ncwd = "/tmp"\n')
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('bad')?.defaultProjectId).toBeNull()
+  })
+})

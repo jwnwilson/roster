@@ -28,6 +28,11 @@ export interface AgentConfig {
   mcpServers: string[]
   /** Kept off the sidebar and the agent grid. Everything else still sees it. */
   hidden: boolean
+  /**
+   * The project new sessions on this agent are filed under, unless the caller
+   * names one. Null when the agent has no default.
+   */
+  defaultProjectId: string | null
   custom?: CustomRunnerSpec
 }
 
@@ -68,6 +73,20 @@ function optionalStringList(
     }
   }
   return value as string[]
+}
+
+/** Absent, or an empty string a person cleared by hand, both read as unset. */
+function optionalString(
+  agentId: string,
+  table: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = table[key]
+  if (value === undefined) return null
+  if (typeof value !== 'string') {
+    throw new AgentConfigError(agentId, `"${key}" must be a string`)
+  }
+  return value.trim() === '' ? null : value
 }
 
 function optionalBoolean(
@@ -120,6 +139,7 @@ export function parseAgentToml(agentId: string, source: string): AgentConfig {
     skills: optionalStringList(agentId, table, 'skills'),
     mcpServers: optionalStringList(agentId, table, 'mcp_servers'),
     hidden: optionalBoolean(agentId, table, 'hidden'),
+    defaultProjectId: optionalString(agentId, table, 'default_project'),
   }
 
   if (!isBuiltin) config.custom = parseCustom(agentId, table)
@@ -137,6 +157,9 @@ export function serializeAgentToml(config: AgentConfig): string {
     mcp_servers: config.mcpServers,
     hidden: config.hidden,
   }
+  // Omitted rather than written empty, so a file with no default says nothing
+  // about one — which is also what clearing it has to leave behind.
+  if (config.defaultProjectId !== null) table['default_project'] = config.defaultProjectId
   if (config.custom) {
     table['custom'] = { command: config.custom.command, args: config.custom.args }
   }

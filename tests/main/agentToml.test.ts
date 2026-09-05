@@ -117,3 +117,35 @@ describe('serializeAgentToml', () => {
     expect(parseAgentToml('x', serializeAgentToml(cfg))).toEqual(cfg)
   })
 })
+
+describe('agent.toml — default project', () => {
+  test('defaults to null when the file does not name one', () => {
+    expect(parseAgentToml('debug', VALID).defaultProjectId).toBeNull()
+  })
+
+  test('reads default_project', () => {
+    const cfg = parseAgentToml('debug', `${VALID}default_project = "proj-reliability"\n`)
+    expect(cfg.defaultProjectId).toBe('proj-reliability')
+  })
+
+  test('reads an empty default_project as no default', () => {
+    // Emptying the line by hand is how a person clears it in the file.
+    expect(parseAgentToml('debug', `${VALID}default_project = ""\n`).defaultProjectId).toBeNull()
+  })
+
+  test('rejects a default_project that is not a string', () => {
+    const bad = `${VALID}default_project = 3\n`
+    expect(() => parseAgentToml('debug', bad)).toThrow(AgentConfigError)
+    expect(() => parseAgentToml('debug', bad)).toThrow(/default_project/)
+  })
+
+  test('round-trips through serialize and parse', () => {
+    const cfg = parseAgentToml('debug', `${VALID}default_project = "proj-reliability"\n`)
+    expect(parseAgentToml('debug', serializeAgentToml(cfg))).toEqual(cfg)
+  })
+
+  test('omits the key entirely when there is no default', () => {
+    const cfg = parseAgentToml('debug', VALID)
+    expect(serializeAgentToml(cfg)).not.toContain('default_project')
+  })
+})

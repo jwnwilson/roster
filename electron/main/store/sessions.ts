@@ -49,6 +49,11 @@ export interface CreateSessionInput {
   from?: { agentId: string; sessionId: string; label: string }
   /** The task this session answers, when it was opened by a mention. */
   taskId?: string
+  /**
+   * The project to file this session under. Already resolved by the caller —
+   * the store files what it is told and infers nothing.
+   */
+  projectId?: string | null
 }
 
 /**
@@ -66,8 +71,9 @@ export class SessionStore {
       title: input.title,
       origin: input.origin,
       status: 'idle',
-      // A new session belongs to no project until somebody files it.
-      projectId: null,
+      // A new session belongs to no project unless the caller files it —
+      // by hand from the config rail, or through the agent's own default.
+      projectId: input.projectId ?? null,
       taskId: input.taskId ?? null,
       createdAt: Date.now(),
       ...(input.from
@@ -86,8 +92,8 @@ export class SessionStore {
       .prepare(
         `INSERT INTO sessions
            (id, agent_id, title, origin, from_agent_id, from_session_id, from_label,
-            status, runner_session_id, task_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            status, runner_session_id, project_id, task_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
@@ -99,6 +105,7 @@ export class SessionStore {
         input.from?.label ?? null,
         session.status,
         null,
+        session.projectId,
         input.taskId ?? null,
         session.createdAt,
       )

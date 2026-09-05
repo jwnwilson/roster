@@ -18,6 +18,7 @@ import { createRosterMcpServer } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
 import { describeActivity, THINKING } from './activity'
+import { resolveSessionProject } from './defaultProject'
 
 /** Per-turn choices the caller makes, rather than the agent's configuration. */
 export interface SendOptions {
@@ -102,8 +103,21 @@ export class SessionManager {
 
   /* ---- session lifecycle ------------------------------------------------ */
 
-  create(agentId: string, title = 'New session'): Session {
-    return this.sessions.create({ agentId, title, origin: 'you' })
+  /**
+   * Opens a session on an agent.
+   *
+   * `projectId` files it explicitly; left out, the agent's default project
+   * decides. See resolveSessionProject for what happens to a default that no
+   * longer resolves.
+   */
+  create(agentId: string, title = 'New session', projectId?: string | null): Session {
+    const resolved = resolveSessionProject({
+      ...(projectId !== undefined ? { explicit: projectId } : {}),
+      agent: this.agents.findById(agentId),
+      ...(this.board ? { projects: this.board.projects } : {}),
+    })
+
+    return this.sessions.create({ agentId, title, origin: 'you', projectId: resolved })
   }
 
   /**
@@ -129,6 +143,13 @@ export class SessionManager {
       title: input.title,
       origin: 'agent',
       from: { agentId: input.fromAgentId, sessionId: input.fromSessionId, label: fromLabel },
+      // Nobody names a project when handing work over, so the receiving
+      // agent's own default decides — exactly as it does for a session opened
+      // from the Agent screen.
+      projectId: resolveSessionProject({
+        agent: to,
+        ...(this.board ? { projects: this.board.projects } : {}),
+      }),
     })
 
     // The receiving session opens with why it exists and a way back.
