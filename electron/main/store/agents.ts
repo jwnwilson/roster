@@ -24,6 +24,8 @@ export interface NewAgentInput {
   systemPrompt: string
   skills: string[]
   mcpServers?: string[]
+  /** Sessions opened on this agent are filed here unless the caller says otherwise. */
+  defaultProjectId?: string | null
 }
 
 /** Agent ids double as directory names, so they must be filesystem-safe. */
@@ -110,6 +112,7 @@ export class AgentStore {
       skills: input.skills,
       mcpServers: input.mcpServers ?? [],
       hidden: false,
+      defaultProjectId: input.defaultProjectId ?? null,
     }
 
     await mkdir(agentDir(id), { recursive: true })
@@ -157,6 +160,10 @@ export class AgentStore {
       ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
       ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
       ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
+      // Null is a value here, not an omission: it is how the default is cleared.
+      ...(patch.defaultProjectId !== undefined
+        ? { defaultProjectId: patch.defaultProjectId }
+        : {}),
     }
 
     // A new working directory must exist before the agent runs there.
@@ -225,6 +232,7 @@ export class AgentStore {
       skills: config.skills,
       mcpServers: config.mcpServers,
       hidden: config.hidden,
+      defaultProjectId: config.defaultProjectId,
       ...(config.custom ? { custom: config.custom } : {}),
       status: unusable ? 'error' : 'idle',
       ...(unusable
@@ -247,6 +255,7 @@ function brokenAgent(id: string, detail: string): Agent {
     mcpServers: [],
     // Never hidden: the error is the entire reason to show this row.
     hidden: false,
+    defaultProjectId: null,
     status: 'error',
     statusDetail: detail,
   }

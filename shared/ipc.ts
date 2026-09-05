@@ -56,7 +56,11 @@ export interface RosterApi {
     listAll(): Promise<Record<string, Session[]>>
     /** Last few lines of each agent's most recent session, for the grid cards. */
     recentByAgent(): Promise<Record<string, TranscriptLine[]>>
-    create(agentId: string, title?: string): Promise<Session>
+    /**
+     * Opens a session. `projectId` files it explicitly — omitted, the agent's
+     * own default project decides, and null means none either way.
+     */
+    create(agentId: string, title?: string, projectId?: string | null): Promise<Session>
     messages(sessionId: string): Promise<Message[]>
     usage(sessionId: string): Promise<Usage | null>
     /**
@@ -290,6 +294,8 @@ export interface AgentPatch {
   mcpServers?: string[]
   cwd?: string
   hidden?: boolean
+  /** Null clears the default; omitted leaves it as it is. */
+  defaultProjectId?: string | null
 }
 
 export interface NewAgentInput {

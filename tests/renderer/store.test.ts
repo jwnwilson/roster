@@ -187,6 +187,7 @@ describe('edit draft', () => {
       mcp: { filesystem: true },
       cwd: '/Users/test/work/api',
       cwdLabel: '~/work/api',
+      defaultProjectId: null,
     })
   })
 
@@ -196,6 +197,15 @@ describe('edit draft', () => {
 
     expect(useRoster.getState().draft?.name).toBe('Triage Agent')
     expect(useRoster.getState().agents[0]?.name).toBe('Debugging Agent')
+  })
+
+  test('snapshots the agent default project into the draft', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })],
+    })
+    useRoster.getState().openEdit()
+
+    expect(useRoster.getState().draft?.defaultProjectId).toBe('proj-reliability')
   })
 
   test('editing the draft does not touch the agent', () => {

@@ -1,6 +1,10 @@
 import { MAX_AGENT_NAME_LENGTH } from '@shared/agentName'
-import type { ModelInfo, RunnerStatus } from '@shared/types'
-import { Field, ToggleChip } from './primitives'
+import type { ModelInfo, Project, RunnerStatus } from '@shared/types'
+import { projectOptionLabel } from '@/state/store'
+import { Field, Select, ToggleChip } from './primitives'
+
+/** The picker's stand-in for "no project", since a select has no null. */
+export const NO_DEFAULT_PROJECT = 'none'
 
 /* -------------------------------------------------------------------------
  * The fields shared by the Edit modal and the New Agent form. The handoff
@@ -210,6 +214,47 @@ export function ChipField({
           ))}
         </div>
       )}
+    </Field>
+  )
+}
+
+interface DefaultProjectFieldProps {
+  /** What the picker offers. An archived project the agent already names belongs here. */
+  projects: Project[]
+  value: string | null
+  onChange: (projectId: string | null) => void
+}
+
+/**
+ * The project this agent's new sessions are filed under.
+ *
+ * A session still gets its project from one place — someone saying so — but
+ * an agent that only ever works on one piece of work should not need saying
+ * so every time. Choosing "No project" clears the default again.
+ *
+ * Hidden entirely when there is nothing to choose: a roster with no projects
+ * has no default to set.
+ */
+export function DefaultProjectField({ projects, value, onChange }: DefaultProjectFieldProps) {
+  if (projects.length === 0) return null
+
+  return (
+    <Field
+      label="Default project"
+      caption="New sessions on this agent are filed here unless another project is chosen."
+    >
+      <Select
+        ariaLabel="Default project"
+        value={value ?? NO_DEFAULT_PROJECT}
+        onChange={(picked) => onChange(picked === NO_DEFAULT_PROJECT ? null : picked)}
+        options={[
+          { value: NO_DEFAULT_PROJECT, label: 'No project' },
+          ...projects.map((project) => ({
+            value: project.id,
+            label: projectOptionLabel(project),
+          })),
+        ]}
+      />
     </Field>
   )
 }

@@ -302,8 +302,10 @@ export function registerIpc(): void {
   )
   ipcMain.handle(CHANNELS.sessionsRecentByAgent, () => requireSessions().recentByAgent())
   ipcMain.handle(CHANNELS.sessionsListAll, () => requireSessions().listAll())
-  ipcMain.handle(CHANNELS.sessionsCreate, (_e, agentId: string, title?: string) =>
-    requireManager().create(agentId, title),
+  ipcMain.handle(
+    CHANNELS.sessionsCreate,
+    (_e, agentId: string, title?: string, projectId?: string | null) =>
+      requireManager().create(agentId, title, projectId),
   )
   ipcMain.handle(CHANNELS.sessionsMessages, (_e, sessionId: string) =>
     requireSessions().messages(sessionId),

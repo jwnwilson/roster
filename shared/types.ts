@@ -65,6 +65,12 @@ export interface Agent {
    * still spends.
    */
   hidden: boolean
+  /**
+   * The project a new session on this agent is filed under when the caller
+   * names none. Null when the agent has no default, and ignored at session
+   * time if it names a project that has since been archived or deleted.
+   */
+  defaultProjectId?: string | null
   /** Only present when runner is not a builtin. */
   custom?: CustomRunnerSpec
   /** Derived, not persisted. */

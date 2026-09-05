@@ -666,6 +666,7 @@ describe('EditAgentModal', () => {
       runners: [aRunner()],
       skills: [aSkill({ name: 'repro-harness' }), aSkill({ name: 'stack-triage' })],
       mcpServers: [anMcpServer({ name: 'filesystem' }), anMcpServer({ name: 'github' })],
+      projects: [],
     })
     useRoster.getState().openEdit()
   })
@@ -825,6 +826,82 @@ describe('EditAgentModal', () => {
 
     expect(await screen.findByText(/EROFS: read-only/)).toBeInTheDocument()
     expect(useRoster.getState().editOpen).toBe(true)
+  })
+
+  test('offers the agent default project, with none chosen by default', () => {
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('none')
+  })
+
+  test('shows the default the agent already has', () => {
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('proj-reliability')
+  })
+
+  test('Save writes the chosen default project back to agent.toml', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.selectOptions(screen.getByLabelText('Default project'), 'proj-reliability')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ defaultProjectId: 'proj-reliability' }),
+      ),
+    )
+  })
+
+  test('clearing the default saves it as none', async () => {
+    const user = userEvent.setup()
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    await user.selectOptions(screen.getByLabelText('Default project'), 'none')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ defaultProjectId: null }),
+      ),
+    )
+  })
+
+  test('keeps an archived default listed, so it does not read as unset', () => {
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-old' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-old', name: 'Old work', archivedAt: 1 })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('proj-old')
+    expect(screen.getByRole('option', { name: 'Old work (archived)' })).toBeInTheDocument()
+  })
+
+  test('hides the field entirely when there are no projects to pick', () => {
+    useRoster.setState({ projects: [] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.queryByLabelText('Default project')).not.toBeInTheDocument()
   })
 
   test('Manage servers leaves for the MCP screen', async () => {

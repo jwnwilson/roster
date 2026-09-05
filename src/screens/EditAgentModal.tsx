@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import type { Agent, ModelInfo } from "@shared/types";
+import { useShallow } from "zustand/shallow";
 import {
   ChipField,
+  DefaultProjectField,
   ModelPicker,
   NameField,
   ProviderPicker,
@@ -9,7 +11,7 @@ import {
   WorkingDirectory,
 } from "@/components/AgentFields";
 import { Modal } from "@/components/primitives";
-import { useRoster } from "@/state/store";
+import { projectPickerProjects, useRoster } from "@/state/store";
 import { messageFor } from "@/lib/errors";
 
 interface EditAgentModalProps {
@@ -32,6 +34,11 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
   const skills = useRoster((s) => s.skills);
   const mcpServers = useRoster((s) => s.mcpServers);
   const go = useRoster((s) => s.go);
+  // The agent's own default stays listed even once archived, so an agent
+  // filed under one does not read as having no default at all.
+  const projectOptions = useRoster(
+    useShallow((s) => projectPickerProjects(s, s.draft?.defaultProjectId ?? null)),
+  );
 
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [saving, setSaving] = useState(false);
@@ -70,6 +77,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           .filter(([, on]) => on)
           .map(([name]) => name),
         cwd: draft.cwd,
+        defaultProjectId: draft.defaultProjectId,
       });
       // Re-read rather than patching locally, so the UI reflects the file.
       setAgents(await window.roster.agents.list());
@@ -141,6 +149,12 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           value={draft.cwdLabel}
           current={draft.cwd}
           onChange={(cwd) => patchDraft({ cwd, cwdLabel: cwd })}
+        />
+
+        <DefaultProjectField
+          projects={projectOptions}
+          value={draft.defaultProjectId}
+          onChange={(defaultProjectId) => patchDraft({ defaultProjectId })}
         />
 
         <ChipField

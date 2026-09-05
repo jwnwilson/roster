@@ -52,6 +52,8 @@ export interface Draft {
   /** Absolute path, with a display label alongside it. */
   cwd: string
   cwdLabel: string
+  /** The project new sessions on this agent are filed under; null for none. */
+  defaultProjectId: string | null
 }
 
 export interface RosterState {
@@ -378,6 +380,7 @@ export const useRoster = create<RosterState>((set, get) => ({
         mcp: Object.fromEntries(agent.mcpServers.map((name) => [name, true])),
         cwd: agent.cwd,
         cwdLabel: agent.cwdLabel,
+        defaultProjectId: agent.defaultProjectId ?? null,
       },
     })
   },
