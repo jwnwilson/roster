@@ -257,25 +257,27 @@ Tests first, per `AGENTS.md`. The suite additions that earn their place:
 
 ## 7. Risks and open questions
 
-**The read-only profile is validated but not proven.** A probe confirmed that
-`--strict-config` accepts `permissions.<name>.extends=":read-only"` alongside
-`--sandbox read-only` — the config parsed and the run proceeded to the API.
-That validates *parsing*, not that a write is refused. Test 3 exists to close
-this, and it is the first thing to run: if `:read-only` turns out not to be a
-valid profile base, the fallback is `--sandbox read-only` with the network
-capability lost, and that trade-off should come back for a decision rather than
-be taken silently.
+**The read-only profile is proven.** ~~Validated but not proven.~~ Verified
+against codex 0.149.0 on 2026-09-06: a run under
+`permissions.roster-plan.extends=":read-only"` was asked to create a file and
+refused it — `zsh:1: operation not permitted: out.txt`, directory left empty.
+`:read-only` is a valid profile base; `--strict-config` accepts it. **The
+fallback below is therefore not needed**, and is kept only as the record of what
+would have happened otherwise: `--sandbox read-only` with network access lost,
+a trade-off that would have gone back to the user rather than being taken
+silently.
+
+**Network under a read-only profile works.** Also verified on the same run:
+`curl https://example.com` returned 200 under the planning profile with
+`network.enabled=true`. This is what justifies §3's choice to keep the profile
+mechanism rather than the bare `--sandbox read-only` flag — research turns keep
+the internet.
 
 **The agent may simply not call the tool.** The chosen approach invites a
 proposal where `--output-schema` would compel one. A planning turn that ends
 with no proposal should leave a comment on the session saying so, rather than
 ending in silence that looks like success. Worth deciding before implementation:
 this document proposes the comment, and does not specify its wording.
-
-**Network under a read-only profile is assumed to work.** The profile sets
-`network.enabled=true`, but that combination is untested here. If read-only
-implies no network in Codex's model, research turns lose the internet and the
-decision in section 3 needs revisiting.
 
 ## 8. Deliberately not in scope
 
