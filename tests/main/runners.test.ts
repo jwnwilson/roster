@@ -6,9 +6,10 @@ import type { Agent } from '@shared/types'
 import { CustomRunner } from '@main/runners/custom'
 import { CodexRunner, codexPermissionOverrides } from '@main/runners/codex'
 import { getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
-import { ClaudeRunner, describeCommand } from '@main/runners/claude'
+import { ClaudeRunner, claudeSkillOptions, describeCommand } from '@main/runners/claude'
 import type { RunnerEvent, StartOptions } from '@main/runners/types'
-import { worktreesDir } from '@main/store/paths'
+import { rosterHome, worktreesDir } from '@main/store/paths'
+import { ROSTER_PLUGIN_NAME } from '@main/store/skillPlugin'
 
 let dir: string
 
@@ -25,7 +26,7 @@ function options(overrides: Partial<StartOptions> = {}): StartOptions {
     cwd: dir,
     model: 'my-model',
     systemPrompt: '',
-    skillPaths: [],
+    skills: [],
     mcpServers: {},
     signal: new AbortController().signal,
     ...overrides,
@@ -49,6 +50,94 @@ async function argvEchoCli(): Promise<string> {
   await chmod(path, 0o755)
   return path
 }
+
+function aSkill(name: string, body = '') {
+  return { name, path: join('/skills', name), body }
+}
+
+describe('CodexRunner — skills reach the CLI, which has no mechanism for them', () => {
+  async function skillOnDisk(name: string, body: string): Promise<string> {
+    const folder = join(dir, 'skills', name)
+    await mkdir(folder, { recursive: true })
+    await writeFile(join(folder, 'SKILL.md'), body, 'utf8')
+    return folder
+  }
+
+  test('inlines the SKILL.md into the prompt it hands codex exec', async () => {
+    const path = await skillOnDisk('repro-harness', '# Repro Harness\n\nWrite the failing test.')
+    const cli = await argvEchoCli()
+    const runner = new CodexRunner()
+    ;(runner as unknown as { binary: string }).binary = cli
+
+    const events = await collect(
+      runner.run('Fix the leak.', options({ skills: [{ name: 'repro-harness', path }] })),
+    )
+    const argv = events.filter((e) => e.kind === 'text').map((e) => e.delta).join('\n')
+
+    expect(argv).toContain('Write the failing test.')
+  })
+
+  test('takes the turn anyway when the SKILL.md has been deleted underneath it', async () => {
+    const cli = await argvEchoCli()
+    const runner = new CodexRunner()
+    ;(runner as unknown as { binary: string }).binary = cli
+
+    const events = await collect(
+      runner.run(
+        'Fix the leak.',
+        options({ skills: [{ name: 'gone', path: join(dir, 'nowhere') }] }),
+      ),
+    )
+
+    expect(events.some((e) => e.kind === 'error')).toBe(false)
+  })
+})
+
+describe('claudeSkillOptions — what makes a skill invocable', () => {
+  test('registers the library as a plugin, since settingSources is empty', () => {
+    // additionalDirectories alone only grants read access. Without a plugin
+    // nothing is discovered, and an enabled skill is a folder the agent can
+    // read rather than one it can invoke.
+    const options = claudeSkillOptions([aSkill('repro-harness')])
+
+    expect(options.plugins).toEqual([
+      { type: 'local', path: rosterHome(), skipMcpDiscovery: true },
+    ])
+  })
+
+  test('does not let the manifest add MCP servers, which Roster owns', () => {
+    expect(claudeSkillOptions([aSkill('a')]).plugins?.[0]?.skipMcpDiscovery).toBe(true)
+  })
+
+  test('enables exactly the skills the agent has, so the rest stay hidden', () => {
+    const options = claudeSkillOptions([aSkill('repro-harness'), aSkill('pr-review')])
+
+    expect(options.skills).toContain('repro-harness')
+    expect(options.skills).toContain('pr-review')
+    expect(options.skills).not.toContain('unused')
+  })
+
+  test('names each skill plugin-qualified as well as bare', () => {
+    // The filter matches a bare name or `plugin:skill`, and which one a
+    // plugin's skills answer to is not something Roster should bet a silent
+    // failure on. Listing both costs nothing: unmatched names are ignored.
+    const options = claudeSkillOptions([aSkill('repro-harness')])
+
+    expect(options.skills).toContain(`${ROSTER_PLUGIN_NAME}:repro-harness`)
+  })
+
+  test('still grants read access, so a linked skill’s own files resolve', () => {
+    const options = claudeSkillOptions([aSkill('repro-harness')])
+
+    expect(options.additionalDirectories).toEqual([join('/skills', 'repro-harness')])
+  })
+
+  test('an agent with no skills is given no plugin and no filter', () => {
+    // An empty `skills` array would mean "enable none", which is right — but
+    // loading a plugin to then filter it to nothing is work for no reason.
+    expect(claudeSkillOptions([])).toEqual({})
+  })
+})
 
 describe('CustomRunner — argument templating', () => {
   test('substitutes the prompt into the declared template', async () => {

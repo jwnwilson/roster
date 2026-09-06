@@ -239,6 +239,50 @@ describe('relativeTime', () => {
 
 /* --------------------------------------------------------------------- mcp */
 
+describe('Skills — a linked skill Roster may not repair', () => {
+  test('says the skill is degraded, since nothing else would tell the user', async () => {
+    // Roster adds frontmatter to its own copies but not to a linked skill,
+    // which lives in a repo the user maintains. Without a warning it degrades
+    // quietly: the model sees a title where the author wrote a summary.
+    useRoster.setState({
+      skills: [
+        aSkill({
+          name: 'my-skill',
+          path: '/skills/my-skill',
+          linkedFrom: '/Users/test/repo/my-skill',
+          needsFrontmatter: true,
+          files: ['SKILL.md'],
+        }),
+      ],
+      agents: [],
+    })
+    installRosterApi({ skills: { read: vi.fn().mockResolvedValue('# My Skill') } })
+
+    render(<Skills />)
+
+    expect(await screen.findByText(/not a description of when to use it/i)).toBeInTheDocument()
+  })
+
+  test('says nothing about a linked skill that already declares itself', async () => {
+    useRoster.setState({
+      skills: [
+        aSkill({
+          name: 'my-skill',
+          path: '/skills/my-skill',
+          linkedFrom: '/Users/test/repo/my-skill',
+          files: ['SKILL.md'],
+        }),
+      ],
+      agents: [],
+    })
+    installRosterApi({ skills: { read: vi.fn().mockResolvedValue('# My Skill') } })
+
+    render(<Skills />)
+
+    expect(screen.queryByText(/not a description of when to use it/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('Skills — adding one you already have', () => {
   beforeEach(() => {
     useRoster.setState({ skills: [] })

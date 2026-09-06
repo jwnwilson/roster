@@ -377,6 +377,15 @@ export interface Skill {
    * user's own file and removing the skill only removes the link.
    */
   linkedFrom?: string
+  /**
+   * Set when the skill has no frontmatter, so no runner will load it.
+   *
+   * Only ever true for a linked skill. Roster repairs its own copies on load,
+   * but a linked skill's SKILL.md lives in a repo the user maintains and
+   * writing into someone else's checkout is not Roster's call — so it is
+   * reported instead, where the person who owns the file can fix it.
+   */
+  needsFrontmatter?: boolean
   files: string[]
   lastEditedMs: number
 }

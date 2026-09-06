@@ -8,10 +8,12 @@ import { SessionStore } from '@main/store/sessions'
 import { SkillStore } from '@main/store/skills'
 import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
+import { ROSTER_PLUGIN_NAME, writeSkillPluginManifest } from '@main/store/skillPlugin'
 import {
   agentsDir,
   agentWorkspaceDir,
   mcpConfigPath,
+  pluginManifestPath,
   skillsDir,
   workspaceDir,
   worktreesDir,
@@ -237,7 +239,9 @@ describe('SkillStore', () => {
     await store.load()
 
     const path = join(skillsDir(), 'alpha', 'SKILL.md')
-    expect(await store.read(path)).toBe('# A')
+    // load() has repaired the missing frontmatter by now, so the body is what
+    // round-trips rather than the whole file.
+    expect(await store.read(path)).toContain('# A')
 
     await store.write(path, '# Changed')
     expect(await readFile(path, 'utf8')).toBe('# Changed')
@@ -387,6 +391,133 @@ describe('seedIfEmpty', () => {
   })
 })
 
+/* ------------------------------------------- skills: loadable by a runner */
+
+describe('the skill library as a Claude plugin', () => {
+  test('writes a manifest, since a directory of skills is not discovered without one', async () => {
+    await new SkillStore().load()
+
+    const manifest = JSON.parse(await readFile(pluginManifestPath(), 'utf8')) as {
+      name: string
+      skills: string[]
+    }
+    expect(manifest.name).toBe(ROSTER_PLUGIN_NAME)
+    expect(manifest.skills).toEqual(['./skills/'])
+  })
+
+  test('leaves a manifest the user has edited alone', async () => {
+    await mkdir(dirname(pluginManifestPath()), { recursive: true })
+    await writeFile(pluginManifestPath(), '{ "name": "mine" }', 'utf8')
+
+    await new SkillStore().load()
+
+    expect(await readFile(pluginManifestPath(), 'utf8')).toBe('{ "name": "mine" }')
+  })
+
+  test('seeding writes one too, so a fresh install is loadable before anything else runs', async () => {
+    await seedIfEmpty(mcpConfigPath())
+
+    await expect(access(pluginManifestPath())).resolves.toBeUndefined()
+  })
+})
+
+describe('SkillStore.load — frontmatter repair', () => {
+  async function writeSkill(name: string, body: string): Promise<string> {
+    const dir = join(skillsDir(), name)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'SKILL.md'), body, 'utf8')
+    return join(dir, 'SKILL.md')
+  }
+
+  const BARE = '# Repro Harness\n\nTurn a bug into a test.\n'
+
+  test('gives a bare SKILL.md the frontmatter that names and describes it', async () => {
+    const file = await writeSkill('repro-harness', BARE)
+
+    await new SkillStore().load()
+
+    const written = await readFile(file, 'utf8')
+    expect(written).toContain('name: repro-harness')
+    expect(written).toContain('description: "Turn a bug into a test."')
+  })
+
+  test('keeps the body, since the repair adds and never rewrites', async () => {
+    const body = `${BARE}\n## Steps\n\n1. Read the trace.\n`
+    const file = await writeSkill('repro-harness', body)
+
+    await new SkillStore().load()
+
+    expect((await readFile(file, 'utf8')).endsWith(body)).toBe(true)
+  })
+
+  test('leaves a skill that already declares itself byte-identical', async () => {
+    const body = '---\nname: mine\ndescription: "Already fine."\n---\n\n# Mine\n'
+    const file = await writeSkill('mine', body)
+
+    await new SkillStore().load()
+
+    expect(await readFile(file, 'utf8')).toBe(body)
+  })
+
+  test('is idempotent, so a second load does not stack a second block', async () => {
+    const file = await writeSkill('repro-harness', BARE)
+
+    await new SkillStore().load()
+    const first = await readFile(file, 'utf8')
+    await new SkillStore().load()
+
+    expect(await readFile(file, 'utf8')).toBe(first)
+  })
+
+  test('never writes into a linked skill, which lives in a repo the user owns', async () => {
+    // Roster links rather than copies, so the file is inside someone else's
+    // checkout and adding to it is not Roster's call.
+    const outside = join(home, 'elsewhere', 'my-skill')
+    await mkdir(outside, { recursive: true })
+    const body = '# My Skill\n\nNo frontmatter here.\n'
+    await writeFile(join(outside, 'SKILL.md'), body, 'utf8')
+
+    const store = new SkillStore()
+    await store.load()
+    await store.link(outside)
+
+    expect(await readFile(join(outside, 'SKILL.md'), 'utf8')).toBe(body)
+  })
+
+  test('flags a linked skill it may not repair, so it is not silently degraded', async () => {
+    const outside = join(home, 'elsewhere', 'my-skill')
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'SKILL.md'), '# My Skill\n\nNo frontmatter.\n', 'utf8')
+
+    const store = new SkillStore()
+    await store.load()
+    const linked = await store.link(outside)
+
+    expect(linked.needsFrontmatter).toBe(true)
+  })
+
+  test('does not flag a linked skill that already declares itself', async () => {
+    const outside = join(home, 'elsewhere', 'fine')
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'SKILL.md'), '---\nname: fine\ndescription: "Ok."\n---\n', 'utf8')
+
+    const store = new SkillStore()
+    await store.load()
+    const linked = await store.link(outside)
+
+    expect(linked.needsFrontmatter).toBeUndefined()
+  })
+
+  test('never flags one of Roster’s own, which it repairs instead', async () => {
+    await writeSkill('mine', '# Mine\n\nNo frontmatter.\n')
+
+    const store = new SkillStore()
+    await store.load()
+
+    expect(store.findAll()[0]?.needsFrontmatter).toBeUndefined()
+  })
+})
+
 /* --------------------------------------------------- skills: create/reveal */
 
 describe('SkillStore.create', () => {
@@ -398,7 +529,11 @@ describe('SkillStore.create', () => {
 
     expect(created.name).toBe('repro-harness')
     expect(created.files).toEqual(['SKILL.md'])
-    expect(await store.read(join(created.path, 'SKILL.md'))).toContain('# Repro Harness')
+    const body = await store.read(join(created.path, 'SKILL.md'))
+    expect(body).toContain('# Repro Harness')
+    // A new skill has to be loadable from the moment it is created, not only
+    // after the next load() repairs it.
+    expect(body).toContain('name: repro-harness')
   })
 
   test('slugifies the name, since it is also a directory name', async () => {

@@ -59,12 +59,27 @@ export type RunnerEvent =
   | { kind: 'done'; runnerSessionId: string }
   | { kind: 'error'; message: string }
 
+/**
+ * A skill an agent has turned on.
+ *
+ * Identity only. What a runner does with it differs — Claude enables it by
+ * name through its own skill mechanism, Codex has no such mechanism and has to
+ * be given the text — so the runner that needs the SKILL.md reads it, rather
+ * than every turn paying for a file only one of them will look at.
+ */
+export interface EnabledSkill {
+  /** The name the library, the agent's `skills` list and the runner all use. */
+  name: string
+  /** Absolute path to the skill folder. */
+  path: string
+}
+
 export interface StartOptions {
   cwd: string
   model: string
   systemPrompt: string
-  /** Absolute paths to skill folders enabled for this agent. */
-  skillPaths: string[]
+  /** The skills enabled for this agent, in the order the agent names them. */
+  skills: EnabledSkill[]
   /** MCP servers enabled for this agent, keyed by name. */
   mcpServers: Record<string, McpLaunchSpec>
   /**

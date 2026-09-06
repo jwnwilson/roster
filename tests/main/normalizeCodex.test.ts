@@ -154,6 +154,58 @@ describe('composePrompt', () => {
   })
 })
 
+describe('composePrompt — skills, which Codex has no mechanism for', () => {
+  function aSkill(name: string, body: string) {
+    return { name, path: `/skills/${name}`, body }
+  }
+
+  test('inlines an enabled skill, since codex exec cannot load one', () => {
+    const prompt = composePrompt('Fix the leak.', '', [
+      aSkill('repro-harness', '# Repro Harness\n\nWrite the failing test first.'),
+    ])
+
+    expect(prompt).toContain('Write the failing test first.')
+    expect(prompt).toContain('repro-harness')
+  })
+
+  test('says the block is a skill, so it does not read as the user talking', () => {
+    const prompt = composePrompt('Fix the leak.', '', [aSkill('repro-harness', '# R')])
+
+    expect(prompt).toMatch(/skills available to you/i)
+  })
+
+  test('keeps the user’s own prompt last, where the model expects the ask', () => {
+    const prompt = composePrompt('Fix the leak.', 'House rules.', [aSkill('a', '# A')])
+
+    expect(prompt.endsWith('Fix the leak.')).toBe(true)
+  })
+
+  test('changes nothing when the agent has no skills', () => {
+    expect(composePrompt('Fix the leak.', '', [])).toBe('Fix the leak.')
+  })
+
+  test('names a skill it cannot afford to inline rather than cutting it in half', () => {
+    // Half a skill is worse than a pointer to one: the steps that got cut are
+    // the ones the model would have followed.
+    const big = aSkill('huge', 'x'.repeat(20_000))
+    const small = aSkill('small', '# Small\n\nShort and useful.')
+
+    const prompt = composePrompt('Go.', '', [big, small])
+
+    expect(prompt).toContain('huge')
+    expect(prompt).not.toContain('x'.repeat(20_000))
+  })
+
+  test('spends the budget in order, so the first skills listed are the ones inlined', () => {
+    const small = aSkill('small', '# Small\n\nShort and useful.')
+    const big = aSkill('huge', 'x'.repeat(20_000))
+
+    const prompt = composePrompt('Go.', '', [small, big])
+
+    expect(prompt).toContain('Short and useful.')
+  })
+})
+
 describe('normalizeCodexMessage — token totals', () => {
   test('does not add cached tokens, which Codex counts inside input', () => {
     // 29,223 input already contains the 24,064 cache hits. Adding them —

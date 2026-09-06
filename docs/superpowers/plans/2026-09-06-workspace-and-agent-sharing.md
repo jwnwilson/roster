@@ -176,6 +176,14 @@ skills identically whether it is in its own `~/roster/workspace/tech-lead` or in
 `~/work/api`. That is the "global roster files from any working dir"
 requirement, discharged directly.
 
+**Measured, not assumed.** Asking the SDK what it discovered, against a real
+`~/roster` layout with `settingSources: []`:
+
+- with the plugin — one skill, `roster:repro-harness`, aliased `repro-harness`;
+- with today's `additionalDirectories` alone — nothing at all.
+
+The bug and the fix are both confirmed.
+
 **Tests:** the SDK is handed the plugin entry and the agent's skill names; an
 agent with no skills is handed neither; the manifest is written once and a
 manifest the user has edited is not overwritten.
@@ -187,12 +195,30 @@ manifest the user has edited is not overwritten.
 ### 3a. No frontmatter
 
 Both the five seeded skills (`store/seed.ts`) and `starterSkill()`
-(`store/skills.ts:292`) begin at `# Title`. A skill needs YAML frontmatter with
-`name` and `description`; without it the file is not a skill even once discovery
-works. Confirmed against the live install — every `~/roster/skills/*/SKILL.md`
-starts with a heading.
+(`store/skills.ts:292`) begin at `# Title`. Confirmed against the live install —
+every `~/roster/skills/*/SKILL.md` starts with a heading.
 
-So Bug 2's fix alone would still surface nothing.
+**Corrected after measuring.** This section originally claimed such a file would
+not load at all. It does load. What was actually measured, by asking the SDK what
+it discovered (`supportedCommands()`, `settingSources: []`, plugin loaded):
+
+| SKILL.md | Discovered as | Description the model sees | Bare-name alias |
+|---|---|---|---|
+| with frontmatter | `roster:repro-harness` | the author's own summary | **yes** |
+| without | `roster:repro-harness` | `Repro Harness` — the H1 alone | **no** |
+
+So frontmatter buys two things, neither of them "loads at all":
+
+1. **A real description.** That string is what the model reads when deciding
+   whether a skill applies. "Repro Harness" where the author wrote "Turn a bug
+   report into a minimal failing test before touching source" is the difference
+   between being chosen and being passed over.
+2. **The bare-name alias.** Without frontmatter the skill answers only to
+   `roster:<name>`, and an agent's own `skills` list holds bare names.
+
+Point 2 is why Bug 2 sends both name forms to the `skills` filter: Roster repairs
+its own copies, but cannot repair a linked skill, and an unmatched name is ignored
+so listing both costs nothing.
 
 Going forward, `starterSkill()` and each `SEED_SKILLS` entry emit:
 
@@ -322,8 +348,9 @@ bundle names the bad field.
 
 ## Order and risk
 
-Bugs 2 and 3 are one change and land together: 2 without 3 surfaces nothing, 3
-without 2 is dead weight. Bug 1 is independent and can go first. The export
+Bugs 2 and 3 land together: 3 without 2 is dead weight, and 2 without 3 loads
+every skill under a qualified name only, with the H1 standing in for a
+description. Neither half is worth shipping alone. Bug 1 is independent and can go first. The export
 feature depends only on Bug 1 and can go last or be dropped.
 
 Nothing migrates or moves user data. Three writes touch existing user files, all

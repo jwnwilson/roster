@@ -19,7 +19,12 @@ import type { ProjectStore } from '../store/projects'
 import type { PlanStore } from '../store/plans'
 import type { ProjectNotesStore } from '../store/projectNotes'
 import { getRunner } from '../runners/registry'
-import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
+import type {
+  ApprovalDecision,
+  EnabledSkill,
+  McpLaunchSpec,
+  RunnerEvent,
+} from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
 import { CodexRunner } from '../runners/codex'
 import { McpBridge } from '../runners/mcpBridge'
@@ -408,7 +413,7 @@ export class SessionManager {
         cwd: agent.cwd,
         model: agent.model,
         systemPrompt: agent.systemPrompt,
-        skillPaths: this.skillPathsFor(agent),
+        skills: this.skillsFor(agent),
         mcpServers,
         signal: run.abort.signal,
         ...(options.planMode === true ? { planMode: true } : {}),
@@ -1044,13 +1049,19 @@ export class SessionManager {
     }
   }
 
-  /** Only the skills this agent has enabled are exposed to its runner. */
-  private skillPathsFor(agent: Agent): string[] {
+  /**
+   * Only the skills this agent has enabled, as identity for the runner.
+   *
+   * Deliberately does not read any SKILL.md. Claude never needs the text — it
+   * loads the skill itself — so reading one here would put file I/O in front
+   * of every turn for the benefit of the runner that does not take it.
+   */
+  private skillsFor(agent: Agent): EnabledSkill[] {
     const enabled = new Set(agent.skills)
     return this.skills
       .findAll()
       .filter((skill) => enabled.has(skill.name))
-      .map((skill) => resolve(skill.path))
+      .map((skill) => ({ name: skill.name, path: resolve(skill.path) }))
   }
 
   /**

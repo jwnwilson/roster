@@ -54,6 +54,20 @@ export function agentWorkspaceDir(agentId: string): string {
 }
 
 /**
+ * The manifest that makes the skill library loadable.
+ *
+ * Claude Code discovers skills from settings sources or from a plugin, and
+ * Roster deliberately loads neither the user's settings nor the project's —
+ * an agent's skills are what its agent.toml says, not what happens to be on
+ * the machine. So Roster presents its own library as a local plugin, and this
+ * is the manifest that describes it. `skills/` is already exactly the layout a
+ * plugin uses, so nothing has to move.
+ */
+export function pluginManifestPath(): string {
+  return join(rosterHome(), '.claude-plugin', 'plugin.json')
+}
+
+/**
  * Where a plan's Markdown lives, one file per version.
  *
  * A plan is something you read, keep and answer, so it is a file rather than

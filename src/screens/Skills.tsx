@@ -317,6 +317,10 @@ export function Skills() {
         />
 
         <aside className="w-meta flex flex-none flex-col gap-[16px] border-l border-line bg-rail p-[16px]">
+          {openRow?.skill.needsFrontmatter === true ? (
+            <FrontmatterWarning skill={openRow.skill} />
+          ) : null}
+
           <section className="flex flex-col gap-[8px]">
             <SectionLabel>Used by</SectionLabel>
             {openRow
@@ -755,3 +759,30 @@ function buildTree(skills: Skill[]): TreeRow[] {
   ])
 }
 
+/**
+ * Says that a linked skill is only half-loadable, and why Roster left it.
+ *
+ * Roster adds the frontmatter its own copies are missing, but a linked skill's
+ * SKILL.md lives in a repo the user maintains — writing into someone else's
+ * checkout to suit Roster is not a call Roster gets to make. Without this the
+ * skill degrades quietly: the model sees only its title where the author wrote
+ * a summary, and it stops answering to its own bare name.
+ */
+function FrontmatterWarning({ skill }: { skill: Skill }) {
+  return (
+    <section className="flex flex-col gap-[6px] rounded-field border border-line-card bg-card p-[10px]">
+      <SectionLabel>Missing frontmatter</SectionLabel>
+      <p className="m-0 text-md leading-[1.6] text-muted-2">
+        Agents see only this skill’s title, not a description of when to use it,
+        so it is far likelier to be passed over.
+      </p>
+      <p className="m-0 text-md leading-[1.6] text-muted-2">
+        Roster repairs its own copies but leaves a linked skill alone — this one
+        lives in {skill.linkedFrom ?? 'a folder you own'}. Add a{' '}
+        <span className="font-mono">name</span> and{' '}
+        <span className="font-mono">description</span> block at the top of its
+        SKILL.md.
+      </p>
+    </section>
+  )
+}
