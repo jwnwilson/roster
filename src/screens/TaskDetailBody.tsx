@@ -71,6 +71,7 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
   const setTaskSessions = useRoster((s) => s.setTaskSessions)
   const openAgent = useRoster((s) => s.openAgent)
   const closeTask = useRoster((s) => s.closeTask)
+  const openWorkflowForTask = useRoster((s) => s.openWorkflowForTask)
   const attached = useRoster(useShallow((s) => s.taskSessions[task.id] ?? NO_TASK_SESSIONS))
 
   const [error, setError] = useState<string | null>(null)
@@ -244,6 +245,18 @@ export function TaskDetailBody({ task, showKey = false }: TaskDetailBodyProps) {
                 )
               })}
             </div>
+
+            {/* The list says who; the graph says in what order, and picks up
+                the agents these ones handed the work on to, which have no
+                link of their own and so never appear above. */}
+            <button
+              type="button"
+              onClick={() => openWorkflowForTask(task)}
+              className="mt-[6px] cursor-pointer rounded-chip border border-line-input bg-transparent px-[8px] py-[4px] text-left text-base text-muted-2 hover:border-line-hover-strong hover:text-ink-3"
+              data-hoverable
+            >
+              View workflow
+            </button>
           </Rail>
         ) : null}
 

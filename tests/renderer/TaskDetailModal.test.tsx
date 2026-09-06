@@ -609,3 +609,35 @@ describe('TaskDetailModal — posting a comment once', () => {
     expect(await screen.findByText(/database is locked/)).toBeInTheDocument()
   })
 })
+
+describe('TaskDetailModal — following the work', () => {
+  const LINK = {
+    taskId: 'ROS-101',
+    agentId: 'debugging',
+    sessionId: 'session-1',
+    createdAt: 1_700_000_000_000,
+  }
+
+  test('offers the workflow once a session is attached', async () => {
+    // Arrange
+    installRosterApi({ tasks: { sessions: vi.fn().mockResolvedValue([LINK]) } })
+    render(<TaskDetailModal />)
+
+    // Act
+    await userEvent.click(await screen.findByRole('button', { name: 'View workflow' }))
+
+    // Assert — the graph, filtered to this task, with the modal out of the way.
+    const state = useRoster.getState()
+    expect(state.screen).toBe('grid')
+    expect(state.gridView).toBe('workflow')
+    expect(state.workflowTaskId).toBe('ROS-101')
+    expect(state.openTaskId).toBeNull()
+  })
+
+  test('no sessions, nothing to follow', async () => {
+    render(<TaskDetailModal />)
+
+    await screen.findByText('ROS-101')
+    expect(screen.queryByRole('button', { name: 'View workflow' })).not.toBeInTheDocument()
+  })
+})
