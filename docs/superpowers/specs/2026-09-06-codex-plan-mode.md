@@ -273,13 +273,22 @@ silently.
 mechanism rather than the bare `--sandbox read-only` flag — research turns keep
 the internet.
 
-**The agent may simply not call the tool.** The chosen approach invites a
+**The agent may simply not call the tool. — DEFERRED, deliberately.** The chosen approach invites a
 proposal where `--output-schema` would compel one. A planning turn that ends
 with no proposal should leave a comment on the session saying so, rather than
 ending in silence that looks like success. Worth deciding before implementation:
 this document proposes the comment, and does not specify its wording.
 
 ## 8. Deliberately not in scope
+
+**Deferral recorded 2026-09-06**, after the implementation's final review flagged
+it as a dropped stitch. The session comment is NOT implemented on the first
+branch. The reasoning: it needs a reliable "the turn ended and no plan arrived"
+signal, and the turn-end path is shared with every other kind of turn, so getting
+it wrong would post spurious comments on ordinary work. Until it exists, a
+planning turn that produces nothing looks the same as one that was never asked —
+which is the known cost of choosing a tool call over `--output-schema`, and is
+covered for now by manual verification step 4.
 
 - **Custom runners.** `CustomRunner` ignores `options.mcpServers` entirely, so
   it cannot be given the bridge without building one for it, and it ignores
