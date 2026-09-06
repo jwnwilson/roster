@@ -39,6 +39,7 @@ export type RunnerEvent =
   | {
       kind: 'usage'
       inputTokens: number
+      cachedInputTokens?: number
       outputTokens: number
       /**
        * Every token the turn consumed, cache included. Each normalizer works

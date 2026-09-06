@@ -23,7 +23,7 @@ import {
 } from '@/components/primitives'
 import { FirstRunCard } from '@/components/FirstRunCard'
 import { ProjectFilter } from '@/components/ProjectFilter'
-import { formatCost, formatTokens } from '@/state/format'
+import { ESTIMATE_EXPLANATION, formatUsageCost, formatTokens } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { ManageAgentsModal } from './ManageAgentsModal'
 
@@ -175,11 +175,15 @@ function AgentCard({ agent }: AgentCardProps) {
 function Spend({ agentId }: { agentId: string }) {
   const tokens = useRoster((s) => s.agentUsage[agentId]?.tokens ?? 0)
   const costUsd = useRoster((s) => s.agentUsage[agentId]?.costUsd ?? 0)
+  const hasEstimatedCost = useRoster((s) => s.agentUsage[agentId]?.hasEstimatedCost ?? false)
+  const hasUnavailableCost = useRoster((s) => s.agentUsage[agentId]?.hasUnavailableCost ?? false)
 
   return (
     <>
       <span className="ml-auto flex-none">{formatTokens(tokens)}</span>
-      <span className="flex-none">{formatCost(costUsd)}</span>
+      <span className="flex-none" title={hasEstimatedCost ? ESTIMATE_EXPLANATION : undefined}>
+        {formatUsageCost(costUsd, hasEstimatedCost, hasUnavailableCost)}
+      </span>
     </>
   )
 }
@@ -322,7 +326,7 @@ function StatusBar() {
       </span>
 
       <span className="ml-auto font-mono text-xs text-dim-2">
-        roster {formatTokens(totals.tokens)} · {formatCost(totals.costUsd)}
+        roster {formatTokens(totals.tokens)} · {formatUsageCost(totals.costUsd, totals.hasEstimatedCost, totals.hasUnavailableCost)}
       </span>
     </footer>
   )

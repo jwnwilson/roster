@@ -239,13 +239,25 @@ export interface Usage {
   outputTokens: number
   /** Every token consumed, cache included; see the runner event of the same name. */
   totalTokens: number
+  /** Cache hits are a subset of Codex input tokens. */
+  cachedInputTokens?: number
+  /** Whether this is provider-billed, an API-equivalent estimate, or unknown. */
+  costType?: CostType
+  /** Model used to calculate an estimate, retained for historic stability. */
+  model?: string | null
+  /** Version of the rate table used to calculate an estimate. */
+  rateTableVersion?: string | null
   costUsd: number
 }
+
+export type CostType = 'actual' | 'estimated' | 'unavailable'
 
 /** What one agent has spent, summed across its sessions. */
 export interface AgentUsage {
   tokens: number
   costUsd: number
+  hasEstimatedCost?: boolean
+  hasUnavailableCost?: boolean
 }
 
 /**

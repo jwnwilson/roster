@@ -31,6 +31,7 @@ import { createMemoryMcpServer, type MemoryTools } from '../runners/memoryTools'
 import { describeActivity, THINKING } from './activity'
 import { resolveSessionProject } from './defaultProject'
 import { buildProjectBrief } from './projectBrief'
+import { estimateCodexCost } from '../costs/codex'
 
 /** Per-turn choices the caller makes, rather than the agent's configuration. */
 export interface SendOptions {
@@ -103,6 +104,7 @@ interface ActiveRun {
   /** Approvals raised during this run. */
   approvals: Map<string, Approval>
   runnerId: string
+  model: string
   /** Prose received but not yet written or broadcast. */
   pendingText: string
   flushTimer: NodeJS.Timeout | null
@@ -362,6 +364,7 @@ export class SessionManager {
       toolStartedAt: new Map(),
       approvals: new Map(),
       runnerId: agent.runner,
+      model: agent.model,
       pendingText: '',
       flushTimer: null,
       done,
@@ -657,12 +660,24 @@ export class SessionManager {
         return
 
       case 'usage': {
+        const estimated = run.runnerId === 'codex'
+          ? estimateCodexCost({
+              model: run.model,
+              inputTokens: event.inputTokens,
+              cachedInputTokens: event.cachedInputTokens,
+              outputTokens: event.outputTokens,
+            })
+          : null
         const usage: Usage = {
           sessionId,
           inputTokens: event.inputTokens,
           outputTokens: event.outputTokens,
           totalTokens: event.totalTokens,
-          costUsd: event.costUsd,
+          ...(event.cachedInputTokens !== undefined ? { cachedInputTokens: event.cachedInputTokens } : {}),
+          costUsd: estimated?.costUsd ?? event.costUsd,
+          costType: estimated?.costType ?? 'actual',
+          model: estimated?.model ?? null,
+          rateTableVersion: estimated?.rateTableVersion ?? null,
         }
         // Persist as well as emit, or the totals vanish on reload.
         this.usage.record(usage)

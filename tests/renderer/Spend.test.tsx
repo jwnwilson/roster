@@ -113,6 +113,31 @@ describe('Spend', () => {
     expect(screen.getAllByText('$0.00').length).toBeGreaterThan(0)
   })
 
+  test('labels estimated totals and exposes the API-equivalent explanation', () => {
+    useRoster.setState({
+      runners: [aRunner({ id: 'codex', provider: 'OpenAI' })],
+      agents: [anAgent({ id: 'review', name: 'Review Agent', runner: 'codex', model: 'gpt-5.1-codex' })],
+      agentUsage: { review: { tokens: 100, costUsd: 1.25, hasEstimatedCost: true } },
+      spendByProject: { [NO_PROJECT]: { tokens: 100, costUsd: 1.25, hasEstimatedCost: true } },
+    })
+    render(<Spend />)
+
+    expect(screen.getByText('$1.25 estimated across all agents')).toHaveAttribute('title', 'Estimated from token usage; not an invoiced ChatGPT charge.')
+  })
+
+  test('renders an unknown model as estimate unavailable, never $0.00', () => {
+    useRoster.setState({
+      runners: [aRunner({ id: 'codex', provider: 'OpenAI' })],
+      agents: [anAgent({ id: 'review', runner: 'codex', model: 'unknown-codex' })],
+      agentUsage: { review: { tokens: 100, costUsd: 0, hasUnavailableCost: true } },
+      spendByProject: {},
+    })
+    render(<Spend />)
+
+    expect(screen.getAllByText('Estimate unavailable').length).toBeGreaterThan(0)
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
   test('is not narrowed by the project filter the board and grid share', () => {
     seedRoster()
     useRoster.setState({ projectFilter: 'api' })
@@ -137,5 +162,13 @@ describe('Spend — reachable from the sidebar', () => {
     await userEvent.click(spend)
 
     expect(useRoster.getState().screen).toBe('spend')
+  })
+
+  test('labels an estimated sidebar total', async () => {
+    const { Sidebar } = await import('@/components/Sidebar')
+    useRoster.setState({ agentUsage: { review: { tokens: 100, costUsd: 0.5, hasEstimatedCost: true } } })
+    render(<Sidebar />)
+
+    expect(screen.getByText('$0.50 estimated')).toBeInTheDocument()
   })
 })
