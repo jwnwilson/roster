@@ -9,6 +9,7 @@ import { MEMORY_SERVER, PLANS_SERVER, ROSTER_SERVER, TASKS_SERVER } from '@share
 import type { McpLaunchSpec, StartOptions } from '@main/runners/types'
 // Type only, so naming it here cannot load the module before the mocks below.
 import type { McpBridge as Bridge } from '@main/runners/mcpBridge'
+import type { SendOptions } from '@main/sessions/manager'
 
 const runnerStub = {
   id: 'codex',
@@ -64,11 +65,23 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 let agents: Agent[]
 let home: string
 let manager: InstanceType<typeof SessionManager>
+let plans: InstanceType<typeof PlanStore>
+let sessions: InstanceType<typeof SessionStore>
 let started: StartOptions | null
 
 /** The tools the bridge was serving while the turn was running. */
 let served: { name: string; annotations: Record<string, unknown> }[]
 let bridgeAddress: string | null
+/**
+ * The reply to a `propose_plan` call made from inside a turn.
+ *
+ * Module-level, matching `started`/`served`/`bridgeAddress` above: a
+ * function-local `let` reassigned only from inside a nested closure hits a
+ * control-flow narrowing bug in this project's pinned TypeScript 7 compiler,
+ * which reports the post-call read as type `never`. Module scope sidesteps
+ * it, and costs nothing extra since it is reset per test in `beforeEach`.
+ */
+let callResult: { isError?: boolean; content: { text: string }[] } | null
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'roster-codexsession-'))
@@ -77,6 +90,7 @@ beforeEach(async () => {
   started = null
   served = []
   bridgeAddress = null
+  callResult = null
 
   Object.setPrototypeOf(runnerStub, CodexRunner.prototype)
   runnerStub.run.mockReset()
@@ -95,17 +109,19 @@ beforeEach(async () => {
   })
 
   const db = openDatabase(':memory:')
+  plans = new PlanStore(db)
+  sessions = new SessionStore(db)
   manager = new SessionManager(
     {
       findAll: () => agents,
       findById: (id: string) => agents.find((entry) => entry.id === id) ?? null,
     } as never,
-    new SessionStore(db),
+    sessions,
     { findAll: () => [] } as never,
     { findAll: () => [] } as never,
     new UsageStore(db),
     { tasks: new TaskStore(db, () => null), projects: new ProjectStore(db) },
-    new PlanStore(db),
+    plans,
     new ProjectNotesStore(),
   )
 })
@@ -137,9 +153,46 @@ function listOverBridge(
   })
 }
 
-async function run(agentId = 'codey'): Promise<void> {
+async function run(agentId = 'codey', options: SendOptions = {}): Promise<void> {
   const session = manager.create(agentId, 'Work')
-  await manager.send(session.id, 'go')
+  await manager.send(session.id, 'go', options)
+}
+
+/**
+ * Calls one tool over the bridge, as the stdio child would.
+ *
+ * The bridge's `answer()` (mcpBridge.ts) spreads the handler's result
+ * straight into the reply — `{ id, ...result }` — so `content` and
+ * `isError` sit at the top level of the JSON line. There is no `.result`
+ * wrapper to unwrap, unlike `list`'s `.tools`.
+ */
+function callOverBridge(
+  spec: McpLaunchSpec,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ isError?: boolean; content: { text: string }[] }> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(spec.env['ROSTER_MCP_SOCKET'] ?? '')
+    let buffer = ''
+    socket.on('error', reject)
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString()
+      if (!buffer.includes('\n')) return
+      socket.destroy()
+      resolve(JSON.parse(buffer.slice(0, buffer.indexOf('\n'))))
+    })
+    socket.on('connect', () =>
+      socket.write(
+        `${JSON.stringify({
+          id: 1,
+          op: 'call',
+          name,
+          args,
+          token: spec.env['ROSTER_MCP_TOKEN'],
+        })}\n`,
+      ),
+    )
+  })
 }
 
 describe('a Codex agent’s MCP servers', () => {
@@ -202,6 +255,122 @@ describe('which of Roster’s tools a Codex agent gets', () => {
     await run()
 
     expect(served.map((tool) => tool.name)).not.toContain('recall')
+  })
+})
+
+describe('a Codex agent in plan mode', () => {
+  test('is given propose_plan even when it has not enabled the plans server', async () => {
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
+
+    // Act
+    await run('codey', { planMode: true })
+
+    // Assert
+    expect(served.map((tool) => tool.name)).toContain('propose_plan')
+  })
+
+  test('gets neither plan tool on an ordinary turn with no plans server', async () => {
+    agents = [agent({ mcpServers: [] })]
+
+    await run('codey')
+
+    expect(served.map((tool) => tool.name)).not.toContain('propose_plan')
+    expect(served.map((tool) => tool.name)).not.toContain('record_pull_request')
+  })
+
+  test('keeps the plan tools for a build turn, whose plan still reads as a draft when the gate runs', async () => {
+    // The build turn is not a plan-mode turn. Without this the agent could
+    // never report its pull request, and settleBuild would cycle the plan
+    // back to draft — the exact trap this work closes.
+    //
+    // `capture` below leaves the plan at its default status, 'draft' — this
+    // is deliberate, not an oversight. In the real flow, planFlow.approve()
+    // enqueues the build turn before it marks the plan 'building', so the
+    // gate in planToolsFor always sees a draft plan at this point. If that
+    // gate were ever narrowed to check `status === 'building'` instead of
+    // "a plan exists for this session", this test would fail — that is
+    // exactly the regression it exists to catch.
+    agents = [agent({ mcpServers: [] })]
+    const session = manager.create('codey', 'Work')
+    plans.capture({ sessionId: session.id, agentId: 'codey', body: '# Done\n' })
+
+    await manager.send(session.id, 'build it')
+
+    expect(served.map((tool) => tool.name)).toContain('record_pull_request')
+  })
+})
+
+describe('a Codex agent presenting a plan', () => {
+  test('a propose_plan call over the real socket lands a plan in the store', async () => {
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) {
+          callResult = await callOverBridge(spec, 'propose_plan', {
+            plan: '# Cache the board\n\nWhy and how.',
+          })
+        }
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
+
+    // Act
+    await manager.send(session.id, 'research it', { planMode: true })
+
+    // Assert
+    expect(callResult?.isError).toBeFalsy()
+    expect(plans.listBySession(session.id).map((plan) => plan.title)).toEqual(['Cache the board'])
+  })
+
+  test('leaves a tool row carrying the plan id, which is the only way in from the transcript', async () => {
+    // Codex plans never reach the capture site in `handle`, because
+    // normalizeCodex drops MCP tool events. Without a row of its own the plan
+    // is written and then unreachable: the renderer opens a plan only from a
+    // message or an approval carrying `planId`, and Codex raises neither.
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) await callOverBridge(spec, 'propose_plan', { plan: '# Cache it\n\nHow.' })
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
+
+    // Act
+    await manager.send(session.id, 'research it', { planMode: true })
+
+    // Assert
+    const [plan] = plans.listBySession(session.id)
+    const rows = sessions.messages(session.id).filter((message) => message.kind === 'tool')
+    expect(plan).toBeDefined()
+    expect(rows.map((row) => row.planId)).toContain(plan?.id)
+    expect(rows.map((row) => row.args)).toContain('Cache it')
+  })
+
+  test('produces a plan indistinguishable from a Claude one', async () => {
+    // The visualisation reads no runner field, which is what makes this
+    // work for Codex without a single renderer change.
+    agents = [agent({ mcpServers: [] })]
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) await callOverBridge(spec, 'propose_plan', { plan: '# A plan\n\nBody.' })
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
+
+    await manager.send(session.id, 'research it', { planMode: true })
+
+    const [plan] = plans.listBySession(session.id)
+    expect(plan).toMatchObject({ status: 'draft', version: 1, title: 'A plan' })
+    expect(plan?.prUrl).toBeUndefined()
   })
 })
 

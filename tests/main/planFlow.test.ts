@@ -257,3 +257,31 @@ describe('approving a plan', () => {
     expect(manager.enqueue).not.toHaveBeenCalled()
   })
 })
+
+describe('a plan from a runner that never blocks', () => {
+  test('queues the revision turn in plan mode', () => {
+    // Arrange: no pending ExitPlanMode, which is always the case for Codex.
+    const plan = planAwaitingReview()
+    pending = []
+
+    // Act
+    flow.submit(plan.id, 'Say more about the migration.')
+
+    // Assert
+    expect(manager.enqueue).toHaveBeenCalledWith(
+      's1',
+      expect.any(String),
+      { planMode: true },
+    )
+  })
+
+  test('queues the build turn without plan mode, so it can write', () => {
+    const plan = planAwaitingReview()
+    pending = []
+
+    flow.approve(plan.id)
+
+    const [, , options] = manager.enqueue.mock.calls.at(-1) ?? []
+    expect(options).toBeUndefined()
+  })
+})

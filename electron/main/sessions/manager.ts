@@ -387,7 +387,7 @@ export class SessionManager {
       // Which of Roster's own tools this agent holds is decided once, here,
       // and the same answer serves both runners. How they are delivered is
       // all that differs below.
-      const toolSet = this.builtinToolsFor(agent, session)
+      const toolSet = this.builtinToolsFor(agent, session, options.planMode === true)
 
       let inProcessMcpServers: Record<string, unknown> | undefined
       let mcpServers = this.mcpServersFor(agent)
@@ -805,26 +805,83 @@ export class SessionManager {
   }
 
   /**
+   * The plan tools for this agent, or nothing.
+   *
+   * Three ways in, because plan mode has to work without ceremony:
+   *
+   * - the agent enabled "plans", the ordinary opt-in;
+   * - this is a planning turn — for a Claude agent plan mode needs no MCP
+   *   server at all, so demanding one here would make the toggle appear to
+   *   work and do nothing;
+   * - the session already has a plan, which is what carries the *build*
+   *   turn. That turn is not plan mode, and without this clause an agent
+   *   could propose a plan it was then unable to report a pull request for,
+   *   leaving settleBuild to cycle it back to draft forever.
+   *
+   * That third clause checks "any plan exists for this session" rather than
+   * "the plan is building", and must stay that way. `planFlow.approve()`
+   * calls `manager.enqueue()` before it sets the plan's status to
+   * 'building' (planFlow.ts): enqueue calls `send` directly when nothing is
+   * already active, and `send` runs synchronously up to its first `await` —
+   * which is after this gate is evaluated. So at the moment the build turn's
+   * tools are decided, the plan it is for still reads 'draft'. Narrowing
+   * this to a status check would silently drop `record_pull_request` from
+   * the build turn whenever it starts immediately, and only appear to work
+   * when a turn happened to already be running and the send was queued
+   * instead — a timing-dependent bug, not a simplification.
+   */
+  private planToolsFor(
+    agent: Agent,
+    session: Session,
+    planMode: boolean,
+  ): PlanTools | undefined {
+    const plans = this.plans
+    if (!plans) return undefined
+
+    const enabled =
+      agent.mcpServers.includes(PLANS_SERVER) ||
+      planMode ||
+      // Any plan on the session, not `status === 'building'` — see the
+      // ordering note in this method's doc comment above.
+      plans.listBySession(session.id).length > 0
+    if (!enabled) return undefined
+
+    return {
+      propose: (body) => {
+        const plan = plans.capture({ sessionId: session.id, agentId: agent.id, body })
+        // The transcript row is written here rather than left to `handle`,
+        // which writes it for Claude's ExitPlanMode. normalizeCodex drops MCP
+        // tool events, so for a Codex agent that capture site can never fire,
+        // and the renderer opens a plan only from a message or an approval
+        // carrying `planId`. Without this row the plan is stored and then
+        // unreachable. Writing it here covers a Claude agent calling
+        // propose_plan as well, which it may now do in plan mode.
+        this.record(session.id, {
+          sessionId: session.id,
+          kind: 'tool',
+          tool: 'propose_plan',
+          args: plan.title,
+          planId: plan.id,
+          output: '',
+          isError: false,
+        })
+        return plan
+      },
+      // The handler refuses to overwrite a plan that has moved past your
+      // review, and this is how it knows. Read through the store on every
+      // call rather than captured once, because the status changes underneath
+      // a long turn.
+      currentStatus: () => plans.listBySession(session.id).at(-1)?.status ?? null,
+      recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
+    }
+  }
+
+  /**
    * Records a plan the agent just proposed, and says which one it is.
    *
    * Returns null when this manager has no plan store, or when the session has
    * gone — capturing a plan is worth nothing next to finishing the turn.
    */
-  /**
-   * The plan tools for this agent, or nothing.
-   *
-   * Gated on the agent enabling "plans", like the board, and on this manager
-   * having a plan store at all.
-   */
-  private planToolsFor(agent: Agent): PlanTools | undefined {
-    const plans = this.plans
-    if (!plans || !agent.mcpServers.includes(PLANS_SERVER)) return undefined
-
-    return {
-      recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
-    }
-  }
-
   private capturePlan(sessionId: string, body: string): string | null {
     const session = this.sessions.findById(sessionId)
     if (!this.plans || !session) return null
@@ -862,7 +919,7 @@ export class SessionManager {
    * there; the rest are opt-in through the agent's own `mcp_servers`, which
    * is the control the MCP screen offers.
    */
-  private builtinToolsFor(agent: Agent, session: Session): BuiltinToolSet {
+  private builtinToolsFor(agent: Agent, session: Session, planMode: boolean): BuiltinToolSet {
     const roster: RosterTools = {
       listAgents: () => this.agents.findAll(),
       openSession: ({ toAgentId, title, brief }) => {
@@ -886,7 +943,7 @@ export class SessionManager {
     // pass. Reporting a pull request is opt-in too: without it a plan still
     // gets built, Roster simply never learns where the work landed.
     const tasks = this.taskToolsFor(agent)
-    const plans = this.planToolsFor(agent)
+    const plans = this.planToolsFor(agent, session, planMode)
     const memory = this.memoryToolsFor(agent, session)
 
     return {
