@@ -823,6 +823,18 @@ export class SessionManager {
    *   turn. That turn is not plan mode, and without this clause an agent
    *   could propose a plan it was then unable to report a pull request for,
    *   leaving settleBuild to cycle it back to draft forever.
+   *
+   * That third clause checks "any plan exists for this session" rather than
+   * "the plan is building", and must stay that way. `planFlow.approve()`
+   * calls `manager.enqueue()` before it sets the plan's status to
+   * 'building' (planFlow.ts): enqueue calls `send` directly when nothing is
+   * already active, and `send` runs synchronously up to its first `await` —
+   * which is after this gate is evaluated. So at the moment the build turn's
+   * tools are decided, the plan it is for still reads 'draft'. Narrowing
+   * this to a status check would silently drop `record_pull_request` from
+   * the build turn whenever it starts immediately, and only appear to work
+   * when a turn happened to already be running and the send was queued
+   * instead — a timing-dependent bug, not a simplification.
    */
   private planToolsFor(
     agent: Agent,
@@ -835,6 +847,8 @@ export class SessionManager {
     const enabled =
       agent.mcpServers.includes(PLANS_SERVER) ||
       planMode ||
+      // Any plan on the session, not `status === 'building'` — see the
+      // ordering note in this method's doc comment above.
       plans.listBySession(session.id).length > 0
     if (!enabled) return undefined
 

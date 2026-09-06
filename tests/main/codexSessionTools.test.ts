@@ -229,10 +229,18 @@ describe('a Codex agent in plan mode', () => {
     expect(served.map((tool) => tool.name)).not.toContain('record_pull_request')
   })
 
-  test('keeps the plan tools on the build turn once the session has a plan', async () => {
+  test('keeps the plan tools for a build turn, whose plan still reads as a draft when the gate runs', async () => {
     // The build turn is not a plan-mode turn. Without this the agent could
     // never report its pull request, and settleBuild would cycle the plan
     // back to draft — the exact trap this work closes.
+    //
+    // `capture` below leaves the plan at its default status, 'draft' — this
+    // is deliberate, not an oversight. In the real flow, planFlow.approve()
+    // enqueues the build turn before it marks the plan 'building', so the
+    // gate in planToolsFor always sees a draft plan at this point. If that
+    // gate were ever narrowed to check `status === 'building'` instead of
+    // "a plan exists for this session", this test would fail — that is
+    // exactly the regression it exists to catch.
     agents = [agent({ mcpServers: [] })]
     const session = manager.create('codey', 'Work')
     plans.capture({ sessionId: session.id, agentId: 'codey', body: '# Done\n' })
