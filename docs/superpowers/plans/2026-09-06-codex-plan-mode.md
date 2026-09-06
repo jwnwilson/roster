@@ -16,6 +16,7 @@
 - **`npm install` before anything runs** in a fresh worktree — `postinstall` rebuilds `better-sqlite3` and `node-pty` against Electron's ABI.
 - **`npm run check` must pass before the PR** — typecheck, coverage and build. Thresholds from `vitest.config.ts`: **80% statements, 80% lines, 80% functions, 70% branches.**
 - **Tests first.** Write the failing test, watch it fail, then implement.
+- **`npm run typecheck` is the only real typecheck.** `tsc --noEmit -p .` is a silent no-op here: the root `tsconfig.json` has `"files": []` and only project references, so without `-b` it checks nothing. Vitest transpiles without type-checking, so a green suite is not evidence of a green build. Run `npm run typecheck` before every commit.
 - **Immutability**: build new objects, never mutate arguments in place.
 - **Runner scope: Codex only.** Do not touch `CustomRunner` — its gaps are recorded in §8 of the spec and are separate work.
 - **Do not change the renderer, the store schema, or `normalizeCodex.ts`.** No migration is required by this plan.
@@ -232,6 +233,16 @@ git commit -m "feat: add a propose_plan tool to the plans server"
 - Consumes: `PlanTools.propose` from Task 1; `PlanStore.listBySession(sessionId): Plan[]` (`electron/main/store/plans.ts:90`).
 - Produces: `planToolsFor(agent: Agent, session: Session, planMode: boolean): PlanTools | undefined`.
 
+**What Task 1 already did, so you do not redo it.** Task 1's fix round moved the
+signature change and the wiring here forward, because widening `PlanTools` in one
+commit and satisfying it in the next left the branch's typecheck red at a commit
+boundary. So `planToolsFor(agent, session)` already exists, `propose` is already
+wired to `plans.capture`, and `builtinToolsFor` already threads the session.
+
+**Your job is the gate and only the gate:** add the `planMode` parameter and
+replace the `agent.mcpServers.includes(PLANS_SERVER)` condition with the
+three-clause one below.
+
 - [ ] **Step 1: Write the failing tests**
 
 `builtinToolsFor` is private, so drive this through the public `send` and assert on the tools the bridge actually served. **`tests/main/codexSessionTools.test.ts` already has that harness** — a stubbed runner with `Object.setPrototypeOf(runnerStub, CodexRunner.prototype)` so the `instanceof` branch at `manager.ts:395` is genuinely taken, a real `McpBridge`, and a `served` array filled by `listOverBridge` from inside the turn. Extend that file; do not create a new one.
@@ -301,7 +312,7 @@ Expected: FAIL — `propose_plan` is not in the bridge's tool names, because `pl
 
 - [ ] **Step 3: Implement**
 
-In `electron/main/sessions/manager.ts`, replace `planToolsFor`:
+In `electron/main/sessions/manager.ts`, `planToolsFor` already takes `(agent, session)` and wires `propose`. Add the third parameter and widen the condition:
 
 ```ts
   /**
