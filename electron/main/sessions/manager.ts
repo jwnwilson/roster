@@ -805,12 +805,6 @@ export class SessionManager {
   }
 
   /**
-   * Records a plan the agent just proposed, and says which one it is.
-   *
-   * Returns null when this manager has no plan store, or when the session has
-   * gone — capturing a plan is worth nothing next to finishing the turn.
-   */
-  /**
    * The plan tools for this agent, or nothing.
    *
    * Three ways in, because plan mode has to work without ceremony:
@@ -882,6 +876,12 @@ export class SessionManager {
     }
   }
 
+  /**
+   * Records a plan the agent just proposed, and says which one it is.
+   *
+   * Returns null when this manager has no plan store, or when the session has
+   * gone — capturing a plan is worth nothing next to finishing the turn.
+   */
   private capturePlan(sessionId: string, body: string): string | null {
     const session = this.sessions.findById(sessionId)
     if (!this.plans || !session) return null

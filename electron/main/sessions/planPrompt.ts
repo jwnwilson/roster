@@ -78,7 +78,8 @@ export function revisePrompt(input: PlanPromptInput): string {
 export function planInstruction(): string {
   return [
     'You are in plan mode: research and propose only.',
-    'You cannot write files this turn — the sandbox is read-only and every edit will be refused.',
+    'Do not change the repository this turn: the sandbox is read-only, so any',
+    'attempt to write, move or delete a file will be refused.',
     '',
     'When the plan is ready, call the propose_plan tool on the "plans" MCP server,',
     'passing the whole plan as Markdown in `plan` and opening with a heading that',

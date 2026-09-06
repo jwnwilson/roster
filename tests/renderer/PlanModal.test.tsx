@@ -238,18 +238,21 @@ describe('approving a plan', () => {
     expect(useRoster.getState().planMode['session-7']).toBe(true)
   })
 
-  test('warns when the agent cannot report the pull request back', async () => {
+  test('never advises enabling the plans server, because the plan itself grants the tool', async () => {
+    // The gate in planToolsFor grants record_pull_request whenever the
+    // session already has a plan — which, inside this modal, it always does.
+    // The old hint told you to enable a server you did not need.
     useRoster.setState({
       agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
     })
     open()
     render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
 
-    // Otherwise the build runs and the link silently never arrives.
-    expect(await screen.findByText(/plans.*server/i)).toBeInTheDocument()
+    expect(screen.queryByText(/plans.*server/i)).not.toBeInTheDocument()
   })
 
-  test('says nothing about it when the agent has the server', async () => {
+  test('says nothing about a server when the agent has one', async () => {
     open()
     render(<PlanModal />)
     await screen.findByRole('heading', { name: 'Steps' })
