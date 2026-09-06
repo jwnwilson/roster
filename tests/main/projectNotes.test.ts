@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { openDatabase } from '@main/db'
 import { ProjectStore } from '@main/store/projects'
 import { ProjectNotesStore } from '@main/store/projectNotes'
-import { projectNotesPath } from '@main/store/paths'
+import { projectNotesPath, projectsDir } from '@main/store/paths'
 
 /**
  * `~/roster/projects/<id>/NOTES.md` — what a project knows that is not a
@@ -36,11 +36,62 @@ afterEach(async () => {
   await rm(home, { recursive: true, force: true })
 })
 
-/** Waits for a watcher to notice. Watching is debounced; polling beats sleeping. */
+const POLL_MS = 20
+
+/**
+ * How many times to look before giving up.
+ *
+ * This is a retry budget, not a patience setting: every attempt past the
+ * first is another chance for `nudgeWatcher` to catch a stream that has since
+ * come up, so the extra attempts do work rather than just passing time. A
+ * healthy run still returns in a few milliseconds. Kept under vitest's 5s
+ * default test timeout so a genuine failure reports the message below rather
+ * than a bare timeout.
+ */
+const ATTEMPTS = 200
+
+/**
+ * How often, in attempts, to make fresh noise in the watched directory.
+ *
+ * Comfortably longer than the store's 80ms watch debounce, because that
+ * debounce restarts on every event: nudging faster than it would keep
+ * pushing the reload into the future and it would never run at all.
+ */
+const NUDGE_EVERY = 10
+
+/**
+ * Touches a throwaway file in the watched directory, so that an armed watcher
+ * has something to see.
+ *
+ * It goes in the projects root rather than inside a project folder because
+ * `ProjectNotesStore.load` walks directory entries and skips anything that is
+ * not a directory — a loose file there is not mistaken for a project.
+ */
+async function nudgeWatcher(): Promise<void> {
+  const probe = join(projectsDir(), '.watch-probe')
+  await writeFile(probe, `${Date.now()}`, 'utf8')
+  await rm(probe, { force: true })
+}
+
+/**
+ * Waits for a watcher to notice. Watching is debounced; polling beats sleeping.
+ *
+ * The nudging is not impatience, it is the only thing that makes this
+ * reliable. Recursive `fs.watch` is FSEvents on macOS and the stream arms
+ * asynchronously, some way after `watch()` returns — CI has been seen taking
+ * over two seconds where this machine takes ten milliseconds. A write that
+ * lands before the stream is up is not delivered late, it is never delivered
+ * at all, so a test whose only filesystem activity was that one write would
+ * sit out its whole budget on a stream with nothing left to say. Waiting
+ * longer cannot recover a dropped notification; making more filesystem
+ * activity can. Once the stream is up, the next nudge wakes the store, and
+ * the reload it triggers re-reads the change that was missed.
+ */
 async function until(condition: () => boolean, label: string): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
+  for (let attempt = 0; attempt < ATTEMPTS; attempt += 1) {
     if (condition()) return
-    await new Promise((done) => setTimeout(done, 20))
+    if (attempt % NUDGE_EVERY === 0) await nudgeWatcher()
+    await new Promise((done) => setTimeout(done, POLL_MS))
   }
   throw new Error(`timed out waiting for ${label}`)
 }
