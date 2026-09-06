@@ -71,6 +71,16 @@ let started: StartOptions | null
 /** The tools the bridge was serving while the turn was running. */
 let served: { name: string; annotations: Record<string, unknown> }[]
 let bridgeAddress: string | null
+/**
+ * The reply to a `propose_plan` call made from inside a turn.
+ *
+ * Module-level, matching `started`/`served`/`bridgeAddress` above: a
+ * function-local `let` reassigned only from inside a nested closure hits a
+ * control-flow narrowing bug in this project's pinned TypeScript 7 compiler,
+ * which reports the post-call read as type `never`. Module scope sidesteps
+ * it, and costs nothing extra since it is reset per test in `beforeEach`.
+ */
+let callResult: { isError?: boolean; content: { text: string }[] } | null
 
 beforeEach(async () => {
   home = await mkdtemp(join(tmpdir(), 'roster-codexsession-'))
@@ -79,6 +89,7 @@ beforeEach(async () => {
   started = null
   served = []
   bridgeAddress = null
+  callResult = null
 
   Object.setPrototypeOf(runnerStub, CodexRunner.prototype)
   runnerStub.run.mockReset()
@@ -143,6 +154,43 @@ function listOverBridge(
 async function run(agentId = 'codey', options: SendOptions = {}): Promise<void> {
   const session = manager.create(agentId, 'Work')
   await manager.send(session.id, 'go', options)
+}
+
+/**
+ * Calls one tool over the bridge, as the stdio child would.
+ *
+ * The bridge's `answer()` (mcpBridge.ts) spreads the handler's result
+ * straight into the reply — `{ id, ...result }` — so `content` and
+ * `isError` sit at the top level of the JSON line. There is no `.result`
+ * wrapper to unwrap, unlike `list`'s `.tools`.
+ */
+function callOverBridge(
+  spec: McpLaunchSpec,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ isError?: boolean; content: { text: string }[] }> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(spec.env['ROSTER_MCP_SOCKET'] ?? '')
+    let buffer = ''
+    socket.on('error', reject)
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString()
+      if (!buffer.includes('\n')) return
+      socket.destroy()
+      resolve(JSON.parse(buffer.slice(0, buffer.indexOf('\n'))))
+    })
+    socket.on('connect', () =>
+      socket.write(
+        `${JSON.stringify({
+          id: 1,
+          op: 'call',
+          name,
+          args,
+          token: spec.env['ROSTER_MCP_TOKEN'],
+        })}\n`,
+      ),
+    )
+  })
 }
 
 describe('a Codex agent’s MCP servers', () => {
@@ -248,6 +296,52 @@ describe('a Codex agent in plan mode', () => {
     await manager.send(session.id, 'build it')
 
     expect(served.map((tool) => tool.name)).toContain('record_pull_request')
+  })
+})
+
+describe('a Codex agent presenting a plan', () => {
+  test('a propose_plan call over the real socket lands a plan in the store', async () => {
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) {
+          callResult = await callOverBridge(spec, 'propose_plan', {
+            plan: '# Cache the board\n\nWhy and how.',
+          })
+        }
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
+
+    // Act
+    await manager.send(session.id, 'research it', { planMode: true })
+
+    // Assert
+    expect(callResult?.isError).toBeFalsy()
+    expect(plans.listBySession(session.id).map((plan) => plan.title)).toEqual(['Cache the board'])
+  })
+
+  test('produces a plan indistinguishable from a Claude one', async () => {
+    // The visualisation reads no runner field, which is what makes this
+    // work for Codex without a single renderer change.
+    agents = [agent({ mcpServers: [] })]
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) await callOverBridge(spec, 'propose_plan', { plan: '# A plan\n\nBody.' })
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
+
+    await manager.send(session.id, 'research it', { planMode: true })
+
+    const [plan] = plans.listBySession(session.id)
+    expect(plan).toMatchObject({ status: 'draft', version: 1, title: 'A plan' })
+    expect(plan?.prUrl).toBeUndefined()
   })
 })
 
