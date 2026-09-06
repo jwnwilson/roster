@@ -29,6 +29,7 @@ function handlers(): Map<string, (args: never) => Promise<ToolResult>> {
   }) as never
 
   const tools: PlanTools = {
+    propose: (body) => plans.capture({ sessionId: 's1', agentId: 'debugging', body }),
     recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
   }
 
@@ -67,8 +68,49 @@ describe('the plan tools an agent is given', () => {
   test('are named the way the runner allowlist expects', () => {
     // A tool missing from the list does not fail loudly — it blocks on the
     // approval gate forever.
-    expect(PLAN_TOOL_NAMES).toEqual(['mcp__plans__record_pull_request'])
-    expect([...handlers().keys()]).toEqual(['record_pull_request'])
+    expect(PLAN_TOOL_NAMES).toEqual([
+      'mcp__plans__propose_plan',
+      'mcp__plans__record_pull_request',
+    ])
+    expect([...handlers().keys()]).toEqual(['propose_plan', 'record_pull_request'])
+  })
+})
+
+describe('an agent presenting a plan', () => {
+  function proposePlan(): (args: never) => Promise<ToolResult> {
+    const handler = handlers().get('propose_plan')
+    if (!handler) throw new Error('propose_plan was never built')
+    return handler
+  }
+
+  test('captures the plan and names it back so the agent knows it landed', async () => {
+    // Arrange
+    aPlan()
+
+    // Act
+    const result = await proposePlan()({ plan: '# Add a cache\n\nThe details.' } as never)
+
+    // Assert
+    expect(result.isError).toBeUndefined()
+    expect(result.content[0].text).toContain('Add a cache')
+    expect(plans.listBySession('s1').map((plan) => plan.title)).toContain('Add a cache')
+  })
+
+  test('tells the agent to stop rather than carry on into the work', async () => {
+    aPlan()
+
+    const result = await proposePlan()({ plan: '# Do it\n\nHow.' } as never)
+
+    expect(result.content[0].text).toMatch(/stop/i)
+  })
+
+  test('refuses an empty plan with something the agent can act on', async () => {
+    aPlan()
+
+    const result = await proposePlan()({ plan: '   ' } as never)
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('plan')
   })
 })
 
