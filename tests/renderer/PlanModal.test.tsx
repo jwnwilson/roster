@@ -206,6 +206,38 @@ describe('approving a plan', () => {
     await waitFor(() => expect(api.plans.approve).toHaveBeenCalledWith('plan-1'))
   })
 
+  test('turns plan mode off for the session, so the build turn can write', async () => {
+    // Approving is the moment the agent is meant to start work. Codex raises
+    // no ExitPlanMode approval, so the banner that clears plan mode for a
+    // Claude agent never appears — leaving the composer toggle on and every
+    // edit in the next turn refused by the read-only sandbox.
+    // Arrange
+    const plan = aPlan({ sessionId: 'session-7' })
+    open(plan, [], { approve: vi.fn().mockResolvedValue(aPlan({ status: 'building' })) })
+    useRoster.getState().setPlanMode('session-7', true)
+    render(<PlanModal />)
+    const user = userEvent.setup()
+
+    // Act
+    await user.click(await screen.findByRole('button', { name: 'Approve & build' }))
+
+    // Assert
+    await waitFor(() => expect(useRoster.getState().planMode['session-7']).toBe(false))
+  })
+
+  test('leaves plan mode alone when approving failed', async () => {
+    const plan = aPlan({ sessionId: 'session-7' })
+    open(plan, [], { approve: vi.fn().mockRejectedValue(new Error('nope')) })
+    useRoster.getState().setPlanMode('session-7', true)
+    render(<PlanModal />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Approve & build' }))
+
+    expect(await screen.findByText('nope')).toBeInTheDocument()
+    expect(useRoster.getState().planMode['session-7']).toBe(true)
+  })
+
   test('warns when the agent cannot report the pull request back', async () => {
     useRoster.setState({
       agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],

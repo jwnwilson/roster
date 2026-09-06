@@ -44,6 +44,7 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
   const agents = useRoster(useShallow((s) => s.agents))
   const setPlan = useRoster((s) => s.setPlan)
   const setPlanComments = useRoster((s) => s.setPlanComments)
+  const setPlanMode = useRoster((s) => s.setPlanMode)
 
   const [text, setText] = useState('')
   const [quote, setQuote] = useState<string | null>(null)
@@ -142,7 +143,21 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => void act(() => window.roster.plans.approve(plan.id), onClose)}
+                onClick={() =>
+                  void act(
+                    () => window.roster.plans.approve(plan.id),
+                    () => {
+                      // Approving is the moment the agent is meant to start
+                      // work, so the build turn must be able to write. For a
+                      // Claude agent the ExitPlanMode banner clears this, but
+                      // Codex raises no such approval — without this the
+                      // toggle stays on and every edit in the next turn is
+                      // refused by the read-only sandbox.
+                      setPlanMode(plan.sessionId, false)
+                      onClose()
+                    },
+                  )
+                }
                 className="cursor-pointer rounded-chip border-0 bg-accent px-[12px] py-[6px] font-ui text-md font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-50"
               >
                 Approve &amp; build
