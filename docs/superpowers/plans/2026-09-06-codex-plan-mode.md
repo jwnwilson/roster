@@ -61,7 +61,8 @@ what carries the build turn.
 | `electron/main/sessions/planPrompt.ts` | Every plan-related prompt string | Add `planInstruction()`; make `revisePrompt` tool-neutral |
 | `tests/main/planTools.test.ts` | Tool handlers against a real store | Extend |
 | `tests/main/codexPlanMode.test.ts` | **New** — argv and sandbox for planning turns | Create |
-| `tests/main/planRunnerReach.test.ts` | Per-runner reach of the plan path | Extend (created by PR #67; create it if that PR has not merged) |
+| `tests/main/codexSessionTools.test.ts` | Per-runner reach over the real bridge | Extend — it already holds the bridge/socket harness |
+| `tests/main/planFlow.test.ts` | The plan lifecycle | Extend |
 
 ---
 
@@ -225,7 +226,7 @@ git commit -m "feat: add a propose_plan tool to the plans server"
 
 **Files:**
 - Modify: `electron/main/sessions/manager.ts` (`planToolsFor`, `builtinToolsFor`)
-- Test: `tests/main/planRunnerReach.test.ts`
+- Test: `tests/main/codexSessionTools.test.ts` (extend — it already holds the bridge harness)
 
 **Interfaces:**
 - Consumes: `PlanTools.propose` from Task 1; `PlanStore.listBySession(sessionId): Plan[]` (`electron/main/store/plans.ts:90`).
@@ -233,47 +234,69 @@ git commit -m "feat: add a propose_plan tool to the plans server"
 
 - [ ] **Step 1: Write the failing tests**
 
-`builtinToolsFor` is private, so drive this through the public `send`, the way `tests/main/planRunnerReach.test.ts` and `tests/main/codexSessionTools.test.ts` already do — assert on the tool names the bridge is started with. Add:
+`builtinToolsFor` is private, so drive this through the public `send` and assert on the tools the bridge actually served. **`tests/main/codexSessionTools.test.ts` already has that harness** — a stubbed runner with `Object.setPrototypeOf(runnerStub, CodexRunner.prototype)` so the `instanceof` branch at `manager.ts:395` is genuinely taken, a real `McpBridge`, and a `served` array filled by `listOverBridge` from inside the turn. Extend that file; do not create a new one.
+
+Two fixture changes it needs first. Give `run()` an options parameter:
 
 ```ts
-test('a codex agent in plan mode is given propose_plan even without the plans server', async () => {
-  // Arrange: an agent that has NOT enabled "plans" in its mcpServers.
-  const { manager, session } = await codexSessionFor({ mcpServers: [] })
+async function run(agentId = 'codey', options: SendOptions = {}): Promise<void> {
+  const session = manager.create(agentId, 'Work')
+  await manager.send(session.id, 'go', options)
+}
+```
 
-  // Act
-  await manager.send(session.id, 'research it', { planMode: true })
+and hoist the plan store so a test can seed it — it is currently constructed inline in the `SessionManager` argument list:
 
-  // Assert
-  expect(bridgeToolNames()).toContain('propose_plan')
-})
+```ts
+let plans: InstanceType<typeof PlanStore>
+// ...in beforeEach, replacing `new PlanStore(db)` in the constructor call:
+plans = new PlanStore(db)
+```
 
-test('a codex agent outside plan mode with no plans server gets neither plan tool', async () => {
-  const { manager, session } = await codexSessionFor({ mcpServers: [] })
+Then add, following the shape of the existing test at `:177` ("is decided by its own mcp_servers"):
 
-  await manager.send(session.id, 'do it')
+```ts
+describe('a Codex agent in plan mode', () => {
+  test('is given propose_plan even when it has not enabled the plans server', async () => {
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
 
-  expect(bridgeToolNames()).not.toContain('propose_plan')
-  expect(bridgeToolNames()).not.toContain('record_pull_request')
-})
+    // Act
+    await run('codey', { planMode: true })
 
-test('a session that already has a plan keeps the plan tools on its build turn', async () => {
-  // The build turn is not plan mode. Without this the agent could never
-  // report its pull request, and settleBuild would cycle the plan back to
-  // draft — the exact trap this work closes.
-  const { manager, session, plans } = await codexSessionFor({ mcpServers: [] })
-  plans.capture({ sessionId: session.id, agentId: session.agentId, body: '# Done\n' })
+    // Assert
+    expect(served.map((tool) => tool.name)).toContain('propose_plan')
+  })
 
-  await manager.send(session.id, 'build it')
+  test('gets neither plan tool on an ordinary turn with no plans server', async () => {
+    agents = [agent({ mcpServers: [] })]
 
-  expect(bridgeToolNames()).toContain('record_pull_request')
+    await run('codey')
+
+    expect(served.map((tool) => tool.name)).not.toContain('propose_plan')
+    expect(served.map((tool) => tool.name)).not.toContain('record_pull_request')
+  })
+
+  test('keeps the plan tools on the build turn once the session has a plan', async () => {
+    // The build turn is not a plan-mode turn. Without this the agent could
+    // never report its pull request, and settleBuild would cycle the plan
+    // back to draft — the exact trap this work closes.
+    agents = [agent({ mcpServers: [] })]
+    const session = manager.create('codey', 'Work')
+    plans.capture({ sessionId: session.id, agentId: 'codey', body: '# Done\n' })
+
+    await manager.send(session.id, 'build it')
+
+    expect(served.map((tool) => tool.name)).toContain('record_pull_request')
+  })
 })
 ```
 
-Reuse the fixtures already in that file. If PR #67 has not merged, build `codexSessionFor` the way `tests/main/codexSessionTools.test.ts` does: a stub runner with `Object.setPrototypeOf(stub, CodexRunner.prototype)` so the `instanceof` branch at `manager.ts:395` is genuinely taken, and capture the definitions passed to `McpBridge.start`.
+Import `SendOptions` as a type from `@main/sessions/manager`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `npx vitest run tests/main/planRunnerReach.test.ts`
+Run: `npx vitest run tests/main/codexSessionTools.test.ts`
 Expected: FAIL — `propose_plan` is not in the bridge's tool names, because `planToolsFor` returns `undefined` for an agent without the plans server.
 
 - [ ] **Step 3: Implement**
@@ -334,13 +357,13 @@ And its single call site inside `send` (`manager.ts:388`):
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npx vitest run tests/main/planRunnerReach.test.ts tests/main/codexSessionTools.test.ts`
+Run: `npx vitest run tests/main/codexSessionTools.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add electron/main/sessions/manager.ts tests/main/planRunnerReach.test.ts
+git add electron/main/sessions/manager.ts tests/main/codexSessionTools.test.ts
 git commit -m "feat: bind the plan tools to a session and open them in plan mode"
 ```
 
@@ -581,142 +604,158 @@ git commit -m "feat: tell a codex agent how to present its plan"
 
 ---
 
-### Task 5: Prove it end to end, and prove the sandbox actually bites
+### Task 5: Prove it end to end
 
 **Files:**
-- Test: `tests/main/planRunnerReach.test.ts`, `tests/main/codexPlanMode.test.ts`
+- Test: `tests/main/codexSessionTools.test.ts`, `tests/main/planFlow.test.ts`
 
 **Interfaces:**
-- Consumes: everything from Tasks 1-4. Adds no production code.
+- Consumes: everything from Tasks 1-4. Adds no production code. If any step here needs a production change, stop — it means an earlier task is incomplete.
 
-This task exists because Tasks 1-4 each prove Roster *asks* for the right thing. Neither proves a plan actually arrives over the socket, nor that Codex refuses a write.
+Tasks 1-4 each prove Roster *asks* for the right thing. This one proves a plan actually arrives over the socket, and that the lifecycle carries it.
 
 - [ ] **Step 1: Write the end-to-end bridge test**
 
-In `tests/main/planRunnerReach.test.ts`, add a fixture that starts a real bridge over its unix socket and returns a way to call it. PR #67 built this shape for `record_pull_request`; if that PR has not merged, write it:
+`tests/main/codexSessionTools.test.ts` has `listOverBridge`, which speaks the bridge's line protocol for the `list` op. Add its sibling for `call` — the bridge handles both at `electron/main/runners/mcpBridge.ts:150-151`:
 
 ```ts
-/** A real McpBridge over its socket, holding this session's built-in tools. */
-async function codexBridgeFor(
-  agentOverrides: Partial<Agent>,
-  sendOptions: SendOptions = {},
-): Promise<{ bridge: BridgeHandle; plans: PlanStore; session: Session }> {
-  const { manager, session, plans, agent } = await codexSessionFor(agentOverrides)
-  const toolSet = builtinToolSetFrom(manager, agent, session, sendOptions.planMode === true)
-  const bridge = await McpBridge.start(builtinToolDefinitions(toolSet, agent.id))
-
-  // `call` speaks the same line protocol mcpStdio.ts uses: connect to
-  // bridge.launchSpec().env.ROSTER_MCP_SOCKET, send the token, then one
-  // JSON request per line.
-  return { bridge: connectTo(bridge), plans, session }
+/** Calls one tool over the bridge, as the stdio child would. */
+function callOverBridge(
+  spec: McpLaunchSpec,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ isError?: boolean; content: { text: string }[] }> {
+  return new Promise((resolve, reject) => {
+    const socket = connect(spec.env['ROSTER_MCP_SOCKET'] ?? '')
+    let buffer = ''
+    socket.on('error', reject)
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString()
+      if (!buffer.includes('\n')) return
+      socket.destroy()
+      resolve(JSON.parse(buffer.slice(0, buffer.indexOf('\n'))).result)
+    })
+    socket.on('connect', () =>
+      socket.write(
+        `${JSON.stringify({
+          id: 1,
+          op: 'call',
+          name,
+          args,
+          token: spec.env['ROSTER_MCP_TOKEN'],
+        })}\n`,
+      ),
+    )
+  })
 }
 ```
 
-Then assert against the real store:
+Check the exact response envelope against `mcpBridge.ts` before asserting on it — the `list` helper reads `.tools`, so `call` may or may not wrap its payload in `.result`. Match what the bridge actually writes.
+
+The runner stub reads the tool list from inside the turn; do the same for the call, since the bridge only exists while a turn is running. Add a second stub implementation for these tests, following the existing `runnerStub.run.mockImplementation` shape, that calls `propose_plan` instead of only listing:
 
 ```ts
-test('a propose_plan call over the real socket lands a plan in the store', async () => {
-  // Arrange
-  const { bridge, plans, session } = await codexBridgeFor({ mcpServers: [] }, { planMode: true })
+describe('a Codex agent presenting a plan', () => {
+  test('a propose_plan call over the real socket lands a plan in the store', async () => {
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
+    let result: { isError?: boolean; content: { text: string }[] } | null = null
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) {
+          result = await callOverBridge(spec, 'propose_plan', {
+            plan: '# Cache the board\n\nWhy and how.',
+          })
+        }
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
 
-  // Act
-  const result = await bridge.call('propose_plan', { plan: '# Cache the board\n\nWhy and how.' })
+    // Act
+    await manager.send(session.id, 'research it', { planMode: true })
 
-  // Assert
-  expect(result.isError).toBeFalsy()
-  expect(plans.listBySession(session.id).map((plan) => plan.title)).toEqual(['Cache the board'])
-})
+    // Assert
+    expect(result?.isError).toBeFalsy()
+    expect(plans.listBySession(session.id).map((plan) => plan.title)).toEqual(['Cache the board'])
+  })
 
-test('a codex plan is indistinguishable from a claude one', async () => {
-  // The visualisation reads no runner field, so this is what makes it work
-  // for Codex without a single renderer change.
-  const { bridge, plans, session } = await codexBridgeFor({ mcpServers: [] }, { planMode: true })
-  await bridge.call('propose_plan', { plan: '# A plan\n\nBody.' })
+  test('produces a plan indistinguishable from a Claude one', async () => {
+    // The visualisation reads no runner field, which is what makes this
+    // work for Codex without a single renderer change.
+    agents = [agent({ mcpServers: [] })]
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) await callOverBridge(spec, 'propose_plan', { plan: '# A plan\n\nBody.' })
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
 
-  const [plan] = plans.listBySession(session.id)
+    await manager.send(session.id, 'research it', { planMode: true })
 
-  expect(plan).toMatchObject({ status: 'draft', version: 1, title: 'A plan' })
-  expect(plan.prUrl).toBeUndefined()
+    const [plan] = plans.listBySession(session.id)
+    expect(plan).toMatchObject({ status: 'draft', version: 1, title: 'A plan' })
+    expect(plan?.prUrl).toBeUndefined()
+  })
 })
 ```
 
-- [ ] **Step 2: Run it to verify it fails, then passes**
+- [ ] **Step 2: Run it**
 
-Run: `npx vitest run tests/main/planRunnerReach.test.ts`
-Expected: FAIL first if the bridge harness is not yet present; PASS once Tasks 1-2 are in and the harness is wired. No production change should be needed — if one is, stop: it means Task 1 or 2 is incomplete.
+Run: `npx vitest run tests/main/codexSessionTools.test.ts`
+Expected: PASS, with no production change. If a production change is needed, stop and report — Task 1 or 2 is incomplete.
 
-- [ ] **Step 3: Write the sandbox enforcement test**
+- [ ] **Step 3: Cover the lifecycle**
 
-This is the risk flagged in §7 of the spec: the profile is known to *parse*, not to be *honoured*. This test needs the real `codex` binary, so guard it the way the suite guards other binary-dependent tests and skip when absent.
-
-```ts
-test.skipIf(!codexBinary())('the read-only profile refuses a write', async () => {
-  // Arrange: a real codex exec under the planning profile, asked to write.
-  const dir = await mkdtemp(join(tmpdir(), 'roster-planbox-'))
-
-  // Act
-  const result = await runCodex(codexPlanPermissions(), dir, 'Create a file called out.txt')
-
-  // Assert
-  expect(existsSync(join(dir, 'out.txt'))).toBe(false)
-})
-```
-
-- [ ] **Step 4: Run it and read the result carefully**
-
-Run: `npx vitest run tests/main/codexPlanMode.test.ts`
-
-**If this fails because `:read-only` is not a valid profile base, stop and report.** The spec's §7 fallback is `--sandbox read-only`, which costs network access inside planning turns — a trade-off that goes back to the user rather than being taken silently.
-
-- [ ] **Step 5: Cover the lifecycle the spec asks for**
-
-Spec §6.6. `PlanFlow` is unchanged by this plan, so these tests guard that the
-unchanged code does the right thing for a runner it was never exercised with.
-In `tests/main/planFlow.test.ts`, using the existing fixtures:
+`PlanFlow` is unchanged by this plan, so these guard that the unchanged code does the right thing for a runner it was never exercised with. Add to `tests/main/planFlow.test.ts`, using its existing module-level fixtures — `flow`, `plans`, `pending`, `planAwaitingReview()`, and `const manager = { pendingApprovals: vi.fn(() => pending), respondToApproval: vi.fn(), enqueue: vi.fn() }`:
 
 ```ts
-test('a revision turn for a codex agent is queued in plan mode', () => {
-  // Arrange: no pending ExitPlanMode, which is always true for Codex.
-  const { flow, manager, plan } = flowWithPlan({ pendingApprovals: [] })
+describe('a plan from a runner that never blocks', () => {
+  test('queues the revision turn in plan mode', () => {
+    // Arrange: no pending ExitPlanMode, which is always the case for Codex.
+    const plan = planAwaitingReview()
+    pending = []
 
-  // Act
-  flow.submit(plan.id, 'Say more about the migration.')
+    // Act
+    flow.submit(plan.id, 'Say more about the migration.')
 
-  // Assert
-  expect(manager.enqueued).toEqual([
-    expect.objectContaining({ options: { planMode: true } }),
-  ])
-})
+    // Assert
+    expect(manager.enqueue).toHaveBeenCalledWith(
+      's1',
+      expect.any(String),
+      { planMode: true },
+    )
+  })
 
-test('the build turn is not in plan mode, so it can write', () => {
-  const { flow, manager, plan } = flowWithPlan({ pendingApprovals: [] })
+  test('queues the build turn without plan mode, so it can write', () => {
+    const plan = planAwaitingReview()
+    pending = []
 
-  flow.approve(plan.id)
+    flow.approve(plan.id)
 
-  expect(manager.enqueued.at(-1)?.options.planMode).toBeUndefined()
+    const [, , options] = manager.enqueue.mock.calls.at(-1) ?? []
+    expect(options).toBeUndefined()
+  })
 })
 ```
 
 Run: `npx vitest run tests/main/planFlow.test.ts`
-Expected: PASS without touching `planFlow.ts`. If either fails, stop — the spec's
-claim that `PlanFlow` needs no changes is wrong and the design needs revisiting.
+Expected: PASS without touching `planFlow.ts`. If either fails, stop and report — the spec's claim that `PlanFlow` needs no changes would be wrong, and that is a design question, not a test to bend.
 
-- [ ] **Step 6: Run the whole gate and commit**
+- [ ] **Step 4: Run the whole gate and commit**
 
 ```bash
 npm run check
-git add tests/main/planRunnerReach.test.ts tests/main/codexPlanMode.test.ts
+git add tests/main/codexSessionTools.test.ts tests/main/planFlow.test.ts
 git commit -m "test: prove a codex agent can propose a plan end to end"
 ```
 
-- [ ] **Step 7: Open the PR**
+`npm run check` must pass: typecheck, coverage (80% statements/lines/functions, 70% branches) and build.
 
-```bash
-git push -u origin feat/codex-plan-mode
-gh pr create --fill
-```
-
-Do not merge it.
+**Note on the sandbox enforcement test.** An earlier draft of this plan called for a test that runs the real `codex` binary under the planning profile and asserts a write is refused. It is deliberately NOT in the suite: it needs the real binary, a live API call and an authenticated account, and the suite has no skip-when-absent precedent — a test that silently skips in CI proves nothing while looking like it does. It is a manual check instead, below, and the spec's §7 risk stays open until someone runs it.
 
 ---
 
@@ -734,3 +773,20 @@ one thing Approach A trades away. After the suite is green:
 
 Step 4 is the one that can fail on a real model where the tests pass. If it
 does, the fix is `planInstruction()`, not the mechanism.
+
+**7. Prove the sandbox actually refuses a write.** This is the spec's §7 risk and
+the only check that closes it. With a real `codex` binary:
+
+```bash
+codex exec --json --skip-git-repo-check --ignore-user-config --strict-config \
+  --config 'default_permissions="roster-plan"' \
+  --config 'permissions.roster-plan.extends=":read-only"' \
+  --config 'permissions.roster-plan.network.enabled=true' \
+  -C /tmp/roster-planbox --model <a model your account has> \
+  'Create a file called out.txt in the current directory'
+```
+
+Expect: no `out.txt`, and the refusal visible in the JSON stream. **If `:read-only`
+is rejected as a profile base, stop and report** — the fallback is
+`--sandbox read-only`, which costs network access inside planning turns, and that
+trade-off is the user's to make, not the implementer's.
