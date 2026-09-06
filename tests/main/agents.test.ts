@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { RunnerStatus } from '@shared/types'
-import { AgentStore } from '@main/store/agents'
+import { AgentStore, withCwdLine } from '@main/store/agents'
 
 let home: string
 
@@ -555,6 +555,35 @@ describe('AgentStore.load — scoping agents that share the old workspace', () =
     expect(written).toContain('workspace/tech-lead')
   })
 
+  test('rewrites the cwd line and nothing else, since agent.toml is hand-edited', async () => {
+    // Reserializing the file is semantically identical but flattens formatting
+    // the user chose and writes back defaults they never set. This runs
+    // unattended on upgrade, so it has to leave the rest of the file alone.
+    const hand = [
+      'name = "Local Agent"',
+      'runner = "ollama-codex"',
+      'model = "qwen3:0.6b"',
+      `cwd = "${join(home, 'workspace')}"`,
+      'skills = []',
+      'mcp_servers = []',
+      '',
+      '[custom]',
+      'command = "codex"',
+      'args = [',
+      '  "exec", "--json",',
+      '  "-C", "{cwd}", "{prompt}",',
+      ']',
+      '',
+    ].join('\n')
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeAgent('local', hand)
+
+    await new AgentStore(statusMap(READY)).load()
+
+    const after = await readFile(join(home, 'agents', 'local', 'agent.toml'), 'utf8')
+    expect(after).toBe(hand.replace(`cwd = "${join(home, 'workspace')}"`, `cwd = "${join(home, 'workspace', 'local')}"`))
+  })
+
   test('leaves them alone when the shared workspace has files in it', async () => {
     // Several agents' work mixed in one folder cannot be split by a machine,
     // and guessing would destroy it.
@@ -609,6 +638,41 @@ describe('AgentStore.load — scoping agents that share the old workspace', () =
     await store.load()
 
     expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+})
+
+describe('withCwdLine — the surgical rewrite, and when it declines', () => {
+  const FILE = 'name = "A"\nrunner = "claude"\ncwd = "/old"\nmodel = "m"\n'
+
+  test('replaces the line and leaves every other byte alone', () => {
+    expect(withCwdLine(FILE, '/new')).toBe('name = "A"\nrunner = "claude"\ncwd = "/new"\nmodel = "m"\n')
+  })
+
+  test('declines a file with no cwd at all rather than inventing a line', () => {
+    expect(withCwdLine('name = "A"\nrunner = "claude"\n', '/new')).toBeNull()
+  })
+
+  test('declines when two cwd keys make the target ambiguous', () => {
+    expect(withCwdLine('cwd = "/a"\ncwd = "/b"\nrunner = "claude"\nname = "A"\n', '/new')).toBeNull()
+  })
+
+  test('ignores a cwd inside a section, which belongs to that section', () => {
+    // A `cwd` under [custom] is not the agent's working directory.
+    const file = 'name = "A"\nrunner = "claude"\n\n[custom]\ncwd = "/elsewhere"\n'
+
+    expect(withCwdLine(file, '/new')).toBeNull()
+  })
+
+  test('declines rather than returning a file that no longer parses', () => {
+    // The result is parsed back before it is offered, so a surgical edit can
+    // never hand back something that reads differently from what it replaced.
+    expect(withCwdLine('cwd = "/old"\nthis is not toml\n', '/new')).toBeNull()
+  })
+
+  test('quotes a path that would otherwise break the TOML', () => {
+    const rewritten = withCwdLine(FILE, '/a "quoted" \\ path')
+
+    expect(rewritten).toContain('cwd = "/a \\"quoted\\" \\\\ path"')
   })
 })
 

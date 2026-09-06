@@ -109,7 +109,16 @@ export class AgentStore {
     for (const config of sharing) {
       const next: AgentConfig = { ...config, cwd: agentWorkspaceDir(config.id) }
       await mkdir(next.cwd, { recursive: true })
-      await writeFile(agentTomlPath(config.id), serializeAgentToml(next), 'utf8')
+
+      const file = agentTomlPath(config.id)
+      const source = await readFile(file, 'utf8')
+      // Surgical where it can be, whole-file where it cannot. Reserializing is
+      // semantically identical but flattens formatting the user chose and
+      // writes back defaults they never set, and this runs unattended on
+      // upgrade — an agent.toml is theirs to hand-edit.
+      const rewritten = withCwdLine(source, next.cwd) ?? serializeAgentToml(next)
+      await writeFile(file, rewritten, 'utf8')
+
       this.configs.set(config.id, next)
     }
   }
@@ -289,6 +298,42 @@ export class AgentStore {
         : {}),
     }
   }
+}
+
+/**
+ * Replaces the `cwd` line and leaves the rest of the file byte for byte.
+ *
+ * Returns null when the file's shape is anything but the obvious one — more
+ * than one `cwd` key, or none before the first section header — so the caller
+ * falls back to reserializing rather than this guessing at TOML it cannot
+ * parse. The result is parsed back and checked before it is offered, so a
+ * surgical edit can never produce a file that reads differently.
+ */
+export function withCwdLine(source: string, cwd: string): string | null {
+  const lines = source.split('\n')
+  const headerAt = lines.findIndex((line) => line.trimStart().startsWith('['))
+  const beforeSections = headerAt === -1 ? lines.length : headerAt
+
+  const matches = lines
+    .map((line, index) => ({ line, index }))
+    .filter(({ line, index }) => index < beforeSections && /^\s*cwd\s*=/.test(line))
+
+  const only = matches.length === 1 ? matches[0] : undefined
+  if (!only) return null
+
+  const next = [...lines]
+  // JSON string syntax is also valid TOML basic-string syntax, so a path with
+  // a quote or a backslash in it survives.
+  next[only.index] = `cwd = ${JSON.stringify(collapseHome(cwd))}`
+  const rewritten = next.join('\n')
+
+  try {
+    if (parseAgentToml('check', rewritten).cwd !== cwd) return null
+  } catch {
+    return null
+  }
+
+  return rewritten
 }
 
 function brokenAgent(id: string, detail: string): Agent {
