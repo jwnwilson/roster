@@ -141,8 +141,8 @@
             either way.
           </p>
           <p class="caveat">
-            Today only the Claude runner can reach the board. A Codex agent can be assigned a task,
-            but cannot pick it up itself.
+            Claude and Codex agents both reach the board through their own tools; a custom runner
+            can be assigned a task, but cannot pick it up itself.
           </p>
         </div>
         <figure class="shot">
@@ -207,8 +207,8 @@
           <div class="row">
             <dt>Handoff between agents</dt>
             <dd>
-              An agent can list the roster and open a session on a colleague to pass work over. The
-              handing-off half is Claude-only; any runner can be handed to.
+              An agent can list the roster and open a session on a colleague to pass work over.
+              Claude and Codex agents can both hand work over; any runner can be handed to.
             </dd>
           </div>
           <div class="row">
@@ -222,7 +222,8 @@
             <dt>MCP servers, enabled per agent</dt>
             <dd>
               One <code>mcp.json</code> holds the launch command and environment; each agent picks
-              which servers it gets. Claude runner only.
+              which servers it gets. Claude and Codex agents both get them; a custom runner does
+              not.
             </dd>
           </div>
           <div class="row">
@@ -306,7 +307,7 @@
         </p>
         <ul class="gaps">
           <li>Codex and custom runners do not stream — their replies arrive whole.</li>
-          <li>Handoff, the task tools and MCP servers reach the Claude runner only.</li>
+          <li>Handoff, the task tools and MCP servers do not reach a custom runner.</li>
           <li>Spend is a placeholder screen; per-session token and cost figures are real.</li>
           <li>The composer's attachment chip is decorative — attachments are not wired to files.</li>
           <li>The MCP registry is a static catalogue of nine entries, and servers are removed by editing <code>mcp.json</code>.</li>
