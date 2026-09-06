@@ -92,7 +92,7 @@ describe('an agent presenting a plan', () => {
 
     // Assert
     expect(result.isError).toBeUndefined()
-    expect(result.content[0].text).toContain('Add a cache')
+    expect(result.content[0]?.text).toContain('Add a cache')
     expect(plans.listBySession('s1').map((plan) => plan.title)).toContain('Add a cache')
   })
 
@@ -101,7 +101,7 @@ describe('an agent presenting a plan', () => {
 
     const result = await proposePlan()({ plan: '# Do it\n\nHow.' } as never)
 
-    expect(result.content[0].text).toMatch(/stop/i)
+    expect(result.content[0]?.text).toMatch(/stop/i)
   })
 
   test('refuses an empty plan with something the agent can act on', async () => {
@@ -110,7 +110,7 @@ describe('an agent presenting a plan', () => {
     const result = await proposePlan()({ plan: '   ' } as never)
 
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('plan')
+    expect(result.content[0]?.text).toContain('plan')
   })
 })
 

@@ -3,12 +3,15 @@ import type { Plan } from '../../../shared/types'
 import { PLANS_SERVER } from '../../../shared/mcp'
 
 /**
- * Plans, as the agent building one sees them.
+ * Plans, as an agent sees them.
  *
- * Deliberately narrow. The agent already holds the plan — Roster put it in
- * the prompt — so there is nothing here to read. The one thing Roster cannot
- * work out for itself is where the work ended up, and that is what this is
- * for: a link reported as data, rather than scraped out of prose.
+ * Deliberately narrow, and write-only in both directions it offers: an agent
+ * presenting a plan already holds the whole thing, and an agent reporting a
+ * pull request already holds that too. Roster is never asked to read a plan
+ * back through here — proposing one hands it over so a research turn can end,
+ * and reporting a pull request records the one fact Roster could not have
+ * worked out for itself: where the work ended up, as a link rather than
+ * something scraped out of prose.
  */
 export interface PlanTools {
   /**

@@ -816,11 +816,12 @@ export class SessionManager {
    * Gated on the agent enabling "plans", like the board, and on this manager
    * having a plan store at all.
    */
-  private planToolsFor(agent: Agent): PlanTools | undefined {
+  private planToolsFor(agent: Agent, session: Session): PlanTools | undefined {
     const plans = this.plans
     if (!plans || !agent.mcpServers.includes(PLANS_SERVER)) return undefined
 
     return {
+      propose: (body) => plans.capture({ sessionId: session.id, agentId: agent.id, body }),
       recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
     }
   }
@@ -886,7 +887,7 @@ export class SessionManager {
     // pass. Reporting a pull request is opt-in too: without it a plan still
     // gets built, Roster simply never learns where the work landed.
     const tasks = this.taskToolsFor(agent)
-    const plans = this.planToolsFor(agent)
+    const plans = this.planToolsFor(agent, session)
     const memory = this.memoryToolsFor(agent, session)
 
     return {
