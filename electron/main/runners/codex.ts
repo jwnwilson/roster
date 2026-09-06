@@ -82,7 +82,9 @@ export class CodexRunner implements Runner {
     // Sandbox first, then servers: both are `--config`, and both are repeated
     // on a resume because `exec resume` is its own process and keeps neither.
     const permissions = [
-      ...codexPermissionOverrides(options.cwd),
+      ...(options.planMode === true
+        ? codexPlanPermissions()
+        : codexPermissionOverrides(options.cwd)),
       ...codexMcpOverrides(options.mcpServers),
     ].flatMap((override) => ['--config', override])
 
@@ -133,6 +135,27 @@ export class CodexRunner implements Runner {
 }
 
 const WORKTREE_PERMISSION_PROFILE = 'roster-worktree'
+const PLAN_PERMISSION_PROFILE = 'roster-plan'
+
+/**
+ * The sandbox for a planning turn: read everything, write nothing.
+ *
+ * Plan mode means research and propose only. Claude enforces that inside the
+ * SDK, which refuses every edit for the whole turn; Codex enforces through
+ * its sandbox, so the equivalent is a profile with no writable path.
+ *
+ * Network stays on for the same reason the worktree profile turns it on:
+ * research is the turn that most needs to reach the internet, and a
+ * read-only profile that also cut the network would make plan mode useless
+ * rather than safe.
+ */
+export function codexPlanPermissions(): string[] {
+  return [
+    `default_permissions=${tomlString(PLAN_PERMISSION_PROFILE)}`,
+    `permissions.${PLAN_PERMISSION_PROFILE}.extends=${tomlString(':read-only')}`,
+    `permissions.${PLAN_PERMISSION_PROFILE}.network.enabled=true`,
+  ]
+}
 
 /**
  * Build command-line TOML overrides for the smallest useful Codex sandbox.
