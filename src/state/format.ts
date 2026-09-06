@@ -25,6 +25,12 @@ export function formatCost(costUsd: number): string {
   return `$${costUsd.toFixed(2)}`
 }
 
+/** A subscription is not a free monetary charge, even when stored as zero. */
+export function formatUsageCost(costUsd: number, hasIncludedCost = false): string {
+  if (!hasIncludedCost) return formatCost(costUsd)
+  return costUsd > 0 ? `${formatCost(costUsd)} + Included with subscription` : 'Included with subscription'
+}
+
 /** "3 days ago" — how long ago something happened, in plain words. */
 export function relativeTime(ms: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - ms) / 1000))

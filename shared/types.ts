@@ -239,13 +239,20 @@ export interface Usage {
   outputTokens: number
   /** Every token consumed, cache included; see the runner event of the same name. */
   totalTokens: number
+  /** Whether Roster knows this is a monetary charge or subscription usage. */
+  costState?: CostState
   costUsd: number
 }
+
+/** A numeric zero is meaningful only when the monetary cost is known. */
+export type CostState = 'known' | 'included'
 
 /** What one agent has spent, summed across its sessions. */
 export interface AgentUsage {
   tokens: number
   costUsd: number
+  /** At least one session was included with a subscription, not dollar billed. */
+  hasIncludedCost?: boolean
 }
 
 /**

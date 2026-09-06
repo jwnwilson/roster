@@ -866,3 +866,28 @@ describe('migration 11 — a session can be given a name', () => {
     old.close()
   })
 })
+
+describe('migration 12 — usage cost availability', () => {
+  test('preserves historical numeric costs as known until their runner can classify them', () => {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < MIGRATIONS.length - 1; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma(`user_version = ${MIGRATIONS.length - 1}`)
+    old.prepare(
+      `INSERT INTO sessions (id, agent_id, title, origin, status, created_at)
+       VALUES ('s1', 'claude', 'existing', 'you', 'done', 0)`,
+    ).run()
+    old.prepare(
+      `INSERT INTO usage (session_id, input_tokens, output_tokens, total_tokens, cost_usd)
+       VALUES ('s1', 1, 1, 2, 0)`,
+    ).run()
+
+    migrate(old)
+
+    expect(old.prepare('SELECT cost_usd, cost_state FROM usage').get()).toEqual({
+      cost_usd: 0,
+      cost_state: 'known',
+    })
+    old.close()
+  })
+})

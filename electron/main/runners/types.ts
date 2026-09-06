@@ -48,6 +48,7 @@ export type RunnerEvent =
        */
       totalTokens: number
       costUsd: number
+      costState: 'known' | 'included'
     }
   /**
    * The CLI's own session id, for resume and fork. Codex reports it when the

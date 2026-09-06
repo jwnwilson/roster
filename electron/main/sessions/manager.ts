@@ -648,6 +648,7 @@ export class SessionManager {
           outputTokens: event.outputTokens,
           totalTokens: event.totalTokens,
           costUsd: event.costUsd,
+          costState: event.costState,
         }
         // Persist as well as emit, or the totals vanish on reload.
         this.usage.record(usage)

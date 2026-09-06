@@ -23,7 +23,7 @@ import {
 } from '@/components/primitives'
 import { FirstRunCard } from '@/components/FirstRunCard'
 import { ProjectFilter } from '@/components/ProjectFilter'
-import { formatCost, formatTokens } from '@/state/format'
+import { formatUsageCost, formatTokens } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { ManageAgentsModal } from './ManageAgentsModal'
 
@@ -175,11 +175,12 @@ function AgentCard({ agent }: AgentCardProps) {
 function Spend({ agentId }: { agentId: string }) {
   const tokens = useRoster((s) => s.agentUsage[agentId]?.tokens ?? 0)
   const costUsd = useRoster((s) => s.agentUsage[agentId]?.costUsd ?? 0)
+  const hasIncludedCost = useRoster((s) => s.agentUsage[agentId]?.hasIncludedCost ?? false)
 
   return (
     <>
       <span className="ml-auto flex-none">{formatTokens(tokens)}</span>
-      <span className="flex-none">{formatCost(costUsd)}</span>
+      <span className="flex-none">{formatUsageCost(costUsd, hasIncludedCost)}</span>
     </>
   )
 }
@@ -322,7 +323,7 @@ function StatusBar() {
       </span>
 
       <span className="ml-auto font-mono text-xs text-dim-2">
-        roster {formatTokens(totals.tokens)} · {formatCost(totals.costUsd)}
+        roster {formatTokens(totals.tokens)} · {formatUsageCost(totals.costUsd, totals.hasIncludedCost)}
       </span>
     </footer>
   )

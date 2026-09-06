@@ -49,6 +49,7 @@ describe('UsageStore', () => {
       outputTokens: 5,
       totalTokens: 95,
       costUsd: 0.5,
+      costState: 'known',
     })
 
     expect(store.forSession(s.id)).toEqual({
@@ -57,6 +58,7 @@ describe('UsageStore', () => {
       outputTokens: 5,
       totalTokens: 95,
       costUsd: 0.5,
+      costState: 'known',
     })
   })
 
@@ -66,6 +68,45 @@ describe('UsageStore', () => {
     store.record({ sessionId: s.id, inputTokens: 30, outputTokens: 9, totalTokens: 39, costUsd: 1.5 })
 
     expect(store.forSession(s.id)).toMatchObject({ inputTokens: 30, totalTokens: 39, costUsd: 1.5 })
+  })
+
+  test('keeps subscription-included usage out of monetary totals while retaining its tokens', () => {
+    const included = sessions.create({ agentId: 'codex', title: 'included', origin: 'you' })
+    const paid = sessions.create({ agentId: 'codex', title: 'paid', origin: 'you' })
+    store.record({
+      sessionId: included.id,
+      inputTokens: 10,
+      outputTokens: 5,
+      totalTokens: 15,
+      costUsd: 0,
+      costState: 'included',
+    })
+    store.record({
+      sessionId: paid.id,
+      inputTokens: 20,
+      outputTokens: 10,
+      totalTokens: 30,
+      costUsd: 1.25,
+      costState: 'known',
+    })
+
+    expect(store.byAgent()['codex']).toEqual({
+      tokens: 45,
+      costUsd: 1.25,
+      hasIncludedCost: true,
+    })
+  })
+
+  test('migrates synthetic zeroes only for known subscription Codex agents', () => {
+    const codex = sessions.create({ agentId: 'codex', title: 'old Codex', origin: 'you' })
+    const claude = sessions.create({ agentId: 'claude', title: 'real zero', origin: 'you' })
+    store.record({ sessionId: codex.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 0 })
+    store.record({ sessionId: claude.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 0 })
+
+    store.markSubscriptionIncluded(['codex'])
+
+    expect(store.forSession(codex.id)).toMatchObject({ costUsd: 0, costState: 'included' })
+    expect(store.forSession(claude.id)).toMatchObject({ costUsd: 0, costState: 'known' })
   })
 
   test('totals every session an agent owns, for its grid card', () => {

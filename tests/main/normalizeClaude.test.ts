@@ -166,7 +166,14 @@ describe('normalizeClaudeMessage — tool results', () => {
 describe('normalizeClaudeMessage — result', () => {
   test('reports usage and ends the turn with the CLI session id', () => {
     expect(normalizeClaudeMessage(RESULT_SUCCESS)).toEqual([
-      { kind: 'usage', inputTokens: 18, outputTokens: 297, totalTokens: 77_913, costUsd: 0.0484788 },
+      {
+        kind: 'usage',
+        inputTokens: 18,
+        outputTokens: 297,
+        totalTokens: 77_913,
+        costUsd: 0.0484788,
+        costState: 'known',
+      },
       { kind: 'done', runnerSessionId: 'sess-abc' },
     ])
   })

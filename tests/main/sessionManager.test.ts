@@ -434,7 +434,16 @@ describe('SessionManager.send — tools', () => {
 describe('SessionManager.send — usage', () => {
   test('persists totals so they survive a reload', async () => {
     runnerStub.run.mockImplementation(
-      streamOf([{ kind: 'usage', inputTokens: 100, outputTokens: 50, totalTokens: 150, costUsd: 0.25 }]),
+      streamOf([
+        {
+          kind: 'usage',
+          inputTokens: 100,
+          outputTokens: 50,
+          totalTokens: 150,
+          costUsd: 0.25,
+          costState: 'known',
+        },
+      ]),
     )
 
     const session = manager.create('debugging', 'x')

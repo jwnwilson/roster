@@ -138,6 +138,7 @@ function fromResult(message: Record<string, unknown>): RunnerEvent[] {
       outputTokens,
       totalTokens: inputTokens + cacheCreation + cacheRead + outputTokens,
       costUsd: typeof cost === 'number' ? cost : 0,
+      costState: 'known',
     })
   }
 

@@ -33,6 +33,7 @@ export interface SpendInput {
   label: string
   value: number
   color: string
+  hasIncludedCost?: boolean
 }
 
 export interface SpendBar extends SpendInput {
@@ -77,7 +78,7 @@ function totalBy<T>(items: readonly T[], keyOf: (item: T) => string, costOf: (it
 function agentsWithSpend(state: RosterState) {
   return state.agents.flatMap((agent) => {
     const usage = state.agentUsage[agent.id]
-    return usage ? [{ agent, costUsd: usage.costUsd }] : []
+    return usage ? [{ agent, costUsd: usage.costUsd, hasIncludedCost: usage.hasIncludedCost ?? false }] : []
   })
 }
 
@@ -106,6 +107,9 @@ export function selectSpendByProvider(state: RosterState): SpendBar[] {
       label: provider,
       value,
       color: PROVIDER_COLOR,
+      hasIncludedCost: spending.some(
+        (item) => providerOf(state, item.agent.runner) === provider && item.hasIncludedCost,
+      ),
     })),
   )
 
@@ -126,6 +130,12 @@ export function selectSpendByProvider(state: RosterState): SpendBar[] {
           label: model,
           value,
           color: MODEL_COLOR,
+          hasIncludedCost: spending.some(
+            (item) =>
+              providerOf(state, item.agent.runner) === provider.key &&
+              item.agent.model === model &&
+              item.hasIncludedCost,
+          ),
         })),
       ),
     }
@@ -135,11 +145,12 @@ export function selectSpendByProvider(state: RosterState): SpendBar[] {
 /** One bar per agent, coloured by the status its dot shows. */
 export function selectSpendByAgent(state: RosterState): SpendBar[] {
   return spendBars(
-    agentsWithSpend(state).map(({ agent, costUsd }) => ({
+    agentsWithSpend(state).map(({ agent, costUsd, hasIncludedCost }) => ({
       key: agent.id,
       label: agent.name,
       value: costUsd,
       color: statusColor(agentStatus(state, agent)),
+      hasIncludedCost,
     })),
   )
 }
@@ -160,6 +171,7 @@ export function selectSpendByProject(state: RosterState): SpendBar[] {
         label: project?.name ?? 'No project',
         value: usage.costUsd,
         color: project?.color ?? NO_PROJECT_COLOR,
+        hasIncludedCost: usage.hasIncludedCost ?? false,
       }
     }),
   )
@@ -169,12 +181,13 @@ export function selectSpendByProject(state: RosterState): SpendBar[] {
  * What the whole roster has run up — the figure the Spend header, the
  * sidebar's nav meta, and the grid's status bar all quote.
  */
-export function selectRosterTotals(state: RosterState): { tokens: number; costUsd: number } {
-  return Object.values(state.agentUsage).reduce(
+export function selectRosterTotals(state: RosterState): { tokens: number; costUsd: number; hasIncludedCost: boolean } {
+  return Object.values(state.agentUsage).reduce<{ tokens: number; costUsd: number; hasIncludedCost: boolean }>(
     (sum, usage) => ({
       tokens: sum.tokens + usage.tokens,
       costUsd: sum.costUsd + usage.costUsd,
+      hasIncludedCost: sum.hasIncludedCost || usage.hasIncludedCost === true,
     }),
-    { tokens: 0, costUsd: 0 },
+    { tokens: 0, costUsd: 0, hasIncludedCost: false },
   )
 }

@@ -286,4 +286,12 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE sessions ADD COLUMN name TEXT;
   `,
+
+  // 12 — a zero dollar amount is not enough to say whether a turn was free
+  // or subscription-included. Historical rows remain known until startup can
+  // safely reclassify the Codex subscription agents from their configuration.
+  `
+  ALTER TABLE usage ADD COLUMN cost_state TEXT NOT NULL DEFAULT 'known'
+    CHECK (cost_state IN ('known', 'included'));
+  `,
 ]

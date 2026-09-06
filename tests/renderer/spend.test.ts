@@ -293,10 +293,18 @@ describe('selectRosterTotals', () => {
       },
     })
 
-    expect(selectRosterTotals(useRoster.getState())).toEqual({ tokens: 1_000, costUsd: 1.72 })
+    expect(selectRosterTotals(useRoster.getState())).toEqual({
+      tokens: 1_000,
+      costUsd: 1.72,
+      hasIncludedCost: false,
+    })
   })
 
   test('is zero before anything has run', () => {
-    expect(selectRosterTotals(useRoster.getState())).toEqual({ tokens: 0, costUsd: 0 })
+    expect(selectRosterTotals(useRoster.getState())).toEqual({
+      tokens: 0,
+      costUsd: 0,
+      hasIncludedCost: false,
+    })
   })
 })

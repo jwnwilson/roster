@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ScreenHeader, SectionLabel } from '@/components/primitives'
-import { formatCost } from '@/state/format'
+import { formatUsageCost } from '@/state/format'
 import {
   selectRosterTotals,
   selectSpendByAgent,
@@ -32,7 +32,9 @@ export function Spend() {
   return (
     <div className="flex h-screen flex-col">
       <ScreenHeader title="Spend">
-        <span className="text-md text-dim">{formatCost(totals.costUsd)} across all agents</span>
+        <span className="text-md text-dim">
+          {formatUsageCost(totals.costUsd, totals.hasIncludedCost)} across all agents
+        </span>
       </ScreenHeader>
 
       {nothingRun ? (
@@ -114,7 +116,7 @@ function Row({ bar, emphasis = false, nested = false }: RowProps) {
           nested ? 'text-sm text-amber-dim' : 'text-md text-amber'
         }`}
       >
-        {bar.formatted}
+        {formatUsageCost(bar.value, bar.hasIncludedCost)}
       </span>
     </div>
   )

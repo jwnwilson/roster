@@ -107,7 +107,14 @@ describe('normalizeCodexMessage — command execution', () => {
 describe('normalizeCodexMessage — turn completion', () => {
   test('reports usage and ends the turn', () => {
     expect(normalizeCodexMessage(TURN_COMPLETED)).toEqual([
-      { kind: 'usage', inputTokens: 29_223, outputTokens: 121, totalTokens: 29_344, costUsd: 0 },
+      {
+        kind: 'usage',
+        inputTokens: 29_223,
+        outputTokens: 121,
+        totalTokens: 29_344,
+        costUsd: 0,
+        costState: 'included',
+      },
       { kind: 'done', runnerSessionId: '' },
     ])
   })

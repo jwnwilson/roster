@@ -6,6 +6,7 @@ import { sessionLabel } from '@shared/sessions'
 import { statusColor } from '@shared/status'
 import { taskStatusColor } from '@shared/tasks'
 import { contextFraction, contextLabel } from '@shared/models'
+import { formatUsageCost } from '@/state/format'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
 import { SessionName } from './SessionName'
@@ -631,7 +632,7 @@ function SessionCard() {
         <div className="flex items-baseline">
           <span className="text-base text-dim">Spend</span>
           <span className="ml-auto font-mono text-md text-amber">
-            ${(usage?.costUsd ?? 0).toFixed(2)}
+            {formatUsageCost(usage?.costUsd ?? 0, usage?.costState === 'included')}
           </span>
         </div>
         {fraction === null ? (

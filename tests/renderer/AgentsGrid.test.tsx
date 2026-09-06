@@ -390,6 +390,17 @@ describe('AgentsGrid — spend', () => {
     expect(screen.getByText('$0.00')).toBeInTheDocument()
   })
 
+  test('labels subscription-included Codex usage instead of a free dollar amount', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', runner: 'codex' })],
+      agentUsage: { debugging: { tokens: 86_120, costUsd: 0, hasIncludedCost: true } },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('Included with subscription')).toBeInTheDocument()
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
   test('each card shows its own total, not the roster-wide one', () => {
     useRoster.setState({
       agents: [

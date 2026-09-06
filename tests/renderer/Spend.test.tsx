@@ -113,6 +113,19 @@ describe('Spend', () => {
     expect(screen.getAllByText('$0.00').length).toBeGreaterThan(0)
   })
 
+  test('labels subscription-included Codex usage instead of presenting it as $0.00', () => {
+    useRoster.setState({
+      runners: [aRunner({ id: 'codex', provider: 'OpenAI' })],
+      agents: [anAgent({ id: 'review', name: 'Review Agent', runner: 'codex', model: 'gpt-5.5' })],
+      agentUsage: { review: { tokens: 118_400, costUsd: 0, hasIncludedCost: true } },
+      spendByProject: { [NO_PROJECT]: { tokens: 118_400, costUsd: 0, hasIncludedCost: true } },
+    })
+    render(<Spend />)
+
+    expect(screen.getAllByText('Included with subscription').length).toBeGreaterThan(0)
+    expect(screen.queryByText('$0.00 across all agents')).not.toBeInTheDocument()
+  })
+
   test('is not narrowed by the project filter the board and grid share', () => {
     seedRoster()
     useRoster.setState({ projectFilter: 'api' })

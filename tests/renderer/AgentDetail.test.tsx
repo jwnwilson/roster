@@ -428,6 +428,23 @@ describe('AgentDetail — usage readout', () => {
     expect(screen.getByText('12% of context window')).toBeInTheDocument()
   })
 
+  test('shows subscription-included Codex usage without calling it free', async () => {
+    withSessions([aSession({ id: 's1' })])
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', runner: 'codex', model: 'gpt-5.5' })],
+      usage: {
+        s1: {
+          sessionId: 's1', inputTokens: 100, outputTokens: 20, totalTokens: 120,
+          costUsd: 0, costState: 'included',
+        },
+      },
+    })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText('Included with subscription')).toBeInTheDocument()
+    expect(screen.queryByText('$0.00')).not.toBeInTheDocument()
+  })
+
   test('says so rather than drawing a bar for a model it cannot size', async () => {
     // Codex serves whatever slugs are in the user's models_cache.json, so an
     // unknown window is routine. An empty bar would read as "plenty of room".

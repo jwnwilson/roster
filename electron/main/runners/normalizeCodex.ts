@@ -109,8 +109,9 @@ function fromTurnCompleted(message: Record<string, unknown>): RunnerEvent[] {
       // input_tokens were cache hits — already counted, so adding it would
       // double them. reasoning_output_tokens sits inside output_tokens too.
       totalTokens: inputTokens + outputTokens,
-      // Codex reports no dollar figure; spend is tracked by the vendor.
+      // ChatGPT-authenticated Codex has no per-turn invoice charge.
       costUsd: 0,
+      costState: 'included',
     })
   }
 
