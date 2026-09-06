@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Plan } from '../../../shared/types'
+import type { Plan, PlanStatus } from '../../../shared/types'
 import { PLANS_SERVER } from '../../../shared/mcp'
 
 /**
@@ -22,6 +22,16 @@ export interface PlanTools {
    * choose.
    */
   propose(body: string): Plan
+
+  /**
+   * How far the session's current plan has got, or null when it has none.
+   *
+   * The one read this interface offers, and it exists because proposing is
+   * destructive: a capture rewrites the session's newest plan in place and
+   * resets it to a draft. `propose` alone cannot tell whether that would undo
+   * work already under way, so the caller says.
+   */
+  currentStatus(): PlanStatus | null
 
   recordPullRequest(planId: string, input: { url: string; branch?: string }): Plan
 }
@@ -93,6 +103,24 @@ export function buildPlanTools(plans: PlanTools, tool: ToolFactory) {
       const body = args.plan.trim()
       if (body === '') {
         return text('A plan cannot be empty. Put the plan itself in `plan`.', true)
+      }
+
+      // A capture rewrites the session's newest plan and resets it to a
+      // draft, keeping the branch and pull request it had already picked up.
+      // On a plan that has moved past review that is pure damage: you would
+      // be offered "Approve & build" again on work that is already building
+      // or already up for review, and settleBuild cannot undo it because it
+      // only matches a plan still reading 'building'. Refusing here rather
+      // than in the store keeps the reset available to the revise flow,
+      // which is what it is for.
+      const status = plans.currentStatus()
+      if (status === 'building' || status === 'in_review') {
+        return text(
+          `This session's plan is already ${status === 'building' ? 'being built' : 'up for review'}, ` +
+            'so it cannot be replaced. Carry on with the work you were given, and report the ' +
+            'pull request with record_pull_request when it exists.',
+          true,
+        )
       }
 
       const plan = plans.propose(body)

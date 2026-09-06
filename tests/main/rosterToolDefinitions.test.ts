@@ -43,7 +43,11 @@ function fullSet(): BuiltinToolSet {
       update: () => ({}) as never,
       comment: () => {},
     },
-    plans: { propose: () => ({}) as never, recordPullRequest: () => ({}) as never },
+    plans: {
+      propose: () => ({}) as never,
+      currentStatus: () => null,
+      recordPullRequest: () => ({}) as never,
+    },
     memory: { recall: () => '', remember: async () => undefined },
   }
 }

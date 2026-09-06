@@ -873,6 +873,11 @@ export class SessionManager {
         })
         return plan
       },
+      // The handler refuses to overwrite a plan that has moved past your
+      // review, and this is how it knows. Read through the store on every
+      // call rather than captured once, because the status changes underneath
+      // a long turn.
+      currentStatus: () => plans.listBySession(session.id).at(-1)?.status ?? null,
       recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
     }
   }
