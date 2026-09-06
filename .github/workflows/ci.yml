@@ -1,0 +1,49 @@
+# The gate a pull request has to pass before it can be merged.
+#
+# Deliberately the same command, runner and Node version as the `version` job
+# in release.yml: that job runs `npm run check` on every push to main and, if
+# it fails, no release is cut. Running anything weaker here would let a PR go
+# green and then wedge the release pipeline the moment it merged. Same gate,
+# moved earlier.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One run per PR: a force-push or a new commit supersedes the run it replaces,
+# rather than queueing behind it. Safe to cancel because nothing here writes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # macOS on purpose. `postinstall` runs `electron-builder install-app-deps`,
+    # which rebuilds better-sqlite3 and node-pty from source for the host, and
+    # the only host this app is ever packaged for is macOS. Testing elsewhere
+    # would be testing a build nobody ships.
+    #
+    # No paths filter, either. This check is required for merge, and a required
+    # check that a paths filter skips never reports at all — the PR sits on
+    # "Expected — waiting for status" forever. A docs-only PR paying for one
+    # cheap run is the better trade.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # typecheck, then the test suite with its coverage thresholds, then the
+      # build. See the `check` script in package.json.
+      - run: npm run check

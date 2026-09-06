@@ -471,6 +471,16 @@ describe('AgentDetail — usage readout', () => {
     expect(await screen.findByText('77,913')).toBeInTheDocument()
   })
 
+  test('labels an unavailable Codex estimate rather than rendering zero spend', async () => {
+    withSessions([aSession({ id: 's1' })])
+    useRoster.setState({
+      usage: { s1: { sessionId: 's1', inputTokens: 10, outputTokens: 5, totalTokens: 15, costUsd: 0, costType: 'unavailable' } },
+    })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText('Estimate unavailable')).toBeInTheDocument()
+  })
+
   test('opens on the newest session rather than none', async () => {
     // The sidebar and the card body name no session, so the pane used to
     // come up empty beside a tab strip full of them. Deliberately not using

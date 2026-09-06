@@ -286,4 +286,14 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE sessions ADD COLUMN name TEXT;
   `,
+
+  // 12 — retain how each usage amount should be presented. A zero remains a
+  // valid actual amount; unavailable is distinguished by cost_type.
+  `
+  ALTER TABLE usage ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage ADD COLUMN cost_type TEXT NOT NULL DEFAULT 'actual'
+    CHECK (cost_type IN ('actual', 'estimated', 'unavailable'));
+  ALTER TABLE usage ADD COLUMN model TEXT;
+  ALTER TABLE usage ADD COLUMN rate_table_version TEXT;
+  `,
 ]

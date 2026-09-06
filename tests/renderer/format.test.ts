@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { formatCost, formatTokens } from '@/state/format'
+import { formatCost, formatTokens, formatUsageCost } from '@/state/format'
 
 describe('formatTokens', () => {
   test('shows small counts exactly', () => {
@@ -46,5 +46,15 @@ describe('formatCost', () => {
   test('survives a missing or nonsense figure', () => {
     expect(formatCost(Number.NaN)).toBe('$0.00')
     expect(formatCost(0)).toBe('$0.00')
+  })
+})
+
+describe('formatUsageCost', () => {
+  test('rounds estimates to cents and labels their meaning', () => {
+    expect(formatUsageCost(0.005, true)).toBe('$0.01 estimated')
+  })
+
+  test('renders unavailable as text rather than a zero dollar amount', () => {
+    expect(formatUsageCost(0, false, true)).toBe('Estimate unavailable')
   })
 })

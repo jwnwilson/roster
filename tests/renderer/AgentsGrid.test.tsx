@@ -379,6 +379,19 @@ describe('AgentsGrid — spend', () => {
     expect(screen.getByText('$0.91')).toBeInTheDocument()
   })
 
+  test('labels a Codex API-equivalent estimate on the agent card', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging' })],
+      agentUsage: { debugging: { tokens: 1_000, costUsd: 0.91, hasEstimatedCost: true } },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('$0.91 estimated')).toHaveAttribute(
+      'title',
+      'Estimated from token usage; not an invoiced ChatGPT charge.',
+    )
+  })
+
   test('an agent that has never run reads as zero', () => {
     useRoster.setState({
       agents: [anAgent({ id: 'debugging' })],

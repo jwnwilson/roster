@@ -25,6 +25,15 @@ export function formatCost(costUsd: number): string {
   return `$${costUsd.toFixed(2)}`
 }
 
+export const ESTIMATE_EXPLANATION = 'Estimated from token usage; not an invoiced ChatGPT charge.'
+
+/** Presentation follows the persisted cost type; unavailable is never a zero dollar amount. */
+export function formatUsageCost(costUsd: number, hasEstimatedCost = false, hasUnavailableCost = false): string {
+  if (hasEstimatedCost) return `${formatCost(costUsd)} estimated`
+  if (hasUnavailableCost && costUsd <= 0) return 'Estimate unavailable'
+  return hasUnavailableCost ? `${formatCost(costUsd)} · Estimate unavailable` : formatCost(costUsd)
+}
+
 /** "3 days ago" — how long ago something happened, in plain words. */
 export function relativeTime(ms: number, now = Date.now()): string {
   const seconds = Math.max(0, Math.round((now - ms) / 1000))
