@@ -68,6 +68,7 @@ export type SessionEvent =
   | { type: 'streaming'; sessionId: string; active: boolean }
   /** What the agent is doing right now, for the streaming indicator. */
   | { type: 'activity'; sessionId: string; text: string }
+  | { type: 'session-deleted'; sessionId: string; agentId: string }
 
 /**
  * Streamed prose arrives token by token. Writing and broadcasting each one
@@ -157,6 +158,8 @@ export class SessionManager {
      * carries only the board, and no agent is offered the memory tools.
      */
     private readonly notes?: ProjectNotesStore,
+    /** The app-owned removal lifecycle, supplied where PTYs and plans live. */
+    private readonly sessionRemoval?: { removeSession: (sessionId: string) => Promise<Session | null> },
   ) {}
 
   subscribe(listener: (event: SessionEvent) => void): () => void {
@@ -282,6 +285,18 @@ export class SessionManager {
 
   isStreaming(sessionId: string): boolean {
     return this.active.has(sessionId)
+  }
+
+  /** Permanently close only a session that the live caller directly spawned. */
+  async closeChildSession(callerSessionId: string, sessionId: string): Promise<boolean> {
+    const child = this.sessions.findById(sessionId)
+    if (child?.spawnedFrom?.sessionId !== callerSessionId) return false
+
+    const removed = await this.sessionRemoval?.removeSession(sessionId)
+    if (!removed) return false
+
+    this.emit({ type: 'session-deleted', sessionId, agentId: removed.agentId })
+    return true
   }
 
   /* ---- running a turn --------------------------------------------------- */
@@ -845,6 +860,7 @@ export class SessionManager {
         })
         return { sessionId: result.session.id, label: result.label, started: result.started }
       },
+      closeSession: (childSessionId) => this.closeChildSession(session.id, childSessionId),
     }
 
     // The board is opt-in per agent, like any other MCP server. An agent that

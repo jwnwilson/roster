@@ -20,6 +20,8 @@ export interface RosterTools {
     label: string
     started: boolean
   }
+  /** Permanently closes a direct child of this bound session. */
+  closeSession(sessionId: string): Promise<boolean>
 }
 
 /**
@@ -33,12 +35,17 @@ export interface RosterTools {
 export const ROSTER_TOOL_NAMES = [
   'mcp__roster__list_agents',
   'mcp__roster__open_session',
+  'mcp__roster__close_session',
 ] as const
 
 export const OPEN_SESSION_SCHEMA = {
   agent_id: z.string().describe('The id of the agent to hand work to.'),
   title: z.string().describe('A short title for the session, shown on its tab.'),
   brief: z.string().describe('What that agent should do. It sees this as its first message.'),
+}
+
+export const CLOSE_SESSION_SCHEMA = {
+  session_id: z.string().describe('The id of the direct child session to permanently close.'),
 }
 
 /**
@@ -132,7 +139,22 @@ export function buildRosterTools(
     },
   )
 
-  return [listAgents, openSession]
+  const closeSession = tool(
+    'close_session',
+    'Permanently close one direct child session that you opened. This cannot be undone.',
+    CLOSE_SESSION_SCHEMA,
+    async (args: { session_id: string }) => {
+      if (!(await tools.closeSession(args.session_id))) {
+        return {
+          content: [{ type: 'text' as const, text: 'That session is not a direct child of this session.' }],
+          isError: true,
+        }
+      }
+      return { content: [{ type: 'text' as const, text: 'Closed the child session permanently.' }] }
+    },
+  )
+
+  return [listAgents, openSession, closeSession]
 }
 
 function firstLine(prompt: string): string {
