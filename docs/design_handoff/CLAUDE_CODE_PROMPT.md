@@ -4,7 +4,7 @@ Paste this in to kick off the build:
 
 ---
 
-I'm building Roster, a desktop app for managing a roster of AI coding agents (each with a provider/model, working directory, skills, and MCP servers), chatting with them, watching their terminals, approving risky actions, and letting agents hand off sessions to each other. It also has a shared Linear-style Tasks kanban board (grouped by project) that agents and humans both use to pick up and track work.
+I'm building Roster, a desktop app for managing a roster of AI coding agents (each with a provider/model, working directory, skills, and MCP servers), chatting with them, watching their terminals, approving risky actions, and letting agents hand off sessions to each other. It also has a shared Linear-style Tasks kanban board (grouped by project) that agents and humans both use to pick up and track work, plus an Agents Workflow view that visualizes how sessions delegate to each other as a dependency graph.
 
 I have a full design handoff in `design_handoff_roster/`:
 - `README.md` — screens, layout, design tokens (colors, type, spacing), interactions, and state shape
@@ -21,6 +21,7 @@ Read the README and the prototype first, then set up the project and build it.
 - **Terminal rendering**: `xterm.js` wired to a real pty (`node-pty` under Electron, or a Rust pty crate + Tauri command) instead of the prototype's static line list.
 - **Chat/message list**: [assistant-ui](https://github.com/assistant-ui/assistant-ui) for the chat pane (message list, streaming, tool-call rendering) — it already covers most of the prototype's message kinds (text, tool call, streaming indicator); style it to match the tokens rather than its defaults. Fall back to a plain virtualized list (`@tanstack/react-virtual`) if it doesn't fit the spawn/handoff message types.
 - **Agent process/config**: model this from the start as real data — agent configs as `agent.toml` files on disk (per the "Edit" modal's footer note in the prototype), sessions and messages persisted (SQLite via `better-sqlite3` or similar) rather than hardcoded demo arrays.
+- **Graph layout** (Agents Workflow view): [dagre](https://github.com/dagrejs/dagre) for automatic layered DAG layout — same library used in the design reference.
 - **LLM calls**: Anthropic/OpenAI/Google SDKs behind a small provider-agnostic interface, since agents can be configured with any of the three.
 
 **Build order I'd suggest:**
