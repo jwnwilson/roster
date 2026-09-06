@@ -124,12 +124,20 @@ describe('the prompt that asks for a revision', () => {
   test('asks for a plan rather than for the work', () => {
     const prompt = revisePrompt({ plan: PLAN, body: BODY, comments: [note('x')] })
 
+    // The prompt ends with the plan quoted back, and that section always
+    // contains the word "plan" — so asserting against the whole string would
+    // pass however the instruction above it was rewritten. The framing is
+    // what this test is about, so it looks only at the part before the
+    // quotation.
+    //
     // Every revision turn goes through this string, for every runner, so it
     // cannot name a tool only one of them has (see the "asking for a
     // revision" tests below). What still has to hold, for every runner, is
     // the intent: this is a request for another plan, and not for the work.
-    expect(prompt).toMatch(/plan/i)
-    expect(prompt).toMatch(/do not start the work/i)
+    const [instructions = ''] = prompt.split('--- PLAN')
+
+    expect(instructions).toMatch(/plan/i)
+    expect(instructions).toMatch(/do not start the work/i)
   })
 })
 
