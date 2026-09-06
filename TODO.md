@@ -28,6 +28,7 @@
 - [x] Design build and publish an SPA on github for this tool
 - [ ] Verfiy the plan visualisation is working for all models
 - [ ] Verify agents can @ other agents in comments to continue work for all models
-- [ ] Design a graph visualisation to show all the sessions related to a task to make it easier to follow the flow
+- [ ] Use the updated design handoff to design a graph visualisation for agents to show all the sessions related to a task to make it easier to follow the flow.
+- [ ] Ensure the workspace dir is where the agent is working, I still want agent data, context stored in ~/.roster/
 - [ ] Plan for extending agents to work with multi repos and for the context logic to updated to work per project
 - [ ] Look at opensource design tools to mimic claude design that will work with any agent starting with codex
