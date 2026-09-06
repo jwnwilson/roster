@@ -9,6 +9,7 @@ import { MEMORY_SERVER, PLANS_SERVER, ROSTER_SERVER, TASKS_SERVER } from '@share
 import type { McpLaunchSpec, StartOptions } from '@main/runners/types'
 // Type only, so naming it here cannot load the module before the mocks below.
 import type { McpBridge as Bridge } from '@main/runners/mcpBridge'
+import type { SendOptions } from '@main/sessions/manager'
 
 const runnerStub = {
   id: 'codex',
@@ -64,6 +65,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
 let agents: Agent[]
 let home: string
 let manager: InstanceType<typeof SessionManager>
+let plans: InstanceType<typeof PlanStore>
 let started: StartOptions | null
 
 /** The tools the bridge was serving while the turn was running. */
@@ -95,6 +97,7 @@ beforeEach(async () => {
   })
 
   const db = openDatabase(':memory:')
+  plans = new PlanStore(db)
   manager = new SessionManager(
     {
       findAll: () => agents,
@@ -105,7 +108,7 @@ beforeEach(async () => {
     { findAll: () => [] } as never,
     new UsageStore(db),
     { tasks: new TaskStore(db, () => null), projects: new ProjectStore(db) },
-    new PlanStore(db),
+    plans,
     new ProjectNotesStore(),
   )
 })
@@ -137,9 +140,9 @@ function listOverBridge(
   })
 }
 
-async function run(agentId = 'codey'): Promise<void> {
+async function run(agentId = 'codey', options: SendOptions = {}): Promise<void> {
   const session = manager.create(agentId, 'Work')
-  await manager.send(session.id, 'go')
+  await manager.send(session.id, 'go', options)
 }
 
 describe('a Codex agent’s MCP servers', () => {
@@ -202,6 +205,41 @@ describe('which of Roster’s tools a Codex agent gets', () => {
     await run()
 
     expect(served.map((tool) => tool.name)).not.toContain('recall')
+  })
+})
+
+describe('a Codex agent in plan mode', () => {
+  test('is given propose_plan even when it has not enabled the plans server', async () => {
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
+
+    // Act
+    await run('codey', { planMode: true })
+
+    // Assert
+    expect(served.map((tool) => tool.name)).toContain('propose_plan')
+  })
+
+  test('gets neither plan tool on an ordinary turn with no plans server', async () => {
+    agents = [agent({ mcpServers: [] })]
+
+    await run('codey')
+
+    expect(served.map((tool) => tool.name)).not.toContain('propose_plan')
+    expect(served.map((tool) => tool.name)).not.toContain('record_pull_request')
+  })
+
+  test('keeps the plan tools on the build turn once the session has a plan', async () => {
+    // The build turn is not a plan-mode turn. Without this the agent could
+    // never report its pull request, and settleBuild would cycle the plan
+    // back to draft — the exact trap this work closes.
+    agents = [agent({ mcpServers: [] })]
+    const session = manager.create('codey', 'Work')
+    plans.capture({ sessionId: session.id, agentId: 'codey', body: '# Done\n' })
+
+    await manager.send(session.id, 'build it')
+
+    expect(served.map((tool) => tool.name)).toContain('record_pull_request')
   })
 })
 

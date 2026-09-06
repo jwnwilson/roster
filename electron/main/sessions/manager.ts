@@ -387,7 +387,7 @@ export class SessionManager {
       // Which of Roster's own tools this agent holds is decided once, here,
       // and the same answer serves both runners. How they are delivered is
       // all that differs below.
-      const toolSet = this.builtinToolsFor(agent, session)
+      const toolSet = this.builtinToolsFor(agent, session, options.planMode === true)
 
       let inProcessMcpServers: Record<string, unknown> | undefined
       let mcpServers = this.mcpServersFor(agent)
@@ -813,12 +813,30 @@ export class SessionManager {
   /**
    * The plan tools for this agent, or nothing.
    *
-   * Gated on the agent enabling "plans", like the board, and on this manager
-   * having a plan store at all.
+   * Three ways in, because plan mode has to work without ceremony:
+   *
+   * - the agent enabled "plans", the ordinary opt-in;
+   * - this is a planning turn — for a Claude agent plan mode needs no MCP
+   *   server at all, so demanding one here would make the toggle appear to
+   *   work and do nothing;
+   * - the session already has a plan, which is what carries the *build*
+   *   turn. That turn is not plan mode, and without this clause an agent
+   *   could propose a plan it was then unable to report a pull request for,
+   *   leaving settleBuild to cycle it back to draft forever.
    */
-  private planToolsFor(agent: Agent, session: Session): PlanTools | undefined {
+  private planToolsFor(
+    agent: Agent,
+    session: Session,
+    planMode: boolean,
+  ): PlanTools | undefined {
     const plans = this.plans
-    if (!plans || !agent.mcpServers.includes(PLANS_SERVER)) return undefined
+    if (!plans) return undefined
+
+    const enabled =
+      agent.mcpServers.includes(PLANS_SERVER) ||
+      planMode ||
+      plans.listBySession(session.id).length > 0
+    if (!enabled) return undefined
 
     return {
       propose: (body) => plans.capture({ sessionId: session.id, agentId: agent.id, body }),
@@ -863,7 +881,7 @@ export class SessionManager {
    * there; the rest are opt-in through the agent's own `mcp_servers`, which
    * is the control the MCP screen offers.
    */
-  private builtinToolsFor(agent: Agent, session: Session): BuiltinToolSet {
+  private builtinToolsFor(agent: Agent, session: Session, planMode: boolean): BuiltinToolSet {
     const roster: RosterTools = {
       listAgents: () => this.agents.findAll(),
       openSession: ({ toAgentId, title, brief }) => {
@@ -887,7 +905,7 @@ export class SessionManager {
     // pass. Reporting a pull request is opt-in too: without it a plan still
     // gets built, Roster simply never learns where the work landed.
     const tasks = this.taskToolsFor(agent)
-    const plans = this.planToolsFor(agent, session)
+    const plans = this.planToolsFor(agent, session, planMode)
     const memory = this.memoryToolsFor(agent, session)
 
     return {
