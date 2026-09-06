@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { Agent, Approval, Message, Session, Usage } from '../../../shared/types'
-import { isBuiltinMcpServer, MEMORY_SERVER, PLANS_SERVER, TASKS_SERVER } from '../../../shared/mcp'
+import {
+  isBuiltinMcpServer,
+  MEMORY_SERVER,
+  PLANS_SERVER,
+  ROSTER_SERVER,
+  TASKS_SERVER,
+} from '../../../shared/mcp'
 import { EXIT_PLAN_MODE, planFromToolInput } from '../../../shared/plans'
 import type { AgentStore } from '../store/agents'
 import type { McpStore } from '../store/mcp'
@@ -15,7 +21,10 @@ import type { ProjectNotesStore } from '../store/projectNotes'
 import { getRunner } from '../runners/registry'
 import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
-import { createRosterMcpServer } from '../runners/handoffTool'
+import { CodexRunner } from '../runners/codex'
+import { McpBridge } from '../runners/mcpBridge'
+import { builtinToolDefinitions, type BuiltinToolSet } from '../runners/toolDefinitions'
+import { createRosterMcpServer, type RosterTools } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
 import { createMemoryMcpServer, type MemoryTools } from '../runners/memoryTools'
@@ -345,6 +354,9 @@ export class SessionManager {
     }
     this.active.set(sessionId, run)
 
+    /** Set only for a runner that reaches Roster's tools from another process. */
+    let bridge: McpBridge | null = null
+
     // The try opens here rather than at the runner call: the MCP servers
     // below are built with await, and a throw there used to escape send()
     // with the run still in `active` and its `done` promise unresolved —
@@ -354,56 +366,24 @@ export class SessionManager {
       this.emit({ type: 'streaming', sessionId, active: true })
       this.emit({ type: 'activity', sessionId, text: THINKING })
 
-      // Only the Claude runner supports in-process MCP, so only it can be
-      // given Roster's own servers; other runners simply cannot hand off yet.
+      // Which of Roster's own tools this agent holds is decided once, here,
+      // and the same answer serves both runners. How they are delivered is
+      // all that differs below.
+      const toolSet = this.builtinToolsFor(agent, session)
+
       let inProcessMcpServers: Record<string, unknown> | undefined
+      let mcpServers = this.mcpServersFor(agent)
+
       if (runner instanceof ClaudeRunner) {
+        // Claude runs inside Roster, so it is handed the servers themselves.
         runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
-        inProcessMcpServers = {
-          roster: await createRosterMcpServer(
-            {
-              listAgents: () => this.agents.findAll(),
-              openSession: ({ toAgentId, title, brief }) => {
-                const result = this.handOff({
-                  fromAgentId: agent.id,
-                  fromSessionId: sessionId,
-                  toAgentId,
-                  title,
-                  brief,
-                })
-                return {
-                  sessionId: result.session.id,
-                  label: result.label,
-                  started: result.started,
-                }
-              },
-            },
-            agent.id,
-          ),
-        }
-
-        // The board is opt-in per agent, like any other MCP server. An agent
-        // that does not enable it is never given the tools at all, so there is
-        // nothing for it to be refused.
-        const tasks = this.taskToolsFor(agent)
-        if (tasks) {
-          inProcessMcpServers[TASKS_SERVER] = await createTasksMcpServer(tasks, agent.id)
-        }
-
-        // The project's notes, opt-in the same way — and additionally only
-        // where there is a project, since which notes an agent may reach is
-        // decided by the session rather than by an argument it could pass.
-        const memory = this.memoryToolsFor(agent, session)
-        if (memory) {
-          inProcessMcpServers[MEMORY_SERVER] = await createMemoryMcpServer(memory)
-        }
-
-        // Reporting a pull request is opt-in the same way. Without it a plan
-        // still gets built; Roster simply never learns where the work landed.
-        const planTools = this.planToolsFor(agent)
-        if (planTools) {
-          inProcessMcpServers[PLANS_SERVER] = await createPlansMcpServer(planTools)
-        }
+        inProcessMcpServers = await inProcessServersFor(toolSet, agent.id)
+      } else if (runner instanceof CodexRunner) {
+        // `codex exec` is a separate process, and an in-process server cannot
+        // be given to one. It gets a real stdio MCP server instead, which
+        // calls straight back into these same tools. See mcpBridge.ts.
+        bridge = await McpBridge.start(builtinToolDefinitions(toolSet, agent.id))
+        mcpServers = { ...mcpServers, [ROSTER_SERVER]: bridge.launchSpec() }
       }
 
       const stream = runner.run(this.withProjectBrief(session, prompt), {
@@ -411,7 +391,7 @@ export class SessionManager {
         model: agent.model,
         systemPrompt: agent.systemPrompt,
         skillPaths: this.skillPathsFor(agent),
-        mcpServers: this.mcpServersFor(agent),
+        mcpServers,
         signal: run.abort.signal,
         ...(options.planMode === true ? { planMode: true } : {}),
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
@@ -422,6 +402,24 @@ export class SessionManager {
     } catch (cause) {
       this.failTurn(sessionId, cause instanceof Error ? cause.message : String(cause))
     } finally {
+      // First, and before anything else this turn writes: the bridge is the
+      // one door another process holds into this session's stores, and a turn
+      // that has ended must not still be reachable through it.
+      //
+      // Caught rather than awaited plainly. This whole `try` was opened where
+      // it is because a throw before the runner call used to escape send()
+      // with the run still in `active` and its `done` promise unresolved; a
+      // rejection here — `rm` on a directory that has become unwritable is
+      // the realistic one — would do the same thing from the other end, and
+      // leave the session reading as streaming for good. Nothing above can
+      // act on it, so it is reported and the turn is cleaned up regardless.
+      try {
+        await bridge?.close()
+      } catch (cause) {
+        process.stderr.write(
+          `[mcp] could not close the bridge for session ${sessionId}: ${describeCause(cause)}\n`,
+        )
+      }
       // Whatever is still buffered belongs to this turn, not the next.
       this.flushText(sessionId, run)
       this.active.delete(sessionId)
@@ -827,6 +825,48 @@ export class SessionManager {
   }
 
   /**
+   * Every built-in tool set this agent holds for this session.
+   *
+   * The one place the gating is decided, so a Claude agent and a Codex agent
+   * with the same agent.toml get exactly the same tools. Handoff is always
+   * there; the rest are opt-in through the agent's own `mcp_servers`, which
+   * is the control the MCP screen offers.
+   */
+  private builtinToolsFor(agent: Agent, session: Session): BuiltinToolSet {
+    const roster: RosterTools = {
+      listAgents: () => this.agents.findAll(),
+      openSession: ({ toAgentId, title, brief }) => {
+        const result = this.handOff({
+          fromAgentId: agent.id,
+          fromSessionId: session.id,
+          toAgentId,
+          title,
+          brief,
+        })
+        return { sessionId: result.session.id, label: result.label, started: result.started }
+      },
+    }
+
+    // The board is opt-in per agent, like any other MCP server. An agent that
+    // does not enable it is never given the tools at all, so there is nothing
+    // for it to be refused. The project's notes are opt-in the same way — and
+    // additionally only where there is a project, since which notes an agent
+    // may reach is decided by the session rather than by an argument it could
+    // pass. Reporting a pull request is opt-in too: without it a plan still
+    // gets built, Roster simply never learns where the work landed.
+    const tasks = this.taskToolsFor(agent)
+    const plans = this.planToolsFor(agent)
+    const memory = this.memoryToolsFor(agent, session)
+
+    return {
+      roster,
+      ...(tasks ? { tasks } : {}),
+      ...(plans ? { plans } : {}),
+      ...(memory ? { memory } : {}),
+    }
+  }
+
+  /**
    * The board, bound to this agent.
    *
    * Every change routes through TaskStore.apply with the agent as the actor,
@@ -953,6 +993,32 @@ export class SessionManager {
 
     return Object.fromEntries(resolved)
   }
+}
+
+/**
+ * The same tool sets, as in-process SDK servers.
+ *
+ * Only a runner living in this process can be handed these, which today is
+ * Claude alone. Each server is created from the same `build*Tools` functions
+ * the stdio bridge reads, so the two paths cannot offer different tools.
+ */
+async function inProcessServersFor(
+  set: BuiltinToolSet,
+  currentAgentId: string,
+): Promise<Record<string, unknown>> {
+  const servers: Record<string, unknown> = {
+    [ROSTER_SERVER]: await createRosterMcpServer(set.roster, currentAgentId),
+  }
+
+  if (set.tasks) servers[TASKS_SERVER] = await createTasksMcpServer(set.tasks, currentAgentId)
+  if (set.memory) servers[MEMORY_SERVER] = await createMemoryMcpServer(set.memory)
+  if (set.plans) servers[PLANS_SERVER] = await createPlansMcpServer(set.plans)
+
+  return servers
+}
+
+function describeCause(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
 }
 
 /** Exported for tests that need a deterministic id. */

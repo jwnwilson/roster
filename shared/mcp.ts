@@ -13,6 +13,17 @@ export interface BuiltinMcpServer {
   description: string
 }
 
+/**
+ * Handing work to another agent: list the roster, open a session on one.
+ *
+ * Not in BUILTIN_MCP_SERVERS and deliberately so — handoff is not opt-in per
+ * agent, it is what makes a roster a roster, so there is nothing to enable
+ * and nothing to show on the MCP screen. The name is here because both the
+ * in-process server Claude gets and the stdio server Codex gets have to agree
+ * on it.
+ */
+export const ROSTER_SERVER = 'roster'
+
 /** The board tools: list, read, update, comment, create. */
 export const TASKS_SERVER = 'tasks'
 
