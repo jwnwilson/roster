@@ -129,7 +129,7 @@ export function toWireTools(definitions: BuiltinToolDefinition[]): WireTool[] {
 function annotationsFor(name: string): WireTool['annotations'] {
   return {
     ...(READ_ONLY_TOOLS.has(name) ? { readOnlyHint: true } : {}),
-    destructiveHint: false,
+    destructiveHint: name === 'close_session',
     openWorldHint: false,
   }
 }

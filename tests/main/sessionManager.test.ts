@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import type { Agent, McpServer, Skill } from '@shared/types'
+import type { Agent, McpServer, Session, Skill } from '@shared/types'
 import type { RunnerEvent } from '@main/runners/types'
 
 /** The registry is stubbed so a turn can be driven without a real CLI. */
@@ -31,12 +31,15 @@ const { openDatabase } = await import('@main/db')
 const { SessionStore } = await import('@main/store/sessions')
 const { UsageStore } = await import('@main/store/usage')
 const { SessionManager, MAX_HANDOFF_DEPTH } = await import('@main/sessions/manager')
+const { removeSession } = await import('@main/sessions/remove')
 
 let home: string
 let manager: InstanceType<typeof SessionManager>
 let sessions: InstanceType<typeof SessionStore>
 let usage: InstanceType<typeof UsageStore>
 let events: unknown[]
+let removeChildSession: ReturnType<typeof vi.fn<(sessionId: string) => Promise<Session | null>>>
+let closeChildTerminal: ReturnType<typeof vi.fn<(sessionId: string) => void>>
 
 const AGENTS: Agent[] = [
   {
@@ -92,6 +95,18 @@ beforeEach(async () => {
   sessions = new SessionStore(db)
   usage = new UsageStore(db)
   events = []
+  closeChildTerminal = vi.fn<(sessionId: string) => void>()
+  removeChildSession = vi.fn((sessionId: string) =>
+    removeSession(
+      {
+        sessions,
+        plans: { listBySession: () => [] },
+        stopTurn: (id) => manager.stop(id),
+        closeTerminal: closeChildTerminal,
+      },
+      sessionId,
+    ),
+  )
 
   const agentStore = {
     findAll: () => AGENTS,
@@ -106,6 +121,10 @@ beforeEach(async () => {
     skillStore as never,
     mcpStore as never,
     usage,
+    undefined,
+    undefined,
+    undefined,
+    { removeSession: removeChildSession },
   )
   manager.subscribe((event) => events.push(event))
   runnerStub.run.mockReset()
@@ -818,6 +837,68 @@ describe('SessionManager.handOff', () => {
 
     const [spawn] = sessions.messages(last.session.id)
     expect(spawn).toMatchObject({ kind: 'spawn', text: `Brief ${MAX_HANDOFF_DEPTH + 1}` })
+  })
+})
+
+describe('SessionManager.closeChildSession', () => {
+  test('removes only a direct child through the supplied safe lifecycle', async () => {
+    const parent = manager.create('debugging', 'Parent')
+    const child = sessions.create({
+      agentId: 'review',
+      title: 'Child',
+      origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+
+    await expect(manager.closeChildSession(parent.id, child.id)).resolves.toBe(true)
+    expect(removeChildSession).toHaveBeenCalledWith(child.id)
+    expect(sessions.findById(child.id)).toBeNull()
+    expect(events).toContainEqual({
+      type: 'session-deleted',
+      sessionId: child.id,
+      agentId: child.agentId,
+    })
+  })
+
+  test('rejects self, ancestor, sibling, unrelated, user-created, and unknown sessions', async () => {
+    const parent = manager.create('debugging', 'Parent')
+    const child = sessions.create({
+      agentId: 'review', title: 'Child', origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+    const sibling = sessions.create({
+      agentId: 'review', title: 'Sibling', origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+    const unrelated = manager.create('review', 'Unrelated')
+
+    for (const target of [child.id, parent.id, sibling.id, unrelated.id, 'missing']) {
+      await expect(manager.closeChildSession(child.id, target)).resolves.toBe(false)
+    }
+
+    expect(removeChildSession).not.toHaveBeenCalled()
+    for (const session of [parent, child, sibling, unrelated]) expect(sessions.findById(session.id)).not.toBeNull()
+  })
+
+  test('stops an active child before closing its terminal and deleting it', async () => {
+    runnerStub.run.mockImplementation(
+      async function* (_prompt: string, options: { signal: AbortSignal }) {
+        await new Promise<void>((resolve) => options.signal.addEventListener('abort', () => resolve()))
+      },
+    )
+    const parent = manager.create('debugging', 'Parent')
+    const child = sessions.create({
+      agentId: 'review', title: 'Child', origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+    const turn = manager.send(child.id, 'Work')
+    await vi.waitFor(() => expect(manager.isStreaming(child.id)).toBe(true))
+
+    await expect(manager.closeChildSession(parent.id, child.id)).resolves.toBe(true)
+    await turn
+
+    expect(closeChildTerminal).toHaveBeenCalledWith(child.id)
+    expect(sessions.findById(child.id)).toBeNull()
   })
 })
 

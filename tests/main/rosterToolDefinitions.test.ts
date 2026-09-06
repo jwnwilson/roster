@@ -30,6 +30,7 @@ function fullSet(): BuiltinToolSet {
     roster: {
       listAgents: () => [AGENT],
       openSession: () => ({ sessionId: 's', label: 'l', started: true }),
+      closeSession: async () => false,
     },
     tasks: {
       list: () => [],
@@ -66,6 +67,15 @@ describe('the built-in tool definitions', () => {
         ].map(bare),
       ),
     )
+  })
+
+  test('defines destructive child-session closure for both runners', () => {
+    const wire = toWireTools(builtinToolDefinitions(fullSet(), AGENT.id))
+
+    expect(wire.find((tool) => tool.name === 'close_session')?.annotations).toMatchObject({
+      destructiveHint: true,
+      openWorldHint: false,
+    })
   })
 
   test('name a server for every tool, matching the one Claude registers it under', () => {
@@ -113,14 +123,14 @@ describe('the wire form a separate CLI receives', () => {
     })
   })
 
-  test('annotates every tool as neither destructive nor open-world', () => {
+  test('annotates every non-destructive tool as neither destructive nor open-world', () => {
     // Codex refuses an unannotated MCP tool in a non-interactive run — it
     // treats the MCP default (destructive) as needing an approval nobody is
     // there to give. This is the whole reason a Codex agent can call these.
     const wire = toWireTools(builtinToolDefinitions(fullSet(), AGENT.id))
 
     expect(wire).not.toHaveLength(0)
-    for (const tool of wire) {
+    for (const tool of wire.filter((tool) => tool.name !== 'close_session')) {
       expect(tool.annotations.destructiveHint).toBe(false)
       expect(tool.annotations.openWorldHint).toBe(false)
     }
@@ -149,7 +159,7 @@ describe('the handlers behind those definitions', () => {
   test('are the same ones the Claude path builds', async () => {
     const openSession = vi.fn(() => ({ sessionId: 's1', label: 'Review · Fix', started: true }))
     const defined = builtinToolDefinitions(
-      { roster: { listAgents: () => [AGENT], openSession } },
+      { roster: { listAgents: () => [AGENT], openSession, closeSession: async () => false } },
       'other',
     )
 
@@ -173,6 +183,7 @@ describe('handing work to another agent', () => {
     overrides: Partial<{
       agents: Agent[]
       openSession: BuiltinToolSet['roster']['openSession']
+      closeSession: BuiltinToolSet['roster']['closeSession']
     }> = {},
   ) {
     return builtinToolDefinitions(
@@ -182,6 +193,7 @@ describe('handing work to another agent', () => {
           openSession:
             overrides.openSession ??
             (() => ({ sessionId: 's', label: 'Me · Fix', started: true })),
+          closeSession: overrides.closeSession ?? (async () => false),
         },
       },
       'me',
@@ -219,6 +231,7 @@ describe('handing work to another agent', () => {
         roster: {
           listAgents: () => [AGENT],
           openSession: () => ({ sessionId: 's', label: 'l', started: true }),
+          closeSession: async () => false,
         },
       },
       AGENT.id,

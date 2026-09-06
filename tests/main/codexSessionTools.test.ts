@@ -152,18 +152,22 @@ describe('a Codex agent’s MCP servers', () => {
     expect(spec?.env['ELECTRON_RUN_AS_NODE']).toBe('1')
   })
 
-  test('let it hand work off, which is the whole point', async () => {
+  test('registers the shared roster tools, including child-session closure', async () => {
     await run()
 
     expect(served.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(['list_agents', 'open_session']),
+      expect.arrayContaining(['list_agents', 'open_session', 'close_session']),
     )
   })
 
-  test('say the tools are not destructive, or Codex cancels every call', async () => {
+  test('marks only child-session closure destructive', async () => {
     await run()
 
-    for (const tool of served) {
+    expect(served.find((tool) => tool.name === 'close_session')?.annotations).toMatchObject({
+      destructiveHint: true,
+      openWorldHint: false,
+    })
+    for (const tool of served.filter((tool) => tool.name !== 'close_session')) {
       expect(tool.annotations).toMatchObject({ destructiveHint: false, openWorldHint: false })
     }
   })
@@ -185,7 +189,11 @@ describe('which of Roster’s tools a Codex agent gets', () => {
   test('is only the handoff tools when it has enabled nothing', async () => {
     await run()
 
-    expect(served.map((tool) => tool.name).sort()).toEqual(['list_agents', 'open_session'])
+    expect(served.map((tool) => tool.name).sort()).toEqual([
+      'close_session',
+      'list_agents',
+      'open_session',
+    ])
   })
 
   test('excludes the project notes when the session is filed under no project', async () => {

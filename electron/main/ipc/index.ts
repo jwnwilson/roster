@@ -11,7 +11,7 @@ import {
   type NewConnectionInput,
   type TaskChange,
 } from '../../../shared/ipc'
-import type { PlanDocument, RunnerStatus, SetupState, SpendSummary } from '../../../shared/types'
+import type { PlanDocument, RunnerStatus, Session, SetupState, SpendSummary } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
@@ -118,6 +118,27 @@ function requireSessions(): SessionStore {
   return sessionStore
 }
 
+/** Delete through the one lifecycle both people and agents use. */
+async function deleteSession(sessionId: string, notify = true): Promise<Session | null> {
+  const removed = await removeSession(
+    {
+      sessions: requireSessions(),
+      plans: requirePlans(),
+      stopTurn: (id) => requireManager().stop(id),
+      closeTerminal: (id) => ptyManager.close(id),
+    },
+    sessionId,
+  )
+  if (removed && notify) {
+    broadcast(CHANNELS.sessionsEvent, {
+      type: 'session-deleted',
+      sessionId,
+      agentId: removed.agentId,
+    })
+  }
+  return removed
+}
+
 function requireMentions(): TaskMentions {
   if (!mentions) throw new Error('task mentions are not initialised')
   return mentions
@@ -211,6 +232,7 @@ export async function initStores(): Promise<void> {
     { tasks: taskStore, projects: projectStore },
     planStore,
     projectNotesStore,
+    { removeSession: (sessionId) => deleteSession(sessionId, false) },
   )
   planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
@@ -352,24 +374,8 @@ export function registerIpc(): void {
     )
     if (!confirmed) return false
 
-    const removed = await removeSession(
-      {
-        sessions: requireSessions(),
-        plans: requirePlans(),
-        stopTurn: (id) => requireManager().stop(id),
-        closeTerminal: (id) => ptyManager.close(id),
-      },
-      sessionId,
-    )
+    const removed = await deleteSession(sessionId)
     if (!removed) return false
-
-    // Every window: the grid's chips, an open task rail and the agent screen
-    // are all holding this session, and only one of them asked for it to go.
-    broadcast(CHANNELS.sessionsEvent, {
-      type: 'session-deleted',
-      sessionId,
-      agentId: removed.agentId,
-    })
     return true
   })
   ipcMain.handle(
