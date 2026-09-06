@@ -77,3 +77,18 @@ describe('the sandbox a planning turn runs under', () => {
     expect(args.some((arg) => arg.includes('roster-plan'))).toBe(false)
   })
 })
+
+describe('the instruction a planning turn carries', () => {
+  test('a planning turn carries the instruction naming propose_plan', async () => {
+    const args = await argv({ planMode: true, systemPrompt: 'Be brief.' })
+
+    expect(args.join('\n')).toContain('propose_plan')
+    expect(args.join('\n')).toContain('Be brief.')
+  })
+
+  test('an ordinary turn does not', async () => {
+    const args = await argv({ systemPrompt: 'Be brief.' })
+
+    expect(args.join('\n')).not.toContain('propose_plan')
+  })
+})

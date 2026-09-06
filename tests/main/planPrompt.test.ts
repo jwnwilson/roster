@@ -4,6 +4,7 @@ import { planFromToolInput } from '@shared/plans'
 import {
   branchFor,
   buildPrompt,
+  planInstruction,
   reviseReason,
   revisePrompt,
   worktreeFor,
@@ -123,7 +124,36 @@ describe('the prompt that asks for a revision', () => {
   test('asks for a plan rather than for the work', () => {
     const prompt = revisePrompt({ plan: PLAN, body: BODY, comments: [note('x')] })
 
-    expect(prompt).toMatch(/ExitPlanMode/)
+    // Every revision turn goes through this string, for every runner, so it
+    // cannot name a tool only one of them has (see the "asking for a
+    // revision" tests below). What still has to hold, for every runner, is
+    // the intent: this is a request for another plan, and not for the work.
+    expect(prompt).toMatch(/plan/i)
+    expect(prompt).toMatch(/do not start the work/i)
+  })
+})
+
+describe('asking for a revision', () => {
+  test('does not name a tool only one runner has', () => {
+    // Every revision turn goes through this string, for every runner. A
+    // Codex agent told to call ExitPlanMode is told to call something that
+    // does not exist for it.
+    const prompt = revisePrompt({ plan: PLAN, body: BODY, comments: [note('x')] })
+
+    expect(prompt).not.toContain('ExitPlanMode')
+  })
+})
+
+describe('the plan instruction a runner without a native plan mode is given', () => {
+  test('names the tool that ends the turn', () => {
+    // Approach A invites a proposal where a schema would compel one, so this
+    // string is the whole of the mechanism's reliability. A rewrite that
+    // quietly drops it leaves an agent that plans and never proposes.
+    expect(planInstruction()).toContain('propose_plan')
+  })
+
+  test('says the turn cannot write, which is the part the agent cannot discover', () => {
+    expect(planInstruction()).toMatch(/read-only|cannot write/i)
   })
 })
 

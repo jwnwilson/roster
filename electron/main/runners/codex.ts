@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
+import { planInstruction } from '../sessions/planPrompt'
 import { gitMetadata } from '../sessions/repo'
 import { worktreesDir } from '../store/paths'
 import { normalizeCodexMessage } from './normalizeCodex'
@@ -119,7 +120,14 @@ export class CodexRunner implements Runner {
             options.model,
           ]
 
-    args.push(composePrompt(prompt, options.systemPrompt))
+    // Plan mode has no Codex equivalent, so the instruction that would come
+    // from the SDK has to travel in the system prompt instead.
+    const systemPrompt =
+      options.planMode === true
+        ? [options.systemPrompt.trim(), planInstruction()].filter((part) => part !== '').join('\n\n')
+        : options.systemPrompt
+
+    args.push(composePrompt(prompt, systemPrompt))
 
     return streamJsonLines(
       { command: this.binary, args, cwd: options.cwd, signal: options.signal },
