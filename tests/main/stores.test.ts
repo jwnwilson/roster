@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -8,7 +8,14 @@ import { SessionStore } from '@main/store/sessions'
 import { SkillStore } from '@main/store/skills'
 import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
-import { agentsDir, mcpConfigPath, skillsDir } from '@main/store/paths'
+import {
+  agentsDir,
+  agentWorkspaceDir,
+  mcpConfigPath,
+  skillsDir,
+  workspaceDir,
+  worktreesDir,
+} from '@main/store/paths'
 import { TASKS_SERVER, PLANS_SERVER, MEMORY_SERVER } from '@shared/mcp'
 import { NO_PROJECT, type McpServer } from '@shared/types'
 
@@ -299,6 +306,18 @@ describe('McpStore', () => {
   })
 })
 
+/* ------------------------------------------------------------------ paths */
+
+describe('workspace paths', () => {
+  test('the workspace root sits under Roster’s home', () => {
+    expect(workspaceDir()).toBe(join(home, 'workspace'))
+  })
+
+  test('an agent’s scratch folder is named for its id, which is already unique', () => {
+    expect(agentWorkspaceDir('tech-lead')).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+})
+
 /* ------------------------------------------------------------------- seed */
 
 describe('seedIfEmpty', () => {
@@ -318,15 +337,16 @@ describe('seedIfEmpty', () => {
     await expect(readdir(agentsDir())).resolves.toHaveLength(0)
   })
 
-  test('creates the shared workspace, so an approved write has somewhere to go', async () => {
+  test('creates the workspace root, so a scoped agent folder has a parent', async () => {
     await seedIfEmpty(mcpConfigPath())
 
-    const store = new SkillStore()
-    await store.load()
-    // The workspace must exist: spawning into a missing cwd fails with ENOENT.
-    await expect(readFile(join(home, 'workspace', '.keep'), 'utf8')).rejects.toThrow()
-    const { access } = await import('node:fs/promises')
-    await expect(access(join(home, 'workspace'))).resolves.toBeUndefined()
+    await expect(access(workspaceDir())).resolves.toBeUndefined()
+  })
+
+  test('creates the worktrees root, so the first plan does not write into nothing', async () => {
+    await seedIfEmpty(mcpConfigPath())
+
+    await expect(access(worktreesDir())).resolves.toBeUndefined()
   })
 
   test('never overwrites an existing roster', async () => {

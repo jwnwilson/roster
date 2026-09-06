@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -445,6 +445,170 @@ describe('AgentStore.create — name validation', () => {
     await expect(
       store.create({ ...base, name: 'debugging agent', cwd: join(home, 'workspace') }),
     ).rejects.toThrow(/already an agent named/)
+  })
+})
+
+describe('AgentStore.create — the working directory', () => {
+  const base = {
+    runner: 'claude',
+    model: 'claude-opus-5',
+    systemPrompt: '',
+    skills: [],
+  }
+
+  test('scopes an agent with no cwd to a folder of its own', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    expect(created.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+
+  test('creates that folder, since spawning into a missing cwd reads as a missing binary', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    expect((await stat(created.cwd)).isDirectory()).toBe(true)
+  })
+
+  test('gives two agents whose names slugify alike separate folders', async () => {
+    // assertNameIsFree lets these both exist — the names differ. Only
+    // uniqueId keeps them off the same directory.
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const first = await store.create({ ...base, name: 'Tech Lead' })
+    const second = await store.create({ ...base, name: 'Tech Lead!' })
+
+    expect(second.cwd).not.toBe(first.cwd)
+    expect(second.cwd).toBe(join(home, 'workspace', 'tech-lead-2'))
+  })
+
+  test('uses an explicit cwd as given, since that is the project the agent works on', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({ ...base, name: 'Tech Lead', cwd: join(home, 'api') })
+
+    expect(created.cwd).toBe(join(home, 'api'))
+  })
+
+  test('writes the scoped cwd to agent.toml, so it survives a reload', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    const reloaded = new AgentStore(statusMap(READY))
+    await reloaded.load()
+
+    expect(reloaded.findById(created.id)?.cwd).toBe(created.cwd)
+  })
+
+  test('renaming leaves the folder alone, so work in progress is not stranded', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    const renamed = await store.update(created.id, { name: 'Principal Engineer' })
+
+    expect(renamed.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+})
+
+describe('AgentStore.load — scoping agents that share the old workspace', () => {
+  /** An agent as an existing install has it: pointed at the shared workspace. */
+  async function writeSharing(id: string, name: string): Promise<void> {
+    await writeAgent(
+      id,
+      [
+        `name = "${name}"`,
+        'runner = "claude"',
+        'model = "claude-opus-5"',
+        `cwd = "${join(home, 'workspace')}"`,
+        '',
+      ].join('\n'),
+    )
+  }
+
+  test('re-points every agent when the shared workspace is empty', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeSharing('tech-lead', 'Tech Lead')
+    await writeSharing('reviewer', 'Reviewer')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+    expect(store.findById('reviewer')?.cwd).toBe(join(home, 'workspace', 'reviewer'))
+  })
+
+  test('persists the re-pointing to agent.toml rather than only in memory', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    await new AgentStore(statusMap(READY)).load()
+
+    const written = await readFile(join(home, 'agents', 'tech-lead', 'agent.toml'), 'utf8')
+    expect(written).toContain('workspace/tech-lead')
+  })
+
+  test('leaves them alone when the shared workspace has files in it', async () => {
+    // Several agents' work mixed in one folder cannot be split by a machine,
+    // and guessing would destroy it.
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeFile(join(home, 'workspace', 'notes.md'), 'work in progress', 'utf8')
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace'))
+  })
+
+  test('treats a lone .DS_Store as empty, since Finder writes one for merely looking', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeFile(join(home, 'workspace', '.DS_Store'), 'finder noise', 'utf8')
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+
+  test('never touches an agent pointed at a project of its own', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeAgent('debug', VALID)
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('debug')?.cwd).toBe('/work/api')
+  })
+
+  test('is idempotent: a second load changes nothing', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    await new AgentStore(statusMap(READY)).load()
+    const first = await readFile(join(home, 'agents', 'tech-lead', 'agent.toml'), 'utf8')
+
+    await new AgentStore(statusMap(READY)).load()
+    const second = await readFile(join(home, 'agents', 'tech-lead', 'agent.toml'), 'utf8')
+
+    expect(second).toBe(first)
+  })
+
+  test('does nothing when there is no shared workspace at all', async () => {
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace', 'tech-lead'))
   })
 })
 

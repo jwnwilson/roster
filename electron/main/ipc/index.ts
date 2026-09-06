@@ -36,8 +36,7 @@ import { SkillStore } from '../store/skills'
 import { ProjectNotesStore } from '../store/projectNotes'
 import { UsageStore } from '../store/usage'
 import { Updater } from '../update/updater'
-import { databasePath, mcpConfigPath, rosterHome } from '../store/paths'
-import { join } from 'node:path'
+import { databasePath, mcpConfigPath } from '../store/paths'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
 import { dismissSetup, prepareFirstRun } from '../store/firstRun'
@@ -324,7 +323,8 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.agentsCreate, (_e, input: NewAgentInput) =>
     agentStore.create({
       ...input,
-      cwd: input.cwd ?? join(rosterHome(), 'workspace'),
+      // cwd deliberately not defaulted here: an omitted one means "a folder of
+      // its own", and only the store knows the id that folder is named for.
       mcpServers: input.mcpServers ?? [],
     }),
   )

@@ -29,6 +29,6 @@
 - [ ] Verfiy the plan visualisation is working for all models
 - [ ] Verify agents can @ other agents in comments to continue work for all models
 - [ ] Use the updated design handoff to design a graph visualisation for agents to show all the sessions related to a task to make it easier to follow the flow.
-- [ ] Ensure the workspace dir is where the agent is working, I still want agent data, context stored in ~/.roster/
+- [ ] Ensure the workspace dir is where the agent is working, with global roster files staying in `~/roster` — plan and rationale in `docs/superpowers/plans/2026-09-06-workspace-and-agent-sharing.md`. Bug 1 (per-agent scoped workspaces) is done; Bugs 2 and 3 (skills are passed as `additionalDirectories`, which is read access and not registration, so no agent has an invocable skill; and no SKILL.md has the frontmatter it would need anyway) are still open, as is the shareable agent bundle.
 - [ ] Plan for extending agents to work with multi repos and for the context logic to updated to work per project
 - [ ] Look at opensource design tools to mimic claude design that will work with any agent starting with codex

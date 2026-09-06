@@ -339,7 +339,10 @@ export interface NewAgentInput {
   model: string
   systemPrompt: string
   skills: string[]
-  /** Defaults to ~/roster/workspace when omitted. */
+  /**
+   * The project this agent works on. Omitted gives it a scratch folder of its
+   * own at ~/roster/workspace/<id>, rather than one shared with every agent.
+   */
   cwd?: string
   mcpServers?: string[]
   /** The project this agent's sessions are filed under. Null for none. */

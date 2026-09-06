@@ -1,6 +1,6 @@
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { agentsDir, rosterHome, skillsDir } from './paths'
+import { agentsDir, skillsDir, workspaceDir, worktreesDir } from './paths'
 
 /**
  * First-run content. A fresh install starts with no agents and no tasks —
@@ -80,7 +80,10 @@ export async function seedIfEmpty(mcpPath: string): Promise<boolean> {
   const existing = await readdir(agentsDir())
   if (existing.length > 0) return false
 
-  await mkdir(join(rosterHome(), 'workspace'), { recursive: true })
+  // Both roots, not just the agents' one: a plan's first `git worktree add`
+  // would otherwise write into a directory nothing has created yet.
+  await mkdir(workspaceDir(), { recursive: true })
+  await mkdir(worktreesDir(), { recursive: true })
 
   for (const [name, body] of Object.entries(SEED_SKILLS)) {
     await mkdir(join(skillsDir(), name), { recursive: true })

@@ -10,7 +10,7 @@ import {
   serializeAgentToml,
   type AgentConfig,
 } from './agentToml'
-import { agentsDir, agentDir, agentTomlPath } from './paths'
+import { agentsDir, agentDir, agentTomlPath, agentWorkspaceDir, workspaceDir } from './paths'
 
 export interface Disposable {
   dispose(): void
@@ -20,7 +20,8 @@ export interface NewAgentInput {
   name: string
   runner: string
   model: string
-  cwd: string
+  /** The project this agent works on. Omitted gives it a scratch folder of its own. */
+  cwd?: string
   systemPrompt: string
   skills: string[]
   mcpServers?: string[]
@@ -65,6 +66,52 @@ export class AgentStore {
       if (!entry.isDirectory()) continue
       await this.loadOne(entry.name)
     }
+
+    await this.scopeSharedWorkspaces()
+  }
+
+  /**
+   * Gives each agent still pointed at the old shared workspace one of its own.
+   *
+   * Roster used to default every agent to `~/roster/workspace`, so an
+   * established roster has its whole team working in one directory, on each
+   * other's files. This repairs that — but only when the shared directory is
+   * empty, which is the case whenever the default went unused.
+   *
+   * A shared directory with files in it is left exactly as it is. Several
+   * agents' work mixed into one folder cannot be told apart by a machine, and
+   * a wrong guess would strand the work rather than scope it; the agent's
+   * detail screen offers the move instead, where a person can judge it.
+   *
+   * Idempotent by construction: a re-pointed agent no longer names the shared
+   * directory, so it cannot match twice.
+   */
+  private async scopeSharedWorkspaces(): Promise<void> {
+    const shared = workspaceDir()
+
+    const sharing = [...this.configs.values()].filter((config) => config.cwd === shared)
+    if (sharing.length === 0) return
+
+    // A missing directory is as safe to re-point as an empty one, and is what
+    // a roster whose agents never ran actually looks like.
+    let contents: string[]
+    try {
+      contents = await readdir(shared)
+    } catch (cause) {
+      if (!isMissingFile(cause)) throw cause
+      contents = []
+    }
+    // `.DS_Store` alone is not work: macOS writes one into any folder the
+    // user has merely opened in Finder, and treating that as occupancy would
+    // strand every roster whose owner once looked at the directory.
+    if (contents.some((entry) => entry !== '.DS_Store')) return
+
+    for (const config of sharing) {
+      const next: AgentConfig = { ...config, cwd: agentWorkspaceDir(config.id) }
+      await mkdir(next.cwd, { recursive: true })
+      await writeFile(agentTomlPath(config.id), serializeAgentToml(next), 'utf8')
+      this.configs.set(config.id, next)
+    }
   }
 
   private async loadOne(agentId: string): Promise<void> {
@@ -107,7 +154,9 @@ export class AgentStore {
       name,
       runner: input.runner,
       model: input.model,
-      cwd: input.cwd,
+      // Resolved here rather than by the caller: the scratch folder is named
+      // for the id, and the id does not exist until uniqueId has run.
+      cwd: input.cwd ?? agentWorkspaceDir(id),
       systemPrompt: input.systemPrompt,
       skills: input.skills,
       mcpServers: input.mcpServers ?? [],

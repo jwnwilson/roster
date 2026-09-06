@@ -546,6 +546,12 @@ describe('NewAgent', () => {
     })
   })
 
+  test('says an unset working directory means a folder of the agent’s own', async () => {
+    render(<NewAgent />)
+
+    expect(screen.getByText(/a folder of its own/i)).toBeInTheDocument()
+  })
+
   test('renders the provider cards with their auth state', async () => {
     render(<NewAgent />)
 
