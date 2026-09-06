@@ -214,6 +214,7 @@ export async function initStores(): Promise<void> {
   db = openDatabase(databasePath())
   sessionStore = new SessionStore(db)
   usageStore = new UsageStore(db)
+  usageStore.backfillCodex(agentStore.findAll())
   projectStore = new ProjectStore(db)
   // Agent ids resolve to display names through the agent store, since agents
   // live in agent.toml rather than in this database.

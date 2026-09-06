@@ -13,6 +13,7 @@ import { PlanModal } from './PlanModal'
 import { messageFor } from '@/lib/errors'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
+import { ESTIMATE_EXPLANATION, formatUsageCost } from '@/state/format'
 import {
   agentStatus,
   NO_SESSIONS,
@@ -630,8 +631,15 @@ function SessionCard() {
         </div>
         <div className="flex items-baseline">
           <span className="text-base text-dim">Spend</span>
-          <span className="ml-auto font-mono text-md text-amber">
-            ${(usage?.costUsd ?? 0).toFixed(2)}
+          <span
+            className="ml-auto font-mono text-md text-amber"
+            title={usage?.costType === 'estimated' ? ESTIMATE_EXPLANATION : undefined}
+          >
+            {formatUsageCost(
+              usage?.costUsd ?? 0,
+              usage?.costType === 'estimated',
+              usage?.costType === 'unavailable',
+            )}
           </span>
         </div>
         {fraction === null ? (

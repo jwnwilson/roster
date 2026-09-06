@@ -107,7 +107,14 @@ describe('normalizeCodexMessage — command execution', () => {
 describe('normalizeCodexMessage — turn completion', () => {
   test('reports usage and ends the turn', () => {
     expect(normalizeCodexMessage(TURN_COMPLETED)).toEqual([
-      { kind: 'usage', inputTokens: 29_223, outputTokens: 121, totalTokens: 29_344, costUsd: 0 },
+      {
+        kind: 'usage',
+        inputTokens: 29_223,
+        cachedInputTokens: 24_064,
+        outputTokens: 121,
+        totalTokens: 29_344,
+        costUsd: 0,
+      },
       { kind: 'done', runnerSessionId: '' },
     ])
   })
@@ -154,5 +161,20 @@ describe('normalizeCodexMessage — token totals', () => {
     const [usage] = normalizeCodexMessage(TURN_COMPLETED)
 
     expect(usage).toMatchObject({ totalTokens: 29_344 })
+  })
+
+  test('keeps cached input separate for the API-equivalent estimate', () => {
+    const [usage] = normalizeCodexMessage(TURN_COMPLETED)
+
+    expect(usage).toMatchObject({ cachedInputTokens: 24_064 })
+  })
+
+  test('does not add reasoning tokens to output, because Codex already includes them', () => {
+    const [usage] = normalizeCodexMessage({
+      type: 'turn.completed',
+      usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 25, reasoning_output_tokens: 20 },
+    })
+
+    expect(usage).toMatchObject({ outputTokens: 25, totalTokens: 35 })
   })
 })

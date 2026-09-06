@@ -10,7 +10,7 @@ import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
 import { agentsDir, mcpConfigPath, skillsDir } from '@main/store/paths'
 import { TASKS_SERVER, PLANS_SERVER, MEMORY_SERVER } from '@shared/mcp'
-import { NO_PROJECT, type McpServer } from '@shared/types'
+import { NO_PROJECT, type Agent, type McpServer } from '@shared/types'
 
 let home: string
 
@@ -48,6 +48,10 @@ describe('UsageStore', () => {
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 95,
+      cachedInputTokens: 0,
+      costType: 'actual',
+      model: null,
+      rateTableVersion: null,
       costUsd: 0.5,
     })
 
@@ -56,6 +60,10 @@ describe('UsageStore', () => {
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 95,
+      cachedInputTokens: 0,
+      costType: 'actual',
+      model: null,
+      rateTableVersion: null,
       costUsd: 0.5,
     })
   })
@@ -143,6 +151,29 @@ describe('UsageStore', () => {
 
   test('summarises an empty database as two empty maps, not null', () => {
     expect(store.summary()).toEqual({ byAgent: {}, byProject: {} })
+  })
+
+  test('backfills zero-cost Codex history while preserving actual provider costs', () => {
+    const codex = sessions.create({ agentId: 'codex-agent', title: 'old', origin: 'you' })
+    const actual = sessions.create({ agentId: 'claude-agent', title: 'actual', origin: 'you' })
+    store.record({ sessionId: codex.id, inputTokens: 1_000_000, outputTokens: 1_000_000, totalTokens: 2_000_000, costUsd: 0 })
+    store.record({ sessionId: actual.id, inputTokens: 10, outputTokens: 10, totalTokens: 20, costUsd: 1.5 })
+
+    store.backfillCodex([{ id: 'codex-agent', runner: 'codex', model: 'gpt-5.1-codex' } as Agent])
+
+    expect(store.forSession(codex.id)).toMatchObject({ costType: 'estimated', costUsd: 11.25, model: 'gpt-5.1-codex', rateTableVersion: '2026-09-06' })
+    expect(store.forSession(actual.id)).toMatchObject({ costType: 'actual', costUsd: 1.5 })
+  })
+
+  test('rolls up actual, estimated, and unavailable usage without presenting unavailable as money', () => {
+    const actual = sessions.create({ agentId: 'a', title: 'actual', origin: 'you' })
+    const estimated = sessions.create({ agentId: 'a', title: 'estimated', origin: 'you' })
+    const unavailable = sessions.create({ agentId: 'a', title: 'unknown', origin: 'you' })
+    store.record({ sessionId: actual.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1 })
+    store.record({ sessionId: estimated.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 2, costType: 'estimated' })
+    store.record({ sessionId: unavailable.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 0, costType: 'unavailable' })
+
+    expect(store.byAgent()['a']).toEqual({ tokens: 6, costUsd: 3, hasEstimatedCost: true, hasUnavailableCost: true })
   })
 })
 

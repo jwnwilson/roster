@@ -8,7 +8,7 @@ import {
   type Screen,
 } from '@/state/store'
 import type { Agent } from '@shared/types'
-import { formatCost } from '@/state/format'
+import { formatUsageCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { Logo } from './Logo'
 import { UpdateRow } from './UpdateRow'
@@ -51,7 +51,7 @@ export function Sidebar() {
     skills: String(skills.length),
     mcp: String(mcpServers.length),
     tasks: String(tasks.length),
-    spend: formatCost(totals.costUsd),
+    spend: formatUsageCost(totals.costUsd, totals.hasEstimatedCost, totals.hasUnavailableCost),
   }
 
   return (

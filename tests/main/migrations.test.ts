@@ -34,6 +34,11 @@ describe('migrations', () => {
     expect(columns).toContain('total_tokens')
   })
 
+  test('usage persists the estimate provenance needed for stable history', () => {
+    const columns = (db.pragma('table_info(usage)') as { name: string }[]).map((c) => c.name)
+    expect(columns).toEqual(expect.arrayContaining(['cached_input_tokens', 'cost_type', 'model', 'rate_table_version']))
+  })
+
   test('refuses a database written by a newer build', () => {
     // The loop only runs forward, so a database ahead of this build used to
     // pass straight through it: every migration skipped, no error, and the
