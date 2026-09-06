@@ -366,3 +366,38 @@ describe('commenting on a passage', () => {
     expect(screen.getByText('too vague')).toBeInTheDocument()
   })
 })
+
+/**
+ * Which CLI wrote a plan is not something this modal can see.
+ *
+ * A plan is a row and a Markdown file; nothing on either says which runner
+ * produced it, and nothing here reads `agent.runner`. Worth pinning down,
+ * because the tools that *record* a plan's pull request are wired per runner
+ * — so the temptation to make the reading side runner-aware too is real.
+ */
+describe('a plan from a runner that is not Claude', () => {
+  test.each(['claude', 'codex', 'mytool'] as const)('reads the same on %s', async (runner) => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', runner, mcpServers: ['plans'] })],
+    })
+    open()
+    render(<PlanModal />)
+
+    expect(await screen.findByRole('heading', { name: 'Steps' })).toBeInTheDocument()
+    expect(screen.getByText('Archive projects')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Approve & build' })).toBeInTheDocument()
+  })
+
+  test('links the pull request whichever runner reported it', async () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', runner: 'codex', mcpServers: ['plans'] })],
+    })
+    open(aPlan({ status: 'in_review', prUrl: 'https://github.com/o/r/pull/9' }))
+    render(<PlanModal />)
+
+    expect(await screen.findByRole('link', { name: 'Open the pull request' })).toHaveAttribute(
+      'href',
+      'https://github.com/o/r/pull/9',
+    )
+  })
+})
