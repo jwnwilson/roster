@@ -34,12 +34,17 @@ export type PaneMode = 'chat' | 'terminal'
 export type McpTab = 'installed' | 'registry'
 export type TaskTab = 'comments' | 'history'
 export type TaskView = 'backlog' | 'board'
+/** Which of the Agents screen's two views is showing. */
+export type GridView = 'cards' | 'workflow'
 
 /** The project filter's "no filter" value, in both the grid and the board. */
 export const ALL_PROJECTS = 'all'
 
 /** The backlog priority filter's "no filter" value. */
 export const ALL_PRIORITIES = 'all'
+
+/** The Workflow view's task filter's "no filter" value. */
+export const ALL_TASKS = 'all'
 
 /** Staged edits from the Edit modal, committed to the agent only on Save. */
 export interface Draft {
@@ -126,6 +131,16 @@ export interface RosterState {
   namingSessionId: string | null
   query: string
   gridQuery: string
+  /** Cards or the session graph. */
+  gridView: GridView
+  /**
+   * ALL_TASKS, or a task id: which task's flow the Workflow view is showing.
+   *
+   * Its own filter rather than the app-wide project one, because it answers a
+   * different question — not "what am I looking at" but "how did this one
+   * piece of work travel". It is cleared when that task is deleted.
+   */
+  workflowTaskId: string
   /** What the updater last reported; drives the sidebar's update row. */
   update: UpdateState
   /** The running app's version, for the sidebar footer. Empty until asked. */
@@ -214,6 +229,10 @@ export interface RosterState {
   setPlanMode(sessionId: string, on: boolean): void
   setQuery(value: string): void
   setGridQuery(value: string): void
+  setGridView(view: GridView): void
+  setWorkflowTaskId(value: string): void
+  /** Jumps from a task to the graph of the sessions its work travelled through. */
+  openWorkflowForTask(task: Task): void
   setTaskQuery(value: string): void
   setTaskTab(tab: TaskTab): void
   setProjectFilter(value: string): void
@@ -273,6 +292,8 @@ export const useRoster = create<RosterState>((set, get) => ({
   namingSessionId: null,
   query: '',
   gridQuery: '',
+  gridView: 'cards',
+  workflowTaskId: ALL_TASKS,
   update: { status: 'idle' },
   appVersion: '',
   editOpen: false,
@@ -373,6 +394,20 @@ export const useRoster = create<RosterState>((set, get) => ({
     set((s) => ({ planMode: { ...s.planMode, [sessionId]: on } })),
   setQuery: (query) => set({ query }),
   setGridQuery: (gridQuery) => set({ gridQuery }),
+  setGridView: (gridView) => set({ gridView }),
+  setWorkflowTaskId: (workflowTaskId) => set({ workflowTaskId }),
+
+  // Both filters, not just the task: the project one is app-wide, so leaving
+  // it pointing somewhere else would hide the very sessions being asked for.
+  openWorkflowForTask: (task) =>
+    set({
+      screen: 'grid',
+      gridView: 'workflow',
+      projectFilter: task.projectId ?? ALL_PROJECTS,
+      workflowTaskId: task.id,
+      // Leaving it open would pop the modal back over the graph.
+      openTaskId: null,
+    }),
   setTaskQuery: (taskQuery) => set({ taskQuery }),
   setTaskTab: (taskTab) => set({ taskTab }),
   setProjectFilter: (projectFilter) => set({ projectFilter }),
@@ -945,6 +980,9 @@ export function reduceTaskEvent(
         // Nothing left to show, so close the modal rather than leave it
         // pointing at a task that no longer exists.
         ...(state.openTaskId === event.taskId ? { openTaskId: null } : {}),
+        // Same reasoning for the Workflow view: a filter on a task that no
+        // longer exists draws an empty canvas and no reason for it.
+        ...(state.workflowTaskId === event.taskId ? { workflowTaskId: ALL_TASKS } : {}),
         taskComments: withoutKey(state.taskComments, event.taskId),
         taskSessions: withoutKey(state.taskSessions, event.taskId),
       }

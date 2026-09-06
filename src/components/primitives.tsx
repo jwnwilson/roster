@@ -276,6 +276,12 @@ interface SelectProps<T extends string> {
    * the usual size "All priorities" does not fit in half of it.
    */
   compact?: boolean
+  /**
+   * Offered but not yet answerable — the Workflow view's task filter before a
+   * project narrows it. Still rendered rather than hidden, because its single
+   * option says what it is waiting for.
+   */
+  disabled?: boolean
 }
 
 /**
@@ -293,14 +299,16 @@ export function Select<T extends string>({
   ariaLabel,
   className = '',
   compact = false,
+  disabled = false,
 }: SelectProps<T>) {
   return (
     <div className={`relative ${className}`}>
       <select
         value={value}
         aria-label={ariaLabel}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value as T)}
-        className={`w-full cursor-pointer appearance-none rounded-chip border border-line-input bg-card font-ui text-ink-3 outline-none hover:border-line-hover-strong focus:border-accent-line ${
+        className={`w-full cursor-pointer appearance-none rounded-chip border border-line-input bg-card font-ui text-ink-3 outline-none hover:border-line-hover-strong focus:border-accent-line disabled:cursor-not-allowed disabled:text-label disabled:hover:border-line-input ${
           compact ? 'py-[5px] pr-[20px] pl-[8px] text-base' : 'py-[5px] pr-[26px] pl-[10px] text-md'
         }`}
         data-hoverable

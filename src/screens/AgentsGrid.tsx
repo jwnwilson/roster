@@ -13,22 +13,35 @@ import {
   archivedProjectIds,
   NO_LINES,
   NO_SESSIONS,
+  type GridView,
 } from '@/state/store'
 import {
   GhostButton,
   PrimaryButton,
   ScreenHeader,
+  Segmented,
   StatusDot,
   TextInput,
 } from '@/components/primitives'
 import { FirstRunCard } from '@/components/FirstRunCard'
 import { ProjectFilter } from '@/components/ProjectFilter'
+import { TaskFilter } from '@/components/TaskFilter'
+import { AgentsWorkflow, useWorkflowGraph, workflowSummary } from './AgentsWorkflow'
 import { ESTIMATE_EXPLANATION, formatUsageCost, formatTokens } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { ManageAgentsModal } from './ManageAgentsModal'
 
+/** Cards sits left of Workflow, as the handoff draws it. */
+const VIEWS: readonly { value: GridView; label: string }[] = [
+  { value: 'cards', label: 'Cards' },
+  { value: 'workflow', label: 'Workflow' },
+]
+
 export function AgentsGrid() {
   const agents = useRoster(useShallow(selectGridAgents))
+  const gridView = useRoster((s) => s.gridView)
+  const setGridView = useRoster((s) => s.setGridView)
+  const workflow = gridView === 'workflow'
   // Counts are measured against the visible roster, never the whole one: a
   // number the user cannot reconcile with the cards in front of them is worse
   // than no number.
@@ -50,46 +63,69 @@ export function AgentsGrid() {
   const filtering =
     gridQuery.trim() !== '' || projectFilter !== ALL_PROJECTS || agents.length !== visible
 
-  const summary = filtering
-    ? `${agents.length} of ${visible} match`
-    : hidden > 0
-      ? `${visible} shown · ${hidden} hidden · ${running} running`
-      : `${visible} configured · ${running} running`
+  // The Workflow view counts what is on the canvas. The card counts describe
+  // agents, and over a graph of sessions they answer a question nobody asked —
+  // "3 of 3 match" while four sessions are drawn is just wrong.
+  const graph = useWorkflowGraph()
+
+  const summary = workflow
+    ? workflowSummary(graph.shown)
+    : filtering
+      ? `${agents.length} of ${visible} match`
+      : hidden > 0
+        ? `${visible} shown · ${hidden} hidden · ${running} running`
+        : `${visible} configured · ${running} running`
 
   return (
     <div className="flex h-screen flex-col">
       <ScreenHeader title="Agents">
+        <Segmented<GridView>
+          ariaLabel="Agents view"
+          options={VIEWS}
+          value={gridView}
+          onChange={setGridView}
+        />
         <span className="text-md text-dim">{summary}</span>
         <div className="ml-auto flex items-center gap-[8px]">
           <ProjectFilter />
-          <TextInput
-            ariaLabel="Filter agents"
-            placeholder="Filter agents"
-            value={gridQuery}
-            onChange={setGridQuery}
-            className="w-[200px]"
-          />
-          <GhostButton onClick={() => setManaging(true)}>Manage</GhostButton>
-          <PrimaryButton onClick={() => go('new')}>New agent</PrimaryButton>
+          {workflow ? (
+            <TaskFilter />
+          ) : (
+            <>
+              <TextInput
+                ariaLabel="Filter agents"
+                placeholder="Filter agents"
+                value={gridQuery}
+                onChange={setGridQuery}
+                className="w-[200px]"
+              />
+              <GhostButton onClick={() => setManaging(true)}>Manage</GhostButton>
+              <PrimaryButton onClick={() => go('new')}>New agent</PrimaryButton>
+            </>
+          )}
         </div>
       </ScreenHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
-        <FirstRunCard />
-        {agents.length === 0 ? (
-          <EmptyState
-            filtered={filtering}
-            allHidden={hidden > 0 && visible === 0}
-            onManage={() => setManaging(true)}
-          />
-        ) : (
-          <div className="grid min-h-full grid-cols-2 gap-[24px] [grid-auto-rows:minmax(268px,1fr)]">
-            {agents.map((agent) => (
-              <AgentCard key={agent.id} agent={agent} />
-            ))}
-          </div>
-        )}
-      </div>
+      {workflow ? (
+        <AgentsWorkflow graph={graph} />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto p-[18px]">
+          <FirstRunCard />
+          {agents.length === 0 ? (
+            <EmptyState
+              filtered={filtering}
+              allHidden={hidden > 0 && visible === 0}
+              onManage={() => setManaging(true)}
+            />
+          ) : (
+            <div className="grid min-h-full grid-cols-2 gap-[24px] [grid-auto-rows:minmax(268px,1fr)]">
+              {agents.map((agent) => (
+                <AgentCard key={agent.id} agent={agent} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <StatusBar />
 
