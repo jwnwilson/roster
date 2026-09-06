@@ -28,6 +28,7 @@ on:
       - 'docs/**'
       - 'site/**'
       - '.github/workflows/pages.yml'
+      - '.github/workflows/ci.yml'
 
   # The manual escape hatch the paths filter above makes necessary: with it
   # in place a documentation push can no longer be used to force a release,
