@@ -66,6 +66,7 @@ let agents: Agent[]
 let home: string
 let manager: InstanceType<typeof SessionManager>
 let plans: InstanceType<typeof PlanStore>
+let sessions: InstanceType<typeof SessionStore>
 let started: StartOptions | null
 
 /** The tools the bridge was serving while the turn was running. */
@@ -109,12 +110,13 @@ beforeEach(async () => {
 
   const db = openDatabase(':memory:')
   plans = new PlanStore(db)
+  sessions = new SessionStore(db)
   manager = new SessionManager(
     {
       findAll: () => agents,
       findById: (id: string) => agents.find((entry) => entry.id === id) ?? null,
     } as never,
-    new SessionStore(db),
+    sessions,
     { findAll: () => [] } as never,
     { findAll: () => [] } as never,
     new UsageStore(db),
@@ -322,6 +324,33 @@ describe('a Codex agent presenting a plan', () => {
     // Assert
     expect(callResult?.isError).toBeFalsy()
     expect(plans.listBySession(session.id).map((plan) => plan.title)).toEqual(['Cache the board'])
+  })
+
+  test('leaves a tool row carrying the plan id, which is the only way in from the transcript', async () => {
+    // Codex plans never reach the capture site in `handle`, because
+    // normalizeCodex drops MCP tool events. Without a row of its own the plan
+    // is written and then unreachable: the renderer opens a plan only from a
+    // message or an approval carrying `planId`, and Codex raises neither.
+    // Arrange
+    agents = [agent({ mcpServers: [] })]
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => {
+      return (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (spec) await callOverBridge(spec, 'propose_plan', { plan: '# Cache it\n\nHow.' })
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })()
+    })
+    const session = manager.create('codey', 'Work')
+
+    // Act
+    await manager.send(session.id, 'research it', { planMode: true })
+
+    // Assert
+    const [plan] = plans.listBySession(session.id)
+    const rows = sessions.messages(session.id).filter((message) => message.kind === 'tool')
+    expect(plan).toBeDefined()
+    expect(rows.map((row) => row.planId)).toContain(plan?.id)
+    expect(rows.map((row) => row.args)).toContain('Cache it')
   })
 
   test('produces a plan indistinguishable from a Claude one', async () => {

@@ -853,7 +853,26 @@ export class SessionManager {
     if (!enabled) return undefined
 
     return {
-      propose: (body) => plans.capture({ sessionId: session.id, agentId: agent.id, body }),
+      propose: (body) => {
+        const plan = plans.capture({ sessionId: session.id, agentId: agent.id, body })
+        // The transcript row is written here rather than left to `handle`,
+        // which writes it for Claude's ExitPlanMode. normalizeCodex drops MCP
+        // tool events, so for a Codex agent that capture site can never fire,
+        // and the renderer opens a plan only from a message or an approval
+        // carrying `planId`. Without this row the plan is stored and then
+        // unreachable. Writing it here covers a Claude agent calling
+        // propose_plan as well, which it may now do in plan mode.
+        this.record(session.id, {
+          sessionId: session.id,
+          kind: 'tool',
+          tool: 'propose_plan',
+          args: plan.title,
+          planId: plan.id,
+          output: '',
+          isError: false,
+        })
+        return plan
+      },
       recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
     }
   }
