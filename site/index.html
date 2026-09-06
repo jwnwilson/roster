@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Roster — run a roster of AI coding agents</title>
+    <meta
+      name="description"
+      content="Roster is a macOS desktop app for the agent CLIs you already have signed in. Name your agents, watch their sessions, approve what they ask for, and let them hand work to one another."
+    />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="canonical" href="https://jwnwilson.github.io/roster/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Roster — run a roster of AI coding agents" />
+    <meta
+      property="og:description"
+      content="A macOS desktop app over the agent CLIs you already have. No API keys on the primary path; the CLI owns the loop."
+    />
+    <meta property="og:url" content="https://jwnwilson.github.io/roster/" />
+    <meta property="og:image" content="https://jwnwilson.github.io/roster/img/session.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="topbar">
+      <div class="shell topbar-inner">
+        <a class="brand" href="#main" aria-label="Roster">
+          <svg class="mark" viewBox="0 0 16 16" width="22" height="22" aria-hidden="true" focusable="false">
+            <rect x="0.94" y="0.94" width="14.13" height="14.13" rx="3.28" fill="#7c5cff" />
+            <rect x="3.91" y="5.38" width="8.19" height="1.81" rx="0.91" fill="#ffca70" />
+            <rect x="3.91" y="8.81" width="5.56" height="1.81" rx="0.91" fill="#fff" fill-opacity="0.88" />
+          </svg>
+          <span>Roster</span>
+        </a>
+        <nav class="topnav" aria-label="Sections">
+          <a href="#work">How it works</a>
+          <a href="#install">Install</a>
+          <a href="#gaps">What's missing</a>
+          <a href="https://github.com/jwnwilson/roster">Source</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero shell">
+        <p class="kicker"><span class="dot dot-running" aria-hidden="true"></span> macOS desktop app</p>
+        <h1>Every agent you run, on one screen.</h1>
+        <p class="lede">
+          Roster gives each coding agent a name, a model and a directory, then keeps their sessions
+          side by side — streaming replies, live terminals, approvals that wait for you, and a task
+          board the agents move themselves.
+        </p>
+
+        <div class="cta">
+          <a class="button primary" href="https://github.com/jwnwilson/roster/releases/latest">
+            Download for macOS
+          </a>
+          <a class="button" href="https://github.com/jwnwilson/roster">Read the source</a>
+        </div>
+
+        <div class="install-line">
+          <code id="curl-hero">curl -fsSL https://raw.githubusercontent.com/jwnwilson/roster/main/scripts/install.sh | sh</code>
+          <button class="copy" type="button" data-copy="curl-hero">Copy</button>
+        </div>
+        <p class="fineprint">
+          Apple Silicon and Intel DMGs on every release. Unsigned, so the installer clears the
+          quarantine flag for you — <a href="#install">the whole story is below</a>.
+        </p>
+
+        <figure class="shot hero-shot">
+          <img
+            src="img/session.png"
+            width="1800"
+            height="1125"
+            alt="The Roster window: a sidebar listing Implementer, Reviewer and Tech Lead; a chat with the Tech Lead agent; and a right-hand rail showing runner, model, directory, tokens, spend and project."
+          />
+          <figcaption>
+            Roster v0.1.25, unedited. The Tech Lead was asked what it does, and answered from the
+            board it can already read.
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="shell band" id="work" aria-labelledby="work-title">
+        <h2 id="work-title"><span class="dot dot-running" aria-hidden="true"></span> Roster does not implement an agent loop</h2>
+        <p class="section-lede">
+          Every agent on the roster is an agent CLI running on your own account —
+          <code>claude</code>, <code>codex</code>, or any command you point it at. Roster is the
+          harness and the window over those processes.
+        </p>
+        <dl class="rows">
+          <div class="row">
+            <dt>No API key on the primary path</dt>
+            <dd>
+              Roster drives the CLI you are already signed into. If none is installed the app still
+              opens; the agent just reports why it cannot run — <em>not signed in — run
+              <code>claude auth login</code></em> — instead of failing silently.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>It never executes a tool itself</dt>
+            <dd>
+              The CLI owns the loop, the context window and every tool call. Roster normalises the
+              two event streams into one, shows what happened, and stores it in SQLite.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>An agent is a file you can read</dt>
+            <dd>
+              Each one is an <code>agent.toml</code> under <code>~/roster/agents/</code>. Edit it in
+              the app or in your editor — a watcher reflects outside changes back into the UI
+              without a restart.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="shell feature" aria-labelledby="board-title">
+        <div class="feature-copy">
+          <h2 id="board-title"><span class="dot dot-review" aria-hidden="true"></span> A board the agents can move</h2>
+          <p>
+            Tasks and projects live in the same SQLite file as the sessions. A Claude-runner agent
+            gets <code>list_tasks</code>, <code>read_task</code>, <code>update_task</code>,
+            <code>comment_on_task</code> and <code>create_task</code> alongside its handoff tools,
+            so it can pick work up, move it and comment on it while you watch.
+          </p>
+          <p>
+            Every change — yours and the agent's — goes through one store method. A card an agent
+            moved writes the same history line as a card you dragged, and the board updates live
+            either way.
+          </p>
+          <p class="caveat">
+            Claude and Codex agents both reach the board through their own tools; a custom runner
+            can be assigned a task, but cannot pick it up itself.
+          </p>
+        </div>
+        <figure class="shot">
+          <img
+            loading="lazy"
+            src="img/board.png"
+            width="1800"
+            height="1125"
+            alt="Roster's task board with To Do, In Progress, In Review and Done columns, each card showing an id, labels, an assignee initial and a project dot."
+          />
+          <figcaption>The board itself is the shipped screen; the seven tasks on it are sample data.</figcaption>
+        </figure>
+      </section>
+
+      <section class="shell feature reverse" aria-labelledby="skills-title">
+        <div class="feature-copy">
+          <h2 id="skills-title"><span class="dot dot-done" aria-hidden="true"></span> Skills are folders, not settings</h2>
+          <p>
+            The shared library is <code>~/roster/skills/&lt;name&gt;/SKILL.md</code> — plain
+            Markdown with whatever files sit beside it. Write one in the built-in editor, or point
+            Roster at a directory you already keep, and enable it per agent.
+          </p>
+          <p>
+            The same principle runs through the app: agent configuration on disk in TOML, project
+            notes in Markdown, MCP servers in one <code>mcp.json</code>. Nothing worth keeping is
+            locked inside the database.
+          </p>
+        </div>
+        <figure class="shot">
+          <img
+            loading="lazy"
+            src="img/skills.png"
+            width="1800"
+            height="1125"
+            alt="Roster's skills screen: a file tree of skill folders on the left and a SKILL.md open in the editor, with a rail showing which agents use it."
+          />
+          <figcaption>The five skills Roster writes into <code>~/roster/skills</code> on first run.</figcaption>
+        </figure>
+      </section>
+
+      <section class="shell band" aria-labelledby="more-title">
+        <h2 id="more-title"><span class="dot dot-idle" aria-hidden="true"></span> The rest of the harness</h2>
+        <dl class="rows">
+          <div class="row">
+            <dt><span class="dot dot-approval pulse" aria-hidden="true"></span> Approvals that wait</dt>
+            <dd>
+              A risky tool call stops the turn. The agent's card goes amber and keeps pulsing
+              until you open the session and allow or deny it.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>A real terminal per session</dt>
+            <dd>Every session has a shell of its own, in the agent's working directory.</dd>
+          </div>
+          <div class="row">
+            <dt>Plan first, then work</dt>
+            <dd>
+              Ask for a plan and the agent writes one instead of editing. Comment on it inline,
+              quote the line you mean, and approve when it reads right.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Handoff between agents</dt>
+            <dd>
+              An agent can list the roster and open a session on a colleague to pass work over.
+              Claude and Codex agents can both hand work over; any runner can be handed to.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Memory per project</dt>
+            <dd>
+              A project keeps a <code>NOTES.md</code> its agents can recall and add to, so the
+              second task on a codebase starts further along than the first.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>MCP servers, enabled per agent</dt>
+            <dd>
+              One <code>mcp.json</code> holds the launch command and environment; each agent picks
+              which servers it gets. Claude and Codex agents both get them; a custom runner does
+              not.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>Notion, if your tasks live there</dt>
+            <dd>
+              Import a Notion database onto the board, and re-import whenever you want it
+              refreshed. The other direction is automatic: a card you or an agent changes is
+              pushed back to its Notion page.
+            </dd>
+          </div>
+          <div class="row">
+            <dt>A local model, if you want one</dt>
+            <dd>
+              Because Roster drives CLIs, a local model is a runner definition rather than a
+              provider: point <code>codex</code> at Ollama or LM Studio and the same event stream
+              comes back.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="shell band" id="install" aria-labelledby="install-title">
+        <h2 id="install-title"><span class="dot dot-running" aria-hidden="true"></span> Install</h2>
+        <p class="section-lede">
+          macOS only — Windows and Linux are untested. You need at least one agent CLI already
+          installed and signed in: <a href="https://code.claude.com">claude</a> or
+          <a href="https://developers.openai.com/codex/cli">codex</a>.
+        </p>
+
+        <ol class="routes">
+          <li>
+            <h3>The installer script</h3>
+            <p>
+              Picks the build for your architecture, checks it against the checksums published with
+              the release, copies Roster into <code>/Applications</code>, and clears the quarantine
+              flag.
+            </p>
+            <div class="install-line">
+              <code id="curl-install">curl -fsSL https://raw.githubusercontent.com/jwnwilson/roster/main/scripts/install.sh | sh</code>
+              <button class="copy" type="button" data-copy="curl-install">Copy</button>
+            </div>
+            <p class="fineprint">
+              If piping a script into a shell makes you uneasy — a reasonable instinct —
+              <a href="https://github.com/jwnwilson/roster/blob/main/scripts/install.sh">read it first</a>.
+            </p>
+          </li>
+          <li>
+            <h3>Or the DMG</h3>
+            <p>
+              <a href="https://github.com/jwnwilson/roster/releases/latest">Take the latest release</a>
+              — <code>Roster-&lt;version&gt;-arm64.dmg</code> or
+              <code>Roster-&lt;version&gt;-x64.dmg</code> — and drag Roster to Applications.
+            </p>
+            <p>
+              Roster is not signed with an Apple Developer ID, so macOS quarantines it and refuses
+              to open it. Clear that yourself:
+            </p>
+            <div class="install-line">
+              <code id="xattr">xattr -dr com.apple.quarantine /Applications/Roster.app</code>
+              <button class="copy" type="button" data-copy="xattr">Copy</button>
+            </div>
+            <p class="fineprint">
+              Without a terminal: double-click Roster, then open System Settings → Privacy &amp;
+              Security, find the notice about Roster being blocked, and click Open Anyway.
+            </p>
+          </li>
+        </ol>
+
+        <p class="section-lede">
+          On first run Roster seeds <code>~/roster</code> with a starter team — a Tech Lead, an
+          Implementer and a Reviewer — plus five skills and an MCP config, pointed at whichever CLI
+          you actually have. It then checks GitHub on launch and offers new releases as they land.
+        </p>
+      </section>
+
+      <section class="shell band" id="gaps" aria-labelledby="gaps-title">
+        <h2 id="gaps-title"><span class="dot dot-error" aria-hidden="true"></span> What is still missing</h2>
+        <p class="section-lede">
+          Roster is early, and the README keeps the full list. The gaps most likely to matter on
+          day one:
+        </p>
+        <ul class="gaps">
+          <li>Codex and custom runners do not stream — their replies arrive whole.</li>
+          <li>Handoff, the task tools and MCP servers do not reach a custom runner.</li>
+          <li>Spend is a placeholder screen; per-session token and cost figures are real.</li>
+          <li>The composer's attachment chip is decorative — attachments are not wired to files.</li>
+          <li>The MCP registry is a static catalogue of nine entries, and servers are removed by editing <code>mcp.json</code>.</li>
+          <li>MCP server environments sit in the clear in that file; there is no keychain integration.</li>
+        </ul>
+        <p class="fineprint">
+          <a href="https://github.com/jwnwilson/roster#known-gaps">The complete list lives in the README.</a>
+        </p>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="shell footer-inner">
+        <p class="footer-brand">
+          <svg class="mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+            <rect x="0.94" y="0.94" width="14.13" height="14.13" rx="3.28" fill="#7c5cff" />
+            <rect x="3.91" y="5.38" width="8.19" height="1.81" rx="0.91" fill="#ffca70" />
+            <rect x="3.91" y="8.81" width="5.56" height="1.81" rx="0.91" fill="#fff" fill-opacity="0.88" />
+          </svg>
+          Roster
+        </p>
+        <nav class="footer-links" aria-label="Project links">
+          <a href="https://github.com/jwnwilson/roster">Repository</a>
+          <a href="https://github.com/jwnwilson/roster/releases/latest">Latest release</a>
+          <a href="https://github.com/jwnwilson/roster#readme">README</a>
+          <a href="https://github.com/jwnwilson/roster/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script>
+      // Copy buttons. The command is selectable text without them; when the
+      // clipboard API is missing or denied — an embedded browser, a locked-down
+      // permission — the selection fallback still puts it on the clipboard, and
+      // if that fails too the label is left alone rather than lying about it.
+      function copyText(text) {
+        if (navigator.clipboard) {
+          return navigator.clipboard.writeText(text).catch(() => legacyCopy(text))
+        }
+        return legacyCopy(text)
+      }
+
+      function legacyCopy(text) {
+        const field = document.createElement('textarea')
+        field.value = text
+        field.setAttribute('readonly', '')
+        field.style.position = 'fixed'
+        field.style.opacity = '0'
+        document.body.appendChild(field)
+        field.select()
+        try {
+          if (!document.execCommand('copy')) throw new Error('copy rejected')
+        } finally {
+          document.body.removeChild(field)
+        }
+      }
+
+      document.querySelectorAll('button.copy').forEach((button) => {
+        button.addEventListener('click', async () => {
+          const source = document.getElementById(button.dataset.copy)
+          if (!source) return
+          try {
+            await copyText(source.textContent.trim())
+          } catch {
+            return
+          }
+          const previous = button.textContent
+          button.textContent = 'Copied'
+          setTimeout(() => {
+            button.textContent = previous
+          }, 1600)
+        })
+      })
+    </script>
+  </body>
+</html>

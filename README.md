@@ -9,6 +9,9 @@ Roster is a harness and a UI over those processes, which means it needs no API
 keys on the primary path, never executes tools itself, and never manages context.
 The CLI owns all of that.
 
+The [landing page](https://jwnwilson.github.io/roster/) is the same introduction
+with screenshots, for anyone who has not opened the repository.
+
 ---
 
 ## Requirements
@@ -79,6 +82,11 @@ Point it somewhere else while developing:
 ```bash
 ROSTER_HOME=/tmp/roster-scratch npm run dev
 ```
+
+The landing page is `site/index.html` — static HTML and CSS, no build step and no
+dependency on this project's `package.json`. Open the file, or serve the folder
+(`python3 -m http.server -d site`), and `.github/workflows/pages.yml` publishes it
+whenever `site/` changes on `main`.
 
 ## Running the tests
 

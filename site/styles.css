@@ -1,0 +1,625 @@
+/*
+ * Roster's landing page.
+ *
+ * The palette is the app's own — src/styles/tokens.css — so the site and the
+ * product read as one thing. Dark is the app's surfaces verbatim; light is a
+ * cool paper derived from the same accent, because a landing page has to stay
+ * legible for people whose system is set that way.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* light, the default */
+  --bg: #f5f4f9;
+  --bg-raised: #ffffff;
+  --bg-sunken: #edecf3;
+  --ink: #16171d;
+  --ink-2: #34363f;
+  --muted: #5d5f6c;
+  --faint: #83858f;
+  --line: #e0dfe9;
+  --line-strong: #cfcede;
+  --accent: #5b3ce0;
+  --accent-ink: #ffffff;
+  --accent-soft: #efeaff;
+  --amber: #9a6614;
+  --green: #2f7a4a;
+  --red: #b2402c;
+  --shot-frame: #d7d5e4;
+  --shot-glow: transparent;
+  --shot-shadow: 0 18px 40px -24px rgb(22 23 29 / 0.45);
+
+  --ui: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --shell: 1080px;
+  --radius-card: 10px;
+  --radius-field: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111216;
+    --bg-raised: #15161c;
+    --bg-sunken: #0d0e12;
+    --ink: #e6e6ea;
+    --ink-2: #d2d4dd;
+    --muted: #9a9daa;
+    --faint: #6d707d;
+    --line: #1e2027;
+    --line-strong: #2a2d38;
+    --accent: #7c5cff;
+    --accent-ink: #ffffff;
+    --accent-soft: #1a1626;
+    --amber: #d9a04a;
+    --green: #4fa86a;
+    --red: #c2553f;
+    --shot-frame: #262933;
+    --shot-glow: rgb(124 92 255 / 0.16);
+    --shot-shadow: none;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink-2);
+  font-family: var(--ui);
+  font-size: 17px;
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 0;
+}
+
+p {
+  margin: 0 0 1em;
+  max-width: 68ch;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+a:hover {
+  text-decoration-color: currentColor;
+}
+
+code {
+  font-family: var(--mono);
+  /* JetBrains Mono ligates -> and friends, which turns a filename like
+     Roster-<version>-arm64.dmg into something that is not the filename. */
+  font-variant-ligatures: none;
+  font-size: 0.88em;
+  color: var(--ink);
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 0.08em 0.36em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.skip {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip:focus {
+  left: 12px;
+  top: 12px;
+  z-index: 10;
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-field);
+  padding: 8px 14px;
+}
+
+.shell {
+  width: 100%;
+  max-width: var(--shell);
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+/* ---- status dots: the app's own vocabulary, reused as structure --------- */
+
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
+  vertical-align: 0.12em;
+  margin-right: 10px;
+}
+
+.dot-running {
+  background: var(--accent);
+}
+.dot-approval {
+  background: var(--amber);
+}
+.dot-review {
+  background: var(--amber);
+}
+.dot-done {
+  background: var(--green);
+}
+.dot-error {
+  background: var(--red);
+}
+.dot-idle {
+  background: var(--faint);
+}
+
+/* The single piece of unprompted motion on the page, and it is the product's
+   own: a session waiting on approval breathes amber until it is answered. */
+@media (prefers-reduced-motion: no-preference) {
+  .pulse {
+    animation: approval 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes approval {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(217 160 74 / 0);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(217 160 74 / 0.16);
+  }
+}
+
+/* ---- header ------------------------------------------------------------ */
+
+.topbar {
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 93%, transparent);
+  backdrop-filter: blur(14px);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 58px;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.topnav {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+  font-size: 15px;
+}
+
+.topnav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.topnav a:hover {
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .topnav a:not(:last-child) {
+    display: none;
+  }
+}
+
+/* ---- hero -------------------------------------------------------------- */
+
+.hero {
+  padding-block: 72px 0;
+}
+
+.kicker {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.hero h1 {
+  font-size: clamp(2.5rem, 6.4vw, 4.25rem);
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+  max-width: 15ch;
+}
+
+.lede {
+  margin-top: 22px;
+  font-size: clamp(1.05rem, 2.1vw, 1.22rem);
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 30px 0 26px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-field);
+  padding: 11px 20px;
+  background: var(--bg-raised);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.button:hover {
+  border-color: var(--accent);
+}
+
+.button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.button.primary:hover {
+  background: color-mix(in srgb, var(--accent) 86%, #fff);
+}
+
+.install-line {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  max-width: 100%;
+  width: fit-content;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-field);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+
+.install-line code {
+  border: 0;
+  background: none;
+  border-radius: 0;
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.copy {
+  flex: none;
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: var(--bg-raised);
+  color: var(--muted);
+  font-family: var(--ui);
+  font-size: 13px;
+  padding-inline: 14px;
+  cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.copy:hover {
+  color: var(--ink);
+  background: var(--accent-soft);
+}
+
+.fineprint {
+  margin-top: 14px;
+  font-size: 14px;
+  color: var(--faint);
+  max-width: 62ch;
+}
+
+/* ---- screenshots ------------------------------------------------------- */
+
+.shot {
+  margin: 0;
+}
+
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--shot-frame);
+  border-radius: var(--radius-card);
+  background: #111216;
+  box-shadow: var(--shot-shadow);
+}
+
+.hero-shot {
+  margin-top: 56px;
+  position: relative;
+}
+
+.hero-shot::before {
+  content: '';
+  position: absolute;
+  inset: 8% 12% 20%;
+  background: var(--shot-glow);
+  filter: blur(70px);
+  z-index: -1;
+}
+
+.shot figcaption {
+  margin-top: 12px;
+  max-width: 68ch;
+  font-size: 13.5px;
+  color: var(--faint);
+  font-family: var(--mono);
+  line-height: 1.55;
+}
+
+/* ---- sections ---------------------------------------------------------- */
+
+.band,
+.feature {
+  padding-block: 76px;
+  border-top: 1px solid var(--line);
+}
+
+.band h2,
+.feature h2 {
+  display: flex;
+  align-items: baseline;
+  font-size: clamp(1.5rem, 3vw, 1.95rem);
+  letter-spacing: -0.025em;
+  margin-bottom: 18px;
+}
+
+.section-lede {
+  color: var(--muted);
+  max-width: 64ch;
+}
+
+/* rows: the sidebar's list, turned into the page's structure */
+
+.rows {
+  margin: 34px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) minmax(0, 2fr);
+  gap: 12px 40px;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.row dt {
+  display: flex;
+  align-items: baseline;
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.row dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+@media (max-width: 720px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+
+/* feature: copy beside a screenshot */
+
+.feature {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: 48px;
+  align-items: center;
+}
+
+.feature-copy p {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.feature-copy p:last-child {
+  margin-bottom: 0;
+}
+
+.feature .caveat {
+  border-left: 2px solid var(--amber);
+  padding-left: 14px;
+  color: var(--ink-2);
+  font-size: 15px;
+}
+
+.feature.reverse .feature-copy {
+  order: 2;
+}
+
+@media (max-width: 860px) {
+  .feature {
+    grid-template-columns: 1fr;
+  }
+
+  .feature.reverse .feature-copy {
+    order: 0;
+  }
+}
+
+/* install routes */
+
+.routes {
+  list-style: none;
+  counter-reset: route;
+  margin: 34px 0 40px;
+  padding: 0;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.routes li {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--bg-raised);
+  padding: 24px;
+}
+
+.routes h3 {
+  font-size: 1.05rem;
+  margin-bottom: 10px;
+}
+
+.routes p {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.routes .install-line {
+  width: 100%;
+}
+
+.routes .fineprint {
+  margin-bottom: 0;
+}
+
+/* known gaps */
+
+.gaps {
+  margin: 26px 0 18px;
+  padding: 0;
+  list-style: none;
+  max-width: 72ch;
+}
+
+.gaps li {
+  position: relative;
+  padding: 10px 0 10px 22px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.gaps li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20px;
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--faint);
+}
+
+/* ---- footer ------------------------------------------------------------ */
+
+.footer {
+  border-top: 1px solid var(--line);
+  margin-top: 76px;
+  padding-block: 34px 54px;
+  background: var(--bg-sunken);
+}
+
+.footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px 28px;
+}
+
+.footer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.footer-links {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  font-size: 15px;
+}
+
+.footer-links a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.footer-links a:hover {
+  color: var(--ink);
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding-top: 48px;
+  }
+
+  .band,
+  .feature {
+    padding-block: 54px;
+  }
+
+  .install-line code {
+    font-size: 12px;
+  }
+}
