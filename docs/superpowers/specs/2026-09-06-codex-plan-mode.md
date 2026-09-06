@@ -138,7 +138,14 @@ opt-in principle deliberately, and narrowly:
   toggle would appear to work and do nothing.
 - Toggling plan mode *is* the opt-in, and it is narrower than enabling the
   server permanently: it lasts one turn.
-- `record_pull_request` stays gated exactly as it is today.
+
+There is a third clause, added while writing the implementation plan. Plan mode
+alone is not enough, because the **build** turn is not a plan-mode turn: an
+agent that proposed a plan without the server enabled would reach the build turn
+without `record_pull_request`, never report its pull request, and have
+`settleBuild` cycle the plan back to draft — the exact trap this work closes. So
+the gate is: the agent enabled the server, **or** this is a planning turn, **or**
+this session already has a plan. Outside those, nothing changes.
 
 ## 3. The planning turn
 
@@ -173,6 +180,15 @@ A `planInstruction()` added to `electron/main/sessions/planPrompt.ts`, which
 already owns every other plan-related string, appended through the existing
 `composePrompt` (`codex.ts:218`).
 
+**`revisePrompt` also has to change**, which this document originally missed.
+`planPrompt.ts:55` reads *"Stay in plan mode: present the revised plan with
+ExitPlanMode when it is ready."* — and every revision turn goes through it, for
+every runner, so a Codex agent would be told to call a tool it does not have.
+The wording becomes tool-neutral and each runner's own instruction names the
+mechanism. `reviseReason` (`planPrompt.ts:78`) keeps its wording: it is only
+ever sent as the refusal of a live `ExitPlanMode` call, which is Claude-only by
+construction.
+
 It must carry the one thing the agent cannot discover for itself: that it
 cannot write, and that the turn ends by calling `mcp__plans__propose_plan`.
 This string is load-bearing — it is the whole of the chosen approach's
@@ -204,11 +220,14 @@ through `resumeFrom`, so it does not re-read the repository from scratch.
 | `electron/main/runners/planTools.ts` | `propose` on the interface; the tool; the name in `PLAN_TOOL_NAMES` |
 | `electron/main/sessions/manager.ts` | `planToolsFor(agent, session)`; wire `propose`; provide plan tools when `planMode` is on |
 | `electron/main/runners/codex.ts` | Read `options.planMode`; add `codexPlanPermissions()`; append the plan instruction |
-| `electron/main/sessions/planPrompt.ts` | `planInstruction()` |
+| `electron/main/sessions/planPrompt.ts` | `planInstruction()`; make `revisePrompt` tool-neutral |
 | `tests/main/` | Section 6 |
 
 No renderer change. No store change. No migration. No change to `PlanFlow`,
 `shared/plans.ts`, `shared/types.ts` or `normalizeCodex.ts`.
+
+The implementation plan for this spec is
+`docs/superpowers/plans/2026-09-06-codex-plan-mode.md`.
 
 ## 6. Testing
 
