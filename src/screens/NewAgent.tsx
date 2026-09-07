@@ -14,6 +14,18 @@ import { projectPickerProjects, useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
 
 /**
+ * Shown in place of a path when the user has not picked one.
+ *
+ * Not a real path: the folder is named for the agent's id, and the id is not
+ * minted until the store creates it, so promising an exact one here would be
+ * a guess the second agent named alike would break.
+ */
+const UNSET_WORKING_DIRECTORY = '~/roster/workspace/…'
+
+const UNSET_WORKING_DIRECTORY_CAPTION =
+  'This agent gets a folder of its own. Choose a project instead to have it work on those files.'
+
+/**
  * Create-agent form. Reuses the Edit modal's fields, per the handoff, and
  * writes a real agent.toml on submit.
  */
@@ -110,8 +122,9 @@ export function NewAgent() {
         <ModelPicker models={models} value={newModel} onChange={setNewModel} />
 
         <WorkingDirectory
-          value={cwd ?? '~/roster/workspace'}
+          value={cwd ?? UNSET_WORKING_DIRECTORY}
           {...(cwd !== null ? { current: cwd } : {})}
+          {...(cwd === null ? { caption: UNSET_WORKING_DIRECTORY_CAPTION } : {})}
           onChange={setCwd}
         />
 

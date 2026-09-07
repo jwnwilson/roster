@@ -31,6 +31,29 @@ export function skillsDir(): string {
 }
 
 /**
+ * The root of the scratch workspaces, for agents not pointed at a project.
+ *
+ * Inside Roster's home because a fresh install has nowhere else to put an
+ * agent, and one loose in the user's home directory is worse.
+ */
+export function workspaceDir(): string {
+  return join(rosterHome(), 'workspace')
+}
+
+/**
+ * An agent's own working directory, when it has not been given a project.
+ *
+ * Keyed on the id rather than the name for the reason `agentDir` is: the id
+ * is already unique — `AgentStore.create` mints it that way, because two
+ * different names can still slugify alike — and it does not change when the
+ * agent is renamed, so a rename cannot strand the files it has been working
+ * on. One agent is one word under `agents/` and here alike.
+ */
+export function agentWorkspaceDir(agentId: string): string {
+  return join(workspaceDir(), agentId)
+}
+
+/**
  * Where a plan's Markdown lives, one file per version.
  *
  * A plan is something you read, keep and answer, so it is a file rather than

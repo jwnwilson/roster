@@ -77,6 +77,11 @@ CLI is actually installed, and none are created if none is. This happens once
 ever: `~/roster/setup.json` records it, so agents you delete stay deleted and an
 existing `~/roster` is never seeded over.
 
+An agent's working directory is the project it works on. Point it at a repo and
+that is where it runs; leave it unset and it gets a folder of its own at
+`~/roster/workspace/<id>`, so agents never work on each other's files. Either
+way it reads its agents, skills, plans, projects and MCP servers from `~/roster`.
+
 Point it somewhere else while developing:
 
 ```bash
@@ -193,7 +198,8 @@ writing a normalizer and, ideally, recording a fixture from a real run.
   agents/<id>/agent.toml   one file per agent — hand-editable
   skills/<name>/SKILL.md   the shared skill library, nested files and all
   projects/<id>/NOTES.md   a project's standing notes — keyed on its id, not its name
-  workspace/               default working directory for seeded agents
+  workspace/<id>/          an agent's own files, when it is not pointed at a project
+  worktrees/<branch>/      where an agent builds a plan's worktree
   mcp.json                 MCP servers: launch command and environment
   setup.json               first-run marker: what was seeded, and when it was dismissed
   roster.db                sessions, messages, approvals, usage, tasks, projects

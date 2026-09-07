@@ -1,7 +1,5 @@
-import { join } from 'node:path'
 import type { RunnerStatus } from '../../../shared/types'
 import type { NewAgentInput } from './agents'
-import { rosterHome } from './paths'
 
 /**
  * The roster a brand-new install starts with.
@@ -78,13 +76,13 @@ export function defaultAgentsFor(runners: Map<string, RunnerStatus>): NewAgentIn
   if (runner === null) return []
 
   const model = DEFAULT_MODEL[runner] ?? ''
-  const cwd = join(rosterHome(), 'workspace')
 
   return DEFAULTS.map((agent) => ({
     name: agent.name,
     runner,
     model,
-    cwd,
+    // No cwd: each seeded agent gets a folder of its own from the store, so
+    // the starter roster does not begin by working on each other's files.
     systemPrompt: agent.systemPrompt,
     // No skills: a fresh install's library is empty, and naming skills that
     // are not there would ship three agents advertising what they cannot do.

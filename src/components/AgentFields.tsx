@@ -145,10 +145,12 @@ interface WorkingDirectoryProps {
   value: string
   /** Absolute path the picker opens at; falls back to the value shown. */
   current?: string
+  /** What the shown value means, when it is not a directory the user picked. */
+  caption?: string
   onChange?: (path: string) => void
 }
 
-export function WorkingDirectory({ value, current, onChange }: WorkingDirectoryProps) {
+export function WorkingDirectory({ value, current, caption, onChange }: WorkingDirectoryProps) {
   async function choose(): Promise<void> {
     const picked = await window.roster.dialog.chooseDirectory(current ?? value)
     // Cancelling leaves the directory untouched.
@@ -156,7 +158,7 @@ export function WorkingDirectory({ value, current, onChange }: WorkingDirectoryP
   }
 
   return (
-    <Field label="Working directory">
+    <Field label="Working directory" {...(caption !== undefined ? { caption } : {})}>
       <div className="flex gap-[9px]">
         <span className="flex-1 truncate rounded-field border border-line-card bg-card px-[12px] py-[9px] font-mono text-lg text-muted-2">
           {value}
