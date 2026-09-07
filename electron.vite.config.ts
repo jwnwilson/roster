@@ -31,6 +31,24 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
+    /**
+     * The renderer's root is the whole project, so the dev server would
+     * otherwise watch every nested git worktree under `.claude/worktrees/`.
+     * Each of those is a full checkout — its own index.html, tsconfig.json and
+     * src/ — so an agent working in one forces a cache-clearing full reload of
+     * the app being used to test it, mid-turn, losing whatever the renderer
+     * was holding. Build output and coverage churn for the same no reason.
+     */
+    server: {
+      watch: {
+        ignored: [
+          '**/.claude/**',
+          '**/out/**',
+          '**/release/**',
+          '**/coverage/**',
+        ],
+      },
+    },
     plugins: [react(), tailwindcss()],
     build: { rollupOptions: { input: resolve('index.html') } },
     resolve: { alias: { '@': resolve('src'), '@shared': resolve('shared') } },
