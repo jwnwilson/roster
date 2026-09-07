@@ -8,8 +8,11 @@
 name: CI
 
 on:
+  # Every pull request, whatever it targets. A `branches: [main]` filter was
+  # here and it meant a PR stacked on another branch got no check at all —
+  # silently, since a workflow that never triggers reports nothing. A PR is a
+  # PR; the base it merges into does not change whether the suite should run.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:

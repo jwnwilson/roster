@@ -543,8 +543,20 @@ describe('SessionManager — what the runner is given', () => {
     await manager.send(session.id, 'go')
 
     expect(runnerStub.run.mock.calls[0]?.[1]).toMatchObject({
-      skillPaths: ['/skills/repro-harness'],
+      skills: [{ name: 'repro-harness', path: '/skills/repro-harness' }],
     })
+  })
+
+  test('passes a skill as identity, leaving the SKILL.md to the runner that needs it', async () => {
+    // Claude loads a skill itself, so reading one here would put file I/O in
+    // front of every turn for the benefit of the runner that does not take it.
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const options = runnerStub.run.mock.calls[0]?.[1] as { skills: unknown[] }
+    expect(options.skills).toEqual([{ name: 'repro-harness', path: '/skills/repro-harness' }])
   })
 
   test('passes only MCP servers enabled for this agent', async () => {

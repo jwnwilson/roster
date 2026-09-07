@@ -8,7 +8,13 @@ import { gitMetadata } from '../sessions/repo'
 import { worktreesDir } from '../store/paths'
 import { normalizeCodexMessage } from './normalizeCodex'
 import { streamJsonLines } from './subprocess'
-import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
+import type {
+  ApprovalDecision,
+  EnabledSkill,
+  Runner,
+  RunnerEvent,
+  StartOptions,
+} from './types'
 
 /**
  * Fallback list, used only when the CLI's own cache cannot be read. Codex
@@ -79,7 +85,7 @@ export class CodexRunner implements Runner {
     if (status.path) this.binary = status.path
   }
 
-  run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
+  async *run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
     // Sandbox first, then servers: both are `--config`, and both are repeated
     // on a resume because `exec resume` is its own process and keeps neither.
     const permissions = [
@@ -127,9 +133,9 @@ export class CodexRunner implements Runner {
         ? [options.systemPrompt.trim(), planInstruction()].filter((part) => part !== '').join('\n\n')
         : options.systemPrompt
 
-    args.push(composePrompt(prompt, systemPrompt))
+    args.push(composePrompt(prompt, systemPrompt, await readSkills(options.skills)))
 
-    return streamJsonLines(
+    yield* streamJsonLines(
       { command: this.binary, args, cwd: options.cwd, signal: options.signal },
       normalizeCodexMessage,
     )
@@ -246,7 +252,95 @@ export function codexMcpOverrides(servers: StartOptions['mcpServers']): string[]
  * Codex has no system-prompt flag on `exec`, so an agent's house rules are
  * prepended to the prompt itself.
  */
-export function composePrompt(prompt: string, systemPrompt: string): string {
-  if (systemPrompt.trim() === '') return prompt
-  return `${systemPrompt.trim()}\n\n---\n\n${prompt}`
+/**
+ * Reads each enabled skill's SKILL.md.
+ *
+ * Here rather than in the session manager because Codex is the only runner
+ * that needs the text: Claude loads a skill itself, and making every turn read
+ * files for it would be work thrown away.
+ *
+ * A skill whose file has gone missing comes back empty rather than throwing.
+ * The agent named it, and losing the turn over a deleted file is worse than
+ * taking it with one skill listed but not inlined.
+ */
+async function readSkills(skills: readonly EnabledSkill[]): Promise<SkillDoc[]> {
+  return Promise.all(
+    skills.map(async (skill) => ({
+      name: skill.name,
+      body: await readFile(join(skill.path, 'SKILL.md'), 'utf8').catch(() => ''),
+    })),
+  )
+}
+
+/**
+ * How much of the prompt the skills may take.
+ *
+ * Every turn pays this, so it is a cost rather than a ceiling to fill — the
+ * same reasoning as PROJECT_BRIEF_BUDGET, and a similar size. Roughly a
+ * thousand tokens: enough for two or three real skills, small against a
+ * context window.
+ */
+export const SKILL_BUDGET = 4000
+
+/** Says what the block is, so it does not read as the user having typed it. */
+const SKILLS_PREAMBLE =
+  'Skills available to you, provided by Roster. Each is a procedure to follow ' +
+  'when it applies. Not written by the user.'
+
+export interface SkillDoc {
+  name: string
+  /** The SKILL.md, or empty when it could not be read. */
+  body: string
+}
+
+export function composePrompt(
+  prompt: string,
+  systemPrompt: string,
+  skills: readonly SkillDoc[] = [],
+): string {
+  const parts = [systemPrompt.trim(), skillsSection(skills), prompt].filter(
+    (part) => part !== '',
+  )
+
+  return parts.join('\n\n---\n\n')
+}
+
+/**
+ * The enabled skills, inlined.
+ *
+ * Codex has no skill mechanism of its own — `codex exec` takes a prompt and
+ * nothing else — so a skill reaches it as text or not at all. Roster used to
+ * drop them silently, which left a Codex agent advertising skills it could
+ * not follow.
+ *
+ * Spent in order and by whole skills. Truncating one mid-way would cut the
+ * steps the model was meant to follow while leaving the title that promises
+ * them, so a skill that does not fit is named instead: the agent can still
+ * read it from disk, and knows it is there.
+ */
+function skillsSection(skills: readonly SkillDoc[]): string {
+  if (skills.length === 0) return ''
+
+  const inlined: string[] = []
+  const namedOnly: string[] = []
+  let spent = 0
+
+  for (const skill of skills) {
+    const body = skill.body.trim()
+
+    if (body === '' || spent + body.length > SKILL_BUDGET) {
+      namedOnly.push(skill.name)
+      continue
+    }
+
+    inlined.push(`## ${skill.name}\n\n${body}`)
+    spent += body.length
+  }
+
+  const tail =
+    namedOnly.length > 0
+      ? [`Also enabled, and readable on disk: ${namedOnly.join(', ')}.`]
+      : []
+
+  return [SKILLS_PREAMBLE, ...inlined, ...tail].join('\n\n')
 }

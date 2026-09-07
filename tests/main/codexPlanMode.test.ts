@@ -20,7 +20,7 @@ function options(overrides: Partial<StartOptions> = {}): StartOptions {
     cwd: dir,
     model: 'my-model',
     systemPrompt: '',
-    skillPaths: [],
+    skills: [],
     mcpServers: {},
     signal: new AbortController().signal,
     ...overrides,

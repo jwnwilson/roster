@@ -4,6 +4,8 @@ import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { Skill } from '../../../shared/types'
 import type { Disposable } from './agents'
 import { skillsDir } from './paths'
+import { hasFrontmatter, withFrontmatter } from './skillFrontmatter'
+import { writeSkillPluginManifest } from './skillPlugin'
 
 /**
  * File-backed store over `~/roster/skills`. Each skill is a folder holding a
@@ -17,6 +19,7 @@ export class SkillStore {
   async load(): Promise<void> {
     const root = skillsDir()
     await mkdir(root, { recursive: true })
+    await writeSkillPluginManifest()
     const entries = await readdir(root, { withFileTypes: true })
 
     const loaded: Skill[] = []
@@ -28,12 +31,23 @@ export class SkillStore {
       const linkedFrom = entry.isSymbolicLink() ? await linkTarget(path) : null
       if (!entry.isDirectory() && linkedFrom === null) continue
 
+      // Only Roster's own copies. A linked skill's SKILL.md is inside a repo
+      // the user maintains, and writing into someone else's checkout to suit
+      // Roster is not a call Roster gets to make; the Skills screen reports it
+      // instead.
+      // Roster's own copies are repaired; a linked one is only reported.
+      const skillFile = join(path, SKILL_FILE)
+      let needsFrontmatter = false
+      if (linkedFrom === null) await repairFrontmatter(skillFile)
+      else needsFrontmatter = await lacksFrontmatter(skillFile)
+
       loaded.push({
         name: entry.name,
         path,
         files: await listFiles(path),
         lastEditedMs: (await stat(path)).mtimeMs,
         ...(linkedFrom !== null ? { linkedFrom } : {}),
+        ...(needsFrontmatter ? { needsFrontmatter } : {}),
       })
     }
 
@@ -67,7 +81,8 @@ export class SkillStore {
     const dir = join(skillsDir(), unique)
 
     await mkdir(dir, { recursive: true })
-    await writeFile(join(dir, 'SKILL.md'), starterSkill(name.trim() || unique), 'utf8')
+    const body = withFrontmatter(unique, starterSkill(name.trim() || unique))
+    await writeFile(join(dir, 'SKILL.md'), body, 'utf8')
     await this.load()
 
     const created = this.skills.find((skill) => skill.name === unique)
@@ -261,7 +276,8 @@ export class SkillStore {
 }
 
 /** Every skill folder has one; it is what makes the folder a skill. */
-const SKILL_FILE = 'SKILL.md'
+/** The one file that makes a folder a skill. Read by the session manager too. */
+export const SKILL_FILE = 'SKILL.md'
 
 /** Where a symlink points, or null when it dangles or is not a folder. */
 async function linkTarget(path: string): Promise<string | null> {
@@ -287,6 +303,39 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
   return slug === '' ? 'new-skill' : slug
+}
+
+/**
+ * Whether a skill Roster may not write to is missing the block that makes it
+ * findable by name and properly described. Reported rather than repaired.
+ */
+async function lacksFrontmatter(file: string): Promise<boolean> {
+  const source = await readFile(file, 'utf8').catch(() => null)
+  return source !== null && !hasFrontmatter(source)
+}
+
+/**
+ * Gives a SKILL.md written before Roster declared frontmatter the block that
+ * makes it answer to its own name and describe itself to the model.
+ *
+ * Additive: the body is untouched and a file that already declares itself is
+ * left byte-identical, so this is idempotent and leaves the skill correct in
+ * any Claude context rather than only inside Roster.
+ */
+async function repairFrontmatter(file: string): Promise<void> {
+  let source: string
+  try {
+    source = await readFile(file, 'utf8')
+  } catch {
+    // A folder without a SKILL.md is not a skill; load() reports it as one
+    // with no files rather than failing the whole library over it.
+    return
+  }
+
+  if (hasFrontmatter(source)) return
+
+  const name = basename(dirname(file))
+  await writeFile(file, withFrontmatter(name, source), 'utf8')
 }
 
 function starterSkill(title: string): string {
