@@ -1,7 +1,20 @@
-import type { Announcements } from '@dnd-kit/core'
+import { closestCorners, pointerWithin, type Announcements, type CollisionDetection } from '@dnd-kit/core'
 import type { Task } from '@shared/types'
 import { taskStatusLabel } from '@shared/tasks'
 import { columnOf } from './store'
+
+/**
+ * Prefer the exact area under a pointer. `closestCorners` is still useful as
+ * a fallback because keyboard drags have no pointer coordinates.
+ *
+ * A board column and each of its cards are all droppable. Corner proximity
+ * alone can therefore select a neighbouring card/column before the pointer
+ * has entered the column a person is aiming for.
+ */
+export const boardCollisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args)
+  return pointerCollisions.length > 0 ? pointerCollisions : closestCorners(args)
+}
 
 /**
  * What a screen reader hears while a card is being dragged.
