@@ -5,7 +5,6 @@ import {
   DragOverlay,
   KeyboardSensor,
   PointerSensor,
-  closestCorners,
   useDroppable,
   useSensor,
   useSensors,
@@ -29,7 +28,7 @@ import {
   useRoster,
   type TaskView,
 } from '@/state/store'
-import { boardAnnouncements } from '@/state/board'
+import { boardAnnouncements, boardCollisionDetection } from '@/state/board'
 import { Backlog } from './Backlog'
 import { TaskDetailModal } from './TaskDetailModal'
 import { NewTaskModal } from './NewTaskModal'
@@ -152,7 +151,7 @@ export function Tasks() {
       ) : (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={boardCollisionDetection}
           accessibility={{ announcements: boardAnnouncements(tasks) }}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
@@ -246,5 +245,4 @@ function CardFor({ task, render }: CardForProps) {
     onOpen: () => openTask(task.id),
   })
 }
-
 
