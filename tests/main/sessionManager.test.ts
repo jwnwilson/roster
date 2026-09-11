@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import type { Agent, McpServer, Skill } from '@shared/types'
+import type { Agent, McpServer, Session, Skill } from '@shared/types'
 import type { RunnerEvent } from '@main/runners/types'
 
 /** The registry is stubbed so a turn can be driven without a real CLI. */
@@ -30,13 +30,16 @@ vi.mock('@main/runners/handoffTool', () => ({
 const { openDatabase } = await import('@main/db')
 const { SessionStore } = await import('@main/store/sessions')
 const { UsageStore } = await import('@main/store/usage')
-const { SessionManager } = await import('@main/sessions/manager')
+const { SessionManager, MAX_HANDOFF_DEPTH } = await import('@main/sessions/manager')
+const { removeSession } = await import('@main/sessions/remove')
 
 let home: string
 let manager: InstanceType<typeof SessionManager>
 let sessions: InstanceType<typeof SessionStore>
 let usage: InstanceType<typeof UsageStore>
 let events: unknown[]
+let removeChildSession: ReturnType<typeof vi.fn<(sessionId: string) => Promise<Session | null>>>
+let closeChildTerminal: ReturnType<typeof vi.fn<(sessionId: string) => void>>
 
 const AGENTS: Agent[] = [
   {
@@ -92,6 +95,18 @@ beforeEach(async () => {
   sessions = new SessionStore(db)
   usage = new UsageStore(db)
   events = []
+  closeChildTerminal = vi.fn<(sessionId: string) => void>()
+  removeChildSession = vi.fn((sessionId: string) =>
+    removeSession(
+      {
+        sessions,
+        plans: { listBySession: () => [] },
+        stopTurn: (id) => manager.stop(id),
+        closeTerminal: closeChildTerminal,
+      },
+      sessionId,
+    ),
+  )
 
   const agentStore = {
     findAll: () => AGENTS,
@@ -106,6 +121,10 @@ beforeEach(async () => {
     skillStore as never,
     mcpStore as never,
     usage,
+    undefined,
+    undefined,
+    undefined,
+    { removeSession: removeChildSession },
   )
   manager.subscribe((event) => events.push(event))
   runnerStub.run.mockReset()
@@ -524,8 +543,20 @@ describe('SessionManager — what the runner is given', () => {
     await manager.send(session.id, 'go')
 
     expect(runnerStub.run.mock.calls[0]?.[1]).toMatchObject({
-      skillPaths: ['/skills/repro-harness'],
+      skills: [{ name: 'repro-harness', path: '/skills/repro-harness' }],
     })
+  })
+
+  test('passes a skill as identity, leaving the SKILL.md to the runner that needs it', async () => {
+    // Claude loads a skill itself, so reading one here would put file I/O in
+    // front of every turn for the benefit of the runner that does not take it.
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    const session = manager.create('debugging', 'x')
+    await manager.send(session.id, 'go')
+
+    const options = runnerStub.run.mock.calls[0]?.[1] as { skills: unknown[] }
+    expect(options.skills).toEqual([{ name: 'repro-harness', path: '/skills/repro-harness' }])
   })
 
   test('passes only MCP servers enabled for this agent', async () => {
@@ -715,6 +746,172 @@ describe('SessionManager.handOff', () => {
       links: [{ agentId: 'review', sessionId: session.id, label: 'Review Agent · PR #482' }],
     })
   })
+
+  test('runs the receiving session, with the brief as its prompt', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const from = manager.create('debugging', 'Leak')
+
+    manager.handOff({
+      fromAgentId: 'debugging',
+      fromSessionId: from.id,
+      toAgentId: 'review',
+      title: 'PR #482',
+      brief: 'Review the fix.',
+    })
+
+    // The whole point of a handoff: the other agent picks the work up on its
+    // own. Opening a session and leaving it idle is a note nobody reads.
+    await vi.waitFor(() =>
+      expect(runnerStub.run).toHaveBeenCalledWith('Review the fix.', expect.anything()),
+    )
+  })
+
+  test('says the receiving agent has started', () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const from = manager.create('debugging', 'Leak')
+
+    const { started } = manager.handOff({
+      fromAgentId: 'debugging',
+      fromSessionId: from.id,
+      toAgentId: 'review',
+      title: 'PR #482',
+      brief: 'Review the fix.',
+    })
+
+    expect(started).toBe(true)
+  })
+
+  test('the brief is not printed twice in the receiving transcript', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const from = manager.create('debugging', 'Leak')
+
+    const { session } = manager.handOff({
+      fromAgentId: 'debugging',
+      fromSessionId: from.id,
+      toAgentId: 'review',
+      title: 'PR #482',
+      brief: 'Review the fix.',
+    })
+
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalled())
+
+    // The spawn message already carries the brief, attributed to the agent
+    // that wrote it. Recording it again would print it twice and put another
+    // agent's words under "you".
+    const carrying = sessions
+      .messages(session.id)
+      .filter((message) => 'text' in message && message.text === 'Review the fix.')
+    expect(carrying).toHaveLength(1)
+    expect(carrying[0]?.kind).toBe('spawn')
+  })
+
+  /** A chain of handoffs, each one spawned from the session before it. */
+  function chainOf(hops: number): ReturnType<typeof manager.handOff> {
+    let current = manager.create('debugging', 'Leak')
+    let last!: ReturnType<typeof manager.handOff>
+
+    for (let hop = 1; hop <= hops; hop += 1) {
+      const forward = hop % 2 === 1
+      last = manager.handOff({
+        fromAgentId: forward ? 'debugging' : 'review',
+        fromSessionId: current.id,
+        toAgentId: forward ? 'review' : 'debugging',
+        title: `Hop ${hop}`,
+        brief: `Brief ${hop}`,
+      })
+      current = last.session
+    }
+
+    return last
+  }
+
+  test('stops starting turns once the chain of handoffs is too deep', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    // Without a ceiling, two agents holding the roster tools can hand work
+    // back and forth for as long as the user's subscription lasts.
+    const last = chainOf(MAX_HANDOFF_DEPTH + 1)
+
+    expect(last.started).toBe(false)
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledTimes(MAX_HANDOFF_DEPTH))
+    expect(runnerStub.run).not.toHaveBeenCalledWith(
+      `Brief ${MAX_HANDOFF_DEPTH + 1}`,
+      expect.anything(),
+    )
+  })
+
+  test('the too-deep session is still opened, so the work is not lost', () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+
+    // Refusing to run it is not the same as throwing it away: it is on the
+    // grid with its brief, for a person to pick up by hand.
+    const last = chainOf(MAX_HANDOFF_DEPTH + 1)
+
+    const [spawn] = sessions.messages(last.session.id)
+    expect(spawn).toMatchObject({ kind: 'spawn', text: `Brief ${MAX_HANDOFF_DEPTH + 1}` })
+  })
+})
+
+describe('SessionManager.closeChildSession', () => {
+  test('removes only a direct child through the supplied safe lifecycle', async () => {
+    const parent = manager.create('debugging', 'Parent')
+    const child = sessions.create({
+      agentId: 'review',
+      title: 'Child',
+      origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+
+    await expect(manager.closeChildSession(parent.id, child.id)).resolves.toBe(true)
+    expect(removeChildSession).toHaveBeenCalledWith(child.id)
+    expect(sessions.findById(child.id)).toBeNull()
+    expect(events).toContainEqual({
+      type: 'session-deleted',
+      sessionId: child.id,
+      agentId: child.agentId,
+    })
+  })
+
+  test('rejects self, ancestor, sibling, unrelated, user-created, and unknown sessions', async () => {
+    const parent = manager.create('debugging', 'Parent')
+    const child = sessions.create({
+      agentId: 'review', title: 'Child', origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+    const sibling = sessions.create({
+      agentId: 'review', title: 'Sibling', origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+    const unrelated = manager.create('review', 'Unrelated')
+
+    for (const target of [child.id, parent.id, sibling.id, unrelated.id, 'missing']) {
+      await expect(manager.closeChildSession(child.id, target)).resolves.toBe(false)
+    }
+
+    expect(removeChildSession).not.toHaveBeenCalled()
+    for (const session of [parent, child, sibling, unrelated]) expect(sessions.findById(session.id)).not.toBeNull()
+  })
+
+  test('stops an active child before closing its terminal and deleting it', async () => {
+    runnerStub.run.mockImplementation(
+      async function* (_prompt: string, options: { signal: AbortSignal }) {
+        await new Promise<void>((resolve) => options.signal.addEventListener('abort', () => resolve()))
+      },
+    )
+    const parent = manager.create('debugging', 'Parent')
+    const child = sessions.create({
+      agentId: 'review', title: 'Child', origin: 'agent',
+      from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
+    })
+    const turn = manager.send(child.id, 'Work')
+    await vi.waitFor(() => expect(manager.isStreaming(child.id)).toBe(true))
+
+    await expect(manager.closeChildSession(parent.id, child.id)).resolves.toBe(true)
+    await turn
+
+    expect(closeChildTerminal).toHaveBeenCalledWith(child.id)
+    expect(sessions.findById(child.id)).toBeNull()
+  })
 })
 
 describe('SessionManager.cancel', () => {
@@ -813,5 +1010,109 @@ describe('SessionManager.enqueue', () => {
     // would take the main process down rather than the turn.
     expect(() => manager.enqueue('ghost', 'go')).not.toThrow()
     await vi.waitFor(() => expect(runnerStub.run).not.toHaveBeenCalled())
+  })
+})
+
+describe('SessionManager.stop', () => {
+  /** A turn that runs until its signal is aborted, as a real runner does. */
+  function abortableTurn(): void {
+    runnerStub.run.mockImplementation(async function* (
+      _prompt: string,
+      options: { signal: AbortSignal },
+    ) {
+      await new Promise<void>((resolve) => {
+        if (options.signal.aborted) resolve()
+        else options.signal.addEventListener('abort', () => resolve(), { once: true })
+      })
+      yield { kind: 'done', runnerSessionId: 'r1' } as RunnerEvent
+    })
+  }
+
+  test('resolves straight away when nothing is in flight', async () => {
+    const session = manager.create('debugging', 'x')
+
+    await expect(manager.stop(session.id)).resolves.toBeUndefined()
+  })
+
+  test('resolves for a session that never existed', async () => {
+    await expect(manager.stop('ghost')).resolves.toBeUndefined()
+  })
+
+  test('aborts the turn in flight and waits for it to wind down', async () => {
+    abortableTurn()
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'go')
+    await vi.waitFor(() => expect(manager.isStreaming(session.id)).toBe(true))
+
+    await manager.stop(session.id)
+
+    // Not merely aborted: the turn's own bookkeeping has finished, so nothing
+    // is left that could write to the session after this returns.
+    expect(manager.isStreaming(session.id)).toBe(false)
+    await turn
+  })
+
+  test('gives up on a runner that never honours its abort signal', async () => {
+    // A turn that ignores the signal altogether. Unbounded, the stop below
+    // would never resolve, the delete waiting on it would never return, and
+    // the control that asked for it would read as dead.
+    let release = (): void => {}
+    runnerStub.run.mockImplementation(async function* () {
+      await new Promise<void>((resolve) => {
+        release = resolve
+      })
+      yield { kind: 'done', runnerSessionId: 'r1' } as RunnerEvent
+    })
+
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'go')
+    await vi.waitFor(() => expect(manager.isStreaming(session.id)).toBe(true))
+
+    vi.useFakeTimers()
+    try {
+      const stopped = manager.stop(session.id)
+      await vi.advanceTimersByTimeAsync(10_000)
+      await expect(stopped).resolves.toBeUndefined()
+    } finally {
+      vi.useRealTimers()
+    }
+
+    release()
+    await turn
+  })
+
+  test('a turn that fails before it streams is still stoppable', async () => {
+    // Setting up a turn does work of its own — statuses, events, and for the
+    // Claude runner a set of MCP servers built with await. A throw in any of
+    // it must still settle the turn, or stop() waits on a promise nothing
+    // will ever resolve.
+    const session = manager.create('debugging', 'x')
+    const stop = manager.subscribe((event) => {
+      if (event.type === 'streaming' && event.active) throw new Error('listener blew up')
+    })
+
+    // Recorded on the turn rather than thrown out of send: the failure now
+    // happens inside the turn's own try, which is the whole point.
+    await expect(manager.send(session.id, 'go')).resolves.toBeUndefined()
+    stop()
+
+    // The turn settled, so nothing is left in flight and stop has something
+    // to return. Before, this waited on a promise nothing would resolve.
+    expect(manager.isStreaming(session.id)).toBe(false)
+    await expect(manager.stop(session.id)).resolves.toBeUndefined()
+  })
+
+  test('drops the turn queued behind the one it stops', async () => {
+    abortableTurn()
+    const session = manager.create('debugging', 'x')
+    const turn = manager.send(session.id, 'first')
+    await vi.waitFor(() => expect(manager.isStreaming(session.id)).toBe(true))
+    manager.enqueue(session.id, 'second')
+
+    await manager.stop(session.id)
+    await turn
+
+    expect(runnerStub.run).toHaveBeenCalledTimes(1)
+    expect(runnerStub.run).not.toHaveBeenCalledWith('second', expect.anything())
   })
 })

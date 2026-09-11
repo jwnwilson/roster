@@ -1,4 +1,4 @@
-# Every push to main becomes a version.
+# Every push to main that changes the app becomes a version.
 #
 # Three stages, because the two macOS architectures cannot share a runner:
 # `postinstall` runs `electron-builder install-app-deps`, which rebuilds
@@ -10,6 +10,31 @@ name: Release
 on:
   push:
     branches: [main]
+    # A release is a version bump, a tag, two signed DMGs and an update the
+    # app offers to everyone running Roster. None of that is worth cutting
+    # for a paragraph of prose, and v0.1.29 was a push titled "Updating
+    # todo.md".
+    #
+    # Nothing listed here reaches a user: `build.files` packages only
+    # `out/**/*` and `package.json`, so no markdown, no `docs/`, and no
+    # `site/` is inside the app. The site publishes through pages.yml
+    # instead, on its own trigger.
+    #
+    # This skips a push only when *every* changed file matches. A commit
+    # touching a source file and the README still releases, which is the
+    # behaviour you want — the code in it needs to ship.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+      - '.github/workflows/ci.yml'
+
+  # The manual escape hatch the paths filter above makes necessary: with it
+  # in place a documentation push can no longer be used to force a release,
+  # so re-cutting one after a failed publish would otherwise need an
+  # artificial code change.
+  workflow_dispatch:
 
 # The version job pushes a commit and a tag back to main.
 permissions:
@@ -21,8 +46,11 @@ concurrency:
 
 jobs:
   version:
-    # Skip the release commit this workflow makes itself, or it loops.
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    # Skip the release commit this workflow makes itself, or it loops. A
+    # manual run has no head_commit to read, and is always deliberate.
+    if: >-
+      ${{ github.event_name == 'workflow_dispatch'
+      || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: macos-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}

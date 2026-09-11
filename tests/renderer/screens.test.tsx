@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { EditAgentModal } from '@/screens/EditAgentModal'
@@ -238,6 +238,50 @@ describe('relativeTime', () => {
 })
 
 /* --------------------------------------------------------------------- mcp */
+
+describe('Skills — a linked skill Roster may not repair', () => {
+  test('says the skill is degraded, since nothing else would tell the user', async () => {
+    // Roster adds frontmatter to its own copies but not to a linked skill,
+    // which lives in a repo the user maintains. Without a warning it degrades
+    // quietly: the model sees a title where the author wrote a summary.
+    useRoster.setState({
+      skills: [
+        aSkill({
+          name: 'my-skill',
+          path: '/skills/my-skill',
+          linkedFrom: '/Users/test/repo/my-skill',
+          needsFrontmatter: true,
+          files: ['SKILL.md'],
+        }),
+      ],
+      agents: [],
+    })
+    installRosterApi({ skills: { read: vi.fn().mockResolvedValue('# My Skill') } })
+
+    render(<Skills />)
+
+    expect(await screen.findByText(/not a description of when to use it/i)).toBeInTheDocument()
+  })
+
+  test('says nothing about a linked skill that already declares itself', async () => {
+    useRoster.setState({
+      skills: [
+        aSkill({
+          name: 'my-skill',
+          path: '/skills/my-skill',
+          linkedFrom: '/Users/test/repo/my-skill',
+          files: ['SKILL.md'],
+        }),
+      ],
+      agents: [],
+    })
+    installRosterApi({ skills: { read: vi.fn().mockResolvedValue('# My Skill') } })
+
+    render(<Skills />)
+
+    expect(screen.queryByText(/not a description of when to use it/i)).not.toBeInTheDocument()
+  })
+})
 
 describe('Skills — adding one you already have', () => {
   beforeEach(() => {
@@ -546,6 +590,12 @@ describe('NewAgent', () => {
     })
   })
 
+  test('says an unset working directory means a folder of the agent’s own', async () => {
+    render(<NewAgent />)
+
+    expect(screen.getByText(/a folder of its own/i)).toBeInTheDocument()
+  })
+
   test('renders the provider cards with their auth state', async () => {
     render(<NewAgent />)
 
@@ -612,6 +662,70 @@ describe('NewAgent', () => {
     )
   })
 
+  test('offers the MCP servers, so a new agent does not need a second pass', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ mcpServers: [anMcpServer({ name: 'filesystem' })] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: /filesystem/ }))
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ mcpServers: ['filesystem'] }),
+      ),
+    )
+  })
+
+  test('offers the default project, so a new agent can be filed on creation', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability' })] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.selectOptions(screen.getByLabelText('Default project'), 'proj-reliability')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultProjectId: 'proj-reliability' }),
+      ),
+    )
+  })
+
+  test('leaves both out of the payload when neither was chosen', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [aProject()], mcpServers: [anMcpServer()] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    // No default is null, not the first project in the list, and no servers
+    // is an empty list rather than an absent field.
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ defaultProjectId: null, mcpServers: [] }),
+      ),
+    )
+  })
+
+  test('says there are no projects yet rather than hiding the field', async () => {
+    useRoster.setState({ projects: [] })
+    render(<NewAgent />)
+    await screen.findByText('claude-opus-5')
+
+    // Hiding it entirely is indistinguishable from the setting not existing,
+    // which is exactly how it reads on a fresh install.
+    expect(screen.getByText('Default project')).toBeInTheDocument()
+    expect(screen.getByText(/No projects yet/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Default project')).not.toBeInTheDocument()
+  })
+
   test('shows why creation failed instead of silently returning', async () => {
     const user = userEvent.setup()
     installRosterApi({
@@ -666,6 +780,7 @@ describe('EditAgentModal', () => {
       runners: [aRunner()],
       skills: [aSkill({ name: 'repro-harness' }), aSkill({ name: 'stack-triage' })],
       mcpServers: [anMcpServer({ name: 'filesystem' }), anMcpServer({ name: 'github' })],
+      projects: [],
     })
     useRoster.getState().openEdit()
   })
@@ -716,6 +831,74 @@ describe('EditAgentModal', () => {
     )
   })
 
+  test('the name is editable, seeded from the agent', () => {
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.getByLabelText('Agent name')).toHaveValue('Debugging Agent')
+  })
+
+  test('Save writes the new name back to agent.toml', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, 'Triage Agent')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ name: 'Triage Agent' }),
+      ),
+    )
+  })
+
+  test('Save trims the name rather than writing the spaces', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, '  Triage Agent  ')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ name: 'Triage Agent' }),
+      ),
+    )
+  })
+
+  test('Save is unavailable while the name is blank', async () => {
+    const user = userEvent.setup()
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.clear(screen.getByLabelText('Agent name'))
+
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+  })
+
+  test('surfaces a rejected rename instead of closing', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      runners: { models: vi.fn().mockResolvedValue([{ id: 'claude-opus-5', price: '' }]) },
+      agents: {
+        update: vi.fn().mockRejectedValue(new Error('there is already an agent named "Review"')),
+      },
+    })
+    render(<EditAgentModal agent={AGENT} />)
+
+    const field = screen.getByLabelText('Agent name')
+    await user.clear(field)
+    await user.type(field, 'Review')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    expect(await screen.findByText(/already an agent named/)).toBeInTheDocument()
+    expect(useRoster.getState().editOpen).toBe(true)
+  })
+
   test('Save closes the modal and discards the draft', async () => {
     const user = userEvent.setup()
     render(<EditAgentModal agent={AGENT} />)
@@ -757,6 +940,87 @@ describe('EditAgentModal', () => {
 
     expect(await screen.findByText(/EROFS: read-only/)).toBeInTheDocument()
     expect(useRoster.getState().editOpen).toBe(true)
+  })
+
+  test('offers the agent default project, with none chosen by default', () => {
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('none')
+  })
+
+  test('shows the default the agent already has', () => {
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('proj-reliability')
+  })
+
+  test('Save writes the chosen default project back to agent.toml', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    await user.selectOptions(screen.getByLabelText('Default project'), 'proj-reliability')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ defaultProjectId: 'proj-reliability' }),
+      ),
+    )
+  })
+
+  test('clearing the default saves it as none', async () => {
+    const user = userEvent.setup()
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-reliability', name: 'API reliability' })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    await user.selectOptions(screen.getByLabelText('Default project'), 'none')
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.update).toHaveBeenCalledWith(
+        'debugging',
+        expect.objectContaining({ defaultProjectId: null }),
+      ),
+    )
+  })
+
+  test('keeps an archived default listed, so it does not read as unset', () => {
+    const filed = anAgent({ id: 'debugging', defaultProjectId: 'proj-old' })
+    useRoster.setState({
+      agents: [filed],
+      projects: [aProject({ id: 'proj-old', name: 'Old work', archivedAt: 1 })],
+    })
+    useRoster.getState().openEdit()
+    render(<EditAgentModal agent={filed} />)
+
+    expect(screen.getByLabelText('Default project')).toHaveValue('proj-old')
+    expect(screen.getByRole('option', { name: 'Old work (archived)' })).toBeInTheDocument()
+  })
+
+  test('says there are no projects yet rather than hiding the field', () => {
+    useRoster.setState({ projects: [] })
+    render(<EditAgentModal agent={AGENT} />)
+
+    // The field used to vanish, which reads as the setting not existing —
+    // and on a fresh install, with no projects anywhere, that is every
+    // agent. The label stays and says what is missing.
+    expect(screen.getByText('Default project')).toBeInTheDocument()
+    expect(screen.getByText(/No projects yet/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Default project')).not.toBeInTheDocument()
   })
 
   test('Manage servers leaves for the MCP screen', async () => {
@@ -1140,6 +1404,217 @@ describe('Skills — the file tree', () => {
   })
 })
 
+
+describe('Skills — collapsing folders', () => {
+  const ADR = aSkill({ name: 'adr-writer', path: '/skills/adr-writer', files: ['SKILL.md'] })
+  const REPRO = aSkill({
+    name: 'repro-harness',
+    path: '/skills/repro-harness',
+    files: [
+      'SKILL.md',
+      'templates/',
+      'templates/case.md',
+      'templates/deep/',
+      'templates/deep/notes.md',
+    ],
+  })
+
+  /** The tree only. The metadata rail lists full paths and would match twice. */
+  function renderTree() {
+    const { container } = render(<Skills />)
+    return within(container.querySelector('nav')!)
+  }
+
+  beforeEach(() => {
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# ADR Writer'),
+        list: vi.fn().mockResolvedValue([ADR, REPRO]),
+      },
+    })
+    useRoster.setState({ skills: [ADR, REPRO], agents: [] })
+  })
+
+  test('everything starts expanded, so the tree arrives as it always did', () => {
+    const tree = renderTree()
+
+    expect(tree.getByText('templates')).toBeInTheDocument()
+    expect(tree.getByText('notes.md')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse repro-harness' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    )
+  })
+
+  test('collapsing a skill hides its whole subtree, not just its direct children', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+
+    expect(tree.queryByText('templates')).not.toBeInTheDocument()
+    expect(tree.queryByText('case.md')).not.toBeInTheDocument()
+    expect(tree.queryByText('deep')).not.toBeInTheDocument()
+    expect(tree.queryByText('notes.md')).not.toBeInTheDocument()
+    // The skill itself stays, and its neighbour is untouched.
+    expect(tree.getByText('repro-harness')).toBeInTheDocument()
+    expect(tree.getByText('adr-writer')).toBeInTheDocument()
+  })
+
+  test('expanding puts the subtree back', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+    await user.click(screen.getByRole('button', { name: 'Expand repro-harness' }))
+
+    expect(tree.getByText('templates')).toBeInTheDocument()
+    expect(tree.getByText('notes.md')).toBeInTheDocument()
+  })
+
+  test('collapsing a nested folder hides only what is under it', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse deep' }))
+
+    expect(tree.queryByText('notes.md')).not.toBeInTheDocument()
+    expect(tree.getByText('deep')).toBeInTheDocument()
+    expect(tree.getByText('case.md')).toBeInTheDocument()
+    expect(tree.getByText('templates')).toBeInTheDocument()
+  })
+
+  test('the disclosure announces its state rather than only drawing it', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse templates' }))
+
+    expect(screen.getByRole('button', { name: 'Expand templates' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+  })
+
+  test('a file row has no disclosure, since nothing is under it', () => {
+    render(<Skills />)
+
+    expect(screen.queryByRole('button', { name: 'Collapse notes.md' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand notes.md' })).not.toBeInTheDocument()
+  })
+
+  test('collapsing neither selects the folder nor changes the open file', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+    await screen.findByLabelText('Skill file contents')
+
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+
+    expect(screen.getByRole('button', { name: 'repro-harness' })).not.toHaveAttribute(
+      'aria-current',
+    )
+    expect(screen.getByText('adr-writer / SKILL.md')).toBeInTheDocument()
+    expect(window.roster.skills.read).toHaveBeenCalledTimes(1)
+  })
+
+  test('creating inside a collapsed folder opens it, so the name row can be seen', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse templates' }))
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+
+    expect(screen.getByLabelText('New file name')).toBeInTheDocument()
+    // Reopened rather than left collapsed: the new row belongs among these.
+    expect(tree.getByText('case.md')).toBeInTheDocument()
+  })
+
+  test('a file opened while its skill is collapsed is revealed, not stranded', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      skills: {
+        read: vi.fn().mockResolvedValue('# Repro'),
+        remove: vi.fn().mockResolvedValue(true),
+        // What the library looks like once repro-harness/SKILL.md has gone.
+        list: vi.fn().mockResolvedValue([ADR, aSkill({ ...REPRO, files: [] })]),
+      },
+    })
+    useRoster.setState({ skills: [ADR, REPRO], agents: [] })
+    const tree = renderTree()
+
+    // Work in repro-harness, with adr-writer folded away. Both skills hold a
+    // SKILL.md, so each row is taken by position while both are on show.
+    const [, reproFile] = tree.getAllByRole('button', { name: 'SKILL.md' })
+    const [, deleteReproFile] = tree.getAllByRole('button', { name: 'Delete SKILL.md' })
+    await user.click(reproFile!)
+    await user.click(screen.getByRole('button', { name: 'Collapse adr-writer' }))
+    expect(tree.queryByText('SKILL.md')).toBeInTheDocument()
+
+    // Deleting the open file falls back to the first SKILL.md — inside the
+    // folder that was just collapsed.
+    await user.click(deleteReproFile!)
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Collapse adr-writer' })).toBeInTheDocument(),
+    )
+    expect(tree.getByText('SKILL.md')).toBeInTheDocument()
+  })
+
+  test('a folder that goes away and comes back is not still collapsed', async () => {
+    const user = userEvent.setup()
+    const tree = renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse templates' }))
+    // Re-listed without it and then with it again: deleted and recreated, or
+    // changed on disk by something that is not Roster.
+    act(() => useRoster.setState({ skills: [ADR, aSkill({ ...REPRO, files: ['SKILL.md'] })] }))
+    act(() => useRoster.setState({ skills: [ADR, REPRO] }))
+
+    expect(tree.getByText('case.md')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse templates' })).toBeInTheDocument()
+  })
+
+  test('an empty folder has no disclosure, since there is nothing to fold', () => {
+    useRoster.setState({
+      skills: [
+        aSkill({ name: 'repro-harness', path: '/skills/repro-harness', files: ['SKILL.md', 'empty/'] }),
+      ],
+      agents: [],
+    })
+    const tree = renderTree()
+
+    // The row is still there, and still deletable — it just cannot fold.
+    expect(tree.getByText('empty')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete empty' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Collapse empty' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Collapse repro-harness' })).toBeInTheDocument()
+  })
+
+  test('a name row whose folder disappears is abandoned, not left to come back empty', async () => {
+    const user = userEvent.setup()
+    renderTree()
+
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+    await user.type(screen.getByLabelText('New file name'), 'case2')
+
+    // templates goes while the name is half typed, then comes back.
+    act(() => useRoster.setState({ skills: [ADR, aSkill({ ...REPRO, files: ['SKILL.md'] })] }))
+    act(() => useRoster.setState({ skills: [ADR, REPRO] }))
+
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+  })
+
+  test('collapsing above a name row leaves no phantom input behind it', async () => {
+    const user = userEvent.setup()
+    render(<Skills />)
+
+    await user.click(screen.getByRole('button', { name: 'New file in templates' }))
+    await user.click(screen.getByRole('button', { name: 'Collapse repro-harness' }))
+    await user.click(screen.getByRole('button', { name: 'Expand repro-harness' }))
+
+    expect(screen.queryByLabelText('New file name')).not.toBeInTheDocument()
+  })
+})
 
 describe('Skills — deleting', () => {
   const SKILL = aSkill({

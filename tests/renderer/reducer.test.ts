@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'vitest'
 import type { Approval, Message, Plan, PlanComment, Usage } from '@shared/types'
 import { reducePlanEvent, reduceSessionEvent, useRoster } from '@/state/store'
-import { aSession } from './factories'
+import { aPlan, aSession } from './factories'
 
 const INITIAL = useRoster.getState()
 
@@ -444,5 +444,136 @@ describe('opening and closing a plan', () => {
     useRoster.getState().setPlan(document)
 
     expect(state().plans['p1']).toEqual(document)
+  })
+})
+
+describe('reduceSessionEvent — a session being deleted', () => {
+  const GONE = { type: 'session-deleted', sessionId: 's1', agentId: 'debugging' } as const
+
+  function withDeletedSession(): void {
+    useRoster.setState({
+      sessions: {
+        debugging: [aSession({ id: 's1' }), aSession({ id: 's2', title: 'Kept' })],
+        review: [aSession({ id: 's3', agentId: 'review' })],
+      },
+      sess: { debugging: 's1', review: 's3' },
+      messages: { s1: [textMessage('m1', 'hello')], s2: [] },
+      streaming: { s1: true },
+      activity: { s1: 'Reading …' },
+      approvals: { s1: [APPROVAL] },
+      usage: { s1: USAGE },
+      planMode: { s1: true },
+    })
+  }
+
+  test('drops it from its agent list and leaves the others alone', () => {
+    withDeletedSession()
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    expect(next.sessions?.['debugging']?.map((s) => s.id)).toEqual(['s2'])
+    expect(next.sessions?.['review']?.map((s) => s.id)).toEqual(['s3'])
+  })
+
+  test('forgets everything keyed by the session', () => {
+    withDeletedSession()
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    expect(next.messages).not.toHaveProperty('s1')
+    expect(next.streaming).not.toHaveProperty('s1')
+    expect(next.activity).not.toHaveProperty('s1')
+    expect(next.approvals).not.toHaveProperty('s1')
+    expect(next.usage).not.toHaveProperty('s1')
+    expect(next.planMode).not.toHaveProperty('s1')
+    // The sessions that stayed keep theirs.
+    expect(next.messages).toHaveProperty('s2')
+  })
+
+  test('lets go of the selection so the screen can pick another', () => {
+    withDeletedSession()
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    expect(next.sess).not.toHaveProperty('debugging')
+    // Another agent's selection is none of this event's business.
+    expect(next.sess?.['review']).toBe('s3')
+  })
+
+  test('closes a plan belonging to the session that went', () => {
+    withDeletedSession()
+    useRoster.setState({
+      openPlanId: 'plan-1',
+      plans: { 'plan-1': { plan: aPlan({ id: 'plan-1', sessionId: 's1' }), body: '# Plan' } },
+    })
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    expect(next.openPlanId).toBeNull()
+    expect(next.plans).not.toHaveProperty('plan-1')
+  })
+
+  test('forgets every plan of that session, not merely the first', () => {
+    withDeletedSession()
+    useRoster.setState({
+      openPlanId: 'plan-2',
+      plans: {
+        'plan-1': { plan: aPlan({ id: 'plan-1', sessionId: 's1' }), body: '# One' },
+        'plan-2': { plan: aPlan({ id: 'plan-2', sessionId: 's1' }), body: '# Two' },
+        'plan-3': { plan: aPlan({ id: 'plan-3', sessionId: 's2' }), body: '# Other' },
+      },
+      planComments: { 'plan-1': [], 'plan-2': [], 'plan-3': [] },
+    })
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    // A session can plan more than once. Stopping at the first would leave
+    // the rest in state with no session behind them — and the open one here
+    // is the second, so it is the one that would have been left showing.
+    expect(next.plans).not.toHaveProperty('plan-1')
+    expect(next.plans).not.toHaveProperty('plan-2')
+    expect(next.plans).toHaveProperty('plan-3')
+    expect(next.planComments).not.toHaveProperty('plan-2')
+    expect(next.openPlanId).toBeNull()
+  })
+
+  test('leaves a plan from another session open', () => {
+    withDeletedSession()
+    useRoster.setState({
+      openPlanId: 'plan-2',
+      plans: { 'plan-2': { plan: aPlan({ id: 'plan-2', sessionId: 's2' }), body: '# Plan' } },
+    })
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    // Untouched rather than rewritten: nothing in this event concerns it.
+    expect(next.openPlanId).toBeUndefined()
+    expect(next.plans).toBeUndefined()
+  })
+
+  test('takes the link off any task rail that was showing it', () => {
+    withDeletedSession()
+    useRoster.setState({
+      taskSessions: {
+        'ROS-1': [
+          { taskId: 'ROS-1', agentId: 'debugging', sessionId: 's1', createdAt: 0 },
+          { taskId: 'ROS-1', agentId: 'review', sessionId: 's3', createdAt: 0 },
+        ],
+      },
+    })
+
+    const next = reduceSessionEvent(state(), GONE)
+
+    expect(next.taskSessions?.['ROS-1']?.map((link) => link.sessionId)).toEqual(['s3'])
+  })
+
+  test('is safe to apply for a session this window never knew', () => {
+    const next = reduceSessionEvent(state(), {
+      type: 'session-deleted',
+      sessionId: 'unknown',
+      agentId: 'debugging',
+    })
+
+    expect(next.sessions).toEqual({})
   })
 })

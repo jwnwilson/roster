@@ -99,11 +99,13 @@ function fromTurnCompleted(message: Record<string, unknown>): RunnerEvent[] {
 
   if (isRecord(usage)) {
     const inputTokens = asNumber(usage['input_tokens']) ?? 0
+    const cachedInputTokens = asNumber(usage['cached_input_tokens']) ?? 0
     const outputTokens = asNumber(usage['output_tokens']) ?? 0
 
     events.push({
       kind: 'usage',
       inputTokens,
+      cachedInputTokens,
       outputTokens,
       // Unlike Claude, Codex's cached_input_tokens is how many of
       // input_tokens were cache hits — already counted, so adding it would

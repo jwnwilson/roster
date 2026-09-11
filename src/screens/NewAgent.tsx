@@ -1,15 +1,29 @@
 import { useEffect, useState } from 'react'
+import { useShallow } from 'zustand/shallow'
 import type { ModelInfo } from '@shared/types'
 import {
   ChipField,
+  DefaultProjectField,
   ModelPicker,
+  NameField,
   ProviderPicker,
   SystemPromptField,
   WorkingDirectory,
 } from '@/components/AgentFields'
-import { Field } from '@/components/primitives'
-import { useRoster } from '@/state/store'
+import { projectPickerProjects, useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
+
+/**
+ * Shown in place of a path when the user has not picked one.
+ *
+ * Not a real path: the folder is named for the agent's id, and the id is not
+ * minted until the store creates it, so promising an exact one here would be
+ * a guess the second agent named alike would break.
+ */
+const UNSET_WORKING_DIRECTORY = '~/roster/workspace/…'
+
+const UNSET_WORKING_DIRECTORY_CAPTION =
+  'This agent gets a folder of its own. Choose a project instead to have it work on those files.'
 
 /**
  * Create-agent form. Reuses the Edit modal's fields, per the handoff, and
@@ -28,8 +42,15 @@ export function NewAgent() {
   const newPrompt = useRoster((s) => s.newPrompt)
   const setNewPrompt = useRoster((s) => s.setNewPrompt)
 
+  const mcpServers = useRoster((s) => s.mcpServers)
+  // Null current: nothing archived can be selected on a form that has not
+  // created the agent yet, so the picker offers the active projects.
+  const projectOptions = useRoster(useShallow((s) => projectPickerProjects(s, null)))
+
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState<string | null>(null)
+  const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null)
+  const [mcp, setMcp] = useState<Record<string, boolean>>({})
   const [models, setModels] = useState<ModelInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -62,6 +83,12 @@ export function NewAgent() {
         skills: Object.entries(picked)
           .filter(([, on]) => on)
           .map(([skill]) => skill),
+        mcpServers: Object.entries(mcp)
+          .filter(([, on]) => on)
+          .map(([server]) => server),
+        // Sent even when null: "no default" is an answer, and the agent.toml
+        // writer omits the key rather than writing an empty one.
+        defaultProjectId,
         // Omitted means the default workspace, which the main process fills in.
         ...(cwd !== null ? { cwd } : {}),
       })
@@ -86,16 +113,7 @@ export function NewAgent() {
 
         <div className="h-[1px] bg-line" />
 
-        <Field label="Name">
-          <input
-            type="text"
-            value={name}
-            aria-label="Agent name"
-            placeholder="Architect Agent"
-            onChange={(e) => setName(e.target.value)}
-            className="rounded-field border border-line-card bg-card px-[12px] py-[9px] font-ui text-xl text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
-          />
-        </Field>
+        <NameField value={name} onChange={setName} />
 
         <SystemPromptField value={newPrompt} onChange={setNewPrompt} />
 
@@ -104,9 +122,16 @@ export function NewAgent() {
         <ModelPicker models={models} value={newModel} onChange={setNewModel} />
 
         <WorkingDirectory
-          value={cwd ?? '~/roster/workspace'}
+          value={cwd ?? UNSET_WORKING_DIRECTORY}
           {...(cwd !== null ? { current: cwd } : {})}
+          {...(cwd === null ? { caption: UNSET_WORKING_DIRECTORY_CAPTION } : {})}
           onChange={setCwd}
+        />
+
+        <DefaultProjectField
+          projects={projectOptions}
+          value={defaultProjectId}
+          onChange={setDefaultProjectId}
         />
 
         <ChipField
@@ -115,6 +140,18 @@ export function NewAgent() {
           enabled={picked}
           onToggle={togglePicked}
           emptyText="No skills in the library yet."
+        />
+
+        {/* No "Manage servers" link here, unlike the Edit modal: leaving for
+            the MCP screen mid-create would throw the half-filled form away. */}
+        <ChipField
+          label="MCP servers"
+          names={mcpServers.map((s) => s.name)}
+          enabled={mcp}
+          onToggle={(server) => setMcp((current) => ({ ...current, [server]: !current[server] }))}
+          emptyText="No MCP servers configured."
+          mono
+          dotShape="circle"
         />
 
         {error ? <p className="m-0 text-md text-error">{error}</p> : null}

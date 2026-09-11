@@ -272,7 +272,32 @@ export const MIGRATIONS: readonly string[] = [
     ON sessions (task_id, agent_id) WHERE task_id IS NOT NULL;
   `,
 
-  // 11 — OAuth credentials are encrypted by Electron safeStorage before they
+  // 11 — a session can be given a name.
+  //
+  // Separate from title rather than replacing it: title is what opened the
+  // session — "New session", or the brief an agent handed over with — and
+  // name is what you decided to call it. Overwriting title with the name
+  // would lose the handoff's own words, which are the only record of why
+  // that session exists.
+  //
+  // NULL means unnamed, which is a state the app has to render rather than
+  // an error: every session in every existing install starts here, and
+  // naming is encouraged everywhere and required nowhere.
+  `
+  ALTER TABLE sessions ADD COLUMN name TEXT;
+  `,
+
+  // 12 — retain how each usage amount should be presented. A zero remains a
+  // valid actual amount; unavailable is distinguished by cost_type.
+  `
+  ALTER TABLE usage ADD COLUMN cached_input_tokens INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE usage ADD COLUMN cost_type TEXT NOT NULL DEFAULT 'actual'
+    CHECK (cost_type IN ('actual', 'estimated', 'unavailable'));
+  ALTER TABLE usage ADD COLUMN model TEXT;
+  ALTER TABLE usage ADD COLUMN rate_table_version TEXT;
+  `,
+
+  // 13 — OAuth credentials are encrypted by Electron safeStorage before they
   // reach this table. The database deliberately never contains a bearer or
   // refresh token in plaintext.
   `

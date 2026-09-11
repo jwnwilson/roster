@@ -81,7 +81,12 @@
       <div style="display:flex; flex-direction:column; height:100vh;">
         <div style="height:44px; flex:none; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #1e2027;">
           <div style="font-weight:600; letter-spacing:-0.01em;">Agents</div>
+          <div style="display:flex; gap:2px; padding:2px; background:#15161c; border:1px solid #24262f; border-radius:7px;">
+            <div onClick="{{ setGridCards }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ gridCardsTabFg }}; background:{{ gridCardsTabBg }};">Cards</div>
+            <div onClick="{{ setGridWorkflow }}" style="padding:5px 11px; border-radius:5px; font-size:12px; font-weight:500; cursor:pointer; color:{{ gridWorkflowTabFg }}; background:{{ gridWorkflowTabBg }};">Workflow</div>
+          </div>
           <div style="font-size:12px; color:#6d707d;">{{ gridSummary }}</div>
+          <sc-if value="{{ isGridCards }}" hint-placeholder-val="{{ true }}">
           <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
             <div style="position:relative;">
               <select value="{{ gridProjectFilterValue }}" onChange="{{ setGridProjectFilter }}" style="appearance:none; -webkit-appearance:none; padding:5px 26px 5px 10px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#c8cad4; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;">
@@ -94,8 +99,30 @@
             <input type="text" value="{{ gridQuery }}" onChange="{{ setGridQuery }}" placeholder="Filter agents" style="width:200px; padding:5px 10px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#e6e6ea; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none;" style-focus="border-color:#3a3050; background:#171420" />
             <div onClick="{{ goNew }}" style="padding:5px 11px; border-radius:6px; background:#7c5cff; color:#fff; font-weight:600; font-size:12px; cursor:pointer;" style-hover="background:#8f74ff;">New agent</div>
           </div>
+          </sc-if>
+          <sc-if value="{{ isGridWorkflow }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+            <div style="position:relative;">
+              <select value="{{ workflowProjectFilterValue }}" onChange="{{ setWorkflowProjectFilter }}" style="appearance:none; -webkit-appearance:none; padding:5px 26px 5px 10px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:#c8cad4; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:pointer;" style-hover="border-color:#3a3d47;">
+                <sc-for list="{{ workflowProjectFilterOptions }}" as="pf" hint-placeholder-count="3">
+                  <option value="{{ pf.value }}">{{ pf.label }}</option>
+                </sc-for>
+              </select>
+              <div style="position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+            </div>
+            <div style="position:relative;">
+              <select value="{{ workflowTaskFilterValue }}" onChange="{{ setWorkflowTaskFilter }}" disabled="{{ workflowTaskFilterDisabled }}" style="appearance:none; -webkit-appearance:none; padding:5px 26px 5px 10px; max-width:220px; border:1px solid #24262f; border-radius:6px; background:#15161c; color:{{ workflowTaskFilterColor }}; font-family:'Instrument Sans',sans-serif; font-size:12px; outline:none; cursor:{{ workflowTaskFilterCursor }};" style-hover="border-color:#3a3d47;">
+                <sc-for list="{{ workflowTaskFilterOptions }}" as="tf" hint-placeholder-count="3">
+                  <option value="{{ tf.value }}">{{ tf.label }}</option>
+                </sc-for>
+              </select>
+              <div style="position:absolute; right:9px; top:50%; transform:translateY(-50%); font-size:9px; color:#6d707d; pointer-events:none;">▾</div>
+            </div>
+          </div>
+          </sc-if>
         </div>
 
+        <sc-if value="{{ isGridCards }}" hint-placeholder-val="{{ true }}">
         <div style="flex:1; min-height:0; overflow-y:auto; padding:18px;">
           <div style="display:grid; grid-template-columns:1fr 1fr; grid-auto-rows:minmax(268px,1fr); gap:24px; min-height:100%;">
             <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="4">
@@ -134,6 +161,40 @@
 
 
         </div>
+        </sc-if>
+
+        <sc-if value="{{ isGridWorkflow }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:1; min-height:0; overflow:auto; padding:24px;">
+          <div style="position:relative; width:{{ canvasWidth }}px; height:{{ canvasHeight }}px;">
+            <svg width="{{ canvasWidth }}" height="{{ canvasHeight }}" style="position:absolute; top:0; left:0; overflow:visible; pointer-events:none;">
+              <sc-for list="{{ flowEdges }}" as="e" hint-placeholder-count="4">
+                <path d="{{ e.d }}" fill="none" stroke="#3a3050" stroke-width="1.5"></path>
+              </sc-for>
+            </svg>
+            <sc-for list="{{ flowNodes }}" as="n" hint-placeholder-count="6">
+                <div onClick="{{ n.open }}" style="position:absolute; left:{{ n.x }}px; top:{{ n.y }}px; width:{{ n.width }}px; background:#15161c; border:1px solid #24262f; border-radius:8px; padding:8px 10px; cursor:pointer; display:flex; flex-direction:column; gap:5px; z-index:1;" style-hover="border-color:#3a3d47;">
+                  <div style="display:flex; align-items:center; gap:6px;">
+                    <div style="width:6px;height:6px;border-radius:50%;background:{{ n.agentTone }}; flex:none;"></div>
+                    <div style="font-size:10.5px; font-weight:600; color:#9a9daa; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ n.agentName }}</div>
+                  </div>
+                  <div style="font-size:11.5px; color:#d2d4dd; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">{{ n.title }}</div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="font-size:10px; color:{{ n.tone }}; font-weight:500;">{{ n.statusLabel }}</div>
+                    <sc-if value="{{ n.hasProject }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex; align-items:center; gap:4px; margin-left:auto;">
+                        <div style="width:5px;height:5px;border-radius:50%;background:{{ n.projectColor }};"></div>
+                        <div style="font-size:10px; color:#8f93a3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80px;">{{ n.projectName }}</div>
+                      </div>
+                    </sc-if>
+                  </div>
+                  <sc-if value="{{ n.hasTask }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-family:'JetBrains Mono',monospace; font-size:9.5px; color:#5f6270;">{{ n.taskId }}</div>
+                  </sc-if>
+                </div>
+            </sc-for>
+          </div>
+        </div>
+        </sc-if>
 
         <div style="flex:none; height:38px; display:flex; align-items:center; gap:12px; padding:0 18px; border-top:1px solid #1e2027; background:#0d0e12;">
           <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; color:#5a5d69;"><span style="color:#a78bfa;">↳</span>session opened by another agent</div>
@@ -1580,6 +1641,8 @@ const SESSION_META = {
   'estimate-1': {typed:'ls'}
 };
 
+const SESSION_TASK = { 'debug-1':'ROS-101', 'debug-3':'ROS-105', 'arch-1':'ROS-103', 'review-1':'ROS-95', 'review-2':'ROS-102' };
+
 const TERM_FALLBACK = [
   {p:'›', tone:V, fg:'#e6e6ea', text:'roster attach'},
   {p:' ', tone:MU, fg:'#8f93a3', text:'shell ready — no commands run in this session yet'}
@@ -1690,9 +1753,17 @@ const TASK_PROJECTS = {
 };
 
 class Component extends DCLogic {
+  loadDagre() {
+    if (this._dagrePromise) return this._dagrePromise;
+    this._dagrePromise = import('https://esm.sh/@dagrejs/dagre@1.1.4').then(m => {
+      this._dagre = m.default || m;
+      this.forceUpdate();
+    }).catch(() => {});
+    return this._dagrePromise;
+  }
   state = {
     screen:'grid', agentId:'debug', mode:'chat', layout:'a',
-    mcpTab:'installed', openTools:{t1:true}, query:'', gridQuery:'',
+    mcpTab:'installed', openTools:{t1:true}, query:'', gridQuery:'', gridView:'cards', workflowProjectFilter:'all', workflowTaskFilter:'all',
     sess:{arch:'arch-1', debug:'debug-1', review:'review-1', interview:'interview-1', estimate:'estimate-1'},
     provider:'Anthropic', model:'claude-sonnet-4-6', editOpen:false, overrides:{}, agentSkills:{}, draft:null, prompts:{},
     newPrompt:'',
@@ -1789,6 +1860,13 @@ class Component extends DCLogic {
     }));
 
     const tileOrder = ['arch','debug','interview','review','estimate'];
+    const allEdges = [];
+    Object.keys(MSGS).forEach(sessId => {
+      (MSGS[sessId] || []).forEach(m => {
+        if (m.k === 'spawn' && m.to) allEdges.push({from: m.to.sess, to: sessId});
+        if (m.k === 'handoff') (m.links || []).forEach(l => allEdges.push({from: sessId, to: l.sess}));
+      });
+    });
     const gq = (s.gridQuery || '').toLowerCase();
     const gridProjFilter = s.gridProjectFilter || 'all';
     const tiles = tileOrder
@@ -2224,7 +2302,113 @@ class Component extends DCLogic {
       create: createProject
     };
 
+    const wfProjFilter = s.workflowProjectFilter || 'all';
+    const wfTaskFilter = s.workflowTaskFilter || 'all';
+    const allSessionsFlat = [];
+    tileOrder.forEach(aid => (SESSIONS[aid] || []).forEach(sess => allSessionsFlat.push({...sess, agentId: aid})));
+
+    let visibleIds = new Set(allSessionsFlat.map(x => x.id));
+    if (wfProjFilter !== 'all') visibleIds = new Set(allSessionsFlat.filter(x => x.project === wfProjFilter).map(x => x.id));
+    if (wfTaskFilter !== 'all') {
+      const seeds = allSessionsFlat.filter(x => SESSION_TASK[x.id] === wfTaskFilter).map(x => x.id);
+      const adj = {};
+      allEdges.forEach(e => { (adj[e.from] = adj[e.from] || []).push(e.to); (adj[e.to] = adj[e.to] || []).push(e.from); });
+      const seen = new Set(seeds);
+      const queue = [...seeds];
+      while (queue.length) { const c = queue.shift(); (adj[c] || []).forEach(n => { if (!seen.has(n)) { seen.add(n); queue.push(n); } }); }
+      visibleIds = new Set([...visibleIds].filter(id => seen.has(id)));
+    }
+
+    const colWidth = 200, cardH = 64, colGap = 88, rowGap = 22;
+    const nodesFlat = allSessionsFlat.filter(x => visibleIds.has(x.id));
+    const filteredEdges = allEdges.filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
+
+    let positions = {}, canvasWidth = 800, canvasHeight = 400, edgePaths = [];
+    if (this._dagre) {
+      const g = new this._dagre.graphlib.Graph();
+      g.setGraph({rankdir:'LR', nodesep: rowGap, ranksep: colGap, marginx:24, marginy:24});
+      g.setDefaultEdgeLabel(() => ({}));
+      nodesFlat.forEach(n => g.setNode(n.id, {width: colWidth, height: cardH}));
+      filteredEdges.forEach(e => g.setEdge(e.from, e.to));
+      this._dagre.layout(g);
+      nodesFlat.forEach(n => { const gn = g.node(n.id); positions[n.id] = {x: gn.x - colWidth / 2, y: gn.y - cardH / 2}; });
+      const gg = g.graph();
+      canvasWidth = gg.width || canvasWidth;
+      canvasHeight = gg.height || canvasHeight;
+      edgePaths = filteredEdges.map(e => {
+        const info = g.edge(e.from, e.to);
+        const pts = (info && info.points) || [];
+        if (!pts.length) return null;
+        return {d: 'M ' + pts.map(p => p.x + ',' + p.y).join(' L ')};
+      }).filter(Boolean);
+    } else {
+      this.loadDagre();
+      const rank = {};
+      const computeRank = (id, seen) => {
+        if (rank[id] !== undefined) return rank[id];
+        if (seen.has(id)) return 0;
+        seen.add(id);
+        const incoming = filteredEdges.filter(e => e.to === id).map(e => e.from);
+        const r = incoming.length ? Math.max(...incoming.map(p => computeRank(p, seen))) + 1 : 0;
+        rank[id] = r; return r;
+      };
+      nodesFlat.forEach(n => computeRank(n.id, new Set()));
+      const byRank = {};
+      nodesFlat.forEach(n => { const r = rank[n.id] || 0; (byRank[r] = byRank[r] || []).push(n.id); });
+      Object.keys(byRank).forEach(r => {
+        byRank[r].forEach((id, i) => { positions[id] = {x: Number(r) * (colWidth + colGap), y: i * (cardH + rowGap)}; });
+      });
+      const maxRank = Math.max(0, ...Object.keys(byRank).map(Number));
+      const maxCol = Math.max(1, ...Object.values(byRank).map(a => a.length));
+      canvasWidth = (maxRank + 1) * (colWidth + colGap) - colGap + 48;
+      canvasHeight = maxCol * (cardH + rowGap) - rowGap + 48;
+      edgePaths = filteredEdges.map(e => {
+        const a = positions[e.from], b = positions[e.to];
+        if (!a || !b) return null;
+        const ax = a.x + colWidth, ay = a.y + cardH / 2, bx = b.x, by = b.y + cardH / 2;
+        const midX = (ax + bx) / 2;
+        return {d: 'M ' + ax + ' ' + ay + ' C ' + midX + ' ' + ay + ' ' + midX + ' ' + by + ' ' + bx + ' ' + by};
+      }).filter(Boolean);
+    }
+
+    const flowNodes = nodesFlat.map(n => {
+      const pos = positions[n.id] || {x:0, y:0};
+      const agent = AGENTS.find(a => a.id === n.agentId);
+      const proj = projectById(n.project);
+      return {
+        id: n.id, title: n.title, tone: TONES[n.status], statusLabel: LABELS[n.status],
+        x: pos.x, y: pos.y, width: colWidth,
+        agentName: agent.name, agentTone: TONES[agent.status],
+        hasProject: !!proj, projectName: proj ? proj.name : '', projectColor: proj ? proj.color : 'transparent',
+        hasTask: !!SESSION_TASK[n.id], taskId: SESSION_TASK[n.id] || '',
+        open: () => this.setState(p => ({screen:'agent', agentId: n.agentId, sess:{...p.sess, [n.agentId]: n.id}}))
+      };
+    });
+    const flowEdges = edgePaths;
+    const wfTaskOptionsSrc = ALL_TASKS.filter(t => wfProjFilter === 'all' || effProjectId(t) === wfProjFilter);
+
     return {
+      gridView: s.gridView || 'cards',
+      isGridCards: (s.gridView || 'cards') === 'cards',
+      isGridWorkflow: s.gridView === 'workflow',
+      gridCardsTabBg: (s.gridView || 'cards') === 'cards' ? '#26283a' : 'transparent',
+      gridCardsTabFg: (s.gridView || 'cards') === 'cards' ? '#e6e6ea' : '#8f93a3',
+      gridWorkflowTabBg: s.gridView === 'workflow' ? '#26283a' : 'transparent',
+      gridWorkflowTabFg: s.gridView === 'workflow' ? '#e6e6ea' : '#8f93a3',
+      setGridCards: () => this.set({gridView:'cards'}),
+      setGridWorkflow: () => this.set({gridView:'workflow'}),
+      workflowProjectFilterValue: wfProjFilter,
+      workflowProjectFilterOptions: [{value:'all', label:'All projects'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),
+      setWorkflowProjectFilter: (e) => this.set({workflowProjectFilter: e.target.value, workflowTaskFilter:'all'}),
+      workflowTaskFilterValue: wfTaskFilter,
+      workflowTaskFilterDisabled: wfProjFilter === 'all',
+      workflowTaskFilterCursor: wfProjFilter === 'all' ? 'not-allowed' : 'pointer',
+      workflowTaskFilterColor: wfProjFilter === 'all' ? '#585b67' : '#c8cad4',
+      workflowTaskFilterOptions: wfProjFilter === 'all'
+        ? [{value:'all', label:'Pick a project first'}]
+        : [{value:'all', label:'All tasks'}].concat(wfTaskOptionsSrc.map(t => ({value:t.id, label:t.id + ' · ' + effTitle(t)}))),
+      setWorkflowTaskFilter: (e) => this.set({workflowTaskFilter: e.target.value}),
+      flowNodes, flowEdges, canvasWidth, canvasHeight,
       gridProjectFilterValue: gridProjFilter,
       gridProjectFilterOptions: [{value:'all', label:'All projects'}].concat(ALL_PROJECTS.map(p => ({value:p.id, label:p.name}))),
       setGridProjectFilter: (e) => this.set({gridProjectFilter: e.target.value}),

@@ -1,10 +1,42 @@
-import type { ModelInfo, RunnerStatus } from '@shared/types'
-import { Field, ToggleChip } from './primitives'
+import { MAX_AGENT_NAME_LENGTH } from '@shared/agentName'
+import type { ModelInfo, Project, RunnerStatus } from '@shared/types'
+import { projectOptionLabel } from '@/state/store'
+import { Field, Select, ToggleChip } from './primitives'
+
+/** The picker's stand-in for "no project", since a select has no null. */
+export const NO_DEFAULT_PROJECT = 'none'
 
 /* -------------------------------------------------------------------------
  * The fields shared by the Edit modal and the New Agent form. The handoff
  * specifies both as the same controls, so they are written once.
  * ---------------------------------------------------------------------- */
+
+interface NameFieldProps {
+  value: string
+  onChange: (value: string) => void
+}
+
+/**
+ * The agent's display name, on both the New Agent form and the Edit modal.
+ *
+ * Editable in both because a name is a label: renaming an agent leaves its id,
+ * its directory and everything pointing at it exactly where they were.
+ */
+export function NameField({ value, onChange }: NameFieldProps) {
+  return (
+    <Field label="Name">
+      <input
+        type="text"
+        value={value}
+        aria-label="Agent name"
+        placeholder="Architect Agent"
+        maxLength={MAX_AGENT_NAME_LENGTH}
+        onChange={(e) => onChange(e.target.value)}
+        className="rounded-field border border-line-card bg-card px-[12px] py-[9px] font-ui text-xl text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
+      />
+    </Field>
+  )
+}
 
 interface ProviderPickerProps {
   runners: RunnerStatus[]
@@ -113,10 +145,12 @@ interface WorkingDirectoryProps {
   value: string
   /** Absolute path the picker opens at; falls back to the value shown. */
   current?: string
+  /** What the shown value means, when it is not a directory the user picked. */
+  caption?: string
   onChange?: (path: string) => void
 }
 
-export function WorkingDirectory({ value, current, onChange }: WorkingDirectoryProps) {
+export function WorkingDirectory({ value, current, caption, onChange }: WorkingDirectoryProps) {
   async function choose(): Promise<void> {
     const picked = await window.roster.dialog.chooseDirectory(current ?? value)
     // Cancelling leaves the directory untouched.
@@ -124,7 +158,7 @@ export function WorkingDirectory({ value, current, onChange }: WorkingDirectoryP
   }
 
   return (
-    <Field label="Working directory">
+    <Field label="Working directory" {...(caption !== undefined ? { caption } : {})}>
       <div className="flex gap-[9px]">
         <span className="flex-1 truncate rounded-field border border-line-card bg-card px-[12px] py-[9px] font-mono text-lg text-muted-2">
           {value}
@@ -182,6 +216,57 @@ export function ChipField({
           ))}
         </div>
       )}
+    </Field>
+  )
+}
+
+interface DefaultProjectFieldProps {
+  /** What the picker offers. An archived project the agent already names belongs here. */
+  projects: Project[]
+  value: string | null
+  onChange: (projectId: string | null) => void
+}
+
+/**
+ * The project this agent's new sessions are filed under.
+ *
+ * A session still gets its project from one place — someone saying so — but
+ * an agent that only ever works on one piece of work should not need saying
+ * so every time. Choosing "No project" clears the default again.
+ *
+ * With no projects to choose from the label stays and says so, the way an
+ * empty skill or server list does. Removing the field was worse than useless:
+ * it is indistinguishable from the setting not existing, and a fresh install
+ * — no projects anywhere — is exactly where somebody goes looking for it.
+ */
+export function DefaultProjectField({ projects, value, onChange }: DefaultProjectFieldProps) {
+  if (projects.length === 0) {
+    return (
+      <Field label="Default project">
+        <p className="m-0 text-md text-dim">
+          No projects yet — create one to file this agent&apos;s sessions under it.
+        </p>
+      </Field>
+    )
+  }
+
+  return (
+    <Field
+      label="Default project"
+      caption="New sessions on this agent are filed here unless another project is chosen."
+    >
+      <Select
+        ariaLabel="Default project"
+        value={value ?? NO_DEFAULT_PROJECT}
+        onChange={(picked) => onChange(picked === NO_DEFAULT_PROJECT ? null : picked)}
+        options={[
+          { value: NO_DEFAULT_PROJECT, label: 'No project' },
+          ...projects.map((project) => ({
+            value: project.id,
+            label: projectOptionLabel(project),
+          })),
+        ]}
+      />
     </Field>
   )
 }

@@ -19,6 +19,7 @@ export function App() {
   const setUpdate = useRoster((s) => s.setUpdate)
   const setAppVersion = useRoster((s) => s.setAppVersion)
   const setProjects = useRoster((s) => s.setProjects)
+  const setSetup = useRoster((s) => s.setSetup)
   const setTasks = useRoster((s) => s.setTasks)
   const applyTaskEvent = useRoster((s) => s.applyTaskEvent)
   const applyPlanEvent = useRoster((s) => s.applyPlanEvent)
@@ -40,6 +41,7 @@ export function App() {
         projects,
         tasks,
         appVersion,
+        setup,
       ] = await Promise.all([
         window.roster.agents.list(),
         window.roster.runners.list(),
@@ -51,6 +53,7 @@ export function App() {
         window.roster.projects.list(),
         window.roster.tasks.list(),
         window.roster.update.version(),
+        window.roster.setup.state(),
       ])
       if (cancelled) return
       hydrate({ agents, runners, skills, mcpServers })
@@ -60,6 +63,9 @@ export function App() {
       setProjects(projects)
       setTasks(tasks)
       setAppVersion(appVersion)
+      // Last, so the first-run card only ever appears over a roster that has
+      // already been hydrated and can name its own agents.
+      setSetup(setup)
     }
 
     void load()
@@ -118,6 +124,7 @@ export function App() {
     applyTaskEvent,
     setUpdate,
     setAppVersion,
+    setSetup,
   ])
 
   return (

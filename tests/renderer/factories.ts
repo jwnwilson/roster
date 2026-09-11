@@ -35,6 +35,7 @@ export function aSession(overrides: Partial<Session> = {}): Session {
     id: 'session-1',
     agentId: 'debugging',
     title: 'Session leak on 504',
+    name: null,
     origin: 'you',
     status: 'idle',
     createdAt: 1_700_000_000_000,

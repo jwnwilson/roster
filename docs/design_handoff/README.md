@@ -46,12 +46,7 @@ on outer shell); each screen manages its own internal scrolling.
 
 ### 1. Agents Grid (default screen)
 - **Purpose**: overview of all agents as cards; entry point to agent detail.
-- **Header** (44px): "Agents" title, live summary text ("5 configured · 1 running" or
-  filtered match count), right-aligned project-filter dropdown (styled select, "All
-  projects" + one entry per project), filter input (200px), "New agent" button
-  (purple `#7c5cff`, white text, 600 weight, 6px radius, hover `#8f74ff`). Picking a
-  project narrows both which agent cards show (only agents with a session in that
-  project) and which session chips appear within each visible card.
+- **Header** (44px): "Agents" title, a Cards/Workflow view switcher (same segmented-toggle treatment as Tasks' Board/Backlog), live summary text. In Cards view: project-filter dropdown, filter input (200px), "New agent" button. In Workflow view: project-filter dropdown + a Task filter dropdown (disabled, showing "Pick a project first", until a project is chosen; once picked, lists that project's tasks).
 - **Grid**: 2-column CSS grid, `minmax(268px,1fr)` row height, 24px gap, 18px page
   padding, scrolls independently.
 - **Agent card** (`#15161c` bg, 1px `#1e2027` border — amber `#4a3a1e` when status is
@@ -360,9 +355,10 @@ circles as placeholders. Any real product icon set can replace these directly.
 
 ## Screenshots
 `screenshots/01-agents-grid.png`, `02-skills.png`, `03-mcp-servers.png`,
-`04-tasks-board.png`, `05-tasks-backlog.png`, `06-spend.png` — reference captures of
-those screens. Agent Detail and New Agent aren't captured here; open
-`Roster.dc.html` directly and click into an agent card / "New agent" to see them live.
+`04-tasks-board.png`, `05-tasks-backlog.png`, `06-spend.png`,
+`07-agents-workflow.png` — reference captures of those screens. Agent Detail and New
+Agent aren't captured here; open `Roster.dc.html` directly and click into an agent
+card / "New agent" to see them live.
 
 ## Files
 - `Roster.dc.html` — the full prototype (single file, inline styles, demo data and

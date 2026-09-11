@@ -8,7 +8,10 @@ import { parseQuestions, summariseQuestions } from './questions'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
 import { TASK_TOOL_NAMES } from './taskTools'
 import { PLAN_TOOL_NAMES } from './planTools'
-import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
+import { MEMORY_TOOL_NAMES } from './memoryTools'
+import type { ApprovalDecision, EnabledSkill, Runner, RunnerEvent, StartOptions } from './types'
+import { rosterHome } from '../store/paths'
+import { ROSTER_PLUGIN_NAME } from '../store/skillPlugin'
 
 /**
  * Models offered for this runner.
@@ -21,6 +24,42 @@ const MODELS: ModelInfo[] = [
   { id: 'claude-sonnet-5', price: '$3 / $15' },
   { id: 'claude-haiku-4-5', price: '$1 / $5' },
 ]
+
+interface ClaudeSkillOptions {
+  plugins?: { type: 'local'; path: string; skipMcpDiscovery: boolean }[]
+  skills?: string[]
+  additionalDirectories?: string[]
+}
+
+/**
+ * The options that make an agent's skills invocable rather than merely readable.
+ *
+ * `additionalDirectories` was doing this job alone, and it does not do it: it
+ * grants filesystem read access and nothing more. Skills are discovered from
+ * setting sources or from a plugin, and this runner passes `settingSources: []`
+ * on purpose — an agent's skills are what its agent.toml names, not whatever
+ * happens to be in the user's ~/.claude. So nothing was ever discovered, and
+ * every enabled skill was a folder the agent could read but never invoke.
+ *
+ * Registering Roster's library as a local plugin fixes that from any working
+ * directory, which is the point: the path is Roster's home, not the agent's cwd.
+ */
+export function claudeSkillOptions(skills: readonly EnabledSkill[]): ClaudeSkillOptions {
+  if (skills.length === 0) return {}
+
+  return {
+    plugins: [{ type: 'local', path: rosterHome(), skipMcpDiscovery: true }],
+    // Both the bare name and the plugin-qualified one, because which of them
+    // resolves depends on the file: a SKILL.md declaring `name` answers to
+    // both, one without frontmatter answers only to `<plugin>:<name>`. Roster
+    // repairs its own copies but cannot repair a linked skill, so both forms
+    // are sent. An unmatched name is ignored, so this costs nothing.
+    skills: skills.flatMap((skill) => [skill.name, `${ROSTER_PLUGIN_NAME}:${skill.name}`]),
+    // Still granted: a skill's SKILL.md may point at files beside it, and a
+    // linked skill's real folder lies outside anything else the agent can read.
+    additionalDirectories: skills.map((skill) => skill.path),
+  }
+}
 
 interface PendingApproval {
   resolve(decision: ApprovalDecision): void
@@ -80,11 +119,16 @@ export class ClaudeRunner implements Runner {
         // session or move a card would be friction with nothing behind it.
         // Who may touch the board is decided by whether the "tasks" server is
         // registered for this agent at all, not by this gate.
-        allowedTools: [...ROSTER_TOOL_NAMES, ...TASK_TOOL_NAMES, ...PLAN_TOOL_NAMES],
+        allowedTools: [
+          ...ROSTER_TOOL_NAMES,
+          ...TASK_TOOL_NAMES,
+          ...PLAN_TOOL_NAMES,
+          ...MEMORY_TOOL_NAMES,
+        ],
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
-        ...(options.skillPaths.length > 0 ? { additionalDirectories: options.skillPaths } : {}),
+        ...claudeSkillOptions(options.skills),
         ...(Object.keys(options.mcpServers).length > 0 ||
         Object.keys(options.inProcessMcpServers ?? {}).length > 0
           ? {

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -8,9 +8,18 @@ import { SessionStore } from '@main/store/sessions'
 import { SkillStore } from '@main/store/skills'
 import { UsageStore } from '@main/store/usage'
 import { seedIfEmpty } from '@main/store/seed'
-import { agentsDir, mcpConfigPath, skillsDir } from '@main/store/paths'
-import { TASKS_SERVER, PLANS_SERVER } from '@shared/mcp'
-import { NO_PROJECT, type McpServer } from '@shared/types'
+import { ROSTER_PLUGIN_NAME, writeSkillPluginManifest } from '@main/store/skillPlugin'
+import {
+  agentsDir,
+  agentWorkspaceDir,
+  mcpConfigPath,
+  pluginManifestPath,
+  skillsDir,
+  workspaceDir,
+  worktreesDir,
+} from '@main/store/paths'
+import { TASKS_SERVER, PLANS_SERVER, MEMORY_SERVER } from '@shared/mcp'
+import { NO_PROJECT, type Agent, type McpServer } from '@shared/types'
 
 let home: string
 
@@ -48,6 +57,10 @@ describe('UsageStore', () => {
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 95,
+      cachedInputTokens: 0,
+      costType: 'actual',
+      model: null,
+      rateTableVersion: null,
       costUsd: 0.5,
     })
 
@@ -56,6 +69,10 @@ describe('UsageStore', () => {
       inputTokens: 10,
       outputTokens: 5,
       totalTokens: 95,
+      cachedInputTokens: 0,
+      costType: 'actual',
+      model: null,
+      rateTableVersion: null,
       costUsd: 0.5,
     })
   })
@@ -144,6 +161,29 @@ describe('UsageStore', () => {
   test('summarises an empty database as two empty maps, not null', () => {
     expect(store.summary()).toEqual({ byAgent: {}, byProject: {} })
   })
+
+  test('backfills zero-cost Codex history while preserving actual provider costs', () => {
+    const codex = sessions.create({ agentId: 'codex-agent', title: 'old', origin: 'you' })
+    const actual = sessions.create({ agentId: 'claude-agent', title: 'actual', origin: 'you' })
+    store.record({ sessionId: codex.id, inputTokens: 1_000_000, outputTokens: 1_000_000, totalTokens: 2_000_000, costUsd: 0 })
+    store.record({ sessionId: actual.id, inputTokens: 10, outputTokens: 10, totalTokens: 20, costUsd: 1.5 })
+
+    store.backfillCodex([{ id: 'codex-agent', runner: 'codex', model: 'gpt-5.1-codex' } as Agent])
+
+    expect(store.forSession(codex.id)).toMatchObject({ costType: 'estimated', costUsd: 11.25, model: 'gpt-5.1-codex', rateTableVersion: '2026-09-06' })
+    expect(store.forSession(actual.id)).toMatchObject({ costType: 'actual', costUsd: 1.5 })
+  })
+
+  test('rolls up actual, estimated, and unavailable usage without presenting unavailable as money', () => {
+    const actual = sessions.create({ agentId: 'a', title: 'actual', origin: 'you' })
+    const estimated = sessions.create({ agentId: 'a', title: 'estimated', origin: 'you' })
+    const unavailable = sessions.create({ agentId: 'a', title: 'unknown', origin: 'you' })
+    store.record({ sessionId: actual.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1 })
+    store.record({ sessionId: estimated.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 2, costType: 'estimated' })
+    store.record({ sessionId: unavailable.id, inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 0, costType: 'unavailable' })
+
+    expect(store.byAgent()['a']).toEqual({ tokens: 6, costUsd: 3, hasEstimatedCost: true, hasUnavailableCost: true })
+  })
 })
 
 /* ----------------------------------------------------------------- skills */
@@ -199,7 +239,9 @@ describe('SkillStore', () => {
     await store.load()
 
     const path = join(skillsDir(), 'alpha', 'SKILL.md')
-    expect(await store.read(path)).toBe('# A')
+    // load() has repaired the missing frontmatter by now, so the body is what
+    // round-trips rather than the whole file.
+    expect(await store.read(path)).toContain('# A')
 
     await store.write(path, '# Changed')
     expect(await readFile(path, 'utf8')).toBe('# Changed')
@@ -299,6 +341,18 @@ describe('McpStore', () => {
   })
 })
 
+/* ------------------------------------------------------------------ paths */
+
+describe('workspace paths', () => {
+  test('the workspace root sits under Roster’s home', () => {
+    expect(workspaceDir()).toBe(join(home, 'workspace'))
+  })
+
+  test('an agent’s scratch folder is named for its id, which is already unique', () => {
+    expect(agentWorkspaceDir('tech-lead')).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+})
+
 /* ------------------------------------------------------------------- seed */
 
 describe('seedIfEmpty', () => {
@@ -318,21 +372,149 @@ describe('seedIfEmpty', () => {
     await expect(readdir(agentsDir())).resolves.toHaveLength(0)
   })
 
-  test('creates the shared workspace, so an approved write has somewhere to go', async () => {
+  test('creates the workspace root, so a scoped agent folder has a parent', async () => {
     await seedIfEmpty(mcpConfigPath())
 
-    const store = new SkillStore()
-    await store.load()
-    // The workspace must exist: spawning into a missing cwd fails with ENOENT.
-    await expect(readFile(join(home, 'workspace', '.keep'), 'utf8')).rejects.toThrow()
-    const { access } = await import('node:fs/promises')
-    await expect(access(join(home, 'workspace'))).resolves.toBeUndefined()
+    await expect(access(workspaceDir())).resolves.toBeUndefined()
+  })
+
+  test('creates the worktrees root, so the first plan does not write into nothing', async () => {
+    await seedIfEmpty(mcpConfigPath())
+
+    await expect(access(worktreesDir())).resolves.toBeUndefined()
   })
 
   test('never overwrites an existing roster', async () => {
     await mkdir(join(agentsDir(), 'mine'), { recursive: true })
 
     expect(await seedIfEmpty(mcpConfigPath())).toBe(false)
+  })
+})
+
+/* ------------------------------------------- skills: loadable by a runner */
+
+describe('the skill library as a Claude plugin', () => {
+  test('writes a manifest, since a directory of skills is not discovered without one', async () => {
+    await new SkillStore().load()
+
+    const manifest = JSON.parse(await readFile(pluginManifestPath(), 'utf8')) as {
+      name: string
+      skills: string[]
+    }
+    expect(manifest.name).toBe(ROSTER_PLUGIN_NAME)
+    expect(manifest.skills).toEqual(['./skills/'])
+  })
+
+  test('leaves a manifest the user has edited alone', async () => {
+    await mkdir(dirname(pluginManifestPath()), { recursive: true })
+    await writeFile(pluginManifestPath(), '{ "name": "mine" }', 'utf8')
+
+    await new SkillStore().load()
+
+    expect(await readFile(pluginManifestPath(), 'utf8')).toBe('{ "name": "mine" }')
+  })
+
+  test('seeding writes one too, so a fresh install is loadable before anything else runs', async () => {
+    await seedIfEmpty(mcpConfigPath())
+
+    await expect(access(pluginManifestPath())).resolves.toBeUndefined()
+  })
+})
+
+describe('SkillStore.load — frontmatter repair', () => {
+  async function writeSkill(name: string, body: string): Promise<string> {
+    const dir = join(skillsDir(), name)
+    await mkdir(dir, { recursive: true })
+    await writeFile(join(dir, 'SKILL.md'), body, 'utf8')
+    return join(dir, 'SKILL.md')
+  }
+
+  const BARE = '# Repro Harness\n\nTurn a bug into a test.\n'
+
+  test('gives a bare SKILL.md the frontmatter that names and describes it', async () => {
+    const file = await writeSkill('repro-harness', BARE)
+
+    await new SkillStore().load()
+
+    const written = await readFile(file, 'utf8')
+    expect(written).toContain('name: repro-harness')
+    expect(written).toContain('description: "Turn a bug into a test."')
+  })
+
+  test('keeps the body, since the repair adds and never rewrites', async () => {
+    const body = `${BARE}\n## Steps\n\n1. Read the trace.\n`
+    const file = await writeSkill('repro-harness', body)
+
+    await new SkillStore().load()
+
+    expect((await readFile(file, 'utf8')).endsWith(body)).toBe(true)
+  })
+
+  test('leaves a skill that already declares itself byte-identical', async () => {
+    const body = '---\nname: mine\ndescription: "Already fine."\n---\n\n# Mine\n'
+    const file = await writeSkill('mine', body)
+
+    await new SkillStore().load()
+
+    expect(await readFile(file, 'utf8')).toBe(body)
+  })
+
+  test('is idempotent, so a second load does not stack a second block', async () => {
+    const file = await writeSkill('repro-harness', BARE)
+
+    await new SkillStore().load()
+    const first = await readFile(file, 'utf8')
+    await new SkillStore().load()
+
+    expect(await readFile(file, 'utf8')).toBe(first)
+  })
+
+  test('never writes into a linked skill, which lives in a repo the user owns', async () => {
+    // Roster links rather than copies, so the file is inside someone else's
+    // checkout and adding to it is not Roster's call.
+    const outside = join(home, 'elsewhere', 'my-skill')
+    await mkdir(outside, { recursive: true })
+    const body = '# My Skill\n\nNo frontmatter here.\n'
+    await writeFile(join(outside, 'SKILL.md'), body, 'utf8')
+
+    const store = new SkillStore()
+    await store.load()
+    await store.link(outside)
+
+    expect(await readFile(join(outside, 'SKILL.md'), 'utf8')).toBe(body)
+  })
+
+  test('flags a linked skill it may not repair, so it is not silently degraded', async () => {
+    const outside = join(home, 'elsewhere', 'my-skill')
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'SKILL.md'), '# My Skill\n\nNo frontmatter.\n', 'utf8')
+
+    const store = new SkillStore()
+    await store.load()
+    const linked = await store.link(outside)
+
+    expect(linked.needsFrontmatter).toBe(true)
+  })
+
+  test('does not flag a linked skill that already declares itself', async () => {
+    const outside = join(home, 'elsewhere', 'fine')
+    await mkdir(outside, { recursive: true })
+    await writeFile(join(outside, 'SKILL.md'), '---\nname: fine\ndescription: "Ok."\n---\n', 'utf8')
+
+    const store = new SkillStore()
+    await store.load()
+    const linked = await store.link(outside)
+
+    expect(linked.needsFrontmatter).toBeUndefined()
+  })
+
+  test('never flags one of Roster’s own, which it repairs instead', async () => {
+    await writeSkill('mine', '# Mine\n\nNo frontmatter.\n')
+
+    const store = new SkillStore()
+    await store.load()
+
+    expect(store.findAll()[0]?.needsFrontmatter).toBeUndefined()
   })
 })
 
@@ -347,7 +529,11 @@ describe('SkillStore.create', () => {
 
     expect(created.name).toBe('repro-harness')
     expect(created.files).toEqual(['SKILL.md'])
-    expect(await store.read(join(created.path, 'SKILL.md'))).toContain('# Repro Harness')
+    const body = await store.read(join(created.path, 'SKILL.md'))
+    expect(body).toContain('# Repro Harness')
+    // A new skill has to be loadable from the moment it is created, not only
+    // after the next load() repairs it.
+    expect(body).toContain('name: repro-harness')
   })
 
   test('slugifies the name, since it is also a directory name', async () => {
@@ -821,6 +1007,7 @@ describe('McpStore — built-in servers', () => {
     expect(store.findAll().map((server) => server.name)).toEqual([
       TASKS_SERVER,
       PLANS_SERVER,
+      MEMORY_SERVER,
       'linear',
     ])
   })

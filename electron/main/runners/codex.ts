@@ -3,11 +3,18 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
+import { planInstruction } from '../sessions/planPrompt'
 import { gitMetadata } from '../sessions/repo'
 import { worktreesDir } from '../store/paths'
 import { normalizeCodexMessage } from './normalizeCodex'
 import { streamJsonLines } from './subprocess'
-import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from './types'
+import type {
+  ApprovalDecision,
+  EnabledSkill,
+  Runner,
+  RunnerEvent,
+  StartOptions,
+} from './types'
 
 /**
  * Fallback list, used only when the CLI's own cache cannot be read. Codex
@@ -78,11 +85,15 @@ export class CodexRunner implements Runner {
     if (status.path) this.binary = status.path
   }
 
-  run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
-    const permissions = codexPermissionOverrides(options.cwd).flatMap((override) => [
-      '--config',
-      override,
-    ])
+  async *run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
+    // Sandbox first, then servers: both are `--config`, and both are repeated
+    // on a resume because `exec resume` is its own process and keeps neither.
+    const permissions = [
+      ...(options.planMode === true
+        ? codexPlanPermissions()
+        : codexPermissionOverrides(options.cwd)),
+      ...codexMcpOverrides(options.mcpServers),
+    ].flatMap((override) => ['--config', override])
 
     // `exec resume` has its own option set. Its working directory is inherited
     // from the stored session, so it rejects the base `exec` command's `-C`.
@@ -115,9 +126,16 @@ export class CodexRunner implements Runner {
             options.model,
           ]
 
-    args.push(composePrompt(prompt, options.systemPrompt))
+    // Plan mode has no Codex equivalent, so the instruction that would come
+    // from the SDK has to travel in the system prompt instead.
+    const systemPrompt =
+      options.planMode === true
+        ? [options.systemPrompt.trim(), planInstruction()].filter((part) => part !== '').join('\n\n')
+        : options.systemPrompt
 
-    return streamJsonLines(
+    args.push(composePrompt(prompt, systemPrompt, await readSkills(options.skills)))
+
+    yield* streamJsonLines(
       { command: this.binary, args, cwd: options.cwd, signal: options.signal },
       normalizeCodexMessage,
     )
@@ -131,6 +149,27 @@ export class CodexRunner implements Runner {
 }
 
 const WORKTREE_PERMISSION_PROFILE = 'roster-worktree'
+const PLAN_PERMISSION_PROFILE = 'roster-plan'
+
+/**
+ * The sandbox for a planning turn: read everything, write nothing.
+ *
+ * Plan mode means research and propose only. Claude enforces that inside the
+ * SDK, which refuses every edit for the whole turn; Codex enforces through
+ * its sandbox, so the equivalent is a profile with no writable path.
+ *
+ * Network stays on for the same reason the worktree profile turns it on:
+ * research is the turn that most needs to reach the internet, and a
+ * read-only profile that also cut the network would make plan mode useless
+ * rather than safe.
+ */
+export function codexPlanPermissions(): string[] {
+  return [
+    `default_permissions=${tomlString(PLAN_PERMISSION_PROFILE)}`,
+    `permissions.${PLAN_PERMISSION_PROFILE}.extends=${tomlString(':read-only')}`,
+    `permissions.${PLAN_PERMISSION_PROFILE}.network.enabled=true`,
+  ]
+}
 
 /**
  * Build command-line TOML overrides for the smallest useful Codex sandbox.
@@ -138,6 +177,8 @@ const WORKTREE_PERMISSION_PROFILE = 'roster-worktree'
  * `:workspace` keeps Codex's normal protections, including read-only `.git`
  * and `.codex` directories. The exact Git directories are then made writable,
  * along with only the directory where Roster tells agents to create worktrees.
+ * Network access lets commands resolve DNS and reach the internet while the
+ * filesystem remains constrained by the profile.
  */
 export function codexPermissionOverrides(
   cwd: string,
@@ -151,10 +192,10 @@ export function codexPermissionOverrides(
   return [
     `default_permissions=${tomlString(WORKTREE_PERMISSION_PROFILE)}`,
     `permissions.${WORKTREE_PERMISSION_PROFILE}.extends=${tomlString(':workspace')}`,
-    ...writablePaths.map(
-      (path) =>
-        `permissions.${WORKTREE_PERMISSION_PROFILE}.filesystem.${tomlString(path)}="write"`,
-    ),
+    `permissions.${WORKTREE_PERMISSION_PROFILE}.network.enabled=true`,
+    `permissions.${WORKTREE_PERMISSION_PROFILE}.filesystem={${writablePaths
+      .map((path) => `${tomlString(path)}="write"`)
+      .join(',')}}`,
   ]
 }
 
@@ -164,10 +205,142 @@ function tomlString(value: string): string {
 }
 
 /**
+ * Build the command-line TOML overrides that register an agent's MCP servers.
+ *
+ * Codex reads servers from `~/.codex/config.toml`, which Roster deliberately
+ * ignores — the agent's own `mcp_servers` is what decides this, not whatever
+ * the user has configured for their own Codex. So each one is passed as a
+ * config override instead, under the same `mcp_servers.<name>` keys that
+ * `codex mcp add` writes into that file.
+ *
+ * This is also how a Codex agent reaches Roster's own tools: the session
+ * manager puts the bridge in this map like any other stdio server. See
+ * mcpBridge.ts for why that indirection exists.
+ */
+export function codexMcpOverrides(servers: StartOptions['mcpServers']): string[] {
+  return Object.entries(servers).flatMap(([name, spec]) => {
+    // The name becomes a dotted path in a `--config` argument, so a name with
+    // a dot or a quote in it would nest the server somewhere it was never
+    // meant to go. Names come from mcp.json, which the user writes by hand.
+    if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+      process.stderr.write(
+        `[mcp] "${name}" is not a name Codex can be given; rename it in mcp.json\n`,
+      )
+      return []
+    }
+
+    const key = `mcp_servers.${name}`
+    const entries = Object.entries(spec.env)
+
+    return [
+      `${key}.command=${tomlString(spec.command)}`,
+      ...(spec.args.length > 0
+        ? [`${key}.args=[${spec.args.map(tomlString).join(',')}]`]
+        : []),
+      ...(entries.length > 0
+        ? [
+            `${key}.env={${entries
+              .map(([variable, value]) => `${tomlString(variable)}=${tomlString(value)}`)
+              .join(',')}}`,
+          ]
+        : []),
+    ]
+  })
+}
+
+/**
  * Codex has no system-prompt flag on `exec`, so an agent's house rules are
  * prepended to the prompt itself.
  */
-export function composePrompt(prompt: string, systemPrompt: string): string {
-  if (systemPrompt.trim() === '') return prompt
-  return `${systemPrompt.trim()}\n\n---\n\n${prompt}`
+/**
+ * Reads each enabled skill's SKILL.md.
+ *
+ * Here rather than in the session manager because Codex is the only runner
+ * that needs the text: Claude loads a skill itself, and making every turn read
+ * files for it would be work thrown away.
+ *
+ * A skill whose file has gone missing comes back empty rather than throwing.
+ * The agent named it, and losing the turn over a deleted file is worse than
+ * taking it with one skill listed but not inlined.
+ */
+async function readSkills(skills: readonly EnabledSkill[]): Promise<SkillDoc[]> {
+  return Promise.all(
+    skills.map(async (skill) => ({
+      name: skill.name,
+      body: await readFile(join(skill.path, 'SKILL.md'), 'utf8').catch(() => ''),
+    })),
+  )
+}
+
+/**
+ * How much of the prompt the skills may take.
+ *
+ * Every turn pays this, so it is a cost rather than a ceiling to fill — the
+ * same reasoning as PROJECT_BRIEF_BUDGET, and a similar size. Roughly a
+ * thousand tokens: enough for two or three real skills, small against a
+ * context window.
+ */
+export const SKILL_BUDGET = 4000
+
+/** Says what the block is, so it does not read as the user having typed it. */
+const SKILLS_PREAMBLE =
+  'Skills available to you, provided by Roster. Each is a procedure to follow ' +
+  'when it applies. Not written by the user.'
+
+export interface SkillDoc {
+  name: string
+  /** The SKILL.md, or empty when it could not be read. */
+  body: string
+}
+
+export function composePrompt(
+  prompt: string,
+  systemPrompt: string,
+  skills: readonly SkillDoc[] = [],
+): string {
+  const parts = [systemPrompt.trim(), skillsSection(skills), prompt].filter(
+    (part) => part !== '',
+  )
+
+  return parts.join('\n\n---\n\n')
+}
+
+/**
+ * The enabled skills, inlined.
+ *
+ * Codex has no skill mechanism of its own — `codex exec` takes a prompt and
+ * nothing else — so a skill reaches it as text or not at all. Roster used to
+ * drop them silently, which left a Codex agent advertising skills it could
+ * not follow.
+ *
+ * Spent in order and by whole skills. Truncating one mid-way would cut the
+ * steps the model was meant to follow while leaving the title that promises
+ * them, so a skill that does not fit is named instead: the agent can still
+ * read it from disk, and knows it is there.
+ */
+function skillsSection(skills: readonly SkillDoc[]): string {
+  if (skills.length === 0) return ''
+
+  const inlined: string[] = []
+  const namedOnly: string[] = []
+  let spent = 0
+
+  for (const skill of skills) {
+    const body = skill.body.trim()
+
+    if (body === '' || spent + body.length > SKILL_BUDGET) {
+      namedOnly.push(skill.name)
+      continue
+    }
+
+    inlined.push(`## ${skill.name}\n\n${body}`)
+    spent += body.length
+  }
+
+  const tail =
+    namedOnly.length > 0
+      ? [`Also enabled, and readable on disk: ${namedOnly.join(', ')}.`]
+      : []
+
+  return [SKILLS_PREAMBLE, ...inlined, ...tail].join('\n\n')
 }

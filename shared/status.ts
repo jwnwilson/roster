@@ -33,6 +33,18 @@ export function statusToken(status: Status): string {
 }
 
 /**
+ * Whether a session is blocked on a decision only the user can make.
+ *
+ * An approval may carry a command or structured questions. Both are exposed
+ * through the same persisted session status, which is deliberately the
+ * predicate UI surfaces use: inactive sessions do not necessarily have their
+ * approval payload loaded in the renderer.
+ */
+export function sessionNeedsAttention(status: Status): boolean {
+  return status === 'approval'
+}
+
+/**
  * The transcript preview on a grid card fades older lines. The handoff
  * specifies an opacity ramp from 1.0 down to a 0.45 floor, 0.16 per step.
  */

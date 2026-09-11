@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type { Agent, Approval, Message, Session, Usage } from '../../../shared/types'
-import { isBuiltinMcpServer, PLANS_SERVER, TASKS_SERVER } from '../../../shared/mcp'
+import {
+  isBuiltinMcpServer,
+  MEMORY_SERVER,
+  PLANS_SERVER,
+  ROSTER_SERVER,
+  TASKS_SERVER,
+} from '../../../shared/mcp'
 import { EXIT_PLAN_MODE, planFromToolInput } from '../../../shared/plans'
 import type { AgentStore } from '../store/agents'
 import type { McpStore } from '../store/mcp'
@@ -11,19 +17,51 @@ import type { UsageStore } from '../store/usage'
 import type { TaskStore } from '../store/tasks'
 import type { ProjectStore } from '../store/projects'
 import type { PlanStore } from '../store/plans'
+import type { ProjectNotesStore } from '../store/projectNotes'
 import { getRunner } from '../runners/registry'
-import type { ApprovalDecision, McpLaunchSpec, RunnerEvent } from '../runners/types'
+import type {
+  ApprovalDecision,
+  EnabledSkill,
+  McpLaunchSpec,
+  RunnerEvent,
+} from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
-import { createRosterMcpServer } from '../runners/handoffTool'
+import { CodexRunner } from '../runners/codex'
+import { McpBridge } from '../runners/mcpBridge'
+import { builtinToolDefinitions, type BuiltinToolSet } from '../runners/toolDefinitions'
+import { createRosterMcpServer, type RosterTools } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
+import { createMemoryMcpServer, type MemoryTools } from '../runners/memoryTools'
 import { describeActivity, THINKING } from './activity'
+import { resolveSessionProject } from './defaultProject'
+import { buildProjectBrief } from './projectBrief'
+import { estimateCodexCost } from '../costs/codex'
 
 /** Per-turn choices the caller makes, rather than the agent's configuration. */
 export interface SendOptions {
   /** Research and propose only; see StartOptions.planMode. */
   planMode?: boolean
+  /**
+   * Whether to record the prompt as a user message. Defaults to true.
+   *
+   * False when the transcript already shows it. A handed-off session opens
+   * with a spawn message carrying the brief, attributed to the agent that
+   * wrote it; recording it again would print it twice and put another
+   * agent's words under "you".
+   */
+  recordPrompt?: boolean
 }
+
+/**
+ * How many handoffs deep Roster will keep starting turns by itself.
+ *
+ * Every agent holding the roster tools can hand work on, including one that
+ * was handed work — so A→B→A is a loop that spends the user's subscription
+ * with nobody watching. Past this depth the session is still opened and the
+ * brief is still recorded; it just waits for a person to press send.
+ */
+export const MAX_HANDOFF_DEPTH = 3
 
 /** Everything the manager emits so the renderer can follow a live turn. */
 export type SessionEvent =
@@ -36,6 +74,7 @@ export type SessionEvent =
   | { type: 'streaming'; sessionId: string; active: boolean }
   /** What the agent is doing right now, for the streaming indicator. */
   | { type: 'activity'; sessionId: string; text: string }
+  | { type: 'session-deleted'; sessionId: string; agentId: string }
 
 /**
  * Streamed prose arrives token by token. Writing and broadcasting each one
@@ -44,6 +83,22 @@ export type SessionEvent =
  * fast the model talks.
  */
 const FLUSH_INTERVAL_MS = 60
+
+/**
+ * How long `stop` waits for a turn to finish writing before going ahead
+ * without it.
+ *
+ * Long enough that an unwinding stream is never cut short, short enough that
+ * a runner ignoring its abort signal cannot wedge a delete for good.
+ */
+const STOP_TIMEOUT_MS = 10_000
+
+/** Unref'd, so a stop that is still waiting can never hold the process open. */
+function afterStopTimeout(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, STOP_TIMEOUT_MS).unref()
+  })
+}
 
 interface ActiveRun {
   abort: AbortController
@@ -54,9 +109,17 @@ interface ActiveRun {
   /** Approvals raised during this run. */
   approvals: Map<string, Approval>
   runnerId: string
+  model: string
   /** Prose received but not yet written or broadcast. */
   pendingText: string
   flushTimer: NodeJS.Timeout | null
+  /**
+   * Settles once the turn has finished writing, not merely once the stream
+   * has stopped. `stop` waits on this, so that a caller about to delete the
+   * session knows nothing else will write to it.
+   */
+  done: Promise<void>
+  finish: () => void
 }
 
 /**
@@ -71,6 +134,14 @@ export class SessionManager {
   private listeners = new Set<(event: SessionEvent) => void>()
   /** Turns Roster owes a session once its current one ends. See enqueue. */
   private queued = new Map<string, { prompt: string; options: SendOptions }>()
+  /**
+   * The last project brief each session was sent, so an unchanged one is not
+   * sent twice. See withProjectBrief.
+   *
+   * Dropped when a session is stopped, which is also how a delete unwinds a
+   * turn. A session that simply ends holds one brief until the app closes.
+   */
+  private lastBrief = new Map<string, string>()
 
   constructor(
     private readonly agents: AgentStore,
@@ -89,6 +160,13 @@ export class SessionManager {
      * manager without one runs turns exactly as before and captures nothing.
      */
     private readonly plans?: PlanStore,
+    /**
+     * Each project's NOTES.md. Optional like the others: without it the brief
+     * carries only the board, and no agent is offered the memory tools.
+     */
+    private readonly notes?: ProjectNotesStore,
+    /** The app-owned removal lifecycle, supplied where PTYs and plans live. */
+    private readonly sessionRemoval?: { removeSession: (sessionId: string) => Promise<Session | null> },
   ) {}
 
   subscribe(listener: (event: SessionEvent) => void): () => void {
@@ -102,8 +180,21 @@ export class SessionManager {
 
   /* ---- session lifecycle ------------------------------------------------ */
 
-  create(agentId: string, title = 'New session'): Session {
-    return this.sessions.create({ agentId, title, origin: 'you' })
+  /**
+   * Opens a session on an agent.
+   *
+   * `projectId` files it explicitly; left out, the agent's default project
+   * decides. See resolveSessionProject for what happens to a default that no
+   * longer resolves.
+   */
+  create(agentId: string, title = 'New session', projectId?: string | null): Session {
+    const resolved = resolveSessionProject({
+      ...(projectId !== undefined ? { explicit: projectId } : {}),
+      agent: this.agents.findById(agentId),
+      ...(this.board ? { projects: this.board.projects } : {}),
+    })
+
+    return this.sessions.create({ agentId, title, origin: 'you', projectId: resolved })
   }
 
   /**
@@ -111,6 +202,11 @@ export class SessionManager {
    *
    * Both sides are recorded: the new session gets a spawn message naming its
    * origin, and the handing-off session gets a handoff message linking to it.
+   * Then the receiving agent's turn is started with the brief as its prompt,
+   * which is what makes this a handoff rather than a note left on a desk.
+   *
+   * `started` is false when the chain has hit MAX_HANDOFF_DEPTH: the session
+   * exists and holds the brief, but nothing runs until a person sends it.
    */
   handOff(input: {
     fromAgentId: string
@@ -118,7 +214,7 @@ export class SessionManager {
     toAgentId: string
     title: string
     brief: string
-  }): { session: Session; label: string } {
+  }): { session: Session; label: string; started: boolean } {
     const from = this.agents.findById(input.fromAgentId)
     const to = this.agents.findById(input.toAgentId)
     const fromLabel = from ? `${from.name} · ${input.title}` : input.title
@@ -129,6 +225,13 @@ export class SessionManager {
       title: input.title,
       origin: 'agent',
       from: { agentId: input.fromAgentId, sessionId: input.fromSessionId, label: fromLabel },
+      // Nobody names a project when handing work over, so the receiving
+      // agent's own default decides — exactly as it does for a session opened
+      // from the Agent screen.
+      projectId: resolveSessionProject({
+        agent: to,
+        ...(this.board ? { projects: this.board.projects } : {}),
+      }),
     })
 
     // The receiving session opens with why it exists and a way back.
@@ -158,11 +261,49 @@ export class SessionManager {
       ],
     })
 
-    return { session, label: toLabel }
+    // The brief travels as the prompt, not only as the spawn message: the
+    // runner is handed exactly one string, so anything not in there is not
+    // in the conversation. `recordPrompt` keeps the spawn the single copy.
+    const started = this.handoffDepth(session.id) <= MAX_HANDOFF_DEPTH
+    if (started) this.enqueue(session.id, input.brief, { recordPrompt: false })
+
+    return { session, label: toLabel, started }
+  }
+
+  /**
+   * How many handoffs stand between this session and the one a person opened.
+   *
+   * Walked rather than stored: `spawnedFrom` already records each link, so
+   * the chain is derivable and there is nothing to migrate or keep in step.
+   * The walk is bounded by MAX_HANDOFF_DEPTH, so a cycle written into the
+   * database by hand cannot spin here.
+   */
+  private handoffDepth(sessionId: string): number {
+    let depth = 0
+    let current = this.sessions.findById(sessionId)
+
+    while (current?.spawnedFrom !== undefined && depth <= MAX_HANDOFF_DEPTH) {
+      depth += 1
+      current = this.sessions.findById(current.spawnedFrom.sessionId)
+    }
+
+    return depth
   }
 
   isStreaming(sessionId: string): boolean {
     return this.active.has(sessionId)
+  }
+
+  /** Permanently close only a session that the live caller directly spawned. */
+  async closeChildSession(callerSessionId: string, sessionId: string): Promise<boolean> {
+    const child = this.sessions.findById(sessionId)
+    if (child?.spawnedFrom?.sessionId !== callerSessionId) return false
+
+    const removed = await this.sessionRemoval?.removeSession(sessionId)
+    if (!removed) return false
+
+    this.emit({ type: 'session-deleted', sessionId, agentId: removed.agentId })
+    return true
   }
 
   /* ---- running a turn --------------------------------------------------- */
@@ -211,8 +352,16 @@ export class SessionManager {
     }
 
     // The user's own message is persisted before the run, so it survives a
-    // crash mid-turn.
-    this.record(sessionId, { sessionId, kind: 'text', role: 'user', who: 'you', text: prompt })
+    // crash mid-turn. Skipped when the transcript already carries the prompt;
+    // see SendOptions.recordPrompt.
+    if (options.recordPrompt !== false) {
+      this.record(sessionId, { sessionId, kind: 'text', role: 'user', who: 'you', text: prompt })
+    }
+
+    let finish = (): void => {}
+    const done = new Promise<void>((resolve) => {
+      finish = resolve
+    })
 
     const run: ActiveRun = {
       abort: new AbortController(),
@@ -220,62 +369,52 @@ export class SessionManager {
       toolStartedAt: new Map(),
       approvals: new Map(),
       runnerId: agent.runner,
+      model: agent.model,
       pendingText: '',
       flushTimer: null,
+      done,
+      finish,
     }
     this.active.set(sessionId, run)
 
-    this.setStatus(sessionId, 'running')
-    this.emit({ type: 'streaming', sessionId, active: true })
-    this.emit({ type: 'activity', sessionId, text: THINKING })
+    /** Set only for a runner that reaches Roster's tools from another process. */
+    let bridge: McpBridge | null = null
 
-    // Only the Claude runner supports in-process MCP, so only it can be
-    // given Roster's own servers; other runners simply cannot hand off yet.
-    let inProcessMcpServers: Record<string, unknown> | undefined
-    if (runner instanceof ClaudeRunner) {
-      runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
-      inProcessMcpServers = {
-        roster: await createRosterMcpServer(
-          {
-            listAgents: () => this.agents.findAll(),
-            openSession: ({ toAgentId, title, brief }) => {
-              const result = this.handOff({
-                fromAgentId: agent.id,
-                fromSessionId: sessionId,
-                toAgentId,
-                title,
-                brief,
-              })
-              return { sessionId: result.session.id, label: result.label }
-            },
-          },
-          agent.id,
-        ),
-      }
-
-      // The board is opt-in per agent, like any other MCP server. An agent
-      // that does not enable it is never given the tools at all, so there is
-      // nothing for it to be refused.
-      const tasks = this.taskToolsFor(agent)
-      if (tasks) {
-        inProcessMcpServers[TASKS_SERVER] = await createTasksMcpServer(tasks, agent.id)
-      }
-
-      // Reporting a pull request is opt-in the same way. Without it a plan
-      // still gets built; Roster simply never learns where the work landed.
-      const planTools = this.planToolsFor(agent)
-      if (planTools) {
-        inProcessMcpServers[PLANS_SERVER] = await createPlansMcpServer(planTools)
-      }
-    }
-
+    // The try opens here rather than at the runner call: the MCP servers
+    // below are built with await, and a throw there used to escape send()
+    // with the run still in `active` and its `done` promise unresolved —
+    // which is precisely what stop() waits on before a session is deleted.
     try {
-      const stream = runner.run(prompt, {
+      this.setStatus(sessionId, 'running')
+      this.emit({ type: 'streaming', sessionId, active: true })
+      this.emit({ type: 'activity', sessionId, text: THINKING })
+
+      // Which of Roster's own tools this agent holds is decided once, here,
+      // and the same answer serves both runners. How they are delivered is
+      // all that differs below.
+      const toolSet = this.builtinToolsFor(agent, session, options.planMode === true)
+
+      let inProcessMcpServers: Record<string, unknown> | undefined
+      let mcpServers = this.mcpServersFor(agent)
+
+      if (runner instanceof ClaudeRunner) {
+        // Claude runs inside Roster, so it is handed the servers themselves.
+        runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
+        inProcessMcpServers = await inProcessServersFor(toolSet, agent.id)
+      } else if (runner instanceof CodexRunner) {
+        // `codex exec` is a separate process, and an in-process server cannot
+        // be given to one. It gets a real stdio MCP server instead, which
+        // calls straight back into these same tools. See mcpBridge.ts.
+        bridge = await McpBridge.start(builtinToolDefinitions(toolSet, agent.id))
+        mcpServers = { ...mcpServers, [ROSTER_SERVER]: bridge.launchSpec() }
+      }
+
+      const stream = runner.run(this.withProjectBrief(session, prompt), {
         cwd: agent.cwd,
         model: agent.model,
         systemPrompt: agent.systemPrompt,
-        skillPaths: this.skillPathsFor(agent),
-        mcpServers: this.mcpServersFor(agent),
+        skills: this.skillsFor(agent),
+        mcpServers,
         signal: run.abort.signal,
         ...(options.planMode === true ? { planMode: true } : {}),
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
@@ -286,6 +425,24 @@ export class SessionManager {
     } catch (cause) {
       this.failTurn(sessionId, cause instanceof Error ? cause.message : String(cause))
     } finally {
+      // First, and before anything else this turn writes: the bridge is the
+      // one door another process holds into this session's stores, and a turn
+      // that has ended must not still be reachable through it.
+      //
+      // Caught rather than awaited plainly. This whole `try` was opened where
+      // it is because a throw before the runner call used to escape send()
+      // with the run still in `active` and its `done` promise unresolved; a
+      // rejection here — `rm` on a directory that has become unwritable is
+      // the realistic one — would do the same thing from the other end, and
+      // leave the session reading as streaming for good. Nothing above can
+      // act on it, so it is reported and the turn is cleaned up regardless.
+      try {
+        await bridge?.close()
+      } catch (cause) {
+        process.stderr.write(
+          `[mcp] could not close the bridge for session ${sessionId}: ${describeCause(cause)}\n`,
+        )
+      }
       // Whatever is still buffered belongs to this turn, not the next.
       this.flushText(sessionId, run)
       this.active.delete(sessionId)
@@ -296,8 +453,72 @@ export class SessionManager {
       // Only when nothing is waiting: approving a plan queues the build behind
       // the planning turn, and settling here would cancel it before it ran.
       if (!this.queued.has(sessionId)) this.settleBuild(sessionId)
+      // Last, and after every write above: anyone waiting on this turn is
+      // waiting to be sure the session is no longer being written to.
+      run.finish()
       this.drain(sessionId)
     }
+  }
+
+  /**
+   * The prompt as the agent actually receives it: what the project already
+   * knows, then what was said to it.
+   *
+   * Only for a session somebody filed under a project. An unfiled one is sent
+   * exactly what it was sent before, which is also why this returns the
+   * prompt rather than an empty string — there is no brief to prepend.
+   *
+   * Deliberately not recorded: the brief is prompt context, not transcript,
+   * and writing it into `messages` would put a wall of generated text in the
+   * user's chat every turn.
+   */
+  private withProjectBrief(session: Session, prompt: string): string {
+    const board = this.board
+    const projectId = session.projectId
+    if (!board || projectId === null || projectId === undefined) return prompt
+
+    // A project row can be deleted while a session still names it. Nothing to
+    // say is not a turn to fail.
+    const project = board.projects.findById(projectId)
+    if (!project) return prompt
+
+    const filed = board.tasks.findAll().filter((task) => task.projectId === projectId)
+
+    // The notes sit at the top of the brief, under the same budget: an agent
+    // that has not enabled the memory server still reads what the project
+    // decided, it simply cannot add to it. `body` rather than `read`, so the
+    // starter block Roster wrote for the reader is not paid for every turn.
+    const notes = this.notes?.body(projectId) ?? ''
+
+    const brief = buildProjectBrief({
+      project,
+      tasks: filed,
+      comments: filed.flatMap((task) => board.tasks.comments(task.id)),
+      agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
+      ...(notes.trim() === '' ? {} : { notes }),
+    })
+
+    if (this.hasAlreadyRead(session, brief)) return prompt
+
+    this.lastBrief.set(session.id, brief)
+    return `${brief}\n\n${prompt}`
+  }
+
+  /**
+   * Whether this exact brief is already in front of the agent.
+   *
+   * A turn resumes the runner's own thread, so a brief sent on an earlier
+   * turn is still there to be read. Sending it again would spend the budget
+   * a second time on text the model already has — and it is the sessions
+   * that run longest, which is to say the ones the brief is for, that would
+   * pay most. A brief that has *changed* is sent, because that is news.
+   *
+   * Only when there is a thread to have kept it: without a runner session
+   * the next turn starts cold, and what it was sent last time went nowhere.
+   */
+  private hasAlreadyRead(session: Session, brief: string): boolean {
+    if (session.runnerSessionId === undefined) return false
+    return this.lastBrief.get(session.id) === brief
   }
 
   /**
@@ -343,6 +564,37 @@ export class SessionManager {
 
   cancel(sessionId: string): void {
     this.active.get(sessionId)?.abort.abort()
+  }
+
+  /**
+   * Brings a session to a halt and waits for it to get there.
+   *
+   * `cancel` only raises the signal; the turn goes on writing until the
+   * runner's stream unwinds. Deleting a session in that window would leave
+   * the tail of a turn inserting rows against an id that has gone, so this
+   * is what a delete waits on. The queued turn is dropped too — resuming a
+   * session somebody is stopping is never what was meant.
+   *
+   * Resolves immediately when nothing is running, including for a session
+   * that does not exist.
+   *
+   * The wait is bounded. A runner that never honours its abort signal would
+   * otherwise hold the caller for good — the delete waiting on this would
+   * never return and the control that asked for it would read as dead. Past
+   * the timeout the delete goes ahead: a turn still unwinding then finds its
+   * session gone, which `enqueue` already treats as nothing to report.
+   */
+  async stop(sessionId: string): Promise<void> {
+    this.queued.delete(sessionId)
+    // A delete stops the turn first, so this is also where what the manager
+    // remembers about a session stops outliving it.
+    this.lastBrief.delete(sessionId)
+
+    const run = this.active.get(sessionId)
+    if (!run) return
+
+    run.abort.abort()
+    await Promise.race([run.done, afterStopTimeout()])
   }
 
   /* ---- event handling ---------------------------------------------------- */
@@ -413,12 +665,24 @@ export class SessionManager {
         return
 
       case 'usage': {
+        const estimated = run.runnerId === 'codex'
+          ? estimateCodexCost({
+              model: run.model,
+              inputTokens: event.inputTokens,
+              cachedInputTokens: event.cachedInputTokens,
+              outputTokens: event.outputTokens,
+            })
+          : null
         const usage: Usage = {
           sessionId,
           inputTokens: event.inputTokens,
           outputTokens: event.outputTokens,
           totalTokens: event.totalTokens,
-          costUsd: event.costUsd,
+          ...(event.cachedInputTokens !== undefined ? { cachedInputTokens: event.cachedInputTokens } : {}),
+          costUsd: estimated?.costUsd ?? event.costUsd,
+          costType: estimated?.costType ?? 'actual',
+          model: estimated?.model ?? null,
+          rateTableVersion: estimated?.rateTableVersion ?? null,
         }
         // Persist as well as emit, or the totals vanish on reload.
         this.usage.record(usage)
@@ -546,26 +810,83 @@ export class SessionManager {
   }
 
   /**
+   * The plan tools for this agent, or nothing.
+   *
+   * Three ways in, because plan mode has to work without ceremony:
+   *
+   * - the agent enabled "plans", the ordinary opt-in;
+   * - this is a planning turn — for a Claude agent plan mode needs no MCP
+   *   server at all, so demanding one here would make the toggle appear to
+   *   work and do nothing;
+   * - the session already has a plan, which is what carries the *build*
+   *   turn. That turn is not plan mode, and without this clause an agent
+   *   could propose a plan it was then unable to report a pull request for,
+   *   leaving settleBuild to cycle it back to draft forever.
+   *
+   * That third clause checks "any plan exists for this session" rather than
+   * "the plan is building", and must stay that way. `planFlow.approve()`
+   * calls `manager.enqueue()` before it sets the plan's status to
+   * 'building' (planFlow.ts): enqueue calls `send` directly when nothing is
+   * already active, and `send` runs synchronously up to its first `await` —
+   * which is after this gate is evaluated. So at the moment the build turn's
+   * tools are decided, the plan it is for still reads 'draft'. Narrowing
+   * this to a status check would silently drop `record_pull_request` from
+   * the build turn whenever it starts immediately, and only appear to work
+   * when a turn happened to already be running and the send was queued
+   * instead — a timing-dependent bug, not a simplification.
+   */
+  private planToolsFor(
+    agent: Agent,
+    session: Session,
+    planMode: boolean,
+  ): PlanTools | undefined {
+    const plans = this.plans
+    if (!plans) return undefined
+
+    const enabled =
+      agent.mcpServers.includes(PLANS_SERVER) ||
+      planMode ||
+      // Any plan on the session, not `status === 'building'` — see the
+      // ordering note in this method's doc comment above.
+      plans.listBySession(session.id).length > 0
+    if (!enabled) return undefined
+
+    return {
+      propose: (body) => {
+        const plan = plans.capture({ sessionId: session.id, agentId: agent.id, body })
+        // The transcript row is written here rather than left to `handle`,
+        // which writes it for Claude's ExitPlanMode. normalizeCodex drops MCP
+        // tool events, so for a Codex agent that capture site can never fire,
+        // and the renderer opens a plan only from a message or an approval
+        // carrying `planId`. Without this row the plan is stored and then
+        // unreachable. Writing it here covers a Claude agent calling
+        // propose_plan as well, which it may now do in plan mode.
+        this.record(session.id, {
+          sessionId: session.id,
+          kind: 'tool',
+          tool: 'propose_plan',
+          args: plan.title,
+          planId: plan.id,
+          output: '',
+          isError: false,
+        })
+        return plan
+      },
+      // The handler refuses to overwrite a plan that has moved past your
+      // review, and this is how it knows. Read through the store on every
+      // call rather than captured once, because the status changes underneath
+      // a long turn.
+      currentStatus: () => plans.listBySession(session.id).at(-1)?.status ?? null,
+      recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
+    }
+  }
+
+  /**
    * Records a plan the agent just proposed, and says which one it is.
    *
    * Returns null when this manager has no plan store, or when the session has
    * gone — capturing a plan is worth nothing next to finishing the turn.
    */
-  /**
-   * The plan tools for this agent, or nothing.
-   *
-   * Gated on the agent enabling "plans", like the board, and on this manager
-   * having a plan store at all.
-   */
-  private planToolsFor(agent: Agent): PlanTools | undefined {
-    const plans = this.plans
-    if (!plans || !agent.mcpServers.includes(PLANS_SERVER)) return undefined
-
-    return {
-      recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
-    }
-  }
-
   private capturePlan(sessionId: string, body: string): string | null {
     const session = this.sessions.findById(sessionId)
     if (!this.plans || !session) return null
@@ -593,6 +914,49 @@ export class SessionManager {
     const session = this.sessions.findById(sessionId)
     if (!session) return 'agent'
     return this.agents.findById(session.agentId)?.name ?? 'agent'
+  }
+
+  /**
+   * Every built-in tool set this agent holds for this session.
+   *
+   * The one place the gating is decided, so a Claude agent and a Codex agent
+   * with the same agent.toml get exactly the same tools. Handoff is always
+   * there; the rest are opt-in through the agent's own `mcp_servers`, which
+   * is the control the MCP screen offers.
+   */
+  private builtinToolsFor(agent: Agent, session: Session, planMode: boolean): BuiltinToolSet {
+    const roster: RosterTools = {
+      listAgents: () => this.agents.findAll(),
+      openSession: ({ toAgentId, title, brief }) => {
+        const result = this.handOff({
+          fromAgentId: agent.id,
+          fromSessionId: session.id,
+          toAgentId,
+          title,
+          brief,
+        })
+        return { sessionId: result.session.id, label: result.label, started: result.started }
+      },
+      closeSession: (childSessionId) => this.closeChildSession(session.id, childSessionId),
+    }
+
+    // The board is opt-in per agent, like any other MCP server. An agent that
+    // does not enable it is never given the tools at all, so there is nothing
+    // for it to be refused. The project's notes are opt-in the same way — and
+    // additionally only where there is a project, since which notes an agent
+    // may reach is decided by the session rather than by an argument it could
+    // pass. Reporting a pull request is opt-in too: without it a plan still
+    // gets built, Roster simply never learns where the work landed.
+    const tasks = this.taskToolsFor(agent)
+    const plans = this.planToolsFor(agent, session, planMode)
+    const memory = this.memoryToolsFor(agent, session)
+
+    return {
+      roster,
+      ...(tasks ? { tasks } : {}),
+      ...(plans ? { plans } : {}),
+      ...(memory ? { memory } : {}),
+    }
   }
 
   /**
@@ -660,13 +1024,44 @@ export class SessionManager {
     }
   }
 
-  /** Only the skills this agent has enabled are exposed to its runner. */
-  private skillPathsFor(agent: Agent): string[] {
+  /**
+   * The project's notes, bound to this session's project.
+   *
+   * Absent when no notes store was supplied, when the session is not filed
+   * under a project, and when the agent has not enabled the built-in
+   * "memory" server — that last is the control the TODO calls an option, and
+   * the same one that already decides who may change the board.
+   *
+   * `remember` is bound to the agent's own name, so a line in NOTES.md always
+   * says who wrote it and an agent cannot sign as somebody else.
+   */
+  private memoryToolsFor(agent: Agent, session: Session): MemoryTools | undefined {
+    const notes = this.notes
+    const projectId = session.projectId
+    if (!notes || projectId === null || projectId === undefined) return undefined
+    if (!agent.mcpServers.includes(MEMORY_SERVER)) return undefined
+
+    return {
+      // `body`, like the brief: a file holding nothing but the starter has no
+      // notes yet, and saying so beats reading Roster's own words back.
+      recall: () => notes.body(projectId),
+      remember: (note) => notes.append(projectId, { author: agent.name, note }),
+    }
+  }
+
+  /**
+   * Only the skills this agent has enabled, as identity for the runner.
+   *
+   * Deliberately does not read any SKILL.md. Claude never needs the text — it
+   * loads the skill itself — so reading one here would put file I/O in front
+   * of every turn for the benefit of the runner that does not take it.
+   */
+  private skillsFor(agent: Agent): EnabledSkill[] {
     const enabled = new Set(agent.skills)
     return this.skills
       .findAll()
       .filter((skill) => enabled.has(skill.name))
-      .map((skill) => resolve(skill.path))
+      .map((skill) => ({ name: skill.name, path: resolve(skill.path) }))
   }
 
   /**
@@ -697,6 +1092,32 @@ export class SessionManager {
 
     return Object.fromEntries(resolved)
   }
+}
+
+/**
+ * The same tool sets, as in-process SDK servers.
+ *
+ * Only a runner living in this process can be handed these, which today is
+ * Claude alone. Each server is created from the same `build*Tools` functions
+ * the stdio bridge reads, so the two paths cannot offer different tools.
+ */
+async function inProcessServersFor(
+  set: BuiltinToolSet,
+  currentAgentId: string,
+): Promise<Record<string, unknown>> {
+  const servers: Record<string, unknown> = {
+    [ROSTER_SERVER]: await createRosterMcpServer(set.roster, currentAgentId),
+  }
+
+  if (set.tasks) servers[TASKS_SERVER] = await createTasksMcpServer(set.tasks, currentAgentId)
+  if (set.memory) servers[MEMORY_SERVER] = await createMemoryMcpServer(set.memory)
+  if (set.plans) servers[PLANS_SERVER] = await createPlansMcpServer(set.plans)
+
+  return servers
+}
+
+function describeCause(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause)
 }
 
 /** Exported for tests that need a deterministic id. */

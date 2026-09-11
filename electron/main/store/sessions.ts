@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { normalizeSessionName } from '../../../shared/sessions'
 import type { Db } from '../db'
 import type {
   Message,
@@ -13,6 +14,7 @@ interface SessionRow {
   id: string
   agent_id: string
   title: string
+  name: string | null
   origin: SessionOrigin
   from_agent_id: string | null
   from_session_id: string | null
@@ -44,11 +46,18 @@ export type NewMessage = DistributiveOmit<Message, 'id' | 'createdAt'> & { id?: 
 export interface CreateSessionInput {
   agentId: string
   title: string
+  /** What to call it, when the caller already knows. Normalized on the way in. */
+  name?: string | null
   origin: SessionOrigin
   /** Set when another agent opened this session. */
   from?: { agentId: string; sessionId: string; label: string }
   /** The task this session answers, when it was opened by a mention. */
   taskId?: string
+  /**
+   * The project to file this session under. Already resolved by the caller —
+   * the store files what it is told and infers nothing.
+   */
+  projectId?: string | null
 }
 
 /**
@@ -64,10 +73,14 @@ export class SessionStore {
       id: randomUUID(),
       agentId: input.agentId,
       title: input.title,
+      // Unnamed is the ordinary case: a session is named after it exists,
+      // from the config rail.
+      name: normalizeSessionName(input.name),
       origin: input.origin,
       status: 'idle',
-      // A new session belongs to no project until somebody files it.
-      projectId: null,
+      // A new session belongs to no project unless the caller files it —
+      // by hand from the config rail, or through the agent's own default.
+      projectId: input.projectId ?? null,
       taskId: input.taskId ?? null,
       createdAt: Date.now(),
       ...(input.from
@@ -85,20 +98,22 @@ export class SessionStore {
     this.db
       .prepare(
         `INSERT INTO sessions
-           (id, agent_id, title, origin, from_agent_id, from_session_id, from_label,
-            status, runner_session_id, task_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, agent_id, title, name, origin, from_agent_id, from_session_id, from_label,
+            status, runner_session_id, project_id, task_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         session.id,
         session.agentId,
         session.title,
+        session.name ?? null,
         session.origin,
         input.from?.agentId ?? null,
         input.from?.sessionId ?? null,
         input.from?.label ?? null,
         session.status,
         null,
+        session.projectId,
         input.taskId ?? null,
         session.createdAt,
       )
@@ -151,6 +166,26 @@ export class SessionStore {
 
   rename(id: string, title: string): void {
     this.db.prepare('UPDATE sessions SET title = ? WHERE id = ?').run(title, id)
+  }
+
+  /**
+   * What you call this session, or null to leave it unnamed.
+   *
+   * Normalized here rather than trusted from the caller: this is the
+   * boundary that writes, and a name arriving over IPC has been through a
+   * renderer that a future change could stop validating. Reads the row back
+   * so the caller gets the session as it now stands rather than the shape it
+   * asked for.
+   */
+  setName(id: string, name: string | null): Session {
+    const normalized = normalizeSessionName(name)
+    this.db.prepare('UPDATE sessions SET name = ? WHERE id = ?').run(normalized, id)
+
+    const session = this.findById(id)
+    // Naming a session that is gone would otherwise succeed silently, and the
+    // renderer would show a name nothing holds until the next reload.
+    if (!session) throw new Error(`unknown session "${id}"`)
+    return session
   }
 
   /**
@@ -362,6 +397,7 @@ function toSession(row: SessionRow): Session {
     id: row.id,
     agentId: row.agent_id,
     title: row.title,
+    name: row.name,
     origin: row.origin,
     status: row.status,
     createdAt: row.created_at,

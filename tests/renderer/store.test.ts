@@ -14,7 +14,8 @@ import {
   sessionsInProject,
   ALL_PROJECTS,
 } from '@/state/store'
-import { anAgent, aProject, aSession } from './factories'
+import { ALL_TASKS } from '@/state/workflow'
+import { anAgent, aProject, aSession, aTask } from './factories'
 
 const INITIAL = useRoster.getState()
 
@@ -87,6 +88,19 @@ describe('filtering', () => {
     useRoster.setState({
       gridQuery: 'leak',
       sessions: { review: [aSession({ agentId: 'review', title: 'Session leak on 504' })] },
+    })
+
+    expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
+  })
+
+  test('the grid matches a session by the name it was given', () => {
+    // A named session is listed by its name, so that is what searching it
+    // has to match — its title is still "New session".
+    useRoster.setState({
+      gridQuery: 'pool',
+      sessions: {
+        review: [aSession({ agentId: 'review', title: 'New session', name: 'Pool leak on 504' })],
+      },
     })
 
     expect(selectGridAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
@@ -179,6 +193,7 @@ describe('edit draft', () => {
     useRoster.getState().openEdit()
 
     expect(useRoster.getState().draft).toEqual({
+      name: 'Debugging Agent',
       runner: 'claude',
       model: 'claude-opus-5',
       systemPrompt: 'Reproduce before you fix.',
@@ -186,7 +201,25 @@ describe('edit draft', () => {
       mcp: { filesystem: true },
       cwd: '/Users/test/work/api',
       cwdLabel: '~/work/api',
+      defaultProjectId: null,
     })
+  })
+
+  test('renaming in the draft does not touch the agent until it is saved', () => {
+    useRoster.getState().openEdit()
+    useRoster.getState().patchDraft({ name: 'Triage Agent' })
+
+    expect(useRoster.getState().draft?.name).toBe('Triage Agent')
+    expect(useRoster.getState().agents[0]?.name).toBe('Debugging Agent')
+  })
+
+  test('snapshots the agent default project into the draft', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging', defaultProjectId: 'proj-reliability' })],
+    })
+    useRoster.getState().openEdit()
+
+    expect(useRoster.getState().draft?.defaultProjectId).toBe('proj-reliability')
   })
 
   test('editing the draft does not touch the agent', () => {
@@ -402,5 +435,57 @@ describe('reduceTaskEvent — sessions attached to a task', () => {
     useRoster.getState().applyTaskEvent({ type: 'task-deleted', taskId: 'ROS-1' })
 
     expect(useRoster.getState().taskSessions['ROS-1']).toBeUndefined()
+  })
+})
+
+describe('the Workflow view', () => {
+  test('the grid opens on cards, with no task filter', () => {
+    expect(useRoster.getState().gridView).toBe('cards')
+    expect(useRoster.getState().workflowTaskId).toBe(ALL_TASKS)
+  })
+
+  test('a task opens the workflow filtered to itself and its project', () => {
+    // Arrange
+    const task = aTask({ id: 'ROS-101', projectId: 'proj-a' })
+    useRoster.setState({ tasks: [task], openTaskId: 'ROS-101', screen: 'tasks' })
+
+    // Act
+    useRoster.getState().openWorkflowForTask(task)
+
+    // Assert
+    const state = useRoster.getState()
+    expect(state.screen).toBe('grid')
+    expect(state.gridView).toBe('workflow')
+    expect(state.projectFilter).toBe('proj-a')
+    expect(state.workflowTaskId).toBe('ROS-101')
+    // Leaving it open would pop the modal back over the graph.
+    expect(state.openTaskId).toBeNull()
+  })
+
+  test('a task filed under no project still opens its own workflow', () => {
+    // The task select is otherwise gated on a project; arriving from an
+    // unfiled task has to work anyway, or the button lies.
+    useRoster.getState().openWorkflowForTask(aTask({ id: 'ROS-102', projectId: null }))
+
+    expect(useRoster.getState().projectFilter).toBe(ALL_PROJECTS)
+    expect(useRoster.getState().workflowTaskId).toBe('ROS-102')
+  })
+
+  test('deleting the filtered task clears the filter', () => {
+    // A filter pointing at a task that no longer exists shows an empty
+    // canvas and no reason for it.
+    useRoster.setState({ workflowTaskId: 'ROS-101', tasks: [aTask({ id: 'ROS-101' })] })
+
+    useRoster.getState().applyTaskEvent({ type: 'task-deleted', taskId: 'ROS-101' })
+
+    expect(useRoster.getState().workflowTaskId).toBe(ALL_TASKS)
+  })
+
+  test('deleting another task leaves the filter alone', () => {
+    useRoster.setState({ workflowTaskId: 'ROS-101' })
+
+    useRoster.getState().applyTaskEvent({ type: 'task-deleted', taskId: 'ROS-999' })
+
+    expect(useRoster.getState().workflowTaskId).toBe('ROS-101')
   })
 })

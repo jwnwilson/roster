@@ -31,6 +31,43 @@ export function skillsDir(): string {
 }
 
 /**
+ * The root of the scratch workspaces, for agents not pointed at a project.
+ *
+ * Inside Roster's home because a fresh install has nowhere else to put an
+ * agent, and one loose in the user's home directory is worse.
+ */
+export function workspaceDir(): string {
+  return join(rosterHome(), 'workspace')
+}
+
+/**
+ * An agent's own working directory, when it has not been given a project.
+ *
+ * Keyed on the id rather than the name for the reason `agentDir` is: the id
+ * is already unique — `AgentStore.create` mints it that way, because two
+ * different names can still slugify alike — and it does not change when the
+ * agent is renamed, so a rename cannot strand the files it has been working
+ * on. One agent is one word under `agents/` and here alike.
+ */
+export function agentWorkspaceDir(agentId: string): string {
+  return join(workspaceDir(), agentId)
+}
+
+/**
+ * The manifest that makes the skill library loadable.
+ *
+ * Claude Code discovers skills from settings sources or from a plugin, and
+ * Roster deliberately loads neither the user's settings nor the project's —
+ * an agent's skills are what its agent.toml says, not what happens to be on
+ * the machine. So Roster presents its own library as a local plugin, and this
+ * is the manifest that describes it. `skills/` is already exactly the layout a
+ * plugin uses, so nothing has to move.
+ */
+export function pluginManifestPath(): string {
+  return join(rosterHome(), '.claude-plugin', 'plugin.json')
+}
+
+/**
  * Where a plan's Markdown lives, one file per version.
  *
  * A plan is something you read, keep and answer, so it is a file rather than
@@ -62,4 +99,37 @@ export function mcpConfigPath(): string {
 
 export function databasePath(): string {
   return join(rosterHome(), 'roster.db')
+}
+
+/**
+ * The first-run marker.
+ *
+ * An explicit file rather than "the agents directory is empty": a user who
+ * deletes every seeded agent has an empty directory, and re-seeding them
+ * would undo a deliberate act. Its presence alone means first-run setup has
+ * already happened, whatever it says inside.
+ */
+export function setupStatePath(): string {
+  return join(rosterHome(), 'setup.json')
+}
+
+/**
+ * Where a project's files live, keyed on its id rather than its name.
+ *
+ * Two projects may be called the same thing, and renaming one must not
+ * orphan what was written under it — a slug does neither. The name is for
+ * the UI; this is for the disk. Projects keep their SQLite row as the source
+ * of identity; the folder is only for files.
+ */
+export function projectsDir(): string {
+  return join(rosterHome(), 'projects')
+}
+
+export function projectDir(projectId: string): string {
+  return join(projectsDir(), projectId)
+}
+
+/** The project's standing knowledge: decisions, conventions, gotchas. */
+export function projectNotesPath(projectId: string): string {
+  return join(projectDir(projectId), 'NOTES.md')
 }

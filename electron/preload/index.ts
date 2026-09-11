@@ -6,6 +6,7 @@ import {
   type RosterApi,
   type SessionEventPayload,
   type PlanEventPayload,
+  type ProjectNotesPayload,
   type TaskEventPayload,
 } from '../../shared/ipc'
 import type { Agent, UpdateState } from '../../shared/types'
@@ -42,15 +43,18 @@ const api: RosterApi = {
     listByAgent: (agentId) => ipcRenderer.invoke(CHANNELS.sessionsListByAgent, agentId),
     recentByAgent: () => ipcRenderer.invoke(CHANNELS.sessionsRecentByAgent),
     listAll: () => ipcRenderer.invoke(CHANNELS.sessionsListAll),
-    create: (agentId, title) => ipcRenderer.invoke(CHANNELS.sessionsCreate, agentId, title),
+    create: (agentId, title, projectId) =>
+      ipcRenderer.invoke(CHANNELS.sessionsCreate, agentId, title, projectId),
     messages: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsMessages, sessionId),
     usage: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsUsage, sessionId),
     spendSummary: () => ipcRenderer.invoke(CHANNELS.sessionsSpendSummary),
     send: (sessionId, prompt, options) =>
       ipcRenderer.invoke(CHANNELS.sessionsSend, sessionId, prompt, options),
     cancel: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsCancel, sessionId),
+    remove: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsDelete, sessionId),
     setProject: (sessionId, projectId) =>
       ipcRenderer.invoke(CHANNELS.sessionsSetProject, sessionId, projectId),
+    setName: (sessionId, name) => ipcRenderer.invoke(CHANNELS.sessionsSetName, sessionId, name),
     respondToApproval: (sessionId, approvalId, approved, answers) =>
       ipcRenderer.invoke(
         CHANNELS.sessionsRespondToApproval,
@@ -116,6 +120,11 @@ const api: RosterApi = {
     setArchived: (id, archived) =>
       ipcRenderer.invoke(CHANNELS.projectsSetArchived, id, archived),
     remove: (id) => ipcRenderer.invoke(CHANNELS.projectsDelete, id),
+    readNotes: (id) => ipcRenderer.invoke(CHANNELS.projectsReadNotes, id),
+    writeNotes: (id, contents) =>
+      ipcRenderer.invoke(CHANNELS.projectsWriteNotes, id, contents),
+    onNotesChanged: (listener) =>
+      subscribe<ProjectNotesPayload>(CHANNELS.projectsNotesChanged, listener),
   },
 
   tasks: {
@@ -137,6 +146,11 @@ const api: RosterApi = {
       ipcRenderer.invoke(CHANNELS.plansSubmit, planId, text, quote),
     approve: (planId: string) => ipcRenderer.invoke(CHANNELS.plansApprove, planId),
     onEvent: (listener) => subscribe<PlanEventPayload>(CHANNELS.plansEvent, listener),
+  },
+
+  setup: {
+    state: () => ipcRenderer.invoke(CHANNELS.setupState),
+    dismiss: () => ipcRenderer.invoke(CHANNELS.setupDismiss),
   },
 
   update: {

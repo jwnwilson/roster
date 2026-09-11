@@ -29,6 +29,10 @@ function handlers(): Map<string, (args: never) => Promise<ToolResult>> {
   }) as never
 
   const tools: PlanTools = {
+    propose: (body) => plans.capture({ sessionId: 's1', agentId: 'debugging', body }),
+    // Reads the real store, so a test that moves the plan on moves what the
+    // handler sees with it.
+    currentStatus: () => plans.listBySession('s1').at(-1)?.status ?? null,
     recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
   }
 
@@ -67,8 +71,103 @@ describe('the plan tools an agent is given', () => {
   test('are named the way the runner allowlist expects', () => {
     // A tool missing from the list does not fail loudly — it blocks on the
     // approval gate forever.
-    expect(PLAN_TOOL_NAMES).toEqual(['mcp__plans__record_pull_request'])
-    expect([...handlers().keys()]).toEqual(['record_pull_request'])
+    expect(PLAN_TOOL_NAMES).toEqual([
+      'mcp__plans__propose_plan',
+      'mcp__plans__record_pull_request',
+    ])
+    expect([...handlers().keys()]).toEqual(['propose_plan', 'record_pull_request'])
+  })
+})
+
+describe('an agent presenting a plan', () => {
+  function proposePlan(): (args: never) => Promise<ToolResult> {
+    const handler = handlers().get('propose_plan')
+    if (!handler) throw new Error('propose_plan was never built')
+    return handler
+  }
+
+  test('captures the plan and names it back so the agent knows it landed', async () => {
+    // Arrange
+    aPlan()
+
+    // Act
+    const result = await proposePlan()({ plan: '# Add a cache\n\nThe details.' } as never)
+
+    // Assert
+    expect(result.isError).toBeUndefined()
+    expect(result.content[0]?.text).toContain('Add a cache')
+    expect(plans.listBySession('s1').map((plan) => plan.title)).toContain('Add a cache')
+  })
+
+  test('tells the agent to stop rather than carry on into the work', async () => {
+    aPlan()
+
+    const result = await proposePlan()({ plan: '# Do it\n\nHow.' } as never)
+
+    expect(result.content[0]?.text).toMatch(/stop/i)
+  })
+
+  test('refuses an empty plan with something the agent can act on', async () => {
+    aPlan()
+
+    const result = await proposePlan()({ plan: '   ' } as never)
+
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toContain('plan')
+  })
+
+  test('will not turn a plan being built back into a draft', async () => {
+    // `capture` rewrites the newest plan in place and resets it to 'draft'
+    // while keeping the branch and pull request it had picked up. A stray
+    // propose on a later turn would leave a draft that still shows a pull
+    // request and offers "Approve & build" again, and settleBuild cannot
+    // catch it because it only matches a plan that still reads 'building'.
+    // Arrange
+    const plan = aPlan()
+    plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc' })
+
+    // Act
+    const result = await proposePlan()({ plan: '# Something else\n\nWhy.' } as never)
+
+    // Assert
+    expect(result.isError).toBe(true)
+    expect(result.content[0]?.text).toMatch(/already being built/i)
+    expect(plans.findById(plan.id)).toMatchObject({ status: 'building', version: 1 })
+  })
+
+  test('will not reopen a plan whose pull request is already up for review', async () => {
+    const plan = aPlan()
+    plans.recordPullRequest(plan.id, { url: 'https://github.com/o/r/pull/31' })
+
+    const result = await proposePlan()({ plan: '# Something else\n\nWhy.' } as never)
+
+    expect(result.isError).toBe(true)
+    expect(plans.findById(plan.id)).toMatchObject({
+      status: 'in_review',
+      prUrl: 'https://github.com/o/r/pull/31',
+      version: 1,
+    })
+  })
+
+  test('still takes a revision while the plan is a draft', async () => {
+    const plan = aPlan()
+
+    const result = await proposePlan()({ plan: '# Revised\n\nBetter.' } as never)
+
+    expect(result.isError).toBeUndefined()
+    expect(plans.findById(plan.id)).toMatchObject({ status: 'draft', version: 2 })
+  })
+
+  test('still takes a revision while the plan is out for revision', async () => {
+    // The whole point of the revise flow: you sent notes back, and the
+    // rewritten plan is what returns.
+    const plan = aPlan()
+    plans.setStatus(plan.id, 'revising')
+
+    const result = await proposePlan()({ plan: '# Revised\n\nBetter.' } as never)
+
+    expect(result.isError).toBeUndefined()
+    expect(plans.findById(plan.id)).toMatchObject({ status: 'draft', version: 2 })
   })
 })
 

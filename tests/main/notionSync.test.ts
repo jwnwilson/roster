@@ -120,6 +120,30 @@ describe('importing', () => {
     expect(tasks.findAll()[0]?.assigneeId).toBe('debugging')
   })
 
+  test('matches a Notion person whose name carries stray whitespace', async () => {
+    // Nothing normalizes a Notion display name — it arrives as the workspace
+    // has it, and only Roster's own names are trimmed on the way in.
+    const { client } = fakeClient([
+      page('p1', 'Fix it', { Owner: { people: [{ name: '  Debugging Agent ' }] } }),
+    ])
+
+    await importConnection(client, CONNECTION, tasks, () => AGENTS)
+
+    expect(tasks.findAll()[0]?.assigneeId).toBe('debugging')
+  })
+
+  test('leaves the assignee empty for a person with a blank name', async () => {
+    const { client } = fakeClient([
+      page('p1', 'Fix it', { Owner: { people: [{ name: '   ' }] } }),
+    ])
+
+    await importConnection(client, CONNECTION, tasks, () => AGENTS)
+
+    // Not the first agent whose name also trims to nothing — no agent's does,
+    // but matching blank against blank is how that would start.
+    expect(tasks.findAll()[0]?.assigneeId).toBeNull()
+  })
+
   test('leaves the assignee empty when nobody on the roster matches', async () => {
     const { client } = fakeClient([
       page('p1', 'Fix it', { Owner: { people: [{ name: 'Someone Else' }] } }),

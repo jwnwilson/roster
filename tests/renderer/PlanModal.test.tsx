@@ -206,18 +206,53 @@ describe('approving a plan', () => {
     await waitFor(() => expect(api.plans.approve).toHaveBeenCalledWith('plan-1'))
   })
 
-  test('warns when the agent cannot report the pull request back', async () => {
+  test('turns plan mode off for the session, so the build turn can write', async () => {
+    // Approving is the moment the agent is meant to start work. Codex raises
+    // no ExitPlanMode approval, so the banner that clears plan mode for a
+    // Claude agent never appears — leaving the composer toggle on and every
+    // edit in the next turn refused by the read-only sandbox.
+    // Arrange
+    const plan = aPlan({ sessionId: 'session-7' })
+    open(plan, [], { approve: vi.fn().mockResolvedValue(aPlan({ status: 'building' })) })
+    useRoster.getState().setPlanMode('session-7', true)
+    render(<PlanModal />)
+    const user = userEvent.setup()
+
+    // Act
+    await user.click(await screen.findByRole('button', { name: 'Approve & build' }))
+
+    // Assert
+    await waitFor(() => expect(useRoster.getState().planMode['session-7']).toBe(false))
+  })
+
+  test('leaves plan mode alone when approving failed', async () => {
+    const plan = aPlan({ sessionId: 'session-7' })
+    open(plan, [], { approve: vi.fn().mockRejectedValue(new Error('nope')) })
+    useRoster.getState().setPlanMode('session-7', true)
+    render(<PlanModal />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Approve & build' }))
+
+    expect(await screen.findByText('nope')).toBeInTheDocument()
+    expect(useRoster.getState().planMode['session-7']).toBe(true)
+  })
+
+  test('never advises enabling the plans server, because the plan itself grants the tool', async () => {
+    // The gate in planToolsFor grants record_pull_request whenever the
+    // session already has a plan — which, inside this modal, it always does.
+    // The old hint told you to enable a server you did not need.
     useRoster.setState({
       agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: [] })],
     })
     open()
     render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
 
-    // Otherwise the build runs and the link silently never arrives.
-    expect(await screen.findByText(/plans.*server/i)).toBeInTheDocument()
+    expect(screen.queryByText(/plans.*server/i)).not.toBeInTheDocument()
   })
 
-  test('says nothing about it when the agent has the server', async () => {
+  test('says nothing about a server when the agent has one', async () => {
     open()
     render(<PlanModal />)
     await screen.findByRole('heading', { name: 'Steps' })

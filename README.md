@@ -9,6 +9,9 @@ Roster is a harness and a UI over those processes, which means it needs no API
 keys on the primary path, never executes tools itself, and never manages context.
 The CLI owns all of that.
 
+The [landing page](https://jwnwilson.github.io/roster/) is the same introduction
+with screenshots, for anyone who has not opened the repository.
+
 ---
 
 ## Requirements
@@ -67,14 +70,28 @@ npm install     # also rebuilds better-sqlite3 and node-pty for Electron
 npm run dev     # launches the app with hot reload
 ```
 
-On first run Roster seeds `~/roster` with four example agents, five skills, and an
-MCP config. Nothing is overwritten if that directory already has agents in it.
+On first run Roster seeds `~/roster` with a starter roster — a Tech Lead, an
+Implementer and a Reviewer — plus five skills and an MCP config, and opens onto a
+dismissable card pointing at the Tech Lead. The agents are pointed at whichever
+CLI is actually installed, and none are created if none is. This happens once
+ever: `~/roster/setup.json` records it, so agents you delete stay deleted and an
+existing `~/roster` is never seeded over.
+
+An agent's working directory is the project it works on. Point it at a repo and
+that is where it runs; leave it unset and it gets a folder of its own at
+`~/roster/workspace/<id>`, so agents never work on each other's files. Either
+way it reads its agents, skills, plans, projects and MCP servers from `~/roster`.
 
 Point it somewhere else while developing:
 
 ```bash
 ROSTER_HOME=/tmp/roster-scratch npm run dev
 ```
+
+The landing page is `site/index.html` — static HTML and CSS, no build step and no
+dependency on this project's `package.json`. Open the file, or serve the folder
+(`python3 -m http.server -d site`), and `.github/workflows/pages.yml` publishes it
+whenever `site/` changes on `main`.
 
 ## Running the tests
 
@@ -180,8 +197,11 @@ writing a normalizer and, ideally, recording a fixture from a real run.
 ~/roster/
   agents/<id>/agent.toml   one file per agent — hand-editable
   skills/<name>/SKILL.md   the shared skill library, nested files and all
-  workspace/               default working directory for seeded agents
+  projects/<id>/NOTES.md   a project's standing notes — keyed on its id, not its name
+  workspace/<id>/          an agent's own files, when it is not pointed at a project
+  worktrees/<branch>/      where an agent builds a plan's worktree
   mcp.json                 MCP servers: launch command and environment
+  setup.json               first-run marker: what was seeded, and when it was dismissed
   roster.db                sessions, messages, approvals, usage, tasks, projects
 ```
 

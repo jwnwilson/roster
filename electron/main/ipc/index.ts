@@ -11,12 +11,14 @@ import {
   type NewConnectionInput,
   type TaskChange,
 } from '../../../shared/ipc'
-import type { PlanDocument, RunnerStatus, SpendSummary } from '../../../shared/types'
+import type { PlanDocument, RunnerStatus, Session, SetupState, SpendSummary } from '../../../shared/types'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
 import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
+import { removeSession } from '../sessions/remove'
+import { sessionLabel } from '../../../shared/sessions'
 import { TaskMentions } from '../sessions/mentions'
 import { AgentStore } from '../store/agents'
 import { McpStore, withServer } from '../store/mcp'
@@ -31,12 +33,13 @@ import { NotionAuth, type NotionOAuthConfig, type SecretBox } from '../notion/au
 import { detectMapping, unmappedStatuses } from '../notion/mapping'
 import { NotionPush, importConnection } from '../notion/sync'
 import { SkillStore } from '../store/skills'
+import { ProjectNotesStore } from '../store/projectNotes'
 import { UsageStore } from '../store/usage'
 import { Updater } from '../update/updater'
-import { databasePath, mcpConfigPath, rosterHome } from '../store/paths'
-import { join } from 'node:path'
+import { databasePath, mcpConfigPath } from '../store/paths'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
+import { dismissSetup, prepareFirstRun } from '../store/firstRun'
 
 let runners = new Map<string, RunnerStatus>()
 let db: Db | null = null
@@ -51,6 +54,19 @@ let mentions: TaskMentions | null = null
 let notionStore: NotionStore | null = null
 let notionPush: NotionPush | null = null
 let notionAuth: NotionAuth | null = null
+
+/**
+ * What first-run setup decided, held for the renderer to ask for.
+ *
+ * Defaults to "nothing to offer", so a window opening before initStores has
+ * finished never flashes a setup card at an established user.
+ */
+let setup: SetupState = {
+  pending: false,
+  startingAgentId: null,
+  seededAgentIds: [],
+  noRunner: false,
+}
 
 /**
  * Built lazily, because app.getVersion() and the downloads path are only
@@ -71,6 +87,7 @@ const EMPTY_SPEND: SpendSummary = { byAgent: {}, byProject: {} }
 
 const agentStore = new AgentStore(() => runners)
 const skillStore = new SkillStore()
+const projectNotesStore = new ProjectNotesStore()
 const mcpStore = new McpStore()
 const ptyManager = new PtyManager()
 
@@ -99,6 +116,27 @@ function requirePlanFlow(): PlanFlow {
 function requireSessions(): SessionStore {
   if (!sessionStore) throw new Error('session store is not initialised')
   return sessionStore
+}
+
+/** Delete through the one lifecycle both people and agents use. */
+async function deleteSession(sessionId: string, notify = true): Promise<Session | null> {
+  const removed = await removeSession(
+    {
+      sessions: requireSessions(),
+      plans: requirePlans(),
+      stopTurn: (id) => requireManager().stop(id),
+      closeTerminal: (id) => ptyManager.close(id),
+    },
+    sessionId,
+  )
+  if (removed && notify) {
+    broadcast(CHANNELS.sessionsEvent, {
+      type: 'session-deleted',
+      sessionId,
+      agentId: removed.agentId,
+    })
+  }
+  return removed
 }
 
 function requireMentions(): TaskMentions {
@@ -164,11 +202,16 @@ function requireTasks(): TaskStore {
 export async function initStores(): Promise<void> {
   await seedIfEmpty(mcpConfigPath())
 
-  // Detect first: an agent's status depends on whether its runner is usable.
+  // Detect first: an agent's status depends on whether its runner is usable,
+  // and first-run seeding will only point agents at a CLI that is installed.
   runners = await detectAllRunners()
   await agentStore.load()
+
+  // Seeds the starter roster, once ever, on a genuinely fresh install.
+  setup = await prepareFirstRun(agentStore, runners)
   await skillStore.load()
   await mcpStore.load()
+  await projectNotesStore.load()
 
   // Bring your own CLI: agents naming a custom command get a runner.
   registerCustomRunners(agentStore.findAll())
@@ -188,6 +231,7 @@ export async function initStores(): Promise<void> {
   db = openDatabase(databasePath())
   sessionStore = new SessionStore(db)
   usageStore = new UsageStore(db)
+  usageStore.backfillCodex(agentStore.findAll())
   projectStore = new ProjectStore(db)
   // Agent ids resolve to display names through the agent store, since agents
   // live in agent.toml rather than in this database.
@@ -206,6 +250,8 @@ export async function initStores(): Promise<void> {
     usageStore,
     { tasks: taskStore, projects: projectStore },
     planStore,
+    projectNotesStore,
+    { removeSession: (sessionId) => deleteSession(sessionId, false) },
   )
   planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
@@ -237,6 +283,13 @@ export async function initStores(): Promise<void> {
   taskStore.subscribe((event) => {
     if (event.type === 'task-updated') notionPush?.taskChanged(event.task.id)
   })
+  // Notes have the same two writers the board has — the person editing them
+  // and any agent holding the memory tools — so a change has to reach an open
+  // editor, and the watch is also what keeps the copy the brief reads current
+  // when NOTES.md is edited outside Roster.
+  projectNotesStore.watch((projectId, notes) =>
+    broadcast(CHANNELS.projectsNotesChanged, { projectId, notes }),
+  )
   ptyManager.onData((sessionId, data) => broadcast(CHANNELS.ptyData, { sessionId, data }))
   ptyManager.onExit((sessionId, code) => broadcast(CHANNELS.ptyExit, { sessionId, code }))
   agentStore.watch((agents) => {
@@ -290,7 +343,8 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.agentsCreate, (_e, input: NewAgentInput) =>
     agentStore.create({
       ...input,
-      cwd: input.cwd ?? join(rosterHome(), 'workspace'),
+      // cwd deliberately not defaulted here: an omitted one means "a folder of
+      // its own", and only the store knows the id that folder is named for.
       mcpServers: input.mcpServers ?? [],
     }),
   )
@@ -303,8 +357,10 @@ export function registerIpc(): void {
   )
   ipcMain.handle(CHANNELS.sessionsRecentByAgent, () => requireSessions().recentByAgent())
   ipcMain.handle(CHANNELS.sessionsListAll, () => requireSessions().listAll())
-  ipcMain.handle(CHANNELS.sessionsCreate, (_e, agentId: string, title?: string) =>
-    requireManager().create(agentId, title),
+  ipcMain.handle(
+    CHANNELS.sessionsCreate,
+    (_e, agentId: string, title?: string, projectId?: string | null) =>
+      requireManager().create(agentId, title, projectId),
   )
   ipcMain.handle(CHANNELS.sessionsMessages, (_e, sessionId: string) =>
     requireSessions().messages(sessionId),
@@ -321,6 +377,27 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsCancel, (_e, sessionId: string) =>
     requireManager().cancel(sessionId),
   )
+
+  ipcMain.handle(CHANNELS.sessionsDelete, async (e, sessionId: string) => {
+    const session = requireSessions().findById(sessionId)
+    if (!session) return false
+
+    // A transcript is the record of turns that cost real money, and there is
+    // no archive to fall back on the way a project has — so this asks first,
+    // as deleting a task or a skill does.
+    const confirmed = await confirmDelete(
+      e,
+      // What the user calls it, which is what the tab they clicked says.
+      sessionLabel(session),
+      'Its transcript, its plans and its spend go with it. A turn in flight is ' +
+        'stopped first. This cannot be undone.',
+    )
+    if (!confirmed) return false
+
+    const removed = await deleteSession(sessionId)
+    if (!removed) return false
+    return true
+  })
   ipcMain.handle(
     CHANNELS.sessionsRespondToApproval,
     (
@@ -423,6 +500,11 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsSetProject, (_e, sessionId: string, projectId: string | null) =>
     requireSessions().setProject(sessionId, projectId),
   )
+  // The store normalizes and rejects an unknown id, so the handler stays a
+  // pass-through: one place decides what a name is.
+  ipcMain.handle(CHANNELS.sessionsSetName, (_e, sessionId: string, name: string | null) =>
+    requireSessions().setName(sessionId, name),
+  )
 
   ipcMain.handle(CHANNELS.notionInspect, async (_e, databaseInput: string) => {
     const databaseId = databaseIdFrom(databaseInput)
@@ -515,6 +597,11 @@ export function registerIpc(): void {
     return true
   })
 
+  ipcMain.handle(CHANNELS.projectsReadNotes, (_e, id: string) => projectNotesStore.read(id))
+  ipcMain.handle(CHANNELS.projectsWriteNotes, (_e, id: string, contents: string) =>
+    projectNotesStore.write(id, contents),
+  )
+
   ipcMain.handle(CHANNELS.tasksList, () => requireTasks().findAll())
   ipcMain.handle(CHANNELS.tasksCreate, (_e, input: NewTaskInput) => requireTasks().create(input))
   ipcMain.handle(CHANNELS.tasksApply, (_e, taskId: string, change: TaskChange) => {
@@ -575,6 +662,12 @@ export function registerIpc(): void {
     requirePlanFlow().submit(planId, text, quote),
   )
   ipcMain.handle(CHANNELS.plansApprove, (_e, planId: string) => requirePlanFlow().approve(planId))
+
+  ipcMain.handle(CHANNELS.setupState, () => setup)
+  ipcMain.handle(CHANNELS.setupDismiss, async () => {
+    setup = await dismissSetup()
+    return setup
+  })
 
   ipcMain.handle(CHANNELS.updateVersion, () => app.getVersion())
   ipcMain.handle(CHANNELS.updateCheck, () => requireUpdater().check())
@@ -640,6 +733,7 @@ export function disposeStores(): void {
   agentStore.dispose()
   skillStore.dispose()
   mcpStore.dispose()
+  projectNotesStore.dispose()
   notionPush?.dispose()
   db?.close()
 }

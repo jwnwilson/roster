@@ -10,6 +10,7 @@ import type {
   Project,
   RunnerStatus,
   Session,
+  SetupState,
   Skill,
   Status,
   Task,
@@ -56,7 +57,11 @@ export interface RosterApi {
     listAll(): Promise<Record<string, Session[]>>
     /** Last few lines of each agent's most recent session, for the grid cards. */
     recentByAgent(): Promise<Record<string, TranscriptLine[]>>
-    create(agentId: string, title?: string): Promise<Session>
+    /**
+     * Opens a session. `projectId` files it explicitly — omitted, the agent's
+     * own default project decides, and null means none either way.
+     */
+    create(agentId: string, title?: string, projectId?: string | null): Promise<Session>
     messages(sessionId: string): Promise<Message[]>
     usage(sessionId: string): Promise<Usage | null>
     /**
@@ -66,8 +71,24 @@ export interface RosterApi {
     spendSummary(): Promise<SpendSummary>
     send(sessionId: string, prompt: string, options?: SendOptions): Promise<void>
     cancel(sessionId: string): Promise<void>
+    /**
+     * Confirms, then deletes the session outright: its transcript, its usage,
+     * its plans and the link any task held to it all go with it. A turn in
+     * flight is stopped first, and its terminal is killed.
+     *
+     * The confirmation happens in the main process, so a caller in the
+     * renderer cannot skip it; a dismissal resolves false rather than
+     * rejecting.
+     */
+    remove(sessionId: string): Promise<boolean>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
+    /**
+     * Names the session, or clears the name with null. A name that is blank
+     * once trimmed clears it too — an unnamed session is a state the app
+     * renders, not an error it refuses.
+     */
+    setName(sessionId: string, name: string | null): Promise<Session>
     /**
      * Answers a pending approval. `answers` is only for a question: it is
      * keyed by question text and reaches the tool as its own input, so
@@ -149,6 +170,19 @@ export interface RosterApi {
     setArchived(id: string, archived: boolean): Promise<Project>
     /** Resolves false when the confirmation dialog was dismissed. */
     remove(id: string): Promise<boolean>
+    /**
+     * The project's NOTES.md — what it knows that is not a task. Resolves an
+     * empty string when nobody has written any yet.
+     */
+    readNotes(id: string): Promise<string>
+    /** Replaces the whole file, as the editor does. Agents only ever append. */
+    writeNotes(id: string, contents: string): Promise<void>
+    /**
+     * Fires when a project's notes change: an agent appending mid-turn, or an
+     * edit made in another editor. Without it an open notes editor would show
+     * a file that has since moved on.
+     */
+    onNotesChanged(listener: (payload: ProjectNotesPayload) => void): () => void
   }
   tasks: {
     list(): Promise<Task[]>
@@ -190,6 +224,12 @@ export interface RosterApi {
     approve(planId: string): Promise<Plan>
     /** Live plan changes — a revision arriving, or a note from either side. */
     onEvent(listener: (event: PlanEventPayload) => void): () => void
+  }
+  setup: {
+    /** Whether the first-run card is still worth showing, and what it offers. */
+    state(): Promise<SetupState>
+    /** Puts the card away for good. Resolves the state it leaves behind. */
+    dismiss(): Promise<SetupState>
   }
   update: {
     /** Look for a newer release; the result arrives on onStatus. */
@@ -266,6 +306,12 @@ export type PlanEventPayload =
   | { type: 'plan-updated'; plan: Plan }
   | { type: 'comment'; planId: string; comment: PlanComment }
 
+/** One project's notes, as they now stand on disk. */
+export interface ProjectNotesPayload {
+  projectId: string
+  notes: string
+}
+
 export type TaskEventPayload =
   | { type: 'task-created'; task: Task }
   | { type: 'task-updated'; task: Task }
@@ -275,6 +321,11 @@ export type TaskEventPayload =
   | { type: 'projects'; projects: Project[] }
 
 export interface AgentPatch {
+  /**
+   * A new display name. The id never changes with it — everything that points
+   * at an agent points at the id, so a rename leaves attribution alone.
+   */
+  name?: string
   runner?: string
   model?: string
   systemPrompt?: string
@@ -282,6 +333,8 @@ export interface AgentPatch {
   mcpServers?: string[]
   cwd?: string
   hidden?: boolean
+  /** Null clears the default; omitted leaves it as it is. */
+  defaultProjectId?: string | null
 }
 
 export interface NewAgentInput {
@@ -290,9 +343,14 @@ export interface NewAgentInput {
   model: string
   systemPrompt: string
   skills: string[]
-  /** Defaults to ~/roster/workspace when omitted. */
+  /**
+   * The project this agent works on. Omitted gives it a scratch folder of its
+   * own at ~/roster/workspace/<id>, rather than one shared with every agent.
+   */
   cwd?: string
   mcpServers?: string[]
+  /** The project this agent's sessions are filed under. Null for none. */
+  defaultProjectId?: string | null
 }
 
 export interface PtySize {
@@ -307,7 +365,11 @@ export interface PtyInfo {
   history: string
 }
 
-/** Mirrors SessionManager's event union across the IPC boundary. */
+/**
+ * Mirrors SessionManager's event union across the IPC boundary, plus the one
+ * event the manager cannot raise: a session being deleted is not part of a
+ * turn, so it is broadcast by the handler that removed it.
+ */
 export type SessionEventPayload =
   | { type: 'message'; sessionId: string; message: Message }
   | { type: 'message-updated'; sessionId: string; message: Message }
@@ -317,6 +379,7 @@ export type SessionEventPayload =
   | { type: 'approval-resolved'; sessionId: string; approvalId: string }
   | { type: 'streaming'; sessionId: string; active: boolean }
   | { type: 'activity'; sessionId: string; text: string }
+  | { type: 'session-deleted'; sessionId: string; agentId: string }
 
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
@@ -342,6 +405,7 @@ export const CHANNELS = {
   sessionsSpendSummary: 'sessions:spendSummary',
   sessionsSend: 'sessions:send',
   sessionsCancel: 'sessions:cancel',
+  sessionsDelete: 'sessions:delete',
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsEvent: 'sessions:event',
@@ -370,6 +434,7 @@ export const CHANNELS = {
   mcpSave: 'mcp:save',
 
   sessionsSetProject: 'sessions:setProject',
+  sessionsSetName: 'sessions:setName',
 
   notionInspect: 'notion:inspect',
   notionConnect: 'notion:connect',
@@ -384,6 +449,9 @@ export const CHANNELS = {
   projectsUpdate: 'projects:update',
   projectsSetArchived: 'projects:setArchived',
   projectsDelete: 'projects:delete',
+  projectsReadNotes: 'projects:readNotes',
+  projectsWriteNotes: 'projects:writeNotes',
+  projectsNotesChanged: 'projects:notesChanged', // broadcast, not invoke
 
   plansListBySession: 'plans:listBySession',
   plansRead: 'plans:read',
@@ -400,6 +468,9 @@ export const CHANNELS = {
   tasksComment: 'tasks:comment',
   tasksSessions: 'tasks:sessions',
   tasksEvent: 'tasks:event', // broadcast, not invoke
+
+  setupState: 'setup:state',
+  setupDismiss: 'setup:dismiss',
 
   updateCheck: 'update:check',
   updateDownload: 'update:download',

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Plan, PlanComment, PlanStatus } from '@shared/types'
-import { PLANS_SERVER } from '@shared/mcp'
 import { Markdown } from '../components/Markdown'
 import { Modal, SectionLabel } from '../components/primitives'
 import { messageFor } from '../lib/errors'
@@ -44,6 +43,7 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
   const agents = useRoster(useShallow((s) => s.agents))
   const setPlan = useRoster((s) => s.setPlan)
   const setPlanComments = useRoster((s) => s.setPlanComments)
+  const setPlanMode = useRoster((s) => s.setPlanMode)
 
   const [text, setText] = useState('')
   const [quote, setQuote] = useState<string | null>(null)
@@ -82,7 +82,6 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
   const { plan, body } = document
   const agent = agents.find((candidate) => candidate.id === plan.agentId)
   const agentName = agent?.name ?? 'The agent'
-  const canReport = agent?.mcpServers.includes(PLANS_SERVER) === true
 
   /** Both actions hand the plan back to its agent, so both close the modal. */
   async function act(run: () => Promise<Plan>, after: () => void): Promise<void> {
@@ -114,41 +113,51 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
         </div>
       }
       footer={
+        // Nothing here advises enabling the “plans” server any more. The gate
+        // in planToolsFor hands an agent record_pull_request whenever its
+        // session already holds a plan, and inside this modal it always does —
+        // so the pull request is linked either way, and the old hint sent you
+        // to the MCP screen for nothing.
         plan.status === 'draft' ? (
-          <>
-            {canReport ? null : (
-              <span className="text-sm text-faint">
-                Enable the “{PLANS_SERVER}” server on {agentName} for the pull request to be
-                linked here.
-              </span>
-            )}
-            <div className="ml-auto flex flex-none gap-[8px]">
-              <button
-                type="button"
-                disabled={busy || note === ''}
-                onClick={() =>
-                  void act(
-                    () => window.roster.plans.submit(plan.id, note, quote ?? undefined),
-                    () => {
-                      setText('')
-                      setQuote(null)
-                    },
-                  )
-                }
-                className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[12px] py-[6px] font-ui text-md text-muted hover:border-line-hover disabled:cursor-default disabled:opacity-50"
-              >
-                Send comments
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void act(() => window.roster.plans.approve(plan.id), onClose)}
-                className="cursor-pointer rounded-chip border-0 bg-accent px-[12px] py-[6px] font-ui text-md font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-50"
-              >
-                Approve &amp; build
-              </button>
-            </div>
-          </>
+          <div className="ml-auto flex flex-none gap-[8px]">
+            <button
+              type="button"
+              disabled={busy || note === ''}
+              onClick={() =>
+                void act(
+                  () => window.roster.plans.submit(plan.id, note, quote ?? undefined),
+                  () => {
+                    setText('')
+                    setQuote(null)
+                  },
+                )
+              }
+              className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[12px] py-[6px] font-ui text-md text-muted hover:border-line-hover disabled:cursor-default disabled:opacity-50"
+            >
+              Send comments
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                void act(
+                  () => window.roster.plans.approve(plan.id),
+                  () => {
+                    // Approving is the moment the agent is meant to start
+                    // work, so the build turn must be able to write. For a
+                    // Claude agent the ExitPlanMode banner clears this, but
+                    // Codex raises no such approval — without this the toggle
+                    // stays on and every edit in the next turn is refused.
+                    setPlanMode(plan.sessionId, false)
+                    onClose()
+                  },
+                )
+              }
+              className="cursor-pointer rounded-chip border-0 bg-accent px-[12px] py-[6px] font-ui text-md font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-50"
+            >
+              Approve &amp; build
+            </button>
+          </div>
         ) : (
           <Waiting plan={plan} agentName={agentName} />
         )

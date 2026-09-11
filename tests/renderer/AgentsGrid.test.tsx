@@ -269,6 +269,72 @@ describe('AgentsGrid — sessions', () => {
     expect(within(chip as HTMLElement).getByText('•')).toBeInTheDocument()
   })
 
+  test('a chip is labelled by the name the session was given', () => {
+    useRoster.setState({
+      sessions: {
+        review: [
+          aSession({ id: 'r1', agentId: 'review', title: 'New session', name: 'Pool leak' }),
+        ],
+      },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('Pool leak')).toBeInTheDocument()
+    expect(screen.queryByText('New session')).not.toBeInTheDocument()
+  })
+
+  test('highlights a session waiting on a decision with an accessible name', () => {
+    useRoster.setState({
+      sessions: {
+        review: [
+          aSession({
+            id: 'review-approval',
+            agentId: 'review',
+            title: 'Approve the release',
+            status: 'approval',
+          }),
+        ],
+      },
+    })
+    render(<AgentsGrid />)
+
+    const chip = screen.getByRole('button', {
+      name: 'Open session Approve the release — needs your decision',
+    })
+    expect(chip).toHaveClass('border-amber-line', 'bg-amber-surface', 'text-amber-text')
+  })
+
+  test('keeps a decision-needed session directly keyboard-navigable', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({
+      sessions: {
+        review: [
+          aSession({
+            id: 'review-approval',
+            agentId: 'review',
+            title: 'Approve the release',
+            status: 'approval',
+          }),
+        ],
+      },
+    })
+    render(<AgentsGrid />)
+
+    const chip = screen.getByRole('button', {
+      name: 'Open session Approve the release — needs your decision',
+    })
+    chip.focus()
+    await user.keyboard('{Enter}')
+
+    expect(useRoster.getState().agentId).toBe('review')
+    expect(useRoster.getState().sess.review).toBe('review-approval')
+    expect(chip).toHaveAttribute('aria-current', 'page')
+    expect(chip).toHaveClass('outline-line-active')
+
+    await user.keyboard('{Space}')
+    expect(useRoster.getState().sess.review).toBe('review-approval')
+  })
+
   test('says so when an agent has no sessions yet', () => {
     render(<AgentsGrid />)
     expect(screen.getAllByText('no sessions yet').length).toBe(3)
@@ -363,6 +429,19 @@ describe('AgentsGrid — spend', () => {
 
     expect(screen.getByText('86.1k tok')).toBeInTheDocument()
     expect(screen.getByText('$0.91')).toBeInTheDocument()
+  })
+
+  test('labels a Codex API-equivalent estimate on the agent card', () => {
+    useRoster.setState({
+      agents: [anAgent({ id: 'debugging' })],
+      agentUsage: { debugging: { tokens: 1_000, costUsd: 0.91, hasEstimatedCost: true } },
+    })
+    render(<AgentsGrid />)
+
+    expect(screen.getByText('$0.91 estimated')).toHaveAttribute(
+      'title',
+      'Estimated from token usage; not an invoiced ChatGPT charge.',
+    )
   })
 
   test('an agent that has never run reads as zero', () => {

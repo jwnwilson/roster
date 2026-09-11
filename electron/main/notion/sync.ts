@@ -93,10 +93,27 @@ function applyIfChanged(
   tasks.apply(taskId, { field, value: next } as never, IMPORTER)
 }
 
-/** A Notion person matched to an agent by name, or nobody. */
+/**
+ * A Notion person matched to an agent by name, or nobody.
+ *
+ * The one place an agent's name carries meaning rather than just labelling
+ * something — everywhere else in Roster points at the id. So renaming an
+ * agent does change who Notion's people resolve to, which is the behaviour
+ * to want: the name is how a person in Notion and an agent here are the same
+ * one, and changing it is saying they are not.
+ *
+ * Both sides are trimmed because neither is typed here: a Notion display
+ * name arrives as the workspace has it, and only Roster's own names are
+ * normalized on the way in. Names being unique case-insensitively is what
+ * makes the match a match rather than whichever agent `find` reached first.
+ */
 function agentIdFor(name: string | null, agents: readonly Agent[]): string | null {
   if (name === null) return null
-  const match = agents.find((agent) => agent.name.toLowerCase() === name.toLowerCase())
+
+  const wanted = name.trim().toLowerCase()
+  if (wanted === '') return null
+
+  const match = agents.find((agent) => agent.name.trim().toLowerCase() === wanted)
   return match?.id ?? null
 }
 

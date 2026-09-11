@@ -1,14 +1,17 @@
 import { useEffect, useState } from "react";
 import type { Agent, ModelInfo } from "@shared/types";
+import { useShallow } from "zustand/shallow";
 import {
   ChipField,
+  DefaultProjectField,
   ModelPicker,
+  NameField,
   ProviderPicker,
   SystemPromptField,
   WorkingDirectory,
 } from "@/components/AgentFields";
-import { Field, Modal } from "@/components/primitives";
-import { useRoster } from "@/state/store";
+import { Modal } from "@/components/primitives";
+import { projectPickerProjects, useRoster } from "@/state/store";
 import { messageFor } from "@/lib/errors";
 
 interface EditAgentModalProps {
@@ -31,6 +34,11 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
   const skills = useRoster((s) => s.skills);
   const mcpServers = useRoster((s) => s.mcpServers);
   const go = useRoster((s) => s.go);
+  // The agent's own default stays listed even once archived, so an agent
+  // filed under one does not read as having no default at all.
+  const projectOptions = useRoster(
+    useShallow((s) => projectPickerProjects(s, s.draft?.defaultProjectId ?? null)),
+  );
 
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [saving, setSaving] = useState(false);
@@ -58,6 +66,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
 
     try {
       await window.roster.agents.update(agent.id, {
+        name: draft.name.trim(),
         runner: draft.runner,
         model: draft.model,
         systemPrompt: draft.systemPrompt,
@@ -68,6 +77,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           .filter(([, on]) => on)
           .map(([name]) => name),
         cwd: draft.cwd,
+        defaultProjectId: draft.defaultProjectId,
       });
       // Re-read rather than patching locally, so the UI reflects the file.
       setAgents(await window.roster.agents.list());
@@ -107,7 +117,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           <button
             type="button"
             onClick={() => void save()}
-            disabled={saving || draft.model === ""}
+            disabled={saving || draft.model === "" || draft.name.trim() === ""}
             className="cursor-pointer rounded-pill border-0 bg-accent px-[15px] py-[7px] font-ui text-lg font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save changes"}
@@ -116,11 +126,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[20px] overflow-y-auto p-[18px]">
-        <Field label="Name">
-          <span className="rounded-field border border-line-card bg-card px-[12px] py-[9px] text-xl text-ink">
-            {agent.name}
-          </span>
-        </Field>
+        <NameField value={draft.name} onChange={(name) => patchDraft({ name })} />
 
         <SystemPromptField
           value={draft.systemPrompt}
@@ -143,6 +149,12 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           value={draft.cwdLabel}
           current={draft.cwd}
           onChange={(cwd) => patchDraft({ cwd, cwdLabel: cwd })}
+        />
+
+        <DefaultProjectField
+          projects={projectOptions}
+          value={draft.defaultProjectId}
+          onChange={(defaultProjectId) => patchDraft({ defaultProjectId })}
         />
 
         <ChipField

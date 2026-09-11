@@ -65,6 +65,12 @@ export interface Agent {
    * still spends.
    */
   hidden: boolean
+  /**
+   * The project a new session on this agent is filed under when the caller
+   * names none. Null when the agent has no default, and ignored at session
+   * time if it names a project that has since been archived or deleted.
+   */
+  defaultProjectId?: string | null
   /** Only present when runner is not a builtin. */
   custom?: CustomRunnerSpec
   /** Derived, not persisted. */
@@ -87,6 +93,13 @@ export interface Session {
   id: string
   agentId: string
   title: string
+  /**
+   * What you call this session, given by hand from the config rail. Null
+   * until somebody names it — every session that predates naming is in that
+   * state, and so is every one nobody has got round to. `sessionLabel` in
+   * shared/sessions.ts is what turns either state into something to render.
+   */
+  name?: string | null
   origin: SessionOrigin
   /** Display name of the agent that opened this session, when origin is 'agent'. */
   from?: string
@@ -226,13 +239,25 @@ export interface Usage {
   outputTokens: number
   /** Every token consumed, cache included; see the runner event of the same name. */
   totalTokens: number
+  /** Cache hits are a subset of Codex input tokens. */
+  cachedInputTokens?: number
+  /** Whether this is provider-billed, an API-equivalent estimate, or unknown. */
+  costType?: CostType
+  /** Model used to calculate an estimate, retained for historic stability. */
+  model?: string | null
+  /** Version of the rate table used to calculate an estimate. */
+  rateTableVersion?: string | null
   costUsd: number
 }
+
+export type CostType = 'actual' | 'estimated' | 'unavailable'
 
 /** What one agent has spent, summed across its sessions. */
 export interface AgentUsage {
   tokens: number
   costUsd: number
+  hasEstimatedCost?: boolean
+  hasUnavailableCost?: boolean
 }
 
 /**
@@ -352,6 +377,15 @@ export interface Skill {
    * user's own file and removing the skill only removes the link.
    */
   linkedFrom?: string
+  /**
+   * Set when the skill has no frontmatter, so no runner will load it.
+   *
+   * Only ever true for a linked skill. Roster repairs its own copies on load,
+   * but a linked skill's SKILL.md lives in a repo the user maintains and
+   * writing into someone else's checkout is not Roster's call — so it is
+   * reported instead, where the person who owns the file can fix it.
+   */
+  needsFrontmatter?: boolean
   files: string[]
   lastEditedMs: number
 }
@@ -483,4 +517,26 @@ export interface PlanComment {
   /** The version it was written against, so it keeps its meaning after a rewrite. */
   version: number
   createdAt: number
+}
+
+/* -------------------------------------------------------------------------
+ * First-run setup — what a brand-new install is offered before it has a
+ * roster of its own.
+ *
+ * Derived in the main process from a marker file, never from "the roster is
+ * empty": a user who deletes every agent has an empty roster and must not be
+ * handed a new one.
+ * ---------------------------------------------------------------------- */
+export interface SetupState {
+  /** The first-run card is still worth showing. */
+  pending: boolean
+  /**
+   * The agent to start with — the Tech Lead. Null once it has been deleted,
+   * or when nothing could be seeded.
+   */
+  startingAgentId: string | null
+  /** Agents seeded on first run, in the order they were created. */
+  seededAgentIds: string[]
+  /** No CLI Roster can drive was installed, so nothing was seeded. */
+  noRunner: boolean
 }

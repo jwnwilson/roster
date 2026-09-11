@@ -1,9 +1,9 @@
-import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, rm, readFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { RunnerStatus } from '@shared/types'
-import { AgentStore } from '@main/store/agents'
+import { AgentStore, withCwdLine } from '@main/store/agents'
 
 let home: string
 
@@ -301,5 +301,461 @@ describe('AgentStore.watch', () => {
 
     expect(calls).toBe(afterDispose)
     store.dispose()
+  })
+})
+
+describe('AgentStore.update — renaming', () => {
+  test('writes the new name back to agent.toml', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const renamed = await store.update('debug', { name: 'Triage Agent' })
+
+    expect(renamed.name).toBe('Triage Agent')
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).toContain(
+      'Triage Agent',
+    )
+  })
+
+  test('keeps the id, so sessions and tasks stay attributed', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const renamed = await store.update('debug', { name: 'Triage Agent' })
+
+    expect(renamed.id).toBe('debug')
+    expect(store.findById('debug')?.name).toBe('Triage Agent')
+  })
+
+  test('survives a reload', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+    await store.update('debug', { name: 'Triage Agent' })
+
+    const reopened = new AgentStore(statusMap(READY))
+    await reopened.load()
+
+    expect(reopened.findById('debug')?.name).toBe('Triage Agent')
+  })
+
+  test('trims surrounding whitespace', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect((await store.update('debug', { name: '  Triage Agent  ' })).name).toBe('Triage Agent')
+  })
+
+  test('rejects a blank name', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: '   ' })).rejects.toThrow(/needs a name/)
+    expect(store.findById('debug')?.name).toBe('Debugging Agent')
+  })
+
+  test('rejects a name that is not text at all, since IPC input is untrusted', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: 42 as unknown as string })).rejects.toThrow(
+      /must be text/,
+    )
+  })
+
+  test('rejects a name longer than the limit', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: 'x'.repeat(61) })).rejects.toThrow(
+      /60 characters/,
+    )
+  })
+
+  test('rejects a name another agent already answers to, whatever the case', async () => {
+    await writeAgent('debug', VALID)
+    await writeAgent('review', VALID.replace('Debugging Agent', 'Review Agent'))
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(store.update('debug', { name: 'review agent' })).rejects.toThrow(
+      /already an agent named/,
+    )
+  })
+
+  test('lets an agent keep its own name while recasing it', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect((await store.update('debug', { name: 'DEBUGGING AGENT' })).name).toBe('DEBUGGING AGENT')
+  })
+
+  test('leaves the name alone when the patch does not mention it', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect((await store.update('debug', { model: 'claude-sonnet-5' })).name).toBe('Debugging Agent')
+  })
+})
+
+describe('AgentStore.create — name validation', () => {
+  const base = {
+    runner: 'claude',
+    model: 'claude-opus-5',
+    systemPrompt: '',
+    skills: [],
+  }
+
+  test('trims the name it is given', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({
+      ...base,
+      name: '  Review Agent  ',
+      cwd: join(home, 'workspace'),
+    })
+
+    expect(created.name).toBe('Review Agent')
+    expect(created.id).toBe('review-agent')
+  })
+
+  test('refuses a blank name rather than writing an unnameable agent', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(
+      store.create({ ...base, name: '  ', cwd: join(home, 'workspace') }),
+    ).rejects.toThrow(/needs a name/)
+  })
+
+  test('refuses a name already in the roster', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    await expect(
+      store.create({ ...base, name: 'debugging agent', cwd: join(home, 'workspace') }),
+    ).rejects.toThrow(/already an agent named/)
+  })
+})
+
+describe('AgentStore.create — the working directory', () => {
+  const base = {
+    runner: 'claude',
+    model: 'claude-opus-5',
+    systemPrompt: '',
+    skills: [],
+  }
+
+  test('scopes an agent with no cwd to a folder of its own', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    expect(created.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+
+  test('creates that folder, since spawning into a missing cwd reads as a missing binary', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    expect((await stat(created.cwd)).isDirectory()).toBe(true)
+  })
+
+  test('gives two agents whose names slugify alike separate folders', async () => {
+    // assertNameIsFree lets these both exist — the names differ. Only
+    // uniqueId keeps them off the same directory.
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const first = await store.create({ ...base, name: 'Tech Lead' })
+    const second = await store.create({ ...base, name: 'Tech Lead!' })
+
+    expect(second.cwd).not.toBe(first.cwd)
+    expect(second.cwd).toBe(join(home, 'workspace', 'tech-lead-2'))
+  })
+
+  test('uses an explicit cwd as given, since that is the project the agent works on', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({ ...base, name: 'Tech Lead', cwd: join(home, 'api') })
+
+    expect(created.cwd).toBe(join(home, 'api'))
+  })
+
+  test('writes the scoped cwd to agent.toml, so it survives a reload', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    const reloaded = new AgentStore(statusMap(READY))
+    await reloaded.load()
+
+    expect(reloaded.findById(created.id)?.cwd).toBe(created.cwd)
+  })
+
+  test('renaming leaves the folder alone, so work in progress is not stranded', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+    const created = await store.create({ ...base, name: 'Tech Lead' })
+
+    const renamed = await store.update(created.id, { name: 'Principal Engineer' })
+
+    expect(renamed.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+})
+
+describe('AgentStore.load — scoping agents that share the old workspace', () => {
+  /** An agent as an existing install has it: pointed at the shared workspace. */
+  async function writeSharing(id: string, name: string): Promise<void> {
+    await writeAgent(
+      id,
+      [
+        `name = "${name}"`,
+        'runner = "claude"',
+        'model = "claude-opus-5"',
+        `cwd = "${join(home, 'workspace')}"`,
+        '',
+      ].join('\n'),
+    )
+  }
+
+  test('re-points every agent when the shared workspace is empty', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeSharing('tech-lead', 'Tech Lead')
+    await writeSharing('reviewer', 'Reviewer')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+    expect(store.findById('reviewer')?.cwd).toBe(join(home, 'workspace', 'reviewer'))
+  })
+
+  test('persists the re-pointing to agent.toml rather than only in memory', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    await new AgentStore(statusMap(READY)).load()
+
+    const written = await readFile(join(home, 'agents', 'tech-lead', 'agent.toml'), 'utf8')
+    expect(written).toContain('workspace/tech-lead')
+  })
+
+  test('rewrites the cwd line and nothing else, since agent.toml is hand-edited', async () => {
+    // Reserializing the file is semantically identical but flattens formatting
+    // the user chose and writes back defaults they never set. This runs
+    // unattended on upgrade, so it has to leave the rest of the file alone.
+    const hand = [
+      'name = "Local Agent"',
+      'runner = "ollama-codex"',
+      'model = "qwen3:0.6b"',
+      `cwd = "${join(home, 'workspace')}"`,
+      'skills = []',
+      'mcp_servers = []',
+      '',
+      '[custom]',
+      'command = "codex"',
+      'args = [',
+      '  "exec", "--json",',
+      '  "-C", "{cwd}", "{prompt}",',
+      ']',
+      '',
+    ].join('\n')
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeAgent('local', hand)
+
+    await new AgentStore(statusMap(READY)).load()
+
+    const after = await readFile(join(home, 'agents', 'local', 'agent.toml'), 'utf8')
+    expect(after).toBe(hand.replace(`cwd = "${join(home, 'workspace')}"`, `cwd = "${join(home, 'workspace', 'local')}"`))
+  })
+
+  test('leaves them alone when the shared workspace has files in it', async () => {
+    // Several agents' work mixed in one folder cannot be split by a machine,
+    // and guessing would destroy it.
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeFile(join(home, 'workspace', 'notes.md'), 'work in progress', 'utf8')
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace'))
+  })
+
+  test('treats a lone .DS_Store as empty, since Finder writes one for merely looking', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeFile(join(home, 'workspace', '.DS_Store'), 'finder noise', 'utf8')
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+
+  test('never touches an agent pointed at a project of its own', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeAgent('debug', VALID)
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('debug')?.cwd).toBe('/work/api')
+  })
+
+  test('is idempotent: a second load changes nothing', async () => {
+    await mkdir(join(home, 'workspace'), { recursive: true })
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    await new AgentStore(statusMap(READY)).load()
+    const first = await readFile(join(home, 'agents', 'tech-lead', 'agent.toml'), 'utf8')
+
+    await new AgentStore(statusMap(READY)).load()
+    const second = await readFile(join(home, 'agents', 'tech-lead', 'agent.toml'), 'utf8')
+
+    expect(second).toBe(first)
+  })
+
+  test('does nothing when there is no shared workspace at all', async () => {
+    await writeSharing('tech-lead', 'Tech Lead')
+
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('tech-lead')?.cwd).toBe(join(home, 'workspace', 'tech-lead'))
+  })
+})
+
+describe('withCwdLine — the surgical rewrite, and when it declines', () => {
+  const FILE = 'name = "A"\nrunner = "claude"\ncwd = "/old"\nmodel = "m"\n'
+
+  test('replaces the line and leaves every other byte alone', () => {
+    expect(withCwdLine(FILE, '/new')).toBe('name = "A"\nrunner = "claude"\ncwd = "/new"\nmodel = "m"\n')
+  })
+
+  test('declines a file with no cwd at all rather than inventing a line', () => {
+    expect(withCwdLine('name = "A"\nrunner = "claude"\n', '/new')).toBeNull()
+  })
+
+  test('declines when two cwd keys make the target ambiguous', () => {
+    expect(withCwdLine('cwd = "/a"\ncwd = "/b"\nrunner = "claude"\nname = "A"\n', '/new')).toBeNull()
+  })
+
+  test('ignores a cwd inside a section, which belongs to that section', () => {
+    // A `cwd` under [custom] is not the agent's working directory.
+    const file = 'name = "A"\nrunner = "claude"\n\n[custom]\ncwd = "/elsewhere"\n'
+
+    expect(withCwdLine(file, '/new')).toBeNull()
+  })
+
+  test('declines rather than returning a file that no longer parses', () => {
+    // The result is parsed back before it is offered, so a surgical edit can
+    // never hand back something that reads differently from what it replaced.
+    expect(withCwdLine('cwd = "/old"\nthis is not toml\n', '/new')).toBeNull()
+  })
+
+  test('quotes a path that would otherwise break the TOML', () => {
+    const rewritten = withCwdLine(FILE, '/a "quoted" \\ path')
+
+    expect(rewritten).toContain('cwd = "/a \\"quoted\\" \\\\ path"')
+  })
+})
+
+describe('AgentStore — default project', () => {
+  test('an agent without one reports no default', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('debug')?.defaultProjectId).toBeNull()
+  })
+
+  test('exposes the one named in agent.toml', async () => {
+    await writeAgent('debug', `${VALID}default_project = "proj-reliability"\n`)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('debug')?.defaultProjectId).toBe('proj-reliability')
+  })
+
+  test('writes a new default back to agent.toml', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { defaultProjectId: 'proj-reliability' })
+
+    expect(updated.defaultProjectId).toBe('proj-reliability')
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).toContain(
+      'default_project = "proj-reliability"',
+    )
+  })
+
+  test('keeps a default given at creation, so the form need not set it twice', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({
+      name: 'Review Agent',
+      runner: 'claude',
+      model: 'claude-opus-5',
+      cwd: join(home, 'workspace'),
+      systemPrompt: '',
+      skills: [],
+      mcpServers: ['filesystem'],
+      defaultProjectId: 'proj-reliability',
+    })
+
+    expect(created.defaultProjectId).toBe('proj-reliability')
+    expect(created.mcpServers).toEqual(['filesystem'])
+    // On disk, not merely in the returned object: a reload has to agree.
+    const toml = await readFile(join(home, 'agents', 'review-agent', 'agent.toml'), 'utf8')
+    expect(toml).toContain('default_project = "proj-reliability"')
+  })
+
+  test('clears it when set back to null', async () => {
+    await writeAgent('debug', `${VALID}default_project = "proj-reliability"\n`)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { defaultProjectId: null })
+
+    expect(updated.defaultProjectId).toBeNull()
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).not.toContain(
+      'default_project',
+    )
+  })
+
+  test('leaves the default alone when the patch does not mention it', async () => {
+    await writeAgent('debug', `${VALID}default_project = "proj-reliability"\n`)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { model: 'claude-sonnet-5' })
+
+    expect(updated.defaultProjectId).toBe('proj-reliability')
+  })
+
+  test('a broken agent reports no default rather than throwing', async () => {
+    await writeAgent('bad', 'name = "Broken"\nrunner = "claude"\ncwd = "/tmp"\n')
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    expect(store.findById('bad')?.defaultProjectId).toBeNull()
   })
 })

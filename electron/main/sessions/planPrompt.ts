@@ -47,16 +47,45 @@ export function worktreeFor(plan: Plan): string {
   return join(worktreesDir(), branchFor(plan).split('/').slice(1).join('-'))
 }
 
-/** Ask for another pass at the plan, not for the work. */
+/**
+ * Ask for another pass at the plan, not for the work.
+ *
+ * Every runner shares this string, so it names no tool: Claude's is
+ * ExitPlanMode, Codex's is propose_plan, and neither name means anything to
+ * the other. What has to survive the rewrite is the intent — another plan,
+ * not the work — and each runner already knows the mechanism for presenting
+ * one from planInstruction, or from the SDK's own plan mode for Claude.
+ */
 export function revisePrompt(input: PlanPromptInput): string {
   return [
     'Your plan has been reviewed. Revise it to take the notes below into account.',
     '',
-    'Stay in plan mode: present the revised plan with ExitPlanMode when it is ready.',
+    'Stay in plan mode: present the revised plan for review when it is ready.',
     'Do not start the work yet.',
     '',
     notesSection(input),
     planSection(input),
+  ].join('\n')
+}
+
+/**
+ * How a runner with no native plan mode is told to present its plan.
+ *
+ * Claude needs none of this: the SDK's own plan mode instructs the model and
+ * supplies ExitPlanMode. Codex has no equivalent, so the mechanism has to be
+ * named, and this string is the whole of it.
+ */
+export function planInstruction(): string {
+  return [
+    'You are in plan mode: research and propose only.',
+    'Do not change the repository this turn: the sandbox is read-only, so any',
+    'attempt to write, move or delete a file will be refused.',
+    '',
+    'When the plan is ready, call the propose_plan tool on the "plans" MCP server,',
+    'passing the whole plan as Markdown in `plan` and opening with a heading that',
+    'names what you propose to do. That ends the turn.',
+    '',
+    'Do not start the work. You will be told whether to build it.',
   ].join('\n')
 }
 
