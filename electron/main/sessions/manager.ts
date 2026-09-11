@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import type { Agent, Approval, Message, Session, Usage } from '../../../shared/types'
+import type { Agent, Approval, Message, Question, Session, ToolMessage, Usage } from '../../../shared/types'
 import {
   isBuiltinMcpServer,
   MEMORY_SERVER,
@@ -108,6 +108,10 @@ interface ActiveRun {
   toolStartedAt: Map<string, number>
   /** Approvals raised during this run. */
   approvals: Map<string, Approval>
+  /** Pending calls to Roster's own decision tool, keyed by approval id. */
+  decisionResolvers: Map<string, (decision: ApprovalDecision) => void>
+  /** Transcript rows for those calls, updated when the user responds. */
+  decisionMessages: Map<string, ToolMessage>
   runnerId: string
   model: string
   /** Prose received but not yet written or broadcast. */
@@ -368,6 +372,8 @@ export class SessionManager {
       toolMessages: new Map(),
       toolStartedAt: new Map(),
       approvals: new Map(),
+      decisionResolvers: new Map(),
+      decisionMessages: new Map(),
       runnerId: agent.runner,
       model: agent.model,
       pendingText: '',
@@ -425,6 +431,7 @@ export class SessionManager {
     } catch (cause) {
       this.failTurn(sessionId, cause instanceof Error ? cause.message : String(cause))
     } finally {
+      this.cancelDecisionTools(sessionId, run)
       // First, and before anything else this turn writes: the bridge is the
       // one door another process holds into this session's stores, and a turn
       // that has ended must not still be reachable through it.
@@ -783,8 +790,15 @@ export class SessionManager {
     const run = this.active.get(sessionId)
     if (!run) return
 
-    const runner = getRunner(run.runnerId)
-    runner?.respondToApproval(approvalId, decision)
+    const resolveDecision = run.decisionResolvers.get(approvalId)
+    if (resolveDecision) {
+      run.decisionResolvers.delete(approvalId)
+      resolveDecision(decision)
+      this.completeDecisionTool(sessionId, run, approvalId, decision)
+    } else {
+      const runner = getRunner(run.runnerId)
+      runner?.respondToApproval(approvalId, decision)
+    }
 
     run.approvals.delete(approvalId)
     this.emit({ type: 'approval-resolved', sessionId, approvalId })
@@ -938,6 +952,7 @@ export class SessionManager {
         return { sessionId: result.session.id, label: result.label, started: result.started }
       },
       closeSession: (childSessionId) => this.closeChildSession(session.id, childSessionId),
+      requestUserDecision: (questions) => this.requestUserDecision(session.id, questions),
     }
 
     // The board is opt-in per agent, like any other MCP server. An agent that
@@ -957,6 +972,92 @@ export class SessionManager {
       ...(plans ? { plans } : {}),
       ...(memory ? { memory } : {}),
     }
+  }
+
+  /**
+   * Turns a Roster MCP decision call into the same pending approval the
+   * renderer already understands. The tool promise is the gate: its runner
+   * cannot continue until respondToApproval settles it.
+   */
+  private requestUserDecision(
+    sessionId: string,
+    questions: Question[],
+  ): Promise<{ approved: boolean; answers: Record<string, string> }> {
+    const run = this.active.get(sessionId)
+    if (!run) return Promise.resolve({ approved: false, answers: {} })
+
+    const id = randomUUID()
+    const approval: Approval = {
+      id,
+      sessionId,
+      toolName: 'request_user_decision',
+      command: questions[0]?.question ?? 'User decision',
+      questions,
+      status: 'pending',
+      createdAt: Date.now(),
+    }
+
+    return new Promise((resolve) => {
+      run.decisionResolvers.set(id, (decision) =>
+        resolve({ approved: decision.approved, answers: decision.answers ?? {} }),
+      )
+      const message = this.record(sessionId, {
+        sessionId,
+        kind: 'tool',
+        tool: 'request_user_decision',
+        args: approval.command,
+        input: JSON.stringify({ questions }),
+        output: '',
+        isError: false,
+      }) as ToolMessage
+      run.decisionMessages.set(id, message)
+      // Register the resolver before the synchronous event emission. A test
+      // harness (or a future renderer shortcut) may answer immediately; if
+      // it did so first, the tool promise would otherwise wait forever.
+      run.approvals.set(id, approval)
+      this.setStatus(sessionId, 'approval')
+      this.emit({ type: 'approval', sessionId, approval })
+    })
+  }
+
+  /**
+   * A stopped or failed turn cannot leave an MCP tool waiting for a person
+   * who can no longer answer it. Resolve just Roster's own calls here; a
+   * runner owns any of its native approvals.
+   */
+  private cancelDecisionTools(sessionId: string, run: ActiveRun): void {
+    for (const [id, resolve] of run.decisionResolvers) {
+      const decision = { approved: false, reason: 'The turn ended before you answered.' }
+      resolve(decision)
+      this.completeDecisionTool(sessionId, run, id, decision)
+      run.approvals.delete(id)
+      this.emit({ type: 'approval-resolved', sessionId, approvalId: id })
+    }
+    run.decisionResolvers.clear()
+
+    if (run.approvals.size === 0 && this.sessions.findById(sessionId)?.status === 'approval') {
+      this.setStatus(sessionId, 'running')
+    }
+  }
+
+  /** Completes the durable transcript row that opened a Roster decision. */
+  private completeDecisionTool(
+    sessionId: string,
+    run: ActiveRun,
+    approvalId: string,
+    decision: ApprovalDecision,
+  ): void {
+    const message = run.decisionMessages.get(approvalId)
+    if (!message) return
+    run.decisionMessages.delete(approvalId)
+
+    const updated: ToolMessage = {
+      ...message,
+      output: decision.approved ? JSON.stringify({ answers: decision.answers ?? {} }) : decision.reason ?? 'Denied',
+      isError: !decision.approved,
+    }
+    this.sessions.update(updated)
+    this.emit({ type: 'message-updated', sessionId, message: updated })
   }
 
   /**
