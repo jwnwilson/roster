@@ -69,10 +69,6 @@ const api: RosterApi = {
       subscribe(CHANNELS.sessionsEvent, listener),
   },
 
-  voice: {
-    transcribe: (input) => ipcRenderer.invoke(CHANNELS.voiceTranscribe, input),
-  },
-
   pty: {
     open: (sessionId, cwd, size: PtySize) =>
       ipcRenderer.invoke(CHANNELS.ptyOpen, sessionId, cwd, size),

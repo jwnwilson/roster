@@ -104,10 +104,6 @@ export interface RosterApi {
     /** Live turn events: messages, status, usage, approvals. */
     onEvent(listener: (event: SessionEventPayload) => void): () => void
   }
-  /** Speech-to-text for the chat composer; never starts an agent turn itself. */
-  voice: {
-    transcribe(input: TranscriptionInput): Promise<TranscriptionResult>
-  }
   pty: {
     open(sessionId: string, cwd: string, size: PtySize): Promise<PtyInfo>
     write(sessionId: string, data: string): void
@@ -262,17 +258,6 @@ export interface SendOptions {
   planMode?: boolean
 }
 
-/** A completed, in-memory microphone clip supplied by the renderer. */
-export interface TranscriptionInput {
-  audio: ArrayBuffer
-  mimeType: string
-}
-
-/** Text is returned for review in the composer; it is not sent automatically. */
-export interface TranscriptionResult {
-  text: string
-}
-
 /** What the connect modal sends once the mapping has been confirmed. */
 export interface NewConnectionInput {
   name: string
@@ -424,8 +409,6 @@ export const CHANNELS = {
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsEvent: 'sessions:event',
-
-  voiceTranscribe: 'voice:transcribe',
 
   ptyOpen: 'pty:open',
   ptyWrite: 'pty:write',
