@@ -175,7 +175,7 @@ describe('AgentDetail — sessions', () => {
     ])
     render(<AgentDetail />)
 
-    expect(await screen.findByRole('button', { name: /^Session leak/ })).toBeInTheDocument()
+    expect(await screen.findAllByRole('button', { name: /^Session leak/ })).toHaveLength(3)
     expect(screen.queryByText('needs you')).not.toBeInTheDocument()
   })
 })
