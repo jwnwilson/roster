@@ -267,7 +267,7 @@ describe('a Codex agent asking Roster for a decision', () => {
 
     expect(approvals).toHaveLength(1)
     expect(approvals[0]?.questions?.[0]).toMatchObject({ question: 'Which cache?', header: 'Cache' })
-    expect(callResult).toMatchObject({ isError: undefined })
+    expect(callResult?.isError).toBeUndefined()
     expect(callResult?.content[0]?.text).toContain('Redis')
     expect(sessions.messages(session.id)).toEqual(
       expect.arrayContaining([
