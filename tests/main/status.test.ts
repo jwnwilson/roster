@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { STATUSES } from '@shared/types'
 import {
   rollUpAgentStatus,
+  sessionNeedsAttention,
   statusColor,
   statusLabel,
   transcriptOpacity,
@@ -20,6 +21,19 @@ describe('status vocabulary', () => {
     expect(statusLabel('approval')).toBe('needs you')
     expect(statusLabel('done')).toBe('finished')
   })
+})
+
+describe('sessionNeedsAttention', () => {
+  test('identifies approval as the one state waiting on a user decision', () => {
+    expect(sessionNeedsAttention('approval')).toBe(true)
+  })
+
+  test.each(['running', 'done', 'idle', 'error'] as const)(
+    'does not mark %s as waiting on the user',
+    (status) => {
+      expect(sessionNeedsAttention(status)).toBe(false)
+    },
+  )
 })
 
 describe('transcriptOpacity', () => {
