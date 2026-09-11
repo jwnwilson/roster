@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Agent, Session, TranscriptLine } from '@shared/types'
 import { sessionLabel } from '@shared/sessions'
-import { statusColor, statusLabel, transcriptOpacity } from '@shared/status'
+import { sessionNeedsAttention, statusColor, statusLabel, transcriptOpacity } from '@shared/status'
 import { useShallow } from 'zustand/shallow'
 import {
   ALL_PROJECTS,
@@ -150,7 +150,7 @@ function AgentCard({ agent }: AgentCardProps) {
   )
   const selected = useRoster((s) => s.sess[agent.id])
   const status = useRoster((s) => agentStatus(s, agent))
-  const needsApproval = status === 'approval'
+  const needsApproval = sessionNeedsAttention(status)
 
   return (
     <button
@@ -282,28 +282,42 @@ interface SessionChipProps {
 
 function SessionChip({ session, agentId, active }: SessionChipProps) {
   const openAgent = useRoster((s) => s.openAgent)
+  const needsAttention = sessionNeedsAttention(session.status)
+  const label = sessionLabel(session)
 
   return (
     <span
       role="button"
       tabIndex={0}
+      aria-current={active ? 'page' : undefined}
+      aria-label={`Open session ${label}${needsAttention ? ' — needs your decision' : ''}`}
       onClick={(e) => {
         e.stopPropagation()
         openAgent(agentId, session.id)
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return
+        // A role=button span does not get native button Space semantics. Stop
+        // the browser from scrolling the grid while this keyboard activation
+        // opens the blocked session.
+        e.preventDefault()
         e.stopPropagation()
         openAgent(agentId, session.id)
       }}
-      className={`flex max-w-[150px] cursor-pointer items-center gap-[6px] overflow-hidden rounded-sm px-[8px] py-[3px] text-sm whitespace-nowrap hover:bg-[#1c1e26] ${
-        active ? 'bg-[#1c1e26] text-ink-2' : 'bg-transparent text-dim'
+      className={`flex max-w-[150px] cursor-pointer items-center gap-[6px] overflow-hidden rounded-sm px-[8px] py-[3px] text-sm whitespace-nowrap focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent-light ${
+        needsAttention
+          ? `border border-amber-line bg-amber-surface text-amber-text hover:border-amber ${
+              active ? 'outline outline-1 outline-line-active' : ''
+            }`
+          : active
+            ? 'bg-[#1c1e26] text-ink-2'
+            : 'bg-transparent text-dim hover:bg-[#1c1e26]'
       }`}
     >
       <span aria-hidden className="text-dim-2">
         {session.origin === 'agent' ? '↳' : '•'}
       </span>
-      <span className="truncate">{sessionLabel(session)}</span>
+      <span className="truncate">{label}</span>
       <StatusDot status={session.status} size={5} />
     </span>
   )

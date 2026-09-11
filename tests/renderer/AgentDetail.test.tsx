@@ -102,6 +102,82 @@ describe('AgentDetail — sessions', () => {
     expect(within(tab).getByText('↳')).toBeInTheDocument()
     expect(within(tab).getByText('Architect Agent')).toBeInTheDocument()
   })
+
+  test('labels an approval tab as needing the user and opens its command controls', async () => {
+    const user = userEvent.setup()
+    withSessions([
+      aSession({ id: 's1', title: 'Ordinary work' }),
+      aSession({ id: 's2', title: 'Force push', status: 'approval' }),
+    ])
+    useRoster.setState({
+      approvals: {
+        s2: [
+          {
+            id: 'a2',
+            sessionId: 's2',
+            toolName: 'Bash',
+            command: 'git push --force',
+            status: 'pending',
+            createdAt: 0,
+          },
+        ],
+      },
+    })
+    render(<AgentDetail />)
+
+    const tab = await screen.findByRole('button', { name: /Force push.*needs you/i })
+    expect(tab.parentElement).toHaveClass('border-amber-line-card')
+
+    tab.focus()
+    await user.keyboard('{Enter}')
+    expect(await screen.findByText('git push --force')).toBeInTheDocument()
+  })
+
+  test('opens question controls from an approval tab using the same attention status', async () => {
+    const user = userEvent.setup()
+    withSessions([
+      aSession({ id: 's1', title: 'Ordinary work' }),
+      aSession({ id: 's2', title: 'Choose cache', status: 'approval' }),
+    ])
+    useRoster.setState({
+      approvals: {
+        s2: [
+          {
+            id: 'a2',
+            sessionId: 's2',
+            toolName: 'AskUserQuestion',
+            command: 'Which cache backend?',
+            questions: [
+              {
+                question: 'Which cache backend?',
+                header: 'Cache',
+                multiSelect: false,
+                options: [{ label: 'Redis', description: 'Distributed' }],
+              },
+            ],
+            status: 'pending',
+            createdAt: 0,
+          },
+        ],
+      },
+    })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: /Choose cache.*needs you/i }))
+    expect(await screen.findByRole('button', { name: /Redis/ })).toBeInTheDocument()
+  })
+
+  test('does not add the attention label to sessions that are not awaiting approval', async () => {
+    withSessions([
+      aSession({ id: 's1', status: 'running' }),
+      aSession({ id: 's2', status: 'done' }),
+      aSession({ id: 's3', status: 'idle' }),
+    ])
+    render(<AgentDetail />)
+
+    expect(await screen.findAllByRole('button', { name: /^Session leak/ })).toHaveLength(3)
+    expect(screen.queryByText('needs you')).not.toBeInTheDocument()
+  })
 })
 
 describe('AgentDetail — approval banner', () => {
