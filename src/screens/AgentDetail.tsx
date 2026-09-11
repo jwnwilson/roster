@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { EXIT_PLAN_MODE } from '@shared/plans'
 import { sessionLabel } from '@shared/sessions'
-import { statusColor } from '@shared/status'
+import { sessionNeedsAttention, statusColor } from '@shared/status'
 import { taskStatusColor } from '@shared/tasks'
 import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
@@ -334,12 +334,18 @@ interface SessionTabProps {
  * of close buttons.
  */
 function SessionTab({ session, active, onSelect, onDelete }: SessionTabProps) {
+  const needsAttention = sessionNeedsAttention(session.status)
+
   return (
     <div
       className={`group flex items-center rounded-pill border pr-[6px] whitespace-nowrap hover:bg-[#1a1c23] ${
-        active
-          ? 'border-line-active bg-[#1c1e26] text-ink'
-          : 'border-transparent bg-transparent text-muted-2'
+        needsAttention
+          ? active
+            ? 'border-amber bg-amber-surface text-amber-text'
+            : 'border-amber-line-card bg-amber-surface text-amber-text'
+          : active
+            ? 'border-line-active bg-[#1c1e26] text-ink'
+            : 'border-transparent bg-transparent text-muted-2'
       }`}
     >
       <button
@@ -360,6 +366,7 @@ function SessionTab({ session, active, onSelect, onDelete }: SessionTabProps) {
         </span>
         <span className="text-md font-medium">{sessionLabel(session)}</span>
         <span className="text-xs text-faint">{session.from ?? 'you'}</span>
+        {needsAttention ? <span className="text-xs font-medium text-amber">needs you</span> : null}
         <StatusDot status={session.status} />
       </button>
 
