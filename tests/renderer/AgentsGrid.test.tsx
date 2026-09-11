@@ -330,6 +330,9 @@ describe('AgentsGrid — sessions', () => {
     expect(useRoster.getState().sess.review).toBe('review-approval')
     expect(chip).toHaveAttribute('aria-current', 'page')
     expect(chip).toHaveClass('outline-line-active')
+
+    await user.keyboard('{Space}')
+    expect(useRoster.getState().sess.review).toBe('review-approval')
   })
 
   test('says so when an agent has no sessions yet', () => {

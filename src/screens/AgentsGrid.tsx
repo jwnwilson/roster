@@ -297,6 +297,10 @@ function SessionChip({ session, agentId, active }: SessionChipProps) {
       }}
       onKeyDown={(e) => {
         if (e.key !== 'Enter' && e.key !== ' ') return
+        // A role=button span does not get native button Space semantics. Stop
+        // the browser from scrolling the grid while this keyboard activation
+        // opens the blocked session.
+        e.preventDefault()
         e.stopPropagation()
         openAgent(agentId, session.id)
       }}
