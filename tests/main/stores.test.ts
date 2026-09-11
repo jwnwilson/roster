@@ -170,8 +170,30 @@ describe('UsageStore', () => {
 
     store.backfillCodex([{ id: 'codex-agent', runner: 'codex', model: 'gpt-5.1-codex' } as Agent])
 
-    expect(store.forSession(codex.id)).toMatchObject({ costType: 'estimated', costUsd: 11.25, model: 'gpt-5.1-codex', rateTableVersion: '2026-09-06' })
+    expect(store.forSession(codex.id)).toMatchObject({ costType: 'estimated', costUsd: 11.25, model: 'gpt-5.1-codex', rateTableVersion: '2026-09-11' })
     expect(store.forSession(actual.id)).toMatchObject({ costType: 'actual', costUsd: 1.5 })
+  })
+
+  test('re-estimates an unavailable Codex row using its recorded model', () => {
+    const codex = sessions.create({ agentId: 'codex-agent', title: 'old', origin: 'you' })
+    store.record({
+      sessionId: codex.id,
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      totalTokens: 2_000_000,
+      costUsd: 0,
+      costType: 'unavailable',
+      model: 'gpt-5.5',
+    })
+
+    store.backfillCodex([{ id: 'codex-agent', runner: 'codex', model: 'gpt-99-codex' } as Agent])
+
+    expect(store.forSession(codex.id)).toMatchObject({
+      costType: 'estimated',
+      costUsd: 35,
+      model: 'gpt-5.5',
+      rateTableVersion: '2026-09-11',
+    })
   })
 
   test('rolls up actual, estimated, and unavailable usage without presenting unavailable as money', () => {

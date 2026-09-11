@@ -130,21 +130,32 @@ export class UsageStore {
     return { byAgent: this.byAgent(), byProject: this.byProject() }
   }
 
-  /** Safely classifies old Codex rows using the only historic model record available: agent.toml. */
+  /**
+   * Classify old zero-cost rows and retry rows that an earlier rate table
+   * could not map. Prefer a model persisted with an unavailable row: an
+   * agent's current configuration is only the fallback for pre-provenance
+   * history.
+   */
   backfillCodex(agents: readonly Agent[]): void {
     const codex = agents.filter((agent) => agent.runner === 'codex')
     const update = this.db.prepare(
       `UPDATE usage SET cost_usd = ?, cost_type = ?, model = ?, rate_table_version = ?
-       WHERE session_id = ? AND cost_type = 'actual' AND cost_usd = 0`,
+       WHERE session_id = ? AND cost_usd = 0 AND cost_type IN ('actual', 'unavailable')`,
     )
     const transaction = this.db.transaction(() => {
       for (const agent of codex) {
-        const rows = this.db.prepare<[string], Pick<UsageRow, 'session_id' | 'input_tokens' | 'output_tokens' | 'cached_input_tokens'>>(
-          `SELECT u.session_id, u.input_tokens, u.output_tokens, u.cached_input_tokens
-           FROM usage u JOIN sessions s ON s.id = u.session_id WHERE s.agent_id = ? AND u.cost_type = 'actual' AND u.cost_usd = 0`,
+        const rows = this.db.prepare<[string], Pick<UsageRow, 'session_id' | 'input_tokens' | 'output_tokens' | 'cached_input_tokens' | 'model'>>(
+          `SELECT u.session_id, u.input_tokens, u.output_tokens, u.cached_input_tokens, u.model
+           FROM usage u JOIN sessions s ON s.id = u.session_id
+           WHERE s.agent_id = ? AND u.cost_usd = 0 AND u.cost_type IN ('actual', 'unavailable')`,
         ).all(agent.id)
         for (const row of rows) {
-          const estimate = estimateCodexCost({ model: agent.model, inputTokens: row.input_tokens, cachedInputTokens: row.cached_input_tokens, outputTokens: row.output_tokens })
+          const estimate = estimateCodexCost({
+            model: row.model ?? agent.model,
+            inputTokens: row.input_tokens,
+            cachedInputTokens: row.cached_input_tokens,
+            outputTokens: row.output_tokens,
+          })
           update.run(estimate.costUsd, estimate.costType, estimate.model, estimate.rateTableVersion, row.session_id)
         }
       }
