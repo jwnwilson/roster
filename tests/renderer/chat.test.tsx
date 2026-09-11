@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { HandoffMessage, Message, SpawnMessage } from '@shared/types'
@@ -270,6 +270,7 @@ describe('AssistantChatPane — composer', () => {
 
     expect(screen.getByText('skills: repro-harness')).toBeInTheDocument()
     expect(screen.getByText('drop files here')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Record voice message' })).toBeEnabled()
   })
 
   test('sends what was typed', async () => {
@@ -281,6 +282,51 @@ describe('AssistantChatPane — composer', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(onSend).toHaveBeenCalledWith('find the leak')
+  })
+
+  test('puts a stopped recording in the draft for review before it can send', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    const stopTrack = vi.fn()
+    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] })
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    })
+    vi.stubGlobal('MediaRecorder', FakeMediaRecorder)
+    vi.mocked(window.roster.voice.transcribe).mockResolvedValue({ text: 'find the leak by voice' })
+    render(pane({ onSend }))
+
+    await user.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }))
+    await user.click(screen.getByRole('button', { name: 'Stop recording voice message' }))
+
+    await waitFor(() =>
+      expect(window.roster.voice.transcribe).toHaveBeenCalledWith(
+        expect.objectContaining({ mimeType: 'audio/webm;codecs=opus' }),
+      ),
+    )
+    expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('find the leak by voice')
+    expect(onSend).not.toHaveBeenCalled()
+    expect(stopTrack).toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onSend).toHaveBeenCalledWith('find the leak by voice')
+  })
+
+  test('keeps the typed draft and reports a denied microphone', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockRejectedValue(new Error('Microphone permission denied')) },
+    })
+    render(pane())
+    await user.type(screen.getByLabelText('Message Debugging Agent'), 'keep this')
+
+    await user.click(screen.getByRole('button', { name: 'Record voice message' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Microphone permission denied')
+    expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('keep this')
   })
 
   test('locks the composer while a turn is in flight', () => {
@@ -299,6 +345,26 @@ describe('AssistantChatPane — composer', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 })
+
+class FakeMediaRecorder extends EventTarget {
+  static isTypeSupported(): boolean {
+    return true
+  }
+
+  readonly mimeType = 'audio/webm;codecs=opus'
+
+  constructor(_stream: MediaStream, _options: MediaRecorderOptions) {
+    super()
+  }
+
+  start(): void {}
+
+  stop(): void {
+    const data = new Blob(['voice'], { type: this.mimeType })
+    this.dispatchEvent(Object.assign(new Event('dataavailable'), { data }))
+    this.dispatchEvent(new Event('stop'))
+  }
+}
 
 describe('formatting', () => {
   test('durations under a second read in milliseconds', () => {

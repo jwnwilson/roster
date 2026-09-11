@@ -1,4 +1,6 @@
-import { ComposerPrimitive } from '@assistant-ui/react'
+import { ComposerPrimitive, unstable_useComposerInput } from '@assistant-ui/react'
+import { useEffect, useRef, useState } from 'react'
+import { messageFor } from '@/lib/errors'
 
 export interface StreamingRowProps {
   text: string
@@ -66,6 +68,7 @@ export function Composer({
 
         <div className="flex items-center gap-[8px]">
           <span className="truncate font-mono text-sm text-faint">{skillsLine}</span>
+          <VoiceInput disabled={disabled} />
           <button
             type="button"
             aria-pressed={planMode}
@@ -93,6 +96,116 @@ export function Composer({
           </ComposerPrimitive.Send>
         </div>
       </ComposerPrimitive.Root>
+    </div>
+  )
+}
+
+/**
+ * Records only while the person explicitly asks it to. The returned text is
+ * put into assistant-ui's existing composer state, where it can be corrected
+ * or discarded before Send creates a turn.
+ */
+function VoiceInput({ disabled }: { disabled: boolean }) {
+  const composer = unstable_useComposerInput({ disabled })
+  const [state, setState] = useState<'idle' | 'recording' | 'transcribing'>('idle')
+  const [error, setError] = useState<string | null>(null)
+  const recorder = useRef<MediaRecorder | null>(null)
+  const stream = useRef<MediaStream | null>(null)
+  const discard = useRef(false)
+  const draft = useRef(composer.value)
+
+  useEffect(() => {
+    draft.current = composer.value
+  }, [composer.value])
+
+  useEffect(
+    () => () => {
+      discard.current = true
+      recorder.current?.stop()
+      stream.current?.getTracks().forEach((track) => track.stop())
+    }, [])
+
+  function release(): void {
+    stream.current?.getTracks().forEach((track) => track.stop())
+    stream.current = null
+    recorder.current = null
+  }
+
+  async function start(): Promise<void> {
+    if (composer.isDisabled || state !== 'idle') return
+    setError(null)
+    discard.current = false
+
+    try {
+      const captured = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // The request may settle after a component is disabled or unmounted.
+      if (discard.current) {
+        captured.getTracks().forEach((track) => track.stop())
+        return
+      }
+      stream.current = captured
+      const preferred = 'audio/webm;codecs=opus'
+      const mimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : 'audio/webm'
+      const next = new MediaRecorder(captured, { mimeType })
+      const chunks: BlobPart[] = []
+      next.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0) chunks.push(event.data)
+      })
+      next.addEventListener('stop', () => {
+        release()
+        if (discard.current) return
+        void transcribe(new Blob(chunks, { type: next.mimeType || mimeType }))
+      })
+      recorder.current = next
+      next.start()
+      setState('recording')
+    } catch (cause) {
+      release()
+      setState('idle')
+      setError(messageFor(cause) || 'Roster could not access the microphone.')
+    }
+  }
+
+  function stop(): void {
+    if (state !== 'recording') return
+    setState('transcribing')
+    recorder.current?.stop()
+  }
+
+  async function transcribe(audio: Blob): Promise<void> {
+    try {
+      const result = await window.roster.voice.transcribe({
+        audio: await audio.arrayBuffer(),
+        mimeType: audio.type,
+      })
+      if (result.text !== '') {
+        composer.setText(draft.current === '' ? result.text : `${draft.current}\n${result.text}`)
+      }
+    } catch (cause) {
+      setError(messageFor(cause))
+    } finally {
+      setState('idle')
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-[6px]">
+      <button
+        type="button"
+        aria-label={state === 'recording' ? 'Stop recording voice message' : 'Record voice message'}
+        aria-pressed={state === 'recording'}
+        disabled={composer.isDisabled || state === 'transcribing'}
+        onClick={() => void (state === 'recording' ? stop() : start())}
+        className={`flex-none cursor-pointer rounded-chip border px-[10px] py-[4px] font-ui text-md disabled:cursor-default disabled:opacity-40 ${
+          state === 'recording'
+            ? 'border-error bg-error/10 text-error'
+            : 'border-line-input bg-transparent text-muted-2 hover:border-line-hover'
+        }`}
+        data-hoverable
+      >
+        {state === 'recording' ? 'Stop' : state === 'transcribing' ? 'Transcribing…' : 'Voice'}
+      </button>
+      {error ? <span role="alert" className="max-w-[260px] text-sm text-error">{error}</span> : null}
     </div>
   )
 }

@@ -36,6 +36,9 @@
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Roster uses your microphone to transcribe voice messages before you send them to an agent."
+      },
       "target": [
         {
           "target": "dmg"
