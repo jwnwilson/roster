@@ -283,6 +283,55 @@ describe('AgentsGrid — sessions', () => {
     expect(screen.queryByText('New session')).not.toBeInTheDocument()
   })
 
+  test('highlights a session waiting on a decision with an accessible name', () => {
+    useRoster.setState({
+      sessions: {
+        review: [
+          aSession({
+            id: 'review-approval',
+            agentId: 'review',
+            title: 'Approve the release',
+            status: 'approval',
+          }),
+        ],
+      },
+    })
+    render(<AgentsGrid />)
+
+    const chip = screen.getByRole('button', {
+      name: 'Open session Approve the release — needs your decision',
+    })
+    expect(chip).toHaveClass('border-amber-line', 'bg-amber-surface', 'text-amber-text')
+  })
+
+  test('keeps a decision-needed session directly keyboard-navigable', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({
+      sessions: {
+        review: [
+          aSession({
+            id: 'review-approval',
+            agentId: 'review',
+            title: 'Approve the release',
+            status: 'approval',
+          }),
+        ],
+      },
+    })
+    render(<AgentsGrid />)
+
+    const chip = screen.getByRole('button', {
+      name: 'Open session Approve the release — needs your decision',
+    })
+    chip.focus()
+    await user.keyboard('{Enter}')
+
+    expect(useRoster.getState().agentId).toBe('review')
+    expect(useRoster.getState().sess.review).toBe('review-approval')
+    expect(chip).toHaveAttribute('aria-current', 'page')
+    expect(chip).toHaveClass('outline-line-active')
+  })
+
   test('says so when an agent has no sessions yet', () => {
     render(<AgentsGrid />)
     expect(screen.getAllByText('no sessions yet').length).toBe(3)
