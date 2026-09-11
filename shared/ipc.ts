@@ -23,6 +23,7 @@ import type {
 import type {
   ImportSummary,
   NotionConnection,
+  NotionAuthStatus,
   NotionInspection,
   NotionMapping,
 } from './notion'
@@ -122,6 +123,9 @@ export interface RosterApi {
     save(name: string, command: string, env: Record<string, string>): Promise<McpServer[]>
   }
   notion: {
+    authStatus(): Promise<NotionAuthStatus>
+    /** Opens Notion in the default browser and returns once approval is pending. */
+    beginAuth(): Promise<void>
     /**
      * Looks at a pasted database URL or id without saving anything: resolves
      * its data source, reads the schema, and guesses a mapping to correct.
@@ -372,6 +376,8 @@ export const CHANNELS = {
   notionConnections: 'notion:connections',
   notionImport: 'notion:import',
   notionDisconnect: 'notion:disconnect',
+  notionAuthStatus: 'notion:authStatus',
+  notionBeginAuth: 'notion:beginAuth',
 
   projectsList: 'projects:list',
   projectsCreate: 'projects:create',

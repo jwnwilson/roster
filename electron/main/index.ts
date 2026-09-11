@@ -1,9 +1,51 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, shell } from 'electron'
-import { checkForUpdatesOnLaunch, disposeStores, initStores, registerIpc } from './ipc'
+import { checkForUpdatesOnLaunch, completeNotionOAuth, disposeStores, initStores, registerIpc } from './ipc'
 
 const isDev = !app.isPackaged
+const NOTION_PROTOCOL = 'roster'
+let pendingNotionCallback: string | null = null
+let storesReady = false
+
+function receiveProtocolUrl(url: string): void {
+  if (!url.startsWith(`${NOTION_PROTOCOL}://notion/oauth`)) return
+  // macOS can deliver the callback while the app is still opening its stores.
+  // Keep one callback only: OAuth state makes each one single-use.
+  if (!storesReady) {
+    pendingNotionCallback = url
+    return
+  }
+  void completeNotionOAuth(url).catch((cause: unknown) => {
+    dialog.showErrorBox('Notion connection failed', cause instanceof Error ? cause.message : String(cause))
+  })
+}
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  receiveProtocolUrl(url)
+})
+
+// macOS uses open-url; Windows and Linux deliver a deep link as argv to a
+// second instance. Keeping one instance also preserves the in-memory OAuth
+// state that proves the callback belongs to this authorization attempt.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv) => {
+    const callback = argv.find((value) => value.startsWith(`${NOTION_PROTOCOL}://notion/oauth`))
+    if (callback) receiveProtocolUrl(callback)
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
+  })
+  const initialCallback = process.argv.find((value) =>
+    value.startsWith(`${NOTION_PROTOCOL}://notion/oauth`),
+  )
+  if (initialCallback) receiveProtocolUrl(initialCallback)
+}
 
 /** The generated app icon; see scripts/make-icon.py. */
 const ICON_PATH = join(import.meta.dirname, '../../build/icon.png')
@@ -118,6 +160,7 @@ async function captureIfRequested(win: BrowserWindow): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  app.setAsDefaultProtocolClient(NOTION_PROTOCOL)
   applyDevIcon()
   registerIpc()
 
@@ -134,8 +177,15 @@ void app.whenReady().then(async () => {
     app.quit()
     return
   }
+  storesReady = true
 
   createWindow()
+
+  if (pendingNotionCallback) {
+    const callback = pendingNotionCallback
+    pendingNotionCallback = null
+    receiveProtocolUrl(callback)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

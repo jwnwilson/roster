@@ -57,6 +57,27 @@ describe('connecting', () => {
     })
   })
 
+  test('starts browser OAuth before exposing the database picker', async () => {
+    installRosterApi({
+      notion: {
+        authStatus: vi
+          .fn()
+          .mockResolvedValueOnce({ state: 'disconnected' })
+          .mockResolvedValue({ state: 'needs_configuration', message: 'Configured after callback' }),
+        beginAuth: vi.fn().mockResolvedValue(undefined),
+        connections: vi.fn().mockResolvedValue([]),
+      },
+    })
+    const user = userEvent.setup()
+    render(<NotionModal />)
+
+    expect(await screen.findByRole('button', { name: 'Connect Notion' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Notion database')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Connect Notion' }))
+
+    expect(window.roster.notion.beginAuth).toHaveBeenCalledOnce()
+  })
+
   test('will not look anything up until something is pasted', () => {
     render(<NotionModal />)
 

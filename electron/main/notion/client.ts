@@ -46,6 +46,12 @@ export interface DataSourceRef {
   name: string
 }
 
+/** A credential source which can repair an expired OAuth token once. */
+export interface NotionTokenProvider {
+  accessToken(): Promise<string>
+  refresh(): Promise<string>
+}
+
 /**
  * A Notion workspace, as far as Roster is concerned.
  *
@@ -57,7 +63,7 @@ export class NotionClient {
   private queue: Promise<unknown> = Promise.resolve()
 
   constructor(
-    private readonly token: string,
+    private readonly token: string | NotionTokenProvider,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly sleep: (ms: number) => Promise<void> = (ms) =>
       new Promise((resolve) => setTimeout(resolve, ms)),
@@ -142,6 +148,7 @@ export class NotionClient {
 
   private async attempt<T>(method: string, path: string, body?: unknown): Promise<T> {
     let wait = 1_000
+    let refreshed = false
 
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       await this.sleep(GAP_MS)
@@ -149,6 +156,14 @@ export class NotionClient {
       const response = await this.send(method, path, body)
 
       if (response.ok) return (await response.json()) as T
+
+      // OAuth access tokens can be revoked or expire between requests. Refresh
+      // exactly once: a second 401 is a genuine reconnect action, not a loop.
+      if (response.status === 401 && !refreshed && typeof this.token !== 'string') {
+        refreshed = true
+        await this.token.refresh()
+        continue
+      }
 
       const retryable = response.status === 429 || response.status >= 500
       if (!retryable || attempt === MAX_ATTEMPTS) throw await describe(response)
@@ -171,7 +186,7 @@ export class NotionClient {
         method,
         signal: controller.signal,
         headers: {
-          Authorization: `Bearer ${this.token}`,
+          Authorization: `Bearer ${await this.accessToken()}`,
           'Notion-Version': VERSION,
           'Content-Type': 'application/json',
         },
@@ -190,6 +205,10 @@ export class NotionClient {
       clearTimeout(timer)
     }
   }
+
+  private async accessToken(): Promise<string> {
+    return typeof this.token === 'string' ? this.token : this.token.accessToken()
+  }
 }
 
 /**
@@ -203,7 +222,11 @@ async function describe(response: Response): Promise<NotionError> {
   const detail = await messageFrom(response)
 
   if (response.status === 401) {
-    return new NotionError('auth', `Notion rejected the token. ${detail}`.trim(), 401)
+    return new NotionError(
+      'auth',
+      `Notion authorization expired or was revoked. Connect Notion again. ${detail}`.trim(),
+      401,
+    )
   }
   if (response.status === 404) {
     return new NotionError(

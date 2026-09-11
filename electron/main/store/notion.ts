@@ -47,6 +47,11 @@ export class NotionStore {
     return row ? toConnection(row) : null
   }
 
+  count(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS count FROM notion_connections').get() as { count: number }
+    return row.count
+  }
+
   /** Connecting the same data source twice replaces the mapping rather than doubling it. */
   create(input: NewConnectionInput): NotionConnection {
     const existing = this.db

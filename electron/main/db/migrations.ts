@@ -271,4 +271,16 @@ export const MIGRATIONS: readonly string[] = [
   CREATE UNIQUE INDEX ux_sessions_task_agent
     ON sessions (task_id, agent_id) WHERE task_id IS NOT NULL;
   `,
+
+  // 11 — OAuth credentials are encrypted by Electron safeStorage before they
+  // reach this table. The database deliberately never contains a bearer or
+  // refresh token in plaintext.
+  `
+  CREATE TABLE notion_auth (
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    encrypted_payload  TEXT NOT NULL,
+    workspace_name     TEXT,
+    updated_at         INTEGER NOT NULL
+  );
+  `,
 ]

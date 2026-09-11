@@ -118,13 +118,29 @@ describe('paging', () => {
 })
 
 describe('when Notion says no', () => {
-  test('a bad token is reported as the token', async () => {
+  test('refreshes an OAuth credential once after a 401', async () => {
+    const { fetchImpl, calls } = stub(
+      reply(401, { message: 'expired' }),
+      reply(200, { data_sources: [] }),
+    )
+    const token = {
+      accessToken: vi.fn().mockResolvedValueOnce('old').mockResolvedValueOnce('new'),
+      refresh: vi.fn().mockResolvedValue('new'),
+    }
+
+    await new NotionClient(token, fetchImpl, instant).dataSources('db-1')
+
+    expect(token.refresh).toHaveBeenCalledOnce()
+    expect((calls[1]?.init.headers as Record<string, string>)['Authorization']).toBe('Bearer new')
+  })
+
+  test('a rejected authorization tells the user to reconnect', async () => {
     const { fetchImpl } = stub(reply(401, { message: 'API token is invalid.' }))
 
     const error = await failure(clientOf(fetchImpl).dataSources('db-1'))
 
     expect(error.kind).toBe('auth')
-    expect(error.message).toContain('rejected the token')
+    expect(error.message).toContain('Connect Notion again')
   })
 
   test('a 404 explains that the integration was never given access', async () => {

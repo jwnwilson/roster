@@ -40,8 +40,8 @@ export function isBuiltinMcpServer(name: string): boolean {
  * Notion.
  *
  * Not a built-in — it is an ordinary stdio server from the registry. It is
- * named here because Roster itself also talks to Notion, and reads the token
- * out of this server's environment rather than keeping a second copy of it.
+ * named here because agents can use it to talk to Notion. Board sync uses its
+ * own public OAuth connection and deliberately does not inspect MCP secrets.
  * ---------------------------------------------------------------------- */
 
 export const NOTION_SERVER = 'notion'
@@ -52,6 +52,3 @@ export const NOTION_SERVER = 'notion'
  * and the entry carries this instead.
  */
 export const NOTION_MCP_COMMAND = 'npx -y @notionhq/notion-mcp-server'
-
-/** Where that server reads its integration token from, and where Roster looks. */
-export const NOTION_TOKEN_ENV = 'NOTION_TOKEN'

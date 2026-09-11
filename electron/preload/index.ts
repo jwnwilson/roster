@@ -100,6 +100,8 @@ const api: RosterApi = {
   },
 
   notion: {
+    authStatus: () => ipcRenderer.invoke(CHANNELS.notionAuthStatus),
+    beginAuth: () => ipcRenderer.invoke(CHANNELS.notionBeginAuth),
     inspect: (databaseInput) => ipcRenderer.invoke(CHANNELS.notionInspect, databaseInput),
     connect: (input) => ipcRenderer.invoke(CHANNELS.notionConnect, input),
     connections: () => ipcRenderer.invoke(CHANNELS.notionConnections),
