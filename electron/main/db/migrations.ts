@@ -296,4 +296,16 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE usage ADD COLUMN model TEXT;
   ALTER TABLE usage ADD COLUMN rate_table_version TEXT;
   `,
+
+  // 13 — OAuth credentials are encrypted by Electron safeStorage before they
+  // reach this table. The database deliberately never contains a bearer or
+  // refresh token in plaintext.
+  `
+  CREATE TABLE notion_auth (
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    encrypted_payload  TEXT NOT NULL,
+    workspace_name     TEXT,
+    updated_at         INTEGER NOT NULL
+  );
+  `,
 ]

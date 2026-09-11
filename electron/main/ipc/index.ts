@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import {
   CHANNELS,
   type AgentPatch,
@@ -29,9 +29,9 @@ import { PlanStore } from '../store/plans'
 import { NotionStore } from '../store/notion'
 import { PlanFlow } from '../sessions/planFlow'
 import { NotionClient, databaseIdFrom } from '../notion/client'
+import { NotionAuth, type NotionOAuthConfig, type SecretBox } from '../notion/auth'
 import { detectMapping, unmappedStatuses } from '../notion/mapping'
 import { NotionPush, importConnection } from '../notion/sync'
-import { NOTION_SERVER, NOTION_TOKEN_ENV } from '../../../shared/mcp'
 import { SkillStore } from '../store/skills'
 import { ProjectNotesStore } from '../store/projectNotes'
 import { UsageStore } from '../store/usage'
@@ -53,6 +53,7 @@ let planFlow: PlanFlow | null = null
 let mentions: TaskMentions | null = null
 let notionStore: NotionStore | null = null
 let notionPush: NotionPush | null = null
+let notionAuth: NotionAuth | null = null
 
 /**
  * What first-run setup decided, held for the renderer to ask for.
@@ -153,27 +154,44 @@ function requireNotion(): NotionStore {
   return notionStore
 }
 
-/**
- * The Notion client, built from the token the `notion` MCP server already
- * holds.
- *
- * One token, in one place: mcp.json is where every other credential lives and
- * where the MCP screen's environment editor writes. Roster reads it rather
- * than keeping a second copy.
- */
-function notionClient(): NotionClient | null {
-  const token = mcpStore.findAll().find((s) => s.name === NOTION_SERVER)?.env[NOTION_TOKEN_ENV]
-  return token === undefined || token.trim() === '' ? null : new NotionClient(token.trim())
+function requireNotionClient(): NotionClient {
+  if (!notionAuth) throw new Error('Notion authorization is not initialised')
+  return new NotionClient(notionAuth)
 }
 
-function requireNotionClient(): NotionClient {
-  const client = notionClient()
-  if (!client)
-    throw new Error(
-      'No Notion token. Install the "notion" MCP server and set NOTION_TOKEN on it, ' +
-        'from the MCP servers screen.',
-    )
-  return client
+function requireNotionAuth(): NotionAuth {
+  if (!notionAuth) throw new Error('Notion authorization is not initialised')
+  return notionAuth
+}
+
+function oauthConfig(): NotionOAuthConfig | null {
+  const clientId = process.env['NOTION_OAUTH_CLIENT_ID']
+  const clientSecret = process.env['NOTION_OAUTH_CLIENT_SECRET']
+  const redirectUri = process.env['NOTION_OAUTH_REDIRECT_URI']
+  if (!clientId || !clientSecret || !redirectUri) return null
+  try {
+    const redirect = new URL(redirectUri)
+    return redirect.protocol === 'roster:' && redirect.host === 'notion' && redirect.pathname === '/oauth'
+      ? { clientId, clientSecret, redirectUri }
+      : null
+  } catch {
+    return null
+  }
+}
+
+const electronSecretBox: SecretBox = {
+  encrypt: (value) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Secure OS credential storage is unavailable; Notion cannot be connected.')
+    }
+    return safeStorage.encryptString(value).toString('base64')
+  },
+  decrypt: (value) => safeStorage.decryptString(Buffer.from(value, 'base64')),
+}
+
+/** Called by the app protocol handler; neither code nor token enters the renderer. */
+export async function completeNotionOAuth(callbackUrl: string): Promise<void> {
+  await requireNotionAuth().complete(callbackUrl)
 }
 
 function requireTasks(): TaskStore {
@@ -219,6 +237,7 @@ export async function initStores(): Promise<void> {
   // live in agent.toml rather than in this database.
   taskStore = new TaskStore(db, (id) => agentStore.findById(id)?.name ?? null)
   notionStore = new NotionStore(db)
+  notionAuth = new NotionAuth(db, electronSecretBox, oauthConfig())
   seedBoardIfEmpty(projectStore, taskStore, agentStore.findAll())
 
   planStore = new PlanStore(db)
@@ -259,7 +278,7 @@ export async function initStores(): Promise<void> {
     taskStore,
     notionStore,
     () => agentStore.findAll(),
-    () => notionClient(),
+    () => (notionAuth?.status().state === 'connected' ? requireNotionClient() : null),
   )
   taskStore.subscribe((event) => {
     if (event.type === 'task-updated') notionPush?.taskChanged(event.task.id)
@@ -516,8 +535,19 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.notionConnect, (_e, input: NewConnectionInput) =>
     requireNotion().create(input),
   )
+  ipcMain.handle(CHANNELS.notionAuthStatus, () => requireNotionAuth().status())
+  ipcMain.handle(CHANNELS.notionBeginAuth, async () => {
+    const url = requireNotionAuth().begin()
+    await shell.openExternal(url)
+  })
   ipcMain.handle(CHANNELS.notionConnections, () => requireNotion().findAll())
-  ipcMain.handle(CHANNELS.notionDisconnect, (_e, id: string) => requireNotion().delete(id))
+  ipcMain.handle(CHANNELS.notionDisconnect, (_e, id: string) => {
+    requireNotion().delete(id)
+    // One board connection is all that currently exposes an OAuth workspace.
+    // Removing the last one also forgets its local credential; no bearer token
+    // lingers after the user said Disconnect.
+    if (requireNotion().count() === 0) requireNotionAuth().clear()
+  })
 
   ipcMain.handle(CHANNELS.notionImport, async (_e, connectionId: string) => {
     const connection = requireNotion().findById(connectionId)

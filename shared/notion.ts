@@ -54,6 +54,13 @@ export interface NotionConnection {
   createdAt: number
 }
 
+/** The renderer may see the connection state, but never an OAuth credential. */
+export type NotionAuthStatus =
+  | { state: 'connected'; workspaceName: string | null }
+  | { state: 'disconnected' }
+  | { state: 'error'; message: string }
+  | { state: 'needs_configuration'; message: string }
+
 /** What an import did, so the modal can say so rather than just closing. */
 export interface ImportSummary {
   created: number

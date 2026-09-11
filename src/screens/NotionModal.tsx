@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { TaskStatus } from '@shared/types'
-import type { ImportSummary, NotionConnection, NotionInspection, NotionMapping } from '@shared/notion'
+import type { ImportSummary, NotionAuthStatus, NotionConnection, NotionInspection, NotionMapping } from '@shared/notion'
 import { taskStatusLabel } from '@shared/tasks'
 import { Field, Modal, Select, TextInput } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
@@ -31,17 +31,43 @@ export function NotionModal() {
   const [mapping, setMapping] = useState<NotionMapping | null>(null)
   const [project, setProject] = useState<string>(NO_PROJECT)
   const [summary, setSummary] = useState<ImportSummary | null>(null)
-  const [busy, setBusy] = useState<'' | 'looking' | 'importing'>('')
+  const [auth, setAuth] = useState<NotionAuthStatus | null>(null)
+  const [busy, setBusy] = useState<'' | 'looking' | 'importing' | 'authorizing'>('')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void window.roster.notion
-      .connections()
-      .then(setConnections)
+    void Promise.all([window.roster.notion.connections(), window.roster.notion.authStatus()])
+      .then(([nextConnections, nextAuth]) => {
+        setConnections(nextConnections)
+        setAuth(nextAuth)
+      })
       .catch((cause: unknown) => setError(messageFor(cause)))
   }, [])
 
   const connected = connections[0] ?? null
+
+  async function beginAuth(): Promise<void> {
+    setBusy('authorizing')
+    setError(null)
+    try {
+      await window.roster.notion.beginAuth()
+      // The browser returns through the registered app protocol. Polling is
+      // intentional: it avoids exposing OAuth codes or tokens to the renderer.
+      const poll = async (): Promise<void> => {
+        const next = await window.roster.notion.authStatus()
+        setAuth(next)
+        if (next.state === 'disconnected') window.setTimeout(() => void poll(), 750)
+        else {
+          setBusy('')
+          if (next.state === 'error') setError(next.message)
+        }
+      }
+      void poll()
+    } catch (cause) {
+      setBusy('')
+      setError(messageFor(cause))
+    }
+  }
 
   async function inspect(): Promise<void> {
     setBusy('looking')
@@ -150,7 +176,9 @@ export function NotionModal() {
             onRefresh={() => void refresh(connected.id)}
             onDisconnect={() => void disconnect(connected.id)}
           />
-        ) : (
+        ) : auth?.state !== 'disconnected' &&
+          auth?.state !== 'needs_configuration' &&
+          auth?.state !== 'error' ? (
           <Field
             label="Notion database"
             caption="Paste the database link, or its id. The integration needs access to it — open the database in Notion and use ••• → Connect to."
@@ -173,6 +201,25 @@ export function NotionModal() {
                 {busy === 'looking' ? 'Looking…' : 'Look up'}
               </button>
             </div>
+          </Field>
+        ) : (
+          <Field
+            label="Connect Notion"
+            caption={
+              auth?.state === 'needs_configuration'
+                ? auth.message
+                : 'Authorize Roster to read the Notion workspace in your browser.'
+            }
+          >
+            <button
+              type="button"
+              disabled={busy !== '' || auth?.state === 'needs_configuration'}
+              onClick={() => void beginAuth()}
+              className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-ink-3 hover:border-line-hover disabled:cursor-default disabled:opacity-40"
+              data-hoverable
+            >
+              {busy === 'authorizing' ? 'Waiting for Notion…' : 'Connect Notion'}
+            </button>
           </Field>
         )}
 

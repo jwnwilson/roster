@@ -7,6 +7,12 @@
   "build": {
     "appId": "dev.roster.app",
     "productName": "Roster",
+    "protocols": [
+      {
+        "name": "Roster Notion OAuth",
+        "schemes": ["roster"]
+      }
+    ],
     "directories": {
       "buildResources": "build",
       "output": "release"
