@@ -20,12 +20,12 @@ durable, so they are the safe basis for an automated follow-up.
 ## Decision
 
 Roster runs one liveness monitor while its main process is open. It checks
-every 15 minutes and once at startup. A candidate must be a task-linked
+every 5 minutes and once at startup. A candidate must be a task-linked
 session whose task is both `in_progress` and assigned to that session's agent.
 The monitor skips a session with a currently live runner.
 
 Before queuing a normal agent turn, the monitor persists `last_nudged_at` on
-the session. A session is ineligible until 15 minutes after that timestamp.
+the session. A session is ineligible until 5 minutes after that timestamp.
 This provides a durable cooldown across app restarts and prevents overlapping
 checks from starting duplicate turns. The check-in appears in the transcript
 as authored by Roster and asks the agent to continue, leave a blocker or next
@@ -42,7 +42,7 @@ process that owned it.
 * In-progress work regains attention without a human needing to remember to
   re-mention its agent.
 * An automated check can consume a normal agent turn, but no more than one per
-  eligible task session per 15-minute interval.
+  eligible task session per 5-minute interval.
 * Tasks without a session, task sessions assigned to someone else, and tasks
   in review or done are deliberately untouched.
 * Roster does not need a separate scheduler process; closing the app stops

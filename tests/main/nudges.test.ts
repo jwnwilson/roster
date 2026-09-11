@@ -57,7 +57,7 @@ describe('SessionNudges', () => {
     expect(sessions.findById(session.id)?.lastNudgedAt).toBeNull()
   })
 
-  test.each([
+  test.each<[string, { status?: 'todo'; assigneeId?: string }]>([
     ['a task that is not in progress', { status: 'todo' as const }],
     ['a task assigned to another agent', { assigneeId: 'review' }],
   ])('does not nudge %s', (_label, changes) => {

@@ -1,7 +1,7 @@
 import type { SessionStore } from '../store/sessions'
 
 /** Check often enough to recover forgotten work without creating a chat loop. */
-export const NUDGE_PERIOD_MS = 15 * 60 * 1_000
+export const NUDGE_PERIOD_MS = 5 * 60 * 1_000
 
 export const NUDGE_PROMPT =
   'Roster check-in: this task is still assigned to you and In Progress. Continue the work if useful; otherwise leave a concise blocker or next-step comment and update the task status to reflect its current state.'
