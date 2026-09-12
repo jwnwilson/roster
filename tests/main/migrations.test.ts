@@ -39,6 +39,11 @@ describe('migrations', () => {
     expect(columns).toEqual(expect.arrayContaining(['cached_input_tokens', 'cost_type', 'model', 'rate_table_version']))
   })
 
+  test('sessions persist the automated check-in cooldown', () => {
+    const columns = (db.pragma('table_info(sessions)') as { name: string }[]).map((c) => c.name)
+    expect(columns).toContain('last_nudged_at')
+  })
+
   test('refuses a database written by a newer build', () => {
     // The loop only runs forward, so a database ahead of this build used to
     // pass straight through it: every migration skipped, no error, and the

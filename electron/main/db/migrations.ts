@@ -308,4 +308,13 @@ export const MIGRATIONS: readonly string[] = [
     updated_at         INTEGER NOT NULL
   );
   `,
+
+  // 14 — the liveness monitor remembers when it last checked in on a task
+  // session. NULL means never, including every session created before this
+  // feature. The timer itself remains process-local; this timestamp is only
+  // the durable cooldown that prevents restarts and overlapping checks from
+  // repeatedly starting paid turns.
+  `
+  ALTER TABLE sessions ADD COLUMN last_nudged_at INTEGER;
+  `,
 ]

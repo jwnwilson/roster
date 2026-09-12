@@ -17,6 +17,7 @@ import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
 import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
+import { SessionNudges } from '../sessions/nudges'
 import { removeSession } from '../sessions/remove'
 import { sessionLabel } from '../../../shared/sessions'
 import { TaskMentions } from '../sessions/mentions'
@@ -48,6 +49,7 @@ let usageStore: UsageStore | null = null
 let projectStore: ProjectStore | null = null
 let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
+let nudges: SessionNudges | null = null
 let planStore: PlanStore | null = null
 let planFlow: PlanFlow | null = null
 let mentions: TaskMentions | null = null
@@ -230,6 +232,9 @@ export async function initStores(): Promise<void> {
 
   db = openDatabase(databasePath())
   sessionStore = new SessionStore(db)
+  // A runner lives only in this process. Do not leave a session claiming it
+  // is actively running after the app that owned its runner has exited.
+  sessionStore.recoverInterruptedRuns()
   usageStore = new UsageStore(db)
   usageStore.backfillCodex(agentStore.findAll())
   projectStore = new ProjectStore(db)
@@ -253,6 +258,8 @@ export async function initStores(): Promise<void> {
     projectNotesStore,
     { removeSession: (sessionId) => deleteSession(sessionId, false) },
   )
+  nudges = new SessionNudges(sessionStore, manager)
+  nudges.start()
   planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
@@ -729,6 +736,8 @@ async function confirmDelete(
 }
 
 export function disposeStores(): void {
+  nudges?.dispose()
+  nudges = null
   ptyManager.disposeAll()
   agentStore.dispose()
   skillStore.dispose()

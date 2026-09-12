@@ -51,6 +51,8 @@ export interface SendOptions {
    * agent's words under "you".
    */
   recordPrompt?: boolean
+  /** The transcript label for an automated prompt; manual prompts remain “you”. */
+  author?: string
 }
 
 /**
@@ -359,7 +361,13 @@ export class SessionManager {
     // crash mid-turn. Skipped when the transcript already carries the prompt;
     // see SendOptions.recordPrompt.
     if (options.recordPrompt !== false) {
-      this.record(sessionId, { sessionId, kind: 'text', role: 'user', who: 'you', text: prompt })
+      this.record(sessionId, {
+        sessionId,
+        kind: 'text',
+        role: 'user',
+        who: options.author ?? 'you',
+        text: prompt,
+      })
     }
 
     let finish = (): void => {}
