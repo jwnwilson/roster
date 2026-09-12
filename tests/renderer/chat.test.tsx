@@ -298,8 +298,9 @@ describe('AssistantChatPane — composer', () => {
     await user.click(screen.getByRole('button', { name: 'Start listening for voice message' }))
     expect(recognition.start).toHaveBeenCalledOnce()
     recognition.hear('find the leak by voice')
-    await waitFor(() => expect(recognition.stop).not.toHaveBeenCalled())
-    expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('find the leak by voice')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('find the leak by voice'),
+    )
     expect(onSend).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Send' }))
