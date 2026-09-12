@@ -83,6 +83,9 @@ export class SessionStore {
       // by hand from the config rail, or through the agent's own default.
       projectId: input.projectId ?? null,
       taskId: input.taskId ?? null,
+      // Keep a just-created session structurally identical to the same row
+      // read back from SQLite. NULL means Roster has never checked in.
+      lastNudgedAt: null,
       createdAt: Date.now(),
       ...(input.from
         ? {

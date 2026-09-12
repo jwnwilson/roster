@@ -29,6 +29,7 @@ describe('SessionStore.create', () => {
 
     expect(session.id).toMatch(/[0-9a-f-]{36}/)
     expect(session.status).toBe('idle')
+    expect(session.lastNudgedAt).toBeNull()
     expect(session.spawnedFrom).toBeUndefined()
   })
 
