@@ -31,6 +31,7 @@ function fullSet(): BuiltinToolSet {
       listAgents: () => [AGENT],
       openSession: () => ({ sessionId: 's', label: 'l', started: true }),
       closeSession: async () => false,
+      requestUserDecision: async () => ({ approved: false, answers: {} }),
     },
     tasks: {
       list: () => [],
@@ -163,7 +164,14 @@ describe('the handlers behind those definitions', () => {
   test('are the same ones the Claude path builds', async () => {
     const openSession = vi.fn(() => ({ sessionId: 's1', label: 'Review · Fix', started: true }))
     const defined = builtinToolDefinitions(
-      { roster: { listAgents: () => [AGENT], openSession, closeSession: async () => false } },
+      {
+        roster: {
+          listAgents: () => [AGENT],
+          openSession,
+          closeSession: async () => false,
+          requestUserDecision: async () => ({ approved: false, answers: {} }),
+        },
+      },
       'other',
     )
 
@@ -180,6 +188,47 @@ describe('the handlers behind those definitions', () => {
     })
     expect(JSON.stringify(result)).toContain('Review · Fix')
   })
+
+  test('turns a structured user decision into the answers the agent receives', async () => {
+    const requestUserDecision = vi.fn().mockResolvedValue({
+      approved: true,
+      answers: { 'Which cache?': 'Redis' },
+    })
+    const defined = builtinToolDefinitions(
+      {
+        roster: {
+          listAgents: () => [AGENT],
+          openSession: () => ({ sessionId: 's', label: 'l', started: true }),
+          closeSession: async () => false,
+          requestUserDecision,
+        },
+      },
+      AGENT.id,
+    )
+
+    const decision = defined.find((entry) => entry.name === 'request_user_decision')
+    const result = await decision?.handler(
+      {
+        questions: [
+          {
+            question: 'Which cache?',
+            header: 'Cache',
+            multi_select: false,
+            options: [
+              { label: 'Redis', description: 'Use Redis.' },
+              { label: 'SQLite', description: 'Use SQLite.' },
+            ],
+          },
+        ],
+      } as never,
+      undefined,
+    )
+
+    expect(requestUserDecision).toHaveBeenCalledWith([
+      expect.objectContaining({ question: 'Which cache?', multiSelect: false }),
+    ])
+    expect(JSON.stringify(result)).toContain('Redis')
+  })
 })
 
 describe('handing work to another agent', () => {
@@ -188,6 +237,7 @@ describe('handing work to another agent', () => {
       agents: Agent[]
       openSession: BuiltinToolSet['roster']['openSession']
       closeSession: BuiltinToolSet['roster']['closeSession']
+      requestUserDecision: BuiltinToolSet['roster']['requestUserDecision']
     }> = {},
   ) {
     return builtinToolDefinitions(
@@ -198,6 +248,8 @@ describe('handing work to another agent', () => {
             overrides.openSession ??
             (() => ({ sessionId: 's', label: 'Me · Fix', started: true })),
           closeSession: overrides.closeSession ?? (async () => false),
+          requestUserDecision:
+            overrides.requestUserDecision ?? (async () => ({ approved: false, answers: {} })),
         },
       },
       'me',
@@ -236,6 +288,7 @@ describe('handing work to another agent', () => {
           listAgents: () => [AGENT],
           openSession: () => ({ sessionId: 's', label: 'l', started: true }),
           closeSession: async () => false,
+          requestUserDecision: async () => ({ approved: false, answers: {} }),
         },
       },
       AGENT.id,

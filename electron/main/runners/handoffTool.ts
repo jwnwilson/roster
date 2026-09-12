@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { Agent } from '../../../shared/types'
+import type { Agent, Question } from '../../../shared/types'
 import { ROSTER_SERVER } from '../../../shared/mcp'
 
 /**
@@ -22,6 +22,11 @@ export interface RosterTools {
   }
   /** Permanently closes a direct child of this bound session. */
   closeSession(sessionId: string): Promise<boolean>
+  /**
+   * Pauses the turn until the person answers in Roster. The answers are keyed
+   * by the question text, matching the shape Roster already stores.
+   */
+  requestUserDecision(questions: Question[]): Promise<{ approved: boolean; answers: Record<string, string> }>
 }
 
 /**
@@ -36,6 +41,7 @@ export const ROSTER_TOOL_NAMES = [
   'mcp__roster__list_agents',
   'mcp__roster__open_session',
   'mcp__roster__close_session',
+  'mcp__roster__request_user_decision',
 ] as const
 
 export const OPEN_SESSION_SCHEMA = {
@@ -46,6 +52,30 @@ export const OPEN_SESSION_SCHEMA = {
 
 export const CLOSE_SESSION_SCHEMA = {
   session_id: z.string().describe('The id of the direct child session to permanently close.'),
+}
+
+export const REQUEST_USER_DECISION_SCHEMA = {
+  questions: z
+    .array(
+      z.object({
+        question: z.string().min(1).describe('The decision the user needs to make.'),
+        header: z.string().min(1).max(12).describe('A short label displayed above the question.'),
+        multi_select: z.boolean().describe('Whether the user may choose more than one option.'),
+        options: z
+          .array(
+            z.object({
+              label: z.string().min(1).max(40).describe('The option shown to the user.'),
+              description: z.string().min(1).describe('What choosing this option means.'),
+            }),
+          )
+          .min(2)
+          .max(3)
+          .describe('Two or three choices for the user.'),
+      }),
+    )
+    .min(1)
+    .max(3)
+    .describe('The questions to show in Roster.'),
 }
 
 /**
@@ -154,7 +184,41 @@ export function buildRosterTools(
     },
   )
 
-  return [listAgents, openSession, closeSession]
+  const requestUserDecision = tool(
+    'request_user_decision',
+    'Ask the user to make a decision in Roster. Use this when work cannot continue without their choice.',
+    REQUEST_USER_DECISION_SCHEMA,
+    async (args: {
+      questions: Array<{
+        question: string
+        header: string
+        multi_select: boolean
+        options: Array<{ label: string; description: string }>
+      }>
+    }) => {
+      const decision = await tools.requestUserDecision(
+        args.questions.map((question) => ({
+          question: question.question,
+          header: question.header,
+          multiSelect: question.multi_select,
+          options: question.options,
+        })),
+      )
+
+      if (!decision.approved) {
+        return {
+          content: [{ type: 'text' as const, text: 'The user declined to make that decision.' }],
+          isError: true,
+        }
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({ answers: decision.answers }) }],
+      }
+    },
+  )
+
+  return [listAgents, openSession, closeSession, requestUserDecision]
 }
 
 function firstLine(prompt: string): string {
