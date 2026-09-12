@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { HandoffMessage, Message, SpawnMessage } from '@shared/types'
@@ -270,6 +270,7 @@ describe('AssistantChatPane — composer', () => {
 
     expect(screen.getByText('skills: repro-harness')).toBeInTheDocument()
     expect(screen.getByText('drop files here')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start listening for voice message' })).toBeEnabled()
   })
 
   test('sends what was typed', async () => {
@@ -281,6 +282,47 @@ describe('AssistantChatPane — composer', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(onSend).toHaveBeenCalledWith('find the leak')
+  })
+
+  test('puts recognized speech in the draft for review before it can send', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    const recognition = new FakeSpeechRecognition()
+    vi.stubGlobal('SpeechRecognition', class {
+      constructor() {
+        return recognition
+      }
+    })
+    render(pane({ onSend }))
+
+    await user.click(screen.getByRole('button', { name: 'Start listening for voice message' }))
+    expect(recognition.start).toHaveBeenCalledOnce()
+    recognition.hear('find the leak by voice')
+    await waitFor(() =>
+      expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('find the leak by voice'),
+    )
+    expect(onSend).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onSend).toHaveBeenCalledWith('find the leak by voice')
+  })
+
+  test('keeps the typed draft and reports a denied microphone', async () => {
+    const user = userEvent.setup()
+    const recognition = new FakeSpeechRecognition()
+    vi.stubGlobal('SpeechRecognition', class {
+      constructor() {
+        return recognition
+      }
+    })
+    render(pane())
+    await user.type(screen.getByLabelText('Message Debugging Agent'), 'keep this')
+
+    await user.click(screen.getByRole('button', { name: 'Start listening for voice message' }))
+    recognition.fail('not-allowed')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Microphone permission was denied')
+    expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('keep this')
   })
 
   test('locks the composer while a turn is in flight', () => {
@@ -299,6 +341,27 @@ describe('AssistantChatPane — composer', () => {
     expect(onCancel).toHaveBeenCalled()
   })
 })
+
+class FakeSpeechRecognition {
+  interimResults = false
+  maxAlternatives = 0
+  onresult: ((event: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null = null
+  onerror: ((event: { error: string }) => void) | null = null
+  onend: (() => void) | null = null
+  start = vi.fn()
+  stop = vi.fn(() => this.onend?.())
+  abort = vi.fn()
+
+  hear(text: string): void {
+    this.onresult?.({ resultIndex: 0, results: [[{ transcript: text }]] })
+    this.onend?.()
+  }
+
+  fail(error: string): void {
+    this.onerror?.({ error })
+    this.onend?.()
+  }
+}
 
 describe('formatting', () => {
   test('durations under a second read in milliseconds', () => {
