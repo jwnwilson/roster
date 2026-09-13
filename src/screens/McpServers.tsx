@@ -24,7 +24,7 @@ const REGISTRY: RegistryEntry[] = [
   { category: 'Data', name: 'bigquery', description: 'Run scoped queries against BigQuery datasets.', author: 'community' },
   { category: 'Workspace', name: 'linear', description: 'Read and update issues, cycles, and project status.', author: 'linear' },
   { category: 'Workspace', name: 'slack', description: 'Search channels and post messages as a bot user.', author: 'community' },
-  { category: 'Workspace', name: 'notion', description: 'Read pages and databases from a Notion workspace.', author: 'notion', command: NOTION_MCP_COMMAND },
+  { category: 'Workspace', name: 'notion', description: 'Read and update a Notion workspace. Your browser will ask you to sign in on first use.', author: 'notion', command: NOTION_MCP_COMMAND },
 ]
 
 const CATEGORIES = ['Code & repos', 'Data', 'Workspace']

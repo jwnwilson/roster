@@ -547,6 +547,7 @@ export function registerIpc(): void {
     const url = requireNotionAuth().begin()
     await shell.openExternal(url)
   })
+  ipcMain.handle(CHANNELS.notionClearAuth, () => requireNotionAuth().clear())
   ipcMain.handle(CHANNELS.notionConnections, () => requireNotion().findAll())
   ipcMain.handle(CHANNELS.notionDisconnect, (_e, id: string) => {
     requireNotion().delete(id)

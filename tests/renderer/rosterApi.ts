@@ -66,6 +66,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
     notion: {
       authStatus: vi.fn().mockResolvedValue({ state: 'connected', workspaceName: 'Test workspace' }),
       beginAuth: vi.fn().mockResolvedValue(undefined),
+      clearAuth: vi.fn().mockResolvedValue(undefined),
       inspect: vi.fn().mockResolvedValue(null),
       connect: vi.fn().mockResolvedValue(null),
       connections: vi.fn().mockResolvedValue([]),

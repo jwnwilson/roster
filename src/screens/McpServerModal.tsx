@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { McpServer } from "@shared/types";
+import type { NotionAuthStatus } from "@shared/notion";
 import { Field, Modal, TextInput } from "@/components/primitives";
 import { ServerGlyph } from "@/components/ServerGlyph";
 
@@ -116,6 +117,7 @@ export function McpServerModal({
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[20px] overflow-y-auto p-[18px]">
+        {draft.name === "notion" ? <NotionImportAuthentication /> : null}
         <Field
           label="Launch command"
           caption="Run as-is. The first word is the executable; the rest are its arguments."
@@ -131,7 +133,11 @@ export function McpServerModal({
 
         <Field
           label="Environment"
-          caption="Stored as plain text in mcp.json. Treat it like any other dotfile with tokens in it."
+          caption={
+            draft.name === "notion"
+              ? "Notion signs in through your browser when the server first starts; do not add a token here."
+              : "Stored as plain text in mcp.json. Treat it like any other dotfile with tokens in it."
+          }
           trailing={
             <button
               type="button"
@@ -184,4 +190,88 @@ export function McpServerModal({
       </div>
     </Modal>
   );
+}
+
+/**
+ * Import access belongs to the MCP-management flow so a person can connect
+ * and import before any agent session exists. Its OAuth grant stays in the
+ * main process; it is intentionally not added to the server environment.
+ */
+function NotionImportAuthentication() {
+  const [status, setStatus] = useState<NotionAuthStatus | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void window.roster.notion.authStatus().then(setStatus).catch((cause: unknown) => {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    })
+  }, [])
+
+  async function connect(): Promise<void> {
+    setBusy(true)
+    setError(null)
+    try {
+      await window.roster.notion.beginAuth()
+      const poll = async (): Promise<void> => {
+        const next = await window.roster.notion.authStatus()
+        setStatus(next)
+        if (next.state === "disconnected") window.setTimeout(() => void poll(), 750)
+        else setBusy(false)
+      }
+      void poll()
+    } catch (cause) {
+      setBusy(false)
+      setError(cause instanceof Error ? cause.message : String(cause))
+    }
+  }
+
+  async function disconnect(): Promise<void> {
+    setBusy(true)
+    setError(null)
+    try {
+      await window.roster.notion.clearAuth()
+      setStatus({ state: "disconnected" })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const connected = status?.state === "connected"
+  const label = connected
+    ? `Connected for task import${status.workspaceName ? `: ${status.workspaceName}` : "."}`
+    : "Not connected for task import."
+
+  return (
+    <section className="rounded-[9px] border border-line bg-card p-[13px]">
+      <p className="m-0 font-ui text-lg font-semibold">Task import access</p>
+      <p className="mt-[5px] text-md text-dim">{label}</p>
+      <p className="mt-[5px] text-md text-dim">
+        Connect here to inspect and import Notion tasks without starting an agent session.
+      </p>
+      <div className="mt-[10px] flex gap-[8px]">
+        <button
+          type="button"
+          onClick={() => void connect()}
+          disabled={busy}
+          className="cursor-pointer rounded-chip border border-line-active bg-transparent px-[10px] py-[3px] font-ui text-base font-medium text-accent-text hover:border-accent disabled:cursor-default disabled:opacity-40"
+        >
+          {busy ? "Waiting for Notion…" : connected ? "Reconnect Notion" : "Connect Notion"}
+        </button>
+        {connected ? (
+          <button
+            type="button"
+            onClick={() => void disconnect()}
+            disabled={busy}
+            className="cursor-pointer border-0 bg-transparent p-0 font-ui text-sm text-dim hover:text-ink disabled:cursor-default disabled:opacity-40"
+          >
+            Disconnect
+          </button>
+        ) : null}
+      </div>
+      {error ? <p className="mt-[8px] text-md text-error">{error}</p> : null}
+    </section>
+  )
 }
