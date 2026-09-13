@@ -18,7 +18,7 @@ import {
   workspaceDir,
   worktreesDir,
 } from '@main/store/paths'
-import { TASKS_SERVER, PLANS_SERVER, MEMORY_SERVER } from '@shared/mcp'
+import { TASKS_SERVER, PLANS_SERVER, MEMORY_SERVER, NOTION_SERVER } from '@shared/mcp'
 import { NO_PROJECT, type Agent, type McpServer } from '@shared/types'
 
 let home: string
@@ -290,11 +290,11 @@ describe('SkillStore', () => {
 /* -------------------------------------------------------------------- mcp */
 
 /**
- * Just the servers mcp.json holds. findAll also lists Roster's built-ins,
- * which have their own suite; these tests are about the file.
+ * Just the servers mcp.json holds. findAll also lists Roster's built-ins and
+ * managed services; these tests are about the file.
  */
 function configured(store: McpStore): McpServer[] {
-  return store.findAll().filter((server) => server.builtin !== true)
+  return store.findAll().filter((server) => server.builtin !== true && server.managed !== true)
 }
 
 describe('McpStore', () => {
@@ -618,7 +618,7 @@ describe('McpStore.install', () => {
 
     const servers = await store.install('linear', 'npx server-linear')
 
-    expect(servers.filter((server) => server.builtin !== true)).toEqual([
+    expect(servers.filter((server) => server.builtin !== true && server.managed !== true)).toEqual([
       { name: 'linear', command: 'npx server-linear', env: {} },
     ])
   })
@@ -1021,7 +1021,7 @@ describe('McpStore — built-in servers', () => {
     expect(builtin?.description).toBeTruthy()
   })
 
-  test('lists built-ins before the servers from the file', async () => {
+  test('lists built-ins and managed services before the servers from the file', async () => {
     const store = new McpStore()
     await store.load()
     await store.install('linear', 'npx server-linear')
@@ -1030,8 +1030,20 @@ describe('McpStore — built-in servers', () => {
       TASKS_SERVER,
       PLANS_SERVER,
       MEMORY_SERVER,
+      NOTION_SERVER,
       'linear',
     ])
+  })
+
+  test('lists Notion as a Roster-managed service, not a launchable configuration', async () => {
+    const store = new McpStore()
+    await store.load()
+
+    const notion = store.findAll().find((server) => server.name === NOTION_SERVER)
+    expect(notion).toMatchObject({ name: NOTION_SERVER, command: '', env: {}, managed: true })
+    await expect(store.save(NOTION_SERVER, 'npx another-notion-server', {})).rejects.toThrow(
+      /managed by Roster/,
+    )
   })
 
   test('never writes a built-in into mcp.json', async () => {
