@@ -88,6 +88,21 @@ Point it somewhere else while developing:
 ROSTER_HOME=/tmp/roster-scratch npm run dev
 ```
 
+### Debugging Electron locally
+
+From a normal macOS GUI terminal session, run the debugger entry point with a
+private Roster home:
+
+```bash
+ROSTER_HOME=/tmp/roster-debug npm run dev:debug
+```
+
+It exposes the Electron main-process inspector on port 9229 and Chromium DevTools
+on port 9222, with source maps enabled. Attach a Node debugger to `localhost:9229`
+for main-process code, or open `http://localhost:9222` in Chrome to inspect the
+renderer. Electron must be able to reach macOS LaunchServices; a headless or
+sandboxed executor cannot create a GUI window and exits before Roster code runs.
+
 The landing page is `site/index.html` — static HTML and CSS, no build step and no
 dependency on this project's `package.json`. Open the file, or serve the folder
 (`python3 -m http.server -d site`), and `.github/workflows/pages.yml` publishes it
