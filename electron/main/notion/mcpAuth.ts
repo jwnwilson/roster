@@ -5,7 +5,11 @@ import type { Db } from '../db'
 import type { NotionAuthStatus } from '../../../shared/notion'
 import type { SecretBox } from './auth'
 
-const REDIRECT_URL = 'roster://notion/mcp-oauth'
+/** Path of the loopback redirect; the port is chosen per sign-in attempt. */
+export const NOTION_MCP_CALLBACK_PATH = '/notion/mcp-oauth'
+// The SDK treats a provider without a redirect as a non-interactive grant, so
+// one is always reported. Outside an attempt it is never opened in a browser.
+const IDLE_REDIRECT_URL = `http://127.0.0.1${NOTION_MCP_CALLBACK_PATH}`
 
 interface StoredCredentials {
   clientInformation?: OAuthClientInformationMixed
@@ -28,19 +32,20 @@ interface Row {
  */
 export class NotionMcpAuth implements OAuthClientProvider {
   private expectedState: Buffer | null = null
+  private attemptRedirectUrl: string | null = null
   private pendingAuthorizationUrl: URL | null = null
   private failure: string | null = null
 
   constructor(private readonly db: Db, private readonly box: SecretBox) {}
 
   get redirectUrl(): string {
-    return REDIRECT_URL
+    return this.attemptRedirectUrl ?? IDLE_REDIRECT_URL
   }
 
   get clientMetadata(): OAuthClientMetadata {
     return {
       client_name: 'Roster',
-      redirect_uris: [REDIRECT_URL],
+      redirect_uris: [this.redirectUrl],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
@@ -56,7 +61,8 @@ export class NotionMcpAuth implements OAuthClientProvider {
   }
 
   /** Starts a single-use OAuth attempt; the SDK supplies the actual URL. */
-  startAttempt(): void {
+  startAttempt(redirectUrl: string): void {
+    this.attemptRedirectUrl = redirectUrl
     this.failure = null
     this.pendingAuthorizationUrl = null
     this.expectedState = null
@@ -69,18 +75,23 @@ export class NotionMcpAuth implements OAuthClientProvider {
 
   consumeCallback(callbackUrl: string): string {
     const callback = new URL(callbackUrl)
-    if (callback.protocol !== 'roster:' || callback.host !== 'notion' || callback.pathname !== '/mcp-oauth') {
+    const redirect = new URL(this.redirectUrl)
+    if (!this.attemptRedirectUrl || callback.origin !== redirect.origin || callback.pathname !== redirect.pathname) {
       throw new Error('That is not a Notion authorization response.')
     }
     const code = callback.searchParams.get('code')
     const state = callback.searchParams.get('state')
     const expected = this.expectedState
     this.expectedState = null
-    if (!code || !state || !expected) throw new Error('That Notion authorization response is invalid or has expired.')
+    if (!state || !expected) throw new Error('That Notion authorization response is invalid or has expired.')
     const received = Buffer.from(state, 'base64url')
     if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
       throw new Error('That Notion authorization response did not match this sign-in attempt.')
     }
+    // Only a response carrying this attempt's state may report a refusal.
+    const declined = callback.searchParams.get('error_description') ?? callback.searchParams.get('error')
+    if (declined) throw new Error(`Notion did not authorize Roster: ${declined}`)
+    if (!code) throw new Error('That Notion authorization response is invalid or has expired.')
     return code
   }
 
@@ -95,6 +106,7 @@ export class NotionMcpAuth implements OAuthClientProvider {
 
   clear(): void {
     this.expectedState = null
+    this.attemptRedirectUrl = null
     this.pendingAuthorizationUrl = null
     this.failure = null
     this.db.prepare('DELETE FROM notion_mcp_auth WHERE id = 1').run()
@@ -106,8 +118,15 @@ export class NotionMcpAuth implements OAuthClientProvider {
     return state.toString('base64url')
   }
 
+  /**
+   * Each attempt listens on a fresh loopback port. A client registered for a
+   * different redirect is withheld during the attempt so the SDK registers
+   * again rather than sending a redirect_uri Notion would reject.
+   */
   clientInformation(): OAuthClientInformationMixed | undefined {
-    return this.load().clientInformation
+    const information = this.load().clientInformation
+    if (!information || !this.attemptRedirectUrl || !('redirect_uris' in information)) return information
+    return information.redirect_uris.includes(this.attemptRedirectUrl) ? information : undefined
   }
 
   saveClientInformation(clientInformation: OAuthClientInformationMixed): void {
@@ -176,5 +195,3 @@ export class NotionMcpAuth implements OAuthClientProvider {
       .run(this.box.encrypt(JSON.stringify(value)), Date.now())
   }
 }
-
-export { REDIRECT_URL as NOTION_MCP_REDIRECT_URL }

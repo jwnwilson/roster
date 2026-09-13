@@ -180,12 +180,6 @@ const electronSecretBox: SecretBox = {
   decrypt: (value) => safeStorage.decryptString(Buffer.from(value, 'base64')),
 }
 
-/** Called by the app protocol handler; neither code nor token enters the renderer. */
-export async function completeNotionOAuth(callbackUrl: string): Promise<void> {
-  if (!notionMcp) throw new Error('Notion authorization is not initialised')
-  await notionMcp.completeAuthorization(callbackUrl)
-}
-
 function requireTasks(): TaskStore {
   if (!taskStore) throw new Error('task store is not initialised')
   return taskStore
