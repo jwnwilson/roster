@@ -147,6 +147,8 @@ export interface RosterApi {
     authStatus(): Promise<NotionAuthStatus>
     /** Opens Notion in the default browser and returns once approval is pending. */
     beginAuth(): Promise<void>
+    /** Forgets the local import credential without deleting saved mappings. */
+    clearAuth(): Promise<void>
     /**
      * Looks at a pasted database URL or id without saving anything: resolves
      * its data source, reads the schema, and guesses a mapping to correct.
@@ -443,6 +445,7 @@ export const CHANNELS = {
   notionDisconnect: 'notion:disconnect',
   notionAuthStatus: 'notion:authStatus',
   notionBeginAuth: 'notion:beginAuth',
+  notionClearAuth: 'notion:clearAuth',
 
   projectsList: 'projects:list',
   projectsCreate: 'projects:create',

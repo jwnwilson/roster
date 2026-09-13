@@ -309,7 +309,16 @@ export const MIGRATIONS: readonly string[] = [
   );
   `,
 
-  // 14 — Hosted Notion MCP uses OAuth discovery, PKCE and dynamic client
+  // 14 — the liveness monitor remembers when it last checked in on a task
+  // session. NULL means never, including every session created before this
+  // feature. The timer itself remains process-local; this timestamp is only
+  // the durable cooldown that prevents restarts and overlapping checks from
+  // repeatedly starting paid turns.
+  `
+  ALTER TABLE sessions ADD COLUMN last_nudged_at INTEGER;
+  `,
+
+  // 15 — Hosted Notion MCP uses OAuth discovery, PKCE and dynamic client
   // registration. Its encrypted material is deliberately separate from the
   // retired REST public-connection row so an old bearer token can never be
   // mistaken for an MCP credential.

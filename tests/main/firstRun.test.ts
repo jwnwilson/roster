@@ -75,6 +75,16 @@ describe('defaultAgentsFor', () => {
     expect(first?.name).toBe(TECH_LEAD)
   })
 
+  test('gives the Tech Lead a task-backed, validated delivery workflow', () => {
+    const [lead] = defaultAgentsFor(runnerMap(CLAUDE_READY))
+
+    expect(lead?.systemPrompt).toContain('Find the task for the request')
+    expect(lead?.systemPrompt).toContain('create one before starting')
+    expect(lead?.systemPrompt).toContain('Update the task')
+    expect(lead?.systemPrompt).toContain('Validate delivered work yourself')
+    expect(lead?.systemPrompt).toContain('the task is validated and complete')
+  })
+
   test('gives every default agent a working directory and a prompt', () => {
     const defaults = defaultAgentsFor(runnerMap(CLAUDE_READY))
 

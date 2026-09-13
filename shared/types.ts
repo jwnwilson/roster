@@ -119,6 +119,8 @@ export interface Session {
    * null again if that task is later deleted — the transcript outlives it.
    */
   taskId?: string | null
+  /** The last time Roster automatically asked this task session to check in. */
+  lastNudgedAt?: number | null
   createdAt: number
 }
 

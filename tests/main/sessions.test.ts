@@ -29,6 +29,7 @@ describe('SessionStore.create', () => {
 
     expect(session.id).toMatch(/[0-9a-f-]{36}/)
     expect(session.status).toBe('idle')
+    expect(session.lastNudgedAt).toBeNull()
     expect(session.spawnedFrom).toBeUndefined()
   })
 
@@ -112,6 +113,25 @@ describe('SessionStore — mutations', () => {
     store.rename(s.id, 'Session leak on 504')
 
     expect(store.findById(s.id)?.title).toBe('Session leak on 504')
+  })
+
+  test('records the last automated check-in', () => {
+    const s = store.create({ agentId: 'debug', title: 'x', origin: 'you' })
+    store.markNudged(s.id, 123)
+
+    expect(store.findById(s.id)?.lastNudgedAt).toBe(123)
+  })
+
+  test('recovers only a run interrupted by an app restart', () => {
+    const running = store.create({ agentId: 'debug', title: 'running', origin: 'you' })
+    const approval = store.create({ agentId: 'debug', title: 'approval', origin: 'you' })
+    store.updateStatus(running.id, 'running')
+    store.updateStatus(approval.id, 'approval')
+
+    store.recoverInterruptedRuns()
+
+    expect(store.findById(running.id)?.status).toBe('done')
+    expect(store.findById(approval.id)?.status).toBe('approval')
   })
 })
 
@@ -257,5 +277,19 @@ describe('SessionStore — sessions attached to a task', () => {
     task('ROS-1')
 
     expect(store.linksForTask('ROS-1')).toEqual([])
+  })
+
+  test('selects only assigned, in-progress task sessions beyond their cooldown', () => {
+    task('ROS-2')
+    const eligible = store.create({ agentId: 'debugging', title: 'x', origin: 'you', taskId: 'ROS-2' })
+    db.prepare("UPDATE tasks SET status = 'in_progress', assignee_id = 'debugging' WHERE id = 'ROS-2'").run()
+    store.markNudged(eligible.id, 100)
+
+    task('ROS-3')
+    store.create({ agentId: 'review', title: 'y', origin: 'you', taskId: 'ROS-3' })
+    db.prepare("UPDATE tasks SET status = 'in_progress', assignee_id = 'debugging' WHERE id = 'ROS-3'").run()
+
+    expect(store.livenessCandidates(99)).toEqual([])
+    expect(store.livenessCandidates(100).map((session) => session.id)).toEqual([eligible.id])
   })
 })

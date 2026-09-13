@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import type { Agent } from '@shared/types'
+import type { Agent, Approval } from '@shared/types'
 import { MEMORY_SERVER, PLANS_SERVER, ROSTER_SERVER, TASKS_SERVER } from '@shared/mcp'
 import type { McpLaunchSpec, StartOptions } from '@main/runners/types'
 // Type only, so naming it here cannot load the module before the mocks below.
@@ -209,7 +209,7 @@ describe('a Codex agent’s MCP servers', () => {
     await run()
 
     expect(served.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(['list_agents', 'open_session', 'close_session']),
+      expect.arrayContaining(['list_agents', 'open_session', 'close_session', 'request_user_decision']),
     )
   })
 
@@ -223,6 +223,63 @@ describe('a Codex agent’s MCP servers', () => {
     for (const tool of served.filter((tool) => tool.name !== 'close_session')) {
       expect(tool.annotations).toMatchObject({ destructiveHint: false, openWorldHint: false })
     }
+  })
+})
+
+describe('a Codex agent asking Roster for a decision', () => {
+  test('shows the existing question UI state and returns the selected answer to the MCP call', async () => {
+    const approvals: Approval[] = []
+    manager.subscribe((event) => {
+      if (event.type !== 'approval') return
+      approvals.push(event.approval)
+      // A renderer can answer from the same event turn (for example, a
+      // one-click option). The resolver must already be registered then.
+      manager.respondToApproval(event.sessionId, event.approval.id, {
+        approved: true,
+        answers: { 'Which cache?': 'Redis' },
+      })
+    })
+
+    runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) =>
+      (async function* () {
+        const spec = options.mcpServers[ROSTER_SERVER]
+        if (!spec) throw new Error('Roster MCP server was not configured')
+        callResult = await callOverBridge(spec, 'request_user_decision', {
+          questions: [
+            {
+              question: 'Which cache?',
+              header: 'Cache',
+              multi_select: false,
+              options: [
+                { label: 'Redis', description: 'Use Redis.' },
+                { label: 'SQLite', description: 'Use SQLite.' },
+              ],
+            },
+          ],
+        })
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })(),
+    )
+
+    const session = manager.create('codey', 'Ask')
+    const turn = manager.send(session.id, 'ask first')
+    await turn
+
+    expect(approvals).toHaveLength(1)
+    expect(approvals[0]?.questions?.[0]).toMatchObject({ question: 'Which cache?', header: 'Cache' })
+    expect(callResult?.isError).toBeUndefined()
+    expect(callResult?.content[0]?.text).toContain('Redis')
+    expect(sessions.messages(session.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'tool',
+          tool: 'request_user_decision',
+          input: expect.stringContaining('Which cache?'),
+          output: expect.stringContaining('Redis'),
+        }),
+      ]),
+    )
+    expect(manager.pendingApprovals(session.id)).toEqual([])
   })
 })
 
@@ -246,6 +303,7 @@ describe('which of Roster’s tools a Codex agent gets', () => {
       'close_session',
       'list_agents',
       'open_session',
+      'request_user_decision',
     ])
   })
 

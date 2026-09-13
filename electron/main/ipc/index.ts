@@ -17,6 +17,7 @@ import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
 import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { SessionManager } from '../sessions/manager'
+import { SessionNudges } from '../sessions/nudges'
 import { removeSession } from '../sessions/remove'
 import { sessionLabel } from '../../../shared/sessions'
 import { TaskMentions } from '../sessions/mentions'
@@ -51,6 +52,7 @@ let usageStore: UsageStore | null = null
 let projectStore: ProjectStore | null = null
 let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
+let nudges: SessionNudges | null = null
 let planStore: PlanStore | null = null
 let planFlow: PlanFlow | null = null
 let mentions: TaskMentions | null = null
@@ -220,6 +222,9 @@ export async function initStores(): Promise<void> {
 
   db = openDatabase(databasePath())
   sessionStore = new SessionStore(db)
+  // A runner lives only in this process. Do not leave a session claiming it
+  // is actively running after the app that owned its runner has exited.
+  sessionStore.recoverInterruptedRuns()
   usageStore = new UsageStore(db)
   usageStore.backfillCodex(agentStore.findAll())
   projectStore = new ProjectStore(db)
@@ -245,6 +250,8 @@ export async function initStores(): Promise<void> {
     { removeSession: (sessionId) => deleteSession(sessionId, false) },
     notionMcp,
   )
+  nudges = new SessionNudges(sessionStore, manager)
+  nudges.start()
   planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
@@ -533,6 +540,7 @@ export function registerIpc(): void {
     const url = await notionMcp.beginAuthorization()
     await shell.openExternal(url)
   })
+  ipcMain.handle(CHANNELS.notionClearAuth, () => requireNotionAuth().clear())
   ipcMain.handle(CHANNELS.notionConnections, () => requireNotion().findAll())
   ipcMain.handle(CHANNELS.notionDisconnect, (_e, id: string) => {
     requireNotion().delete(id)
@@ -725,6 +733,8 @@ async function confirmDelete(
 }
 
 export function disposeStores(): void {
+  nudges?.dispose()
+  nudges = null
   ptyManager.disposeAll()
   agentStore.dispose()
   skillStore.dispose()

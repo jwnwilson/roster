@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Agent, McpServer, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
 import { ServerGlyph } from '@/components/ServerGlyph'
-import { NOTION_MCP_COMMAND, NOTION_SERVER } from '@shared/mcp'
+import { NOTION_MCP_COMMAND } from '@shared/mcp'
 import { useRoster, type McpTab } from '@/state/store'
 import { McpServerModal, type McpServerDraft } from './McpServerModal'
 
@@ -24,7 +24,7 @@ const REGISTRY: RegistryEntry[] = [
   { category: 'Data', name: 'bigquery', description: 'Run scoped queries against BigQuery datasets.', author: 'community' },
   { category: 'Workspace', name: 'linear', description: 'Read and update issues, cycles, and project status.', author: 'linear' },
   { category: 'Workspace', name: 'slack', description: 'Search channels and post messages as a bot user.', author: 'community' },
-  { category: 'Workspace', name: 'notion', description: 'Read pages and databases from a Notion workspace.', author: 'notion', command: NOTION_MCP_COMMAND },
+  { category: 'Workspace', name: 'notion', description: 'Read and update a Notion workspace. Your browser will ask you to sign in on first use.', author: 'notion', command: NOTION_MCP_COMMAND },
 ]
 
 const CATEGORIES = ['Code & repos', 'Data', 'Workspace']
@@ -198,15 +198,13 @@ function Registry({ onEdit }: EditsServers) {
                 <button
                   type="button"
                   aria-label={`Configure ${entry.name}`}
-                  onClick={() => {
-                    if (entry.name !== NOTION_SERVER) {
-                      onEdit({
-                        name: entry.name,
-                        command: launchCommandFor(entry),
-                        installing: !installed.has(entry.name),
-                      })
-                    }
-                  }}
+                  onClick={() =>
+                    onEdit({
+                      name: entry.name,
+                      command: launchCommandFor(entry),
+                      installing: !installed.has(entry.name),
+                    })
+                  }
                   className="flex cursor-pointer items-center gap-[9px] border-0 bg-transparent p-0 text-left after:absolute after:inset-0 after:content-['']"
                 >
                   <ServerGlyph name={entry.name} size={20} />

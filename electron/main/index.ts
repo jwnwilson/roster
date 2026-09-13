@@ -102,6 +102,17 @@ function createWindow(): BrowserWindow {
     })
   }
 
+  // The renderer requests media only after an explicit Voice button press.
+  // It has no navigation path to an untrusted origin, and all external links
+  // are opened outside this window below.
+  win.webContents.session.setPermissionRequestHandler((_contents, permission, callback, details) => {
+    callback(
+      permission === 'media' &&
+        'mediaTypes' in details &&
+        details.mediaTypes?.includes('audio') === true,
+    )
+  })
+
   win.once('ready-to-show', () => {
     win.show()
     checkForUpdatesOnLaunch()

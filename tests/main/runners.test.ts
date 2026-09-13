@@ -537,6 +537,7 @@ describe('in-process tool allowlists', () => {
         listAgents: () => [],
         openSession: () => ({ sessionId: 's', label: 'l', started: true }),
         closeSession: async () => false,
+        requestUserDecision: async () => ({ approved: false, answers: {} }),
       },
       'me',
     )) as { instance?: { _registeredTools?: Record<string, unknown> } }

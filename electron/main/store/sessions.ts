@@ -23,6 +23,7 @@ interface SessionRow {
   runner_session_id: string | null
   project_id: string | null
   task_id: string | null
+  last_nudged_at: number | null
   created_at: number
 }
 
@@ -82,6 +83,9 @@ export class SessionStore {
       // by hand from the config rail, or through the agent's own default.
       projectId: input.projectId ?? null,
       taskId: input.taskId ?? null,
+      // Keep a just-created session structurally identical to the same row
+      // read back from SQLite. NULL means Roster has never checked in.
+      lastNudgedAt: null,
       createdAt: Date.now(),
       ...(input.from
         ? {
@@ -218,6 +222,38 @@ export class SessionStore {
       .get(taskId, agentId)
 
     return row ? toSession(row) : null
+  }
+
+  /**
+   * Sessions whose assigned, in-progress task needs a periodic check-in.
+   *
+   * This is deliberately a join rather than a caller-side filter: candidate
+   * selection and cooldown are one durable query, so a restart cannot turn a
+   * stale in-memory list into duplicate paid turns.
+   */
+  livenessCandidates(cooldownBefore: number): Session[] {
+    const rows = this.db
+      .prepare<[number], SessionRow>(
+        `SELECT s.*
+           FROM sessions s
+           JOIN tasks t ON t.id = s.task_id
+          WHERE t.status = 'in_progress'
+            AND t.assignee_id = s.agent_id
+            AND (s.last_nudged_at IS NULL OR s.last_nudged_at <= ?)`,
+      )
+      .all(cooldownBefore)
+
+    return rows.map(toSession)
+  }
+
+  /** Mark before starting a check-in, so two ticks cannot enqueue it twice. */
+  markNudged(id: string, at: number): void {
+    this.db.prepare('UPDATE sessions SET last_nudged_at = ? WHERE id = ?').run(at, id)
+  }
+
+  /** No runner survives an app restart, so a persisted running state is stale. */
+  recoverInterruptedRuns(): void {
+    this.db.prepare("UPDATE sessions SET status = 'done' WHERE status = 'running'").run()
   }
 
   /** Every session attached to a task, for the detail panel's rail. */
@@ -414,6 +450,7 @@ function toSession(row: SessionRow): Session {
     ...(row.runner_session_id !== null ? { runnerSessionId: row.runner_session_id } : {}),
     projectId: row.project_id,
     taskId: row.task_id,
+    lastNudgedAt: row.last_nudged_at,
   }
 }
 

@@ -232,7 +232,9 @@ describe('AgentDetail — answering a question', () => {
   const ASKING = {
     id: 'a1',
     sessionId: 's1',
-    toolName: 'AskUserQuestion',
+    // Codex asks through Roster's MCP tool, not Claude's native question
+    // tool. The renderer must key off structured questions, never this name.
+    toolName: 'request_user_decision',
     command: 'Which cache backend?',
     questions: [
       {
@@ -707,7 +709,7 @@ describe('AgentDetail — finding a question again', () => {
   const ASKING = {
     id: 'a1',
     sessionId: 's1',
-    toolName: 'AskUserQuestion',
+    toolName: 'request_user_decision',
     command: 'Which cache backend?',
     questions: QUESTIONS,
     status: 'pending' as const,
@@ -719,7 +721,7 @@ describe('AgentDetail — finding a question again', () => {
     id: 'm1',
     sessionId: 's1',
     kind: 'tool' as const,
-    tool: 'AskUserQuestion',
+    tool: 'request_user_decision',
     args: 'Which cache backend?',
     input: JSON.stringify({ questions: QUESTIONS }),
     output: '',
@@ -760,7 +762,7 @@ describe('AgentDetail — finding a question again', () => {
     useRoster.setState({ approvals: { s1: [] } })
     render(<AgentDetail />)
 
-    await screen.findByText('AskUserQuestion')
+    await screen.findByText('request_user_decision')
     expect(screen.queryByRole('button', { name: 'Show question' })).not.toBeInTheDocument()
   })
 
