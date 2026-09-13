@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { McpServer } from '../../../shared/types'
-import { BUILTIN_MCP_SERVERS, isBuiltinMcpServer } from '../../../shared/mcp'
+import { BUILTIN_MCP_SERVERS, isBuiltinMcpServer, NOTION_SERVER } from '../../../shared/mcp'
 import type { Disposable } from './agents'
 import { mcpConfigPath } from './paths'
 
@@ -24,7 +24,9 @@ export class McpStore {
     try {
       const raw = await readFile(mcpConfigPath(), 'utf8')
       const parsed = JSON.parse(raw) as Partial<McpFile>
-      this.servers = Array.isArray(parsed.servers) ? parsed.servers.map(normalize) : []
+      this.servers = Array.isArray(parsed.servers)
+        ? parsed.servers.map(normalize).filter((server) => server.name !== NOTION_SERVER)
+        : []
     } catch {
       // A missing or corrupt file means no servers configured, not a crash.
       this.servers = []
@@ -39,7 +41,7 @@ export class McpStore {
    * the file only ever holds the servers Roster has to launch.
    */
   findAll(): McpServer[] {
-    return [...BUILTINS, ...this.servers]
+    return [...BUILTINS, MANAGED_NOTION, ...this.servers]
   }
 
   /** Adds a server from the registry. Installing an existing one is a no-op. */
@@ -47,6 +49,7 @@ export class McpStore {
     // A built-in's name is taken: an mcp.json entry shadowing it would put
     // two different servers under one name in every agent's `mcp_servers`.
     if (isBuiltinMcpServer(name)) throw new Error(`"${name}" is built into Roster`)
+    if (name === NOTION_SERVER) return this.findAll()
     if (this.servers.some((server) => server.name === name)) return this.findAll()
 
     this.servers = [...this.servers, { name, command, env: {} }]
@@ -61,6 +64,7 @@ export class McpStore {
    */
   async save(name: string, command: string, env: Record<string, string>): Promise<McpServer[]> {
     if (isBuiltinMcpServer(name)) throw new Error(`"${name}" is built into Roster`)
+    if (name === NOTION_SERVER) throw new Error('Notion is managed by Roster. Connect Notion instead.')
     if (!this.servers.some((server) => server.name === name)) {
       throw new Error(`unknown MCP server "${name}"`)
     }
@@ -129,6 +133,14 @@ const BUILTINS: McpServer[] = BUILTIN_MCP_SERVERS.map((server) => ({
   builtin: true,
   description: server.description,
 }))
+
+const MANAGED_NOTION: McpServer = {
+  name: NOTION_SERVER,
+  command: '',
+  env: {},
+  managed: true,
+  description: 'Hosted Notion MCP, authenticated through Roster.',
+}
 
 /**
  * The agent's `mcp_servers` with one server added or removed.

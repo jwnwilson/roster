@@ -2,7 +2,7 @@ import type { Agent } from '../../../shared/types'
 import type { TaskStore } from '../store/tasks'
 import type { NotionStore } from '../store/notion'
 import type { ImportSummary, NotionConnection } from '../../../shared/notion'
-import { NotionClient } from './client'
+import type { NotionBoardClient } from './client'
 import { toProperties, toTask } from './mapping'
 
 /**
@@ -24,7 +24,7 @@ export type AgentLookup = () => readonly Agent[]
  * work someone may be part-way through.
  */
 export async function importConnection(
-  client: NotionClient,
+  client: NotionBoardClient,
   connection: NotionConnection,
   tasks: TaskStore,
   agents: AgentLookup,
@@ -135,7 +135,7 @@ export class NotionPush {
     private readonly tasks: TaskStore,
     private readonly connections: NotionStore,
     private readonly agents: AgentLookup,
-    private readonly clientFor: () => NotionClient | null,
+    private readonly clientFor: () => NotionBoardClient | null,
     private readonly delayMs = 800,
   ) {}
 

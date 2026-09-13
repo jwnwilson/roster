@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Agent, McpServer, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
 import { ServerGlyph } from '@/components/ServerGlyph'
-import { NOTION_MCP_COMMAND } from '@shared/mcp'
+import { NOTION_MCP_COMMAND, NOTION_SERVER } from '@shared/mcp'
 import { useRoster, type McpTab } from '@/state/store'
 import { McpServerModal, type McpServerDraft } from './McpServerModal'
 
@@ -93,14 +93,14 @@ function Installed({ onEdit }: EditsServers) {
           className="relative flex flex-col gap-[11px] rounded-[9px] border border-line bg-card px-[15px] py-[13px] hover:border-line-hover"
           data-hoverable
         >
-          {server.builtin ? (
+          {server.builtin || server.managed ? (
             // Nothing to configure — no command, no environment. The card is
             // here for the chips below it, so it is not a button.
             <div className="flex items-center gap-[10px]">
               <ServerGlyph name={server.name} />
               <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
               <span className="flex-none rounded-chip border border-line-input px-[7px] py-[1px] text-xs text-dim">
-                Built in
+                {server.builtin ? 'Built in' : 'Managed'}
               </span>
               <span className="truncate text-sm text-dim-2">{server.description}</span>
               <AgentCount agents={agents} server={server.name} />
@@ -198,13 +198,15 @@ function Registry({ onEdit }: EditsServers) {
                 <button
                   type="button"
                   aria-label={`Configure ${entry.name}`}
-                  onClick={() =>
-                    onEdit({
-                      name: entry.name,
-                      command: launchCommandFor(entry),
-                      installing: !installed.has(entry.name),
-                    })
-                  }
+                  onClick={() => {
+                    if (entry.name !== NOTION_SERVER) {
+                      onEdit({
+                        name: entry.name,
+                        command: launchCommandFor(entry),
+                        installing: !installed.has(entry.name),
+                      })
+                    }
+                  }}
                   className="flex cursor-pointer items-center gap-[9px] border-0 bg-transparent p-0 text-left after:absolute after:inset-0 after:content-['']"
                 >
                   <ServerGlyph name={entry.name} size={20} />

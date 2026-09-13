@@ -4,6 +4,7 @@ import type { Agent, Approval, Message, Session, Usage } from '../../../shared/t
 import {
   isBuiltinMcpServer,
   MEMORY_SERVER,
+  NOTION_SERVER,
   PLANS_SERVER,
   ROSTER_SERVER,
   TASKS_SERVER,
@@ -27,7 +28,7 @@ import type {
 } from '../runners/types'
 import { ClaudeRunner } from '../runners/claude'
 import { CodexRunner } from '../runners/codex'
-import { McpBridge } from '../runners/mcpBridge'
+import { McpBridge, type ProxiedMcpTools } from '../runners/mcpBridge'
 import { builtinToolDefinitions, type BuiltinToolSet } from '../runners/toolDefinitions'
 import { createRosterMcpServer, type RosterTools } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
@@ -167,6 +168,8 @@ export class SessionManager {
     private readonly notes?: ProjectNotesStore,
     /** The app-owned removal lifecycle, supplied where PTYs and plans live. */
     private readonly sessionRemoval?: { removeSession: (sessionId: string) => Promise<Session | null> },
+    /** Shared hosted-Notion client, delivered to runners through a local proxy. */
+    private readonly notion?: ProxiedMcpTools,
   ) {}
 
   subscribe(listener: (event: SessionEvent) => void): () => void {
@@ -379,6 +382,7 @@ export class SessionManager {
 
     /** Set only for a runner that reaches Roster's tools from another process. */
     let bridge: McpBridge | null = null
+    let notionBridge: McpBridge | null = null
 
     // The try opens here rather than at the runner call: the MCP servers
     // below are built with await, and a throw there used to escape send()
@@ -407,6 +411,15 @@ export class SessionManager {
         // calls straight back into these same tools. See mcpBridge.ts.
         bridge = await McpBridge.start(builtinToolDefinitions(toolSet, agent.id))
         mcpServers = { ...mcpServers, [ROSTER_SERVER]: bridge.launchSpec() }
+      }
+
+      // Notion is always proxied, including for Claude. That keeps the hosted
+      // MCP OAuth token inside this process rather than copying it into a
+      // runner configuration or a child environment.
+      if (agent.mcpServers.includes(NOTION_SERVER)) {
+        if (!this.notion) throw new Error('Notion is unavailable in this build.')
+        notionBridge = await McpBridge.proxy(this.notion)
+        mcpServers = { ...mcpServers, [NOTION_SERVER]: notionBridge.launchSpec() }
       }
 
       const stream = runner.run(this.withProjectBrief(session, prompt), {
@@ -438,6 +451,7 @@ export class SessionManager {
       // act on it, so it is reported and the turn is cleaned up regardless.
       try {
         await bridge?.close()
+        await notionBridge?.close()
       } catch (cause) {
         process.stderr.write(
           `[mcp] could not close the bridge for session ${sessionId}: ${describeCause(cause)}\n`,
@@ -1078,6 +1092,10 @@ export class SessionManager {
     for (const name of agent.mcpServers) {
       // Built-ins run in-process; there is no command to launch.
       if (isBuiltinMcpServer(name)) continue
+      // A Roster-managed proxy is added per turn above. It is intentionally
+      // not read from mcp.json: legacy commands and static tokens must never
+      // win over the hosted OAuth connection.
+      if (name === NOTION_SERVER) continue
 
       const server = configured.get(name)
       if (!server) {

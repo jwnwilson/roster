@@ -52,13 +52,21 @@ export interface NotionTokenProvider {
   refresh(): Promise<string>
 }
 
+/** The board importer and push lifecycle need this, regardless of transport. */
+export interface NotionBoardClient {
+  dataSources(databaseId: string): Promise<DataSourceRef[]>
+  schema(dataSourceId: string): Promise<{ title: string; properties: NotionProperty[] }>
+  pages(dataSourceId: string): Promise<NotionPage[]>
+  updatePage(pageId: string, properties: Record<string, unknown>): Promise<void>
+}
+
 /**
  * A Notion workspace, as far as Roster is concerned.
  *
  * `fetch` is injected so the tests can drive retries and failures without a
  * network — this is the one place in the app where that matters.
  */
-export class NotionClient {
+export class NotionClient implements NotionBoardClient {
   /** Requests run one at a time; the tail of that chain. */
   private queue: Promise<unknown> = Promise.resolve()
 

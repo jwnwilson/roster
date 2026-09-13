@@ -1,5 +1,7 @@
 # Use public Notion OAuth for desktop connections
 
+> Superseded by [Use one hosted Notion MCP OAuth connection](2026-09-13-unified-notion-mcp-oauth.md).
+
 ## Decision
 
 Roster uses a Notion public OAuth connection for board import and push. Each

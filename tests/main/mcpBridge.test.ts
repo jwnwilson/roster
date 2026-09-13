@@ -73,6 +73,25 @@ describe('the address the bridge listens on', () => {
 })
 
 describe('the bridge a Codex agent calls back through', () => {
+  test('proxies a main-process MCP client without giving its credentials to the child', async () => {
+    const source = {
+      tools: vi.fn().mockResolvedValue([
+        { name: 'notion-fetch', description: 'Fetch', inputSchema: { type: 'object' } },
+      ]),
+      call: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: 'private' }] }),
+    }
+    const bridge = await McpBridge.proxy(source)
+    bridges.push(bridge)
+
+    await expect(ask(bridge, { id: 1, op: 'list', token: bridge.token })).resolves.toMatchObject({
+      tools: [{ name: 'notion-fetch' }],
+    })
+    await expect(ask(bridge, {
+      id: 2, op: 'call', token: bridge.token, name: 'notion-fetch', args: { id: 'self' },
+    })).resolves.toMatchObject({ content: [{ text: 'private' }] })
+    expect(source.call).toHaveBeenCalledWith('notion-fetch', { id: 'self' })
+  })
+
   test('lists the tools it was given, in their wire form', async () => {
     const { tools } = toolset()
     const bridge = await start(tools)

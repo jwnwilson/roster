@@ -308,4 +308,17 @@ export const MIGRATIONS: readonly string[] = [
     updated_at         INTEGER NOT NULL
   );
   `,
+
+  // 14 — Hosted Notion MCP uses OAuth discovery, PKCE and dynamic client
+  // registration. Its encrypted material is deliberately separate from the
+  // retired REST public-connection row so an old bearer token can never be
+  // mistaken for an MCP credential.
+  `
+  CREATE TABLE notion_mcp_auth (
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    encrypted_payload  TEXT NOT NULL,
+    updated_at         INTEGER NOT NULL
+  );
+  DELETE FROM notion_auth;
+  `,
 ]
