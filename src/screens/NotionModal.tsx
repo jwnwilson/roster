@@ -206,14 +206,14 @@ export function NotionModal() {
           <Field
             label="Connect Notion"
             caption={
-              auth?.state === 'needs_configuration'
+              auth?.state === 'error'
                 ? auth.message
-                : 'Authorize Roster to read the Notion workspace in your browser.'
+                : 'Connect Roster to your Notion workspace in your browser.'
             }
           >
             <button
               type="button"
-              disabled={busy !== '' || auth?.state === 'needs_configuration'}
+              disabled={busy !== ''}
               onClick={() => void beginAuth()}
               className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-ink-3 hover:border-line-hover disabled:cursor-default disabled:opacity-40"
               data-hoverable
