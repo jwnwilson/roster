@@ -78,6 +78,27 @@ describe('connecting', () => {
     expect(window.roster.notion.beginAuth).toHaveBeenCalledOnce()
   })
 
+  test('offers hosted-provider connection when the legacy configuration status is reported', async () => {
+    installRosterApi({
+      notion: {
+        authStatus: vi.fn().mockResolvedValue({
+          state: 'needs_configuration',
+          message: 'Set NOTION_OAUTH_CLIENT_SECRET to continue.',
+        }),
+        connections: vi.fn().mockResolvedValue([]),
+      },
+    })
+    const user = userEvent.setup()
+    render(<NotionModal />)
+
+    const connect = await screen.findByRole('button', { name: 'Connect Notion' })
+    expect(connect).toBeEnabled()
+    expect(screen.queryByText(/NOTION_OAUTH/)).not.toBeInTheDocument()
+
+    await user.click(connect)
+    expect(window.roster.notion.beginAuth).toHaveBeenCalledOnce()
+  })
+
   test('will not look anything up until something is pasted', () => {
     render(<NotionModal />)
 
