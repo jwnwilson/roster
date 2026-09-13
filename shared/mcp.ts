@@ -63,10 +63,9 @@ export function isBuiltinMcpServer(name: string): boolean {
 /* -------------------------------------------------------------------------
  * Notion.
  *
- * Not a built-in — it is a local stdio bridge from the registry. It is named
- * here because agents can use it to talk to Notion. The bridge connects to
- * Notion's hosted MCP and owns that server's user OAuth flow; board sync has
- * a separate public OAuth connection and deliberately does not inspect it.
+ * Roster proxies this hosted server locally for every enabled agent. It is
+ * kept in the registry vocabulary so agent.toml continues to control access,
+ * but its command is never read from mcp.json and no token is configurable.
  * ---------------------------------------------------------------------- */
 
 export const NOTION_SERVER = 'notion'
@@ -76,4 +75,4 @@ export const NOTION_SERVER = 'notion'
  * registry's `@modelcontextprotocol/server-<name>` guess does not work here
  * and the entry carries this instead.
  */
-export const NOTION_MCP_COMMAND = 'npx -y mcp-remote https://mcp.notion.com/mcp'
+export const NOTION_MCP_COMMAND = 'Roster managed — connect Notion with OAuth'

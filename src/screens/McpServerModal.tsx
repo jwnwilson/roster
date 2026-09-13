@@ -51,6 +51,39 @@ export function McpServerModal({
   onClose,
   onSaved,
 }: McpServerModalProps) {
+  // Notion is deliberately not a configurable subprocess. This screen is
+  // still its home so someone can connect before importing tasks, but the
+  // one OAuth credential belongs to Roster rather than mcp.json.
+  if (draft.name === "notion") {
+    return (
+      <Modal
+        label="Configure notion"
+        onClose={onClose}
+        header={
+          <>
+            <ServerGlyph name="notion" />
+            <h2 className="m-0 text-2xl font-semibold">notion</h2>
+            <span className="truncate font-mono text-sm text-dim-2">Roster managed</span>
+          </>
+        }
+        footer={
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-auto cursor-pointer rounded-pill border border-line-card bg-transparent px-[13px] py-[7px] font-ui text-lg text-ink-3 hover:border-line-hover-strong"
+            data-hoverable
+          >
+            Close
+          </button>
+        }
+      >
+        <div className="flex min-h-0 flex-1 flex-col gap-[20px] overflow-y-auto p-[18px]">
+          <NotionImportAuthentication />
+        </div>
+      </Modal>
+    )
+  }
+
   const [command, setCommand] = useState(draft.command);
   const [rows, setRows] = useState<EnvRow[]>(rowsFrom(existing?.env ?? {}));
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +150,6 @@ export function McpServerModal({
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[20px] overflow-y-auto p-[18px]">
-        {draft.name === "notion" ? <NotionImportAuthentication /> : null}
         <Field
           label="Launch command"
           caption="Run as-is. The first word is the executable; the rest are its arguments."
@@ -134,9 +166,7 @@ export function McpServerModal({
         <Field
           label="Environment"
           caption={
-            draft.name === "notion"
-              ? "Notion signs in through your browser when the server first starts; do not add a token here."
-              : "Stored as plain text in mcp.json. Treat it like any other dotfile with tokens in it."
+            "Stored as plain text in mcp.json. Treat it like any other dotfile with tokens in it."
           }
           trailing={
             <button

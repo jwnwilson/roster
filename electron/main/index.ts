@@ -9,7 +9,7 @@ let pendingNotionCallback: string | null = null
 let storesReady = false
 
 function receiveProtocolUrl(url: string): void {
-  if (!url.startsWith(`${NOTION_PROTOCOL}://notion/oauth`)) return
+  if (!url.startsWith(`${NOTION_PROTOCOL}://notion/mcp-oauth`)) return
   // macOS can deliver the callback while the app is still opening its stores.
   // Keep one callback only: OAuth state makes each one single-use.
   if (!storesReady) {
@@ -33,7 +33,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', (_event, argv) => {
-    const callback = argv.find((value) => value.startsWith(`${NOTION_PROTOCOL}://notion/oauth`))
+    const callback = argv.find((value) => value.startsWith(`${NOTION_PROTOCOL}://notion/mcp-oauth`))
     if (callback) receiveProtocolUrl(callback)
     const win = BrowserWindow.getAllWindows()[0]
     if (win) {
@@ -42,7 +42,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   })
   const initialCallback = process.argv.find((value) =>
-    value.startsWith(`${NOTION_PROTOCOL}://notion/oauth`),
+    value.startsWith(`${NOTION_PROTOCOL}://notion/mcp-oauth`),
   )
   if (initialCallback) receiveProtocolUrl(initialCallback)
 }

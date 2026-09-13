@@ -29,8 +29,11 @@ import { TaskStore } from '../store/tasks'
 import { PlanStore } from '../store/plans'
 import { NotionStore } from '../store/notion'
 import { PlanFlow } from '../sessions/planFlow'
-import { NotionClient, databaseIdFrom } from '../notion/client'
-import { NotionAuth, type NotionOAuthConfig, type SecretBox } from '../notion/auth'
+import { databaseIdFrom } from '../notion/client'
+import { type SecretBox } from '../notion/auth'
+import { NotionMcpAuth } from '../notion/mcpAuth'
+import { NotionMcpClient } from '../notion/mcpClient'
+import { NotionMcpBoardClient } from '../notion/mcpBoardClient'
 import { detectMapping, unmappedStatuses } from '../notion/mapping'
 import { NotionPush, importConnection } from '../notion/sync'
 import { SkillStore } from '../store/skills'
@@ -55,7 +58,8 @@ let planFlow: PlanFlow | null = null
 let mentions: TaskMentions | null = null
 let notionStore: NotionStore | null = null
 let notionPush: NotionPush | null = null
-let notionAuth: NotionAuth | null = null
+let notionAuth: NotionMcpAuth | null = null
+let notionMcp: NotionMcpClient | null = null
 
 /**
  * What first-run setup decided, held for the renderer to ask for.
@@ -156,29 +160,14 @@ function requireNotion(): NotionStore {
   return notionStore
 }
 
-function requireNotionClient(): NotionClient {
-  if (!notionAuth) throw new Error('Notion authorization is not initialised')
-  return new NotionClient(notionAuth)
+function requireNotionClient(): NotionMcpBoardClient {
+  if (!notionMcp) throw new Error('Notion authorization is not initialised')
+  return new NotionMcpBoardClient(notionMcp)
 }
 
-function requireNotionAuth(): NotionAuth {
+function requireNotionAuth(): NotionMcpAuth {
   if (!notionAuth) throw new Error('Notion authorization is not initialised')
   return notionAuth
-}
-
-function oauthConfig(): NotionOAuthConfig | null {
-  const clientId = process.env['NOTION_OAUTH_CLIENT_ID']
-  const clientSecret = process.env['NOTION_OAUTH_CLIENT_SECRET']
-  const redirectUri = process.env['NOTION_OAUTH_REDIRECT_URI']
-  if (!clientId || !clientSecret || !redirectUri) return null
-  try {
-    const redirect = new URL(redirectUri)
-    return redirect.protocol === 'roster:' && redirect.host === 'notion' && redirect.pathname === '/oauth'
-      ? { clientId, clientSecret, redirectUri }
-      : null
-  } catch {
-    return null
-  }
 }
 
 const electronSecretBox: SecretBox = {
@@ -193,7 +182,8 @@ const electronSecretBox: SecretBox = {
 
 /** Called by the app protocol handler; neither code nor token enters the renderer. */
 export async function completeNotionOAuth(callbackUrl: string): Promise<void> {
-  await requireNotionAuth().complete(callbackUrl)
+  if (!notionMcp) throw new Error('Notion authorization is not initialised')
+  await notionMcp.completeAuthorization(callbackUrl)
 }
 
 function requireTasks(): TaskStore {
@@ -242,7 +232,8 @@ export async function initStores(): Promise<void> {
   // live in agent.toml rather than in this database.
   taskStore = new TaskStore(db, (id) => agentStore.findById(id)?.name ?? null)
   notionStore = new NotionStore(db)
-  notionAuth = new NotionAuth(db, electronSecretBox, oauthConfig())
+  notionAuth = new NotionMcpAuth(db, electronSecretBox)
+  notionMcp = new NotionMcpClient(notionAuth)
   seedBoardIfEmpty(projectStore, taskStore, agentStore.findAll())
 
   planStore = new PlanStore(db)
@@ -257,6 +248,7 @@ export async function initStores(): Promise<void> {
     planStore,
     projectNotesStore,
     { removeSession: (sessionId) => deleteSession(sessionId, false) },
+    notionMcp,
   )
   nudges = new SessionNudges(sessionStore, manager)
   nudges.start()
@@ -544,7 +536,8 @@ export function registerIpc(): void {
   )
   ipcMain.handle(CHANNELS.notionAuthStatus, () => requireNotionAuth().status())
   ipcMain.handle(CHANNELS.notionBeginAuth, async () => {
-    const url = requireNotionAuth().begin()
+    if (!notionMcp) throw new Error('Notion authorization is not initialised')
+    const url = await notionMcp.beginAuthorization()
     await shell.openExternal(url)
   })
   ipcMain.handle(CHANNELS.notionClearAuth, () => requireNotionAuth().clear())
@@ -554,7 +547,10 @@ export function registerIpc(): void {
     // One board connection is all that currently exposes an OAuth workspace.
     // Removing the last one also forgets its local credential; no bearer token
     // lingers after the user said Disconnect.
-    if (requireNotion().count() === 0) requireNotionAuth().clear()
+    if (requireNotion().count() === 0) {
+      notionMcp?.close()
+      requireNotionAuth().clear()
+    }
   })
 
   ipcMain.handle(CHANNELS.notionImport, async (_e, connectionId: string) => {

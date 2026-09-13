@@ -411,6 +411,8 @@ export interface McpServer {
    * may use it. See shared/mcp.ts.
    */
   builtin?: boolean
+  /** Roster supplies the transport and OAuth; this server has no editable command. */
+  managed?: boolean
   /** What the server is for. Only built-ins carry one; the rest show their command. */
   description?: string
 }

@@ -1119,7 +1119,7 @@ describe('McpServers — Install', () => {
     expect(window.roster.mcp.install).not.toHaveBeenCalled()
   })
 
-  test('sets up Notion through the hosted MCP OAuth bridge', async () => {
+  test('sets up Notion through Roster-managed hosted MCP OAuth', async () => {
     const user = userEvent.setup()
     installRosterApi()
     useRoster.setState({ mcpServers: [], agents: [] })
@@ -1129,12 +1129,9 @@ describe('McpServers — Install', () => {
     await user.click(screen.getByRole('button', { name: 'Configure notion' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Configure notion' })
-    expect(within(dialog).getByLabelText('Launch command')).toHaveValue(
-      'npx -y mcp-remote https://mcp.notion.com/mcp',
-    )
-    expect(
-      within(dialog).getByText('Notion signs in through your browser when the server first starts; do not add a token here.'),
-    ).toBeInTheDocument()
+    expect(within(dialog).getByText('Task import access')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Connect Notion|Reconnect Notion/ })).toBeEnabled()
+    expect(within(dialog).queryByLabelText('Launch command')).not.toBeInTheDocument()
   })
 
   test('saving from the registry installs and then configures', async () => {

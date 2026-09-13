@@ -93,14 +93,14 @@ function Installed({ onEdit }: EditsServers) {
           className="relative flex flex-col gap-[11px] rounded-[9px] border border-line bg-card px-[15px] py-[13px] hover:border-line-hover"
           data-hoverable
         >
-          {server.builtin ? (
+          {server.builtin || server.managed ? (
             // Nothing to configure — no command, no environment. The card is
             // here for the chips below it, so it is not a button.
             <div className="flex items-center gap-[10px]">
               <ServerGlyph name={server.name} />
               <h2 className="m-0 text-xl font-semibold">{server.name}</h2>
               <span className="flex-none rounded-chip border border-line-input px-[7px] py-[1px] text-xs text-dim">
-                Built in
+                {server.builtin ? 'Built in' : 'Managed'}
               </span>
               <span className="truncate text-sm text-dim-2">{server.description}</span>
               <AgentCount agents={agents} server={server.name} />

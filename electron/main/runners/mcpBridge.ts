@@ -4,8 +4,15 @@ import { createServer, type Server, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { toWireTools, type BuiltinToolDefinition, type WireTool } from './toolDefinitions'
+import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js'
+import { toWireTools, type BuiltinToolDefinition } from './toolDefinitions'
 import type { McpLaunchSpec } from './types'
+
+/** A main-process MCP client exposed safely to a child over the local socket. */
+export interface ProxiedMcpTools {
+  tools(): Promise<Tool[]>
+  call(name: string, args: Record<string, unknown>): Promise<CallToolResult>
+}
 
 /**
  * Roster's built-in tools, reachable from a CLI running in another process.
@@ -38,8 +45,9 @@ export class McpBridge {
     readonly address: string,
     readonly token: string,
     private readonly tools: Map<string, BuiltinToolDefinition>,
-    private readonly wire: WireTool[],
+    private readonly wire: Tool[],
     private readonly entry: string,
+    private readonly proxied: ProxiedMcpTools | null = null,
   ) {}
 
   /** Live connections, so closing the bridge really does end them. */
@@ -72,7 +80,7 @@ export class McpBridge {
       address,
       randomBytes(24).toString('hex'),
       tools,
-      toWireTools(definitions),
+      toWireTools(definitions) as unknown as Tool[],
       options.entry ?? stdioEntryPath(),
     )
 
@@ -82,6 +90,34 @@ export class McpBridge {
       bridge.server.listen(address, resolve)
     })
 
+    return bridge
+  }
+
+  /**
+   * Turns an authenticated main-process MCP client into a stdio server for a
+   * runner. The child receives only a per-turn socket capability, never the
+   * Notion OAuth credential held by the client.
+   */
+  static async proxy(source: ProxiedMcpTools, options: { entry?: string; platform?: NodeJS.Platform } = {}): Promise<McpBridge> {
+    const tools = await source.tools()
+    const dir = await mkdtemp(join(tmpdir(), 'roster-mcp-'))
+    const platform = options.platform ?? process.platform
+    const address = bridgeAddress(platform, dir)
+    const bridge = new McpBridge(
+      createServer(),
+      dir,
+      address,
+      randomBytes(24).toString('hex'),
+      new Map(),
+      tools,
+      options.entry ?? stdioEntryPath(),
+      source,
+    )
+    bridge.server.on('connection', (socket) => bridge.accept(socket))
+    await new Promise<void>((resolve, reject) => {
+      bridge.server.once('error', reject)
+      bridge.server.listen(address, resolve)
+    })
     return bridge
   }
 
@@ -152,6 +188,15 @@ export class McpBridge {
       return { id: request.id, error: `unknown operation "${request.op}"` }
     }
 
+    if (this.proxied) {
+      if (request.name === undefined) return { id: request.id, ...failed('No tool was named.') }
+      try {
+        return { id: request.id, ...(await this.proxied.call(request.name, asRecord(request.args))) }
+      } catch (cause) {
+        return { id: request.id, ...failed(describe(cause)) }
+      }
+    }
+
     const definition = request.name === undefined ? undefined : this.tools.get(request.name)
     if (!definition) {
       return { id: request.id, ...failed(`No tool called "${request.name ?? ''}".`) }
@@ -199,6 +244,12 @@ export class McpBridge {
     await new Promise<void>((resolve) => this.server.close(() => resolve()))
     await rm(this.dir, { recursive: true, force: true })
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
 }
 
 /** Long enough for any real request, short enough to bound a bad one. */

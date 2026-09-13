@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted — 2026-09-13.
+Superseded by [Use one hosted Notion MCP OAuth connection](2026-09-13-unified-notion-mcp-oauth.md).
 
 ## Context
 
