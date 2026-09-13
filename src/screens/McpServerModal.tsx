@@ -131,7 +131,11 @@ export function McpServerModal({
 
         <Field
           label="Environment"
-          caption="Stored as plain text in mcp.json. Treat it like any other dotfile with tokens in it."
+          caption={
+            draft.name === "notion"
+              ? "Notion signs in through your browser when the server first starts; do not add a token here."
+              : "Stored as plain text in mcp.json. Treat it like any other dotfile with tokens in it."
+          }
           trailing={
             <button
               type="button"

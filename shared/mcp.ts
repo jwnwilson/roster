@@ -63,9 +63,10 @@ export function isBuiltinMcpServer(name: string): boolean {
 /* -------------------------------------------------------------------------
  * Notion.
  *
- * Not a built-in — it is an ordinary stdio server from the registry. It is
- * named here because agents can use it to talk to Notion. Board sync uses its
- * own public OAuth connection and deliberately does not inspect MCP secrets.
+ * Not a built-in — it is a local stdio bridge from the registry. It is named
+ * here because agents can use it to talk to Notion. The bridge connects to
+ * Notion's hosted MCP and owns that server's user OAuth flow; board sync has
+ * a separate public OAuth connection and deliberately does not inspect it.
  * ---------------------------------------------------------------------- */
 
 export const NOTION_SERVER = 'notion'
@@ -75,4 +76,4 @@ export const NOTION_SERVER = 'notion'
  * registry's `@modelcontextprotocol/server-<name>` guess does not work here
  * and the entry carries this instead.
  */
-export const NOTION_MCP_COMMAND = 'npx -y @notionhq/notion-mcp-server'
+export const NOTION_MCP_COMMAND = 'npx -y mcp-remote https://mcp.notion.com/mcp'
