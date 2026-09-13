@@ -51,8 +51,8 @@ export function NotionModal() {
     setError(null)
     try {
       await window.roster.notion.beginAuth()
-      // The browser returns through the registered app protocol. Polling is
-      // intentional: it avoids exposing OAuth codes or tokens to the renderer.
+      // The browser returns to a loopback listener in the main process. Polling
+      // is intentional: it avoids exposing OAuth codes or tokens to the renderer.
       const poll = async (): Promise<void> => {
         const next = await window.roster.notion.authStatus()
         setAuth(next)
