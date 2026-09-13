@@ -103,6 +103,17 @@ for main-process code, or open `http://localhost:9222` in Chrome to inspect the
 renderer. Electron must be able to reach macOS LaunchServices; a headless or
 sandboxed executor cannot create a GUI window and exits before Roster code runs.
 
+If a macOS 26 environment cannot start Electron directly, build and open the
+current source as a local application bundle instead:
+
+```bash
+ROSTER_HOME=/tmp/roster-local-app npm run dev:app
+```
+
+This launches through macOS LaunchServices, like the deployed app. It is a
+source-build workaround rather than a hot-reload workflow: rebuild and relaunch
+after each change.
+
 The landing page is `site/index.html` — static HTML and CSS, no build step and no
 dependency on this project's `package.json`. Open the file, or serve the folder
 (`python3 -m http.server -d site`), and `.github/workflows/pages.yml` publishes it
