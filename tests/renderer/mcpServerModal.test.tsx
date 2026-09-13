@@ -52,6 +52,40 @@ describe('McpServerModal — opening', () => {
     expect(within(dialog).getByText(/No variables/)).toBeInTheDocument()
   })
 
+  test('connects Notion for task import without starting an agent', async () => {
+    const user = userEvent.setup()
+    installRosterApi({
+      notion: { authStatus: vi.fn().mockResolvedValue({ state: 'disconnected' }) },
+    })
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'notion', command: 'npx -y mcp-remote https://mcp.notion.com/mcp' })],
+    })
+    render(<McpServers />)
+
+    await user.click(screen.getByRole('button', { name: 'Configure notion' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Configure notion' })
+
+    expect(within(dialog).getByText('Not connected for task import.')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Connect Notion' }))
+
+    expect(window.roster.notion.beginAuth).toHaveBeenCalledOnce()
+  })
+
+  test('can forget task-import access without deleting the server', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'notion', command: 'npx -y mcp-remote https://mcp.notion.com/mcp' })],
+    })
+    render(<McpServers />)
+
+    await user.click(screen.getByRole('button', { name: 'Configure notion' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Configure notion' })
+    await user.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
+
+    expect(window.roster.notion.clearAuth).toHaveBeenCalledOnce()
+    expect(within(dialog).getByText('Not connected for task import.')).toBeInTheDocument()
+  })
+
   test('closes without saving on Cancel', async () => {
     const { user, dialog } = await openEditor()
 
