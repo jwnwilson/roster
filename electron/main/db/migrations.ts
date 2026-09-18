@@ -343,4 +343,35 @@ export const MIGRATIONS: readonly string[] = [
     status_map  TEXT NOT NULL
   );
   `,
+
+  // 17 — a project may name the repositories its work happens in. Until now
+  // the only directory in the app was `agent.cwd`, which made an agent a
+  // persona *and* a place; this is the first half of separating the two.
+  //
+  // A child table rather than a JSON column on `projects`, because ordering,
+  // uniqueness and the foreign key are all things SQLite should enforce
+  // rather than a JSON.parse in the store. Position 0 is the primary — the
+  // one directory a turn runs in, since spawn and node-pty each take exactly
+  // one cwd and a flat set would push that choice into every call site.
+  //
+  // ON DELETE CASCADE, unlike `tasks.project_id`'s SET NULL: a row here is a
+  // statement *about* a project and means nothing without it. It works where
+  // `sessions.project_id`'s could not because the table is new — SQLite
+  // cannot retrofit a foreign key onto an existing one.
+  //
+  // Deleting the row deletes Roster's note of the checkout, never the
+  // checkout.
+  `
+  CREATE TABLE project_repos (
+    id          TEXT PRIMARY KEY,
+    project_id  TEXT NOT NULL REFERENCES projects (id) ON DELETE CASCADE,
+    path        TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    position    INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE UNIQUE INDEX ux_project_repos ON project_repos (project_id, path);
+  CREATE INDEX ix_project_repos_project ON project_repos (project_id, position);
+  `,
 ]
