@@ -12,6 +12,7 @@
  * bar that reads as "plenty of room left".
  */
 const CONTEXT_WINDOWS: Record<string, number> = {
+  'claude-fable-5-1': 1_000_000,
   'claude-opus-5': 1_000_000,
   'claude-sonnet-5': 1_000_000,
   'claude-haiku-4-5': 200_000,

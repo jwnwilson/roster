@@ -20,6 +20,7 @@ import { ROSTER_PLUGIN_NAME } from '../store/skillPlugin'
  * owns and must keep current. Prices are input/output per million tokens.
  */
 const MODELS: ModelInfo[] = [
+  { id: 'claude-fable-5-1', price: '$10 / $50' },
   { id: 'claude-opus-5', price: '$5 / $25' },
   { id: 'claude-sonnet-5', price: '$3 / $15' },
   { id: 'claude-haiku-4-5', price: '$1 / $5' },
