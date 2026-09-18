@@ -329,24 +329,66 @@ describe('CodexRunner', () => {
 })
 
 describe('ClaudeRunner', () => {
-  test('offers the current Claude models', async () => {
-    const ids = (await new ClaudeRunner().models()).map((model) => model.id)
+  /** A catalogue the CLI really wrote; see tests/main/claudeCatalog.test.ts. */
+  const CATALOGUE = join(import.meta.dirname, 'fixtures/claude')
+
+  /** Pointed at a directory that does not exist, so the fallback is forced. */
+  const noCatalogue = () => join(dir, 'nowhere')
+
+  test('offers what the user’s own CLI offers, not a table someone has to edit', async () => {
+    const ids = (await new ClaudeRunner().models(CATALOGUE)).map((model) => model.id)
+
+    expect(ids).toEqual([
+      'claude-opus-5',
+      'claude-fable-5-1',
+      'claude-sonnet-5',
+      'claude-haiku-4-5',
+    ])
+  })
+
+  test('keeps Roster’s price for a model the catalogue names', async () => {
+    // The catalogue carries no prices, so a dynamic list would lose them.
+    const models = await new ClaudeRunner().models(CATALOGUE)
+
+    expect(models.find((model) => model.id === 'claude-opus-5')?.price).toBe('$5 / $25')
+  })
+
+  test('leaves the price empty for a model it has no figure for', async () => {
+    await writeFile(
+      join(dir, 'later-cc.json'),
+      JSON.stringify({ catalog: { surface: 'cc', config: { models: [{ id: 'claude-opus-6' }] } } }),
+      'utf8',
+    )
+
+    expect(await new ClaudeRunner().models(dir)).toEqual([{ id: 'claude-opus-6', price: '' }])
+  })
+
+  test('falls back to the built-in list when there is no catalogue to read', async () => {
+    const ids = (await new ClaudeRunner().models(noCatalogue())).map((model) => model.id)
 
     expect(ids).toContain('claude-fable-5-1')
     expect(ids).toContain('claude-opus-5')
   })
 
   test('sizes every model it offers, so no picker entry draws a blank bar', async () => {
-    // The two tables are edited separately and only this ties them together:
-    // a model added to the picker but not to CONTEXT_WINDOWS reports null,
-    // and the session loses its context bar with nothing to explain why.
-    for (const model of await new ClaudeRunner().models()) {
+    // The tables are edited separately and only this ties them together: a
+    // model offered but missing from CONTEXT_WINDOWS reports null, and the
+    // session loses its context bar with nothing to explain why. The
+    // catalogue is here too because it dates Haiku's slug — an id trimmed
+    // wrongly misses the window table exactly this silently.
+    const runner = new ClaudeRunner()
+    const offered = [
+      ...(await runner.models(CATALOGUE)),
+      ...(await runner.models(noCatalogue())),
+    ]
+
+    for (const model of offered) {
       expect(contextWindowFor(model.id), model.id).not.toBeNull()
     }
   })
 
-  test('prices every model it offers, unlike Codex', async () => {
-    for (const model of await new ClaudeRunner().models()) {
+  test('prices every model in the built-in list, unlike Codex', async () => {
+    for (const model of await new ClaudeRunner().models(noCatalogue())) {
       expect(model.price, model.id).not.toBe('')
     }
   })

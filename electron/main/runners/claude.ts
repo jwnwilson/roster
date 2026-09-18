@@ -3,6 +3,7 @@ import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
 import type { ModelInfo, RunnerStatus } from '../../../shared/types'
 import { EXIT_PLAN_MODE } from '../../../shared/plans'
 import { detectAllRunners } from '../auth/probes'
+import { catalogModelIds } from './claudeCatalog'
 import { normalizeClaudeMessage, summarisePlan } from './normalizeClaude'
 import { parseQuestions, summariseQuestions } from './questions'
 import { ROSTER_TOOL_NAMES } from './handoffTool'
@@ -14,17 +15,22 @@ import { rosterHome } from '../store/paths'
 import { ROSTER_PLUGIN_NAME } from '../store/skillPlugin'
 
 /**
- * Models offered for this runner.
+ * Prices, input/output per million tokens, and the list to offer when the
+ * CLI's catalogue cannot be read.
  *
- * The Agent SDK exposes no priced catalogue, so this table is data Roster
- * owns and must keep current. Prices are input/output per million tokens.
+ * Anthropic publishes no machine-readable prices, so this much stays data
+ * Roster owns. The *list* no longer is: see models(). Keep this set in step
+ * with CONTEXT_WINDOWS in shared/models.ts — an offered fallback with no
+ * window there loses the session's context bar.
  */
-const MODELS: ModelInfo[] = [
+const FALLBACK_MODELS: ModelInfo[] = [
   { id: 'claude-fable-5-1', price: '$10 / $50' },
   { id: 'claude-opus-5', price: '$5 / $25' },
   { id: 'claude-sonnet-5', price: '$3 / $15' },
   { id: 'claude-haiku-4-5', price: '$1 / $5' },
 ]
+
+const PRICES = new Map(FALLBACK_MODELS.map((model) => [model.id, model.price]))
 
 interface ClaudeSkillOptions {
   plugins?: { type: 'local'; path: string; skipMcpDiscovery: boolean }[]
@@ -90,8 +96,18 @@ export class ClaudeRunner implements Runner {
     )
   }
 
-  async models(): Promise<ModelInfo[]> {
-    return MODELS
+  /**
+   * Read from the CLI's own catalogue, so a model Anthropic ships appears in
+   * the picker without anyone editing Roster — the same arrangement the Codex
+   * runner already has. The catalogue carries no prices, so those still come
+   * from Roster's table, and a model it has no figure for shows an empty
+   * column rather than an invented one.
+   */
+  async models(catalogDir?: string): Promise<ModelInfo[]> {
+    const ids = await catalogModelIds(catalogDir)
+    if (ids.length === 0) return FALLBACK_MODELS
+
+    return ids.map((id) => ({ id, price: PRICES.get(id) ?? '' }))
   }
 
   async *run(prompt: string, options: StartOptions): AsyncIterable<RunnerEvent> {
