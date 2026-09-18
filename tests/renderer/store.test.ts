@@ -185,6 +185,69 @@ describe('the sidebar session list', () => {
   test('reports no session match when nothing is being searched', () => {
     expect(matchedBySession(useRoster.getState(), AGENTS[2]!)).toBe(false)
   })
+
+  test('lists only the sessions filed under the chosen project', () => {
+    useRoster.setState({
+      projects: [aProject({ id: 'p1' }), aProject({ id: 'p2' })],
+      sessions: {
+        review: [
+          aSession({ id: 's1', agentId: 'review', projectId: 'p1' }),
+          aSession({ id: 's2', agentId: 'review', projectId: 'p2' }),
+          aSession({ id: 's3', agentId: 'review', projectId: null }),
+        ],
+      },
+      projectFilter: 'p1',
+    })
+
+    expect(selectSidebarSessions(useRoster.getState(), AGENTS[2]!).map((s) => s.id)).toEqual(['s1'])
+  })
+
+  test('the project filter and the search box narrow together', () => {
+    useRoster.setState({
+      projects: [aProject({ id: 'p1' })],
+      sessions: {
+        review: [
+          aSession({ id: 's1', agentId: 'review', name: 'Pool leak', projectId: 'p1' }),
+          aSession({ id: 's2', agentId: 'review', name: 'Retry test', projectId: 'p1' }),
+        ],
+      },
+      projectFilter: 'p1',
+      query: 'pool',
+    })
+
+    expect(selectSidebarSessions(useRoster.getState(), AGENTS[2]!).map((s) => s.id)).toEqual(['s1'])
+  })
+
+  test('keeps an agent in the rail even when the project hides all its work', () => {
+    useRoster.setState({
+      projects: [aProject({ id: 'p1' }), aProject({ id: 'p2' })],
+      sessions: {
+        review: [aSession({ id: 's1', agentId: 'review', projectId: 'p2' })],
+      },
+      projectFilter: 'p1',
+    })
+
+    // The sidebar is the app's navigation. Dropping the row would leave no
+    // way to open the agent and start work on the project being filtered for
+    // — which is exactly when you would be looking for it.
+    expect(selectSidebarAgents(useRoster.getState()).map((a) => a.id)).toContain('review')
+    expect(selectSidebarSessions(useRoster.getState(), AGENTS[2]!)).toHaveLength(0)
+  })
+
+  test('a search matches only inside the chosen project', () => {
+    useRoster.setState({
+      projects: [aProject({ id: 'p1' }), aProject({ id: 'p2' })],
+      sessions: {
+        review: [aSession({ id: 's1', agentId: 'review', name: 'Pool leak', projectId: 'p2' })],
+      },
+      projectFilter: 'p1',
+      query: 'pool',
+    })
+
+    // The agent's own name does not match "pool", and its only session is in
+    // another project, so nothing reaches the rail through it.
+    expect(selectSidebarAgents(useRoster.getState()).map((a) => a.id)).not.toContain('review')
+  })
 })
 
 describe('expanded sidebar rows', () => {

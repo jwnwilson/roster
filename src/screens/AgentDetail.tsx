@@ -6,6 +6,7 @@ import { sessionLabel } from '@shared/sessions'
 import { sessionNeedsAttention, statusColor } from '@shared/status'
 import { taskStatusColor } from '@shared/tasks'
 import { contextFraction, contextLabel } from '@shared/models'
+import { resolveWorkspace, type Workspace } from '@shared/workspace'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
 import { SessionName } from './SessionName'
@@ -271,7 +272,11 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               onCancel={() => void window.roster.sessions.cancel(active.id)}
             />
           ) : (
-            <TerminalPane sessionId={active.id} cwd={agent.cwd} cwdLabel={agent.cwdLabel} />
+            // Opened where the turn runs, not where the agent defaults to.
+            // Until now the two agreed only because both read the same field;
+            // once a project can move the turn, reading agent.cwd here would
+            // put the shell in a different repository from the agent.
+            <SessionTerminal agent={agent} session={active} />
           )}
         </div>
 
@@ -472,7 +477,10 @@ function ConfigRail({ agent }: { agent: Agent }) {
   const rows: { key: string; value: string }[] = [
     { key: 'Runner', value: agent.runner },
     { key: 'Model', value: agent.model },
-    { key: 'Directory', value: agent.cwdLabel },
+    // "Default", because a session filed under a project with repositories
+    // runs in that project's primary instead. The session's own `Working in`
+    // row below is the one that says where a turn actually goes.
+    { key: 'Default dir', value: agent.cwdLabel },
     { key: 'Config', value: 'agent.toml' },
     { key: 'MCP', value: agent.mcpServers.join(', ') || 'none' },
   ]
@@ -670,7 +678,115 @@ function SessionCard() {
       </div>
 
       <SessionProject sessionId={activeId} />
+      <SessionWorkspace sessionId={activeId} />
     </section>
+  )
+}
+
+/**
+ * Where this session's turns actually run, and what else they can reach.
+ *
+ * The whole safety story for moving a turn off `agent.cwd`. The first time
+ * somebody adds a repository to a project, every session filed under it
+ * moves — that is the point of the feature and also a surprise, and without
+ * this row the surprise arrives as "my agent edited a different repository
+ * and did not say".
+ */
+/**
+ * Where a session runs, with the project's repositories fetched on demand.
+ *
+ * A project nobody has opened holds no list, so the first consumer asks for
+ * one. Shared by the rail and the terminal because the two must agree: a
+ * shell opening somewhere other than where the turn runs is the bug this
+ * whole row exists to prevent.
+ */
+function useSessionWorkspace(agent: Agent, session: Session): Workspace {
+  const projectId = session.projectId ?? null
+  const repos = useRoster(useShallow((s) => (projectId ? s.projectRepos[projectId] : undefined)))
+  const setProjectRepos = useRoster((s) => s.setProjectRepos)
+
+  useEffect(() => {
+    if (projectId === null || repos !== undefined) return
+    let cancelled = false
+
+    void window.roster.projects.repos
+      .list(projectId)
+      .then((list) => {
+        if (!cancelled) setProjectRepos(projectId, list)
+      })
+      // A caller that cannot read the list falls back to the agent's own
+      // directory, which is where the turn would have run anyway. Nothing
+      // here is worth interrupting a session over.
+      .catch(() => {})
+
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, repos, setProjectRepos])
+
+  return resolveWorkspace({ agent, session, repos: repos ?? [] })
+}
+
+function SessionTerminal({ agent, session }: { agent: Agent; session: Session }) {
+  const workspace = useSessionWorkspace(agent, session)
+
+  return (
+    <TerminalPane
+      sessionId={session.id}
+      cwd={workspace.root}
+      cwdLabel={workspace.rootLabel}
+    />
+  )
+}
+
+function SessionWorkspace({ sessionId }: { sessionId: string }) {
+  const agentId = useRoster((s) => s.agentId)
+  const agent = useRoster((s) => s.agents.find((a) => a.id === agentId) ?? null)
+  const session = useRoster((s) =>
+    (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
+      (candidate) => candidate.id === sessionId,
+    ),
+  )
+
+  if (!agent || !session) return null
+  return <WorkspaceRow agent={agent} session={session} />
+}
+
+function WorkspaceRow({ agent, session }: { agent: Agent; session: Session }) {
+  const workspace = useSessionWorkspace(agent, session)
+  const others = workspace.additional
+
+  return (
+    <div className="flex flex-col gap-[5px]">
+      <span className="text-base text-dim">Working in</span>
+      <span className="truncate font-mono text-md text-ink-2" title={workspace.root}>
+        {workspace.rootLabel}
+      </span>
+
+      {workspace.source === 'agent' ? (
+        <span className="text-xs text-faint-2">the agent’s default directory</span>
+      ) : workspace.source === 'session' ? (
+        // Worth saying, because it is why changing the project's primary
+        // appears to do nothing for this session.
+        <span className="text-xs text-faint-2">fixed when this session started</span>
+      ) : (
+        <span className="text-xs text-faint-2">this project’s primary repository</span>
+      )}
+
+      {others.length > 0 ? (
+        <span className="text-xs text-faint-2">
+          {/* Stated per runner rather than promised in general: the Claude SDK
+              has no read-only mode for these, and a guarantee Roster cannot
+              keep on its default runner is worse than an honest sentence. */}
+          also reachable: {workspace.additionalLabels.join(', ')}
+          {agent.runner === 'claude'
+            ? ' — Claude can write to these'
+            : agent.runner === 'codex'
+              ? ' — read-only under Codex'
+              : ' — not available to this runner'}
+        </span>
+      ) : null}
+    </div>
   )
 }
 

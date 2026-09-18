@@ -89,6 +89,15 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       readNotes: vi.fn().mockResolvedValue(''),
       writeNotes: vi.fn().mockResolvedValue(undefined),
       onNotesChanged: vi.fn().mockReturnValue(() => {}),
+      repos: {
+        list: vi.fn().mockResolvedValue([]),
+        // Every mutation answers with the whole list, because remove and
+        // reorder renumber the rows around the one they touched.
+        add: vi.fn().mockResolvedValue([]),
+        update: vi.fn().mockResolvedValue([]),
+        remove: vi.fn().mockResolvedValue([]),
+        reorder: vi.fn().mockResolvedValue([]),
+      },
     },
     tasks: {
       list: vi.fn().mockResolvedValue([]),

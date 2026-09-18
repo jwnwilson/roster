@@ -4,14 +4,23 @@ import {
   type AgentPatch,
   type NewAgentInput,
   type NewProjectInput,
+  type NewProjectRepoInput,
   type NewTaskInput,
   type ProjectPatch,
+  type ProjectRepoPatch,
   type PtySize,
   type SendOptions,
   type ImportTaskInput,
   type TaskChange,
 } from '../../../shared/ipc'
-import type { PlanDocument, RunnerStatus, Session, SetupState, SpendSummary } from '../../../shared/types'
+import type {
+  PlanDocument,
+  ProjectRepo,
+  RunnerStatus,
+  Session,
+  SetupState,
+  SpendSummary,
+} from '../../../shared/types'
 import type { NotionStatusMap } from '../../../shared/notion'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
@@ -25,6 +34,7 @@ import { TaskMentions } from '../sessions/mentions'
 import { AgentStore } from '../store/agents'
 import { McpStore, withServer } from '../store/mcp'
 import { ProjectStore } from '../store/projects'
+import { ProjectRepoStore } from '../store/projectRepos'
 import { SessionStore } from '../store/sessions'
 import { TaskStore } from '../store/tasks'
 import { PlanStore } from '../store/plans'
@@ -50,6 +60,7 @@ let db: Db | null = null
 let sessionStore: SessionStore | null = null
 let usageStore: UsageStore | null = null
 let projectStore: ProjectStore | null = null
+let projectRepoStore: ProjectRepoStore | null = null
 let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
 let nudges: SessionNudges | null = null
@@ -155,6 +166,25 @@ function requireProjects(): ProjectStore {
   return projectStore
 }
 
+function requireProjectRepos(): ProjectRepoStore {
+  if (!projectRepoStore) throw new Error('project repository store is not initialised')
+  return projectRepoStore
+}
+
+/**
+ * Re-reads one project's repositories, tells every window, and answers the
+ * caller with the same list.
+ *
+ * Both halves matter: the window that made the change needs the answer to
+ * render, and the others need it because the config rail and the session
+ * workspace read this list too — not only the modal that edits it.
+ */
+function broadcastRepos(projectId: string): ProjectRepo[] {
+  const repos = requireProjectRepos().listByProject(projectId)
+  broadcast(CHANNELS.tasksEvent, { type: 'project-repos', projectId, repos })
+  return repos
+}
+
 function requireNotionSettings(): NotionSettingsStore {
   if (!notionSettings) throw new Error('notion settings are not initialised')
   return notionSettings
@@ -222,6 +252,7 @@ export async function initStores(): Promise<void> {
   usageStore = new UsageStore(db)
   usageStore.backfillCodex(agentStore.findAll())
   projectStore = new ProjectStore(db)
+  projectRepoStore = new ProjectRepoStore(db)
   // Agent ids resolve to display names through the agent store, since agents
   // live in agent.toml rather than in this database.
   taskStore = new TaskStore(db, (id) => agentStore.findById(id)?.name ?? null)
@@ -238,7 +269,7 @@ export async function initStores(): Promise<void> {
     skillStore,
     mcpStore,
     usageStore,
-    { tasks: taskStore, projects: projectStore },
+    { tasks: taskStore, projects: projectStore, repos: projectRepoStore },
     planStore,
     projectNotesStore,
     { removeSession: (sessionId) => deleteSession(sessionId, false) },
@@ -556,6 +587,44 @@ export function registerIpc(): void {
     broadcast(CHANNELS.tasksEvent, { type: 'projects', projects: requireProjects().findAll() })
     return true
   })
+
+  /**
+   * The repositories a project names.
+   *
+   * Every mutation answers with the whole list rather than the row it
+   * touched: `remove` and `reorder` both renumber their siblings, so a
+   * caller holding one row would be holding a stale position the moment it
+   * returned. The list is also broadcast, because the config rail and the
+   * workspace read it — not only the modal that edited it.
+   */
+  ipcMain.handle(CHANNELS.projectsReposList, (_e, projectId: string) =>
+    requireProjectRepos().listByProject(projectId),
+  )
+
+  ipcMain.handle(CHANNELS.projectsReposAdd, (_e, input: NewProjectRepoInput) => {
+    requireProjectRepos().add(input)
+    return broadcastRepos(input.projectId)
+  })
+
+  ipcMain.handle(CHANNELS.projectsReposUpdate, (_e, id: string, patch: ProjectRepoPatch) => {
+    const repo = requireProjectRepos().update(id, patch)
+    return broadcastRepos(repo.projectId)
+  })
+
+  ipcMain.handle(CHANNELS.projectsReposRemove, (_e, id: string) => {
+    // `remove` answers with the project the row belonged to, because once it
+    // is deleted there is nothing left to ask which list to re-broadcast.
+    const projectId = requireProjectRepos().remove(id)
+    return projectId === null ? [] : broadcastRepos(projectId)
+  })
+
+  ipcMain.handle(
+    CHANNELS.projectsReposReorder,
+    (_e, projectId: string, orderedIds: string[]) => {
+      requireProjectRepos().reorder(projectId, orderedIds)
+      return broadcastRepos(projectId)
+    },
+  )
 
   ipcMain.handle(CHANNELS.projectsReadNotes, (_e, id: string) => projectNotesStore.read(id))
   ipcMain.handle(CHANNELS.projectsWriteNotes, (_e, id: string, contents: string) =>

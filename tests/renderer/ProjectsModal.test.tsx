@@ -715,3 +715,106 @@ describe('ProjectsModal — pagination', () => {
     await waitFor(() => expect(screen.getByText('Project 0')).toBeInTheDocument())
   })
 })
+
+describe('ProjectsModal — repositories', () => {
+  const REPO = {
+    id: 'r1',
+    projectId: 'p1',
+    path: '/Users/test/work/api',
+    pathLabel: '~/work/api',
+    name: 'api',
+    description: 'the monolith',
+    position: 0,
+    exists: true,
+    isRepository: true,
+  }
+
+  const WEB = { ...REPO, id: 'r2', name: 'web', pathLabel: '~/work/web', position: 1 }
+
+  /** Opens the repositories sub-view of the first project. */
+  async function openRepos(): Promise<void> {
+    render(<ProjectsModal />)
+    await userEvent.click(screen.getAllByRole('button', { name: 'Repos' })[0] as HTMLElement)
+  }
+
+  test('reads the repositories of the project whose button was clicked', async () => {
+    const list = vi.fn().mockResolvedValue([REPO])
+    installRosterApi({ projects: { repos: { list } } })
+
+    await openRepos()
+
+    await waitFor(() => expect(list).toHaveBeenCalledWith('p1'))
+    expect(await screen.findByText('~/work/api')).toBeInTheDocument()
+  })
+
+  test('marks exactly one repository as the primary', async () => {
+    installRosterApi({
+      projects: { repos: { list: vi.fn().mockResolvedValue([REPO, WEB]) } },
+    })
+
+    await openRepos()
+
+    // More than one, and "the turn runs in the primary" names two directories.
+    expect(await screen.findAllByText('Primary')).toHaveLength(1)
+  })
+
+  test('says a repository is not a checkout rather than hiding it', async () => {
+    installRosterApi({
+      projects: { repos: { list: vi.fn().mockResolvedValue([{ ...REPO, isRepository: false }]) } },
+    })
+
+    await openRepos()
+
+    expect(await screen.findByText('not a git checkout')).toBeInTheDocument()
+  })
+
+  test('says so when a repository directory has gone', async () => {
+    installRosterApi({
+      projects: { repos: { list: vi.fn().mockResolvedValue([{ ...REPO, exists: false }]) } },
+    })
+
+    await openRepos()
+
+    expect(await screen.findByText('directory not found')).toBeInTheDocument()
+  })
+
+  test('adding a repository stores the directory that was chosen', async () => {
+    const add = vi.fn().mockResolvedValue([REPO])
+    installRosterApi({
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue('/Users/test/work/payments') },
+      projects: { repos: { list: vi.fn().mockResolvedValue([]), add } },
+    })
+
+    await openRepos()
+    await userEvent.click(await screen.findByText('+ Add repository'))
+
+    await waitFor(() =>
+      expect(add).toHaveBeenCalledWith({ projectId: 'p1', path: '/Users/test/work/payments' }),
+    )
+  })
+
+  test('cancelling the directory picker adds nothing', async () => {
+    const add = vi.fn().mockResolvedValue([])
+    installRosterApi({
+      dialog: { chooseDirectory: vi.fn().mockResolvedValue(null) },
+      projects: { repos: { list: vi.fn().mockResolvedValue([]), add } },
+    })
+
+    await openRepos()
+    await userEvent.click(await screen.findByText('+ Add repository'))
+
+    expect(add).not.toHaveBeenCalled()
+  })
+
+  test('make primary reorders with that repository first', async () => {
+    const reorder = vi.fn().mockResolvedValue([WEB, REPO])
+    installRosterApi({
+      projects: { repos: { list: vi.fn().mockResolvedValue([REPO, WEB]), reorder } },
+    })
+
+    await openRepos()
+    await userEvent.click(await screen.findByLabelText('Make primary'))
+
+    await waitFor(() => expect(reorder).toHaveBeenCalledWith('p1', ['r2', 'r1']))
+  })
+})

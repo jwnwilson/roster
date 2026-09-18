@@ -8,6 +8,7 @@ import type {
   PlanComment,
   PlanDocument,
   Project,
+  ProjectRepo,
   RunnerStatus,
   Session,
   SetupState,
@@ -177,6 +178,22 @@ export interface RosterApi {
      * a file that has since moved on.
      */
     onNotesChanged(listener: (payload: ProjectNotesPayload) => void): () => void
+    /**
+     * The repositories a project's work happens in, primary first.
+     *
+     * Read-only from an agent's point of view: there are no MCP tools here,
+     * and there should not be — letting an agent point its own project at a
+     * new directory would be the sharpest privilege escalation in the app.
+     */
+    repos: {
+      list(projectId: string): Promise<ProjectRepo[]>
+      /** Resolves the existing row when the project already names that path. */
+      add(input: NewProjectRepoInput): Promise<ProjectRepo[]>
+      update(id: string, patch: ProjectRepoPatch): Promise<ProjectRepo[]>
+      remove(id: string): Promise<ProjectRepo[]>
+      /** Ids primary-first. Any left out keep their order at the end. */
+      reorder(projectId: string, orderedIds: string[]): Promise<ProjectRepo[]>
+    }
   }
   tasks: {
     list(): Promise<Task[]>
@@ -272,6 +289,22 @@ export interface NewProjectInput {
 
 export type ProjectPatch = Partial<Pick<Project, 'name' | 'color' | 'description'>>
 
+export interface NewProjectRepoInput {
+  projectId: string
+  /** Normalised by the store before it is stored; see `canonicalPath`. */
+  path: string
+  /** Defaults to the directory's own name when omitted or blank. */
+  name?: string
+  description?: string
+}
+
+/**
+ * The path is deliberately absent: re-pointing a repository is indistinguishable
+ * from removing it and adding another, and doing it in place would silently
+ * move every session that had resolved a workspace from the old path.
+ */
+export type ProjectRepoPatch = Partial<Pick<ProjectRepo, 'name' | 'description'>>
+
 export interface NewTaskInput {
   title: string
   description?: string
@@ -316,6 +349,9 @@ export type TaskEventPayload =
   | { type: 'comment'; taskId: string; comment: TaskComment }
   | { type: 'task-session'; taskId: string; link: TaskSessionLink }
   | { type: 'projects'; projects: Project[] }
+  // Repositories reach the config rail and the workspace, not just the modal
+  // that edits them, so a change in one window has to reach the others.
+  | { type: 'project-repos'; projectId: string; repos: ProjectRepo[] }
 
 export interface AgentPatch {
   /**
@@ -448,6 +484,11 @@ export const CHANNELS = {
   projectsReadNotes: 'projects:readNotes',
   projectsWriteNotes: 'projects:writeNotes',
   projectsNotesChanged: 'projects:notesChanged', // broadcast, not invoke
+  projectsReposList: 'projects:repos:list',
+  projectsReposAdd: 'projects:repos:add',
+  projectsReposUpdate: 'projects:repos:update',
+  projectsReposRemove: 'projects:repos:remove',
+  projectsReposReorder: 'projects:repos:reorder',
 
   plansListBySession: 'plans:listBySession',
   plansRead: 'plans:read',

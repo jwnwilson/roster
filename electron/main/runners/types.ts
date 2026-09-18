@@ -76,6 +76,24 @@ export interface EnabledSkill {
 
 export interface StartOptions {
   cwd: string
+  /**
+   * The project's other repositories, which this turn may read.
+   *
+   * Optional, and honoured differently by each runner — deliberately, because
+   * what each one can actually promise differs:
+   *
+   * - **Claude** grants them through `additionalDirectories`, which is read
+   *   *and write*: the SDK has no read-only mode.
+   * - **Codex** needs nothing. Its `:workspace` profile already reads broadly
+   *   and writes only inside the cwd, so the secondaries are readable and not
+   *   writable without Roster listing them. Adding them to the writable set
+   *   would grant write to a secondary's git metadata while its working tree
+   *   stayed read-only, which is the worst of both.
+   * - **Custom** ignores them. A custom runner is an argv template Roster
+   *   does not understand, and there is no honest way to tell it about a
+   *   second directory.
+   */
+  additionalRoots?: readonly string[]
   model: string
   systemPrompt: string
   /** The skills enabled for this agent, in the order the agent names them. */

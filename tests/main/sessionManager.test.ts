@@ -696,6 +696,116 @@ describe('SessionManager — what the runner is given', () => {
   })
 })
 
+describe('SessionManager — where a turn runs', () => {
+  /** A manager whose board knows which repositories a project names. */
+  function withRepos(repos: { path: string }[]) {
+    const agentStore = {
+      findAll: () => AGENTS,
+      findById: (id: string) => AGENTS.find((a) => a.id === id) ?? null,
+    }
+
+    return new SessionManager(
+      agentStore as never,
+      sessions,
+      { findAll: () => [] } as never,
+      { findAll: () => [] } as never,
+      usage,
+      {
+        tasks: { findAll: () => [], comments: () => [] },
+        projects: {
+          findById: (id: string) => ({
+            id,
+            name: 'Checkout rewrite',
+            color: '#fff',
+            description: '',
+            createdAt: 0,
+            archivedAt: null,
+          }),
+        },
+        repos: {
+          listByProject: () =>
+            repos.map((repo, position) => ({
+              id: `r${position}`,
+              projectId: 'p1',
+              path: repo.path,
+              pathLabel: repo.path,
+              name: repo.path,
+              description: '',
+              position,
+              exists: true,
+              isRepository: true,
+            })),
+        },
+      } as never,
+    )
+  }
+
+  test('runs in the project primary rather than the agent directory', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const manager = withRepos([{ path: '/work/payments' }, { path: '/work/types' }])
+    const session = manager.create('debugging', 'x', 'p1')
+
+    await manager.send(session.id, 'go')
+
+    // The agent's own cwd is /work/api. Filing the session under a project
+    // that names a primary is what moves it — this is the whole feature.
+    expect(runnerStub.run.mock.calls[0]?.[1]).toMatchObject({
+      cwd: '/work/payments',
+      additionalRoots: ['/work/types'],
+    })
+  })
+
+  test('an unfiled session still runs in the agent directory', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const manager = withRepos([{ path: '/work/payments' }])
+    const session = manager.create('debugging', 'x', null)
+
+    await manager.send(session.id, 'go')
+
+    expect(runnerStub.run.mock.calls[0]?.[1]?.cwd).toBe('/work/api')
+  })
+
+  test('offers no additionalRoots when the project names one repository', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const manager = withRepos([{ path: '/work/payments' }])
+    const session = manager.create('debugging', 'x', 'p1')
+
+    await manager.send(session.id, 'go')
+
+    // The root is not also an additional root; handing it over twice is at
+    // best noise and at worst a second, conflicting grant.
+    expect(runnerStub.run.mock.calls[0]?.[1]?.additionalRoots).toBeUndefined()
+  })
+
+  test('tells the agent what the repositories are, and which it is standing in', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const manager = withRepos([{ path: '/work/payments' }, { path: '/work/types' }])
+    const session = manager.create('debugging', 'x', 'p1')
+
+    await manager.send(session.id, 'go')
+
+    const prompt = runnerStub.run.mock.calls[0]?.[0] as string
+    expect(prompt).toContain('Repositories')
+    expect(prompt).toContain('/work/payments (you are here)')
+    expect(prompt).toContain('/work/types')
+  })
+
+  test('a session that has run stays where it ran, even when the primary changes', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const first = withRepos([{ path: '/work/payments' }])
+    const session = first.create('debugging', 'x', 'p1')
+    await first.send(session.id, 'go')
+
+    // Somebody reorders the project so a different repository is primary.
+    const second = withRepos([{ path: '/work/api' }, { path: '/work/payments' }])
+    await second.send(session.id, 'again')
+
+    // A resumed Codex thread cannot be moved off the directory it started
+    // in, so the pin has to outrank the new primary.
+    expect(runnerStub.run.mock.calls[1]?.[1]?.cwd).toBe('/work/payments')
+  })
+})
+
 describe('SessionManager.handOff', () => {
   test('opens a session on the other agent, marked as agent-opened', () => {
     const from = manager.create('debugging', 'Leak')
