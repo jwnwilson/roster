@@ -4,6 +4,11 @@
 
 Accepted — 2026-09-11
 
+Amended 2026-09-18 by `2026-09-18-agents-may-outlive-the-app.md`. What follows
+holds for agents in local mode, which is the default and is unchanged. An agent
+in cloud mode does outlive the app, and the scheduling and recovery decisions
+below are revisited there.
+
 ## Context
 
 Roster can start an agent session from a task mention, but a turn completing
