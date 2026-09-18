@@ -42,6 +42,19 @@ describe('the Roster-to-Notion status map', () => {
     expect(new NotionSettingsStore(db).statusMap()).toEqual(DEFAULT_STATUS_MAP)
   })
 
+  test('puts a page on the board when its name is shared with Backlog', () => {
+    // The defaults call Backlog and To Do the same thing, and a page that
+    // arrives in a backlog nobody looks at is a page nobody sees.
+    expect(new NotionSettingsStore(db).statusFor(DEFAULT_STATUS_MAP.todo)).toBe('todo')
+  })
+
+  test('still reads a name given to Backlog alone', () => {
+    const store = new NotionSettingsStore(db)
+    store.saveStatusMap({ ...DEFAULT_STATUS_MAP, backlog: 'Icebox' })
+
+    expect(store.statusFor('Icebox')).toBe('backlog')
+  })
+
   test('reads a Notion status name back to a Roster status, whatever its case', () => {
     const store = new NotionSettingsStore(db)
     store.saveStatusMap({ ...DEFAULT_STATUS_MAP, done: 'Shipped' })

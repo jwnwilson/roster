@@ -16,7 +16,7 @@ export class NotionMcpPages implements NotionPages {
 
   async fetchPage(urlOrId: string): Promise<NotionPageInfo> {
     const body = await this.value(await this.mcp.call('notion-fetch', { id: urlOrId }))
-    const properties = asRecord(body['properties']) ?? body
+    const properties = propertiesOf(body)
 
     const pageId = firstString(body, ['id', 'page_id', 'url']) ?? urlOrId
     return {
@@ -50,7 +50,7 @@ export class NotionMcpPages implements NotionPages {
 
   /** The reply body, or the reason the call is of no use. */
   private async value(reply: CallToolResult): Promise<Record<string, unknown>> {
-    if (reply.isError) throw new Error(message(reply) || 'Notion could not complete that request.')
+    if (reply.isError) throw new Error(reason(message(reply)))
     const structured = asRecord(reply.structuredContent)
     if (structured) return structured
 
@@ -72,6 +72,28 @@ export class NotionMcpPages implements NotionPages {
 const STATUS_PROPERTY = 'Status'
 
 const STATUS_KEY = /^status$/i
+const PROPERTIES_BLOCK = /<properties>\s*([\s\S]*?)\s*<\/properties>/
+
+/**
+ * The page's properties, wherever this reply happens to keep them.
+ *
+ * The hosted server answers a fetch with an envelope whose `text` is the page
+ * rendered for a reader: a tagged document with the properties as a JSON
+ * block inside it. A plain `properties` object turns up too, so both are read
+ * and the envelope itself is the last resort.
+ */
+function propertiesOf(body: Record<string, unknown>): Record<string, unknown> {
+  const direct = asRecord(body['properties'])
+  if (direct) return direct
+
+  const rendered = body['text']
+  if (typeof rendered === 'string') {
+    const block = rendered.match(PROPERTIES_BLOCK)
+    const parsed = block ? parseJson(block[1] as string) : null
+    if (parsed) return parsed
+  }
+  return body
+}
 const TITLE_KEYS = ['title', 'name']
 
 function readTitle(body: Record<string, unknown>, properties: Record<string, unknown>): string {
@@ -154,6 +176,21 @@ function idOf(value: string): string | null {
   if (matches && matches.length > 0) return (matches[matches.length - 1] as string).toLowerCase()
   const dashed = value.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)
   return dashed ? dashed[0].toLowerCase().replaceAll('-', '') : null
+}
+
+/**
+ * A refusal as a sentence.
+ *
+ * The hosted tools hand back the API error as JSON, nested and escaped, which
+ * is no use written into a task thread. The `message` inside it is a sentence
+ * a person can act on — often naming the very options the board has — so that
+ * is what is kept.
+ */
+function reason(text: string): string {
+  const parsed = parseJson(text)
+  const inner = parsed?.['message']
+  if (typeof inner === 'string' && inner.trim() !== '') return inner.trim()
+  return text.trim() === '' ? 'Notion could not complete that request.' : text.trim()
 }
 
 function message(reply: CallToolResult): string {

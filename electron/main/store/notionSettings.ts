@@ -1,4 +1,4 @@
-import { TASK_STATUSES, type TaskStatus } from '../../../shared/types'
+import { BOARD_STATUSES, TASK_STATUSES, type TaskStatus } from '../../../shared/types'
 import type { NotionStatusMap } from '../../../shared/notion'
 import type { Db } from '../db'
 
@@ -7,8 +7,8 @@ import type { Db } from '../db'
  *
  * Roster has five statuses and a Notion board usually has three, so the map
  * is deliberately many-to-one: two Roster statuses may name the same Notion
- * option. Reading back the other way therefore takes the first match, which
- * is why the order of TASK_STATUSES matters here.
+ * option. Reading back the other way therefore has to break ties, which
+ * READ_ORDER does.
  */
 export const DEFAULT_STATUS_MAP: NotionStatusMap = {
   backlog: 'Not started',
@@ -17,6 +17,15 @@ export const DEFAULT_STATUS_MAP: NotionStatusMap = {
   in_review: 'In progress',
   done: 'Done',
 }
+
+/**
+ * Which Roster status wins when several are called the same thing in Notion.
+ *
+ * Board columns first, so a page whose status maps to both Backlog and To Do
+ * arrives on the board rather than in a backlog nobody is looking at. Backlog
+ * is only reached by a name given to it alone.
+ */
+const READ_ORDER: readonly TaskStatus[] = [...BOARD_STATUSES, 'backlog']
 
 interface Row {
   status_map: string
@@ -75,6 +84,6 @@ export class NotionSettingsStore {
     if (!notionStatus) return 'todo'
     const wanted = notionStatus.trim().toLowerCase()
     const map = this.statusMap()
-    return TASK_STATUSES.find((status) => map[status].trim().toLowerCase() === wanted) ?? 'todo'
+    return READ_ORDER.find((status) => map[status].trim().toLowerCase() === wanted) ?? 'todo'
   }
 }

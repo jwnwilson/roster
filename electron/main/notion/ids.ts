@@ -14,15 +14,20 @@ export function notionPageIdFrom(input: string): string | null {
   if (trimmed === '') return null
 
   // A page opened from inside a database view carries the database id in the
-  // path and the page's own id in `p`, so the query parameter wins where it
-  // exists — the last id in the URL would be the wrong one.
+  // path and the page's own id in `p`, so that parameter wins where it exists.
   const peeked = peekedPageId(trimmed)
   if (peeked) return peeked
 
-  const bare = trimmed.match(BARE_ID)
+  // Everything else comes from the path alone. A query string is full of ids
+  // that are not this page — Notion's Copy link ends with `?v=<view id>`,
+  // which is the same 32 hex characters as a page and would otherwise win
+  // simply by being last.
+  const path = trimmed.split('?')[0] as string
+
+  const bare = path.match(BARE_ID)
   if (bare && bare.length > 0) return (bare[bare.length - 1] as string).toLowerCase()
 
-  const dashed = trimmed.match(DASHED_ID)
+  const dashed = path.match(DASHED_ID)
   return dashed ? dashed[0].toLowerCase().replaceAll('-', '') : null
 }
 

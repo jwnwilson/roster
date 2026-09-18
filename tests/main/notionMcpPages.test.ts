@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, test, vi } from 'vitest'
 import { NotionMcpPages } from '@main/notion/mcpPages'
 import type { NotionMcpTools } from '@main/notion/mcpClient'
@@ -72,6 +74,19 @@ describe('reading a Notion page through the hosted MCP tools', () => {
   })
 })
 
+describe('reading the reply the hosted server really sends', () => {
+  test('finds the title and status of a page fetched from Notion', async () => {
+    const reply = JSON.parse(readFileSync(join(import.meta.dirname, 'fixtures/notion/page-fetch.json'), 'utf8'))
+    const { pages } = toolsReturning(reply)
+
+    await expect(pages.fetchPage('https://app.notion.com/p/aaaa1111bbbb2222cccc3333dddd4444')).resolves.toEqual({
+      pageId: 'aaaa1111bbbb2222cccc3333dddd4444',
+      title: 'Ship the release notes',
+      status: 'Done 🙌',
+    })
+  })
+})
+
 describe('writing to a Notion page', () => {
   test('sets the status as a flat property value', async () => {
     const { pages, call } = toolsReturning(structured({ ok: true }))
@@ -101,5 +116,18 @@ describe('writing to a Notion page', () => {
     const { pages } = toolsReturning({ ...text('Status is not a property of that page'), isError: true })
 
     await expect(pages.setStatus(PAGE_ID, 'Done')).rejects.toThrow('Status is not a property')
+  })
+
+  test('reports the sentence out of an API error rather than its JSON', async () => {
+    const body = JSON.stringify({
+      name: 'APIResponseError',
+      code: 'validation_error',
+      message: 'Invalid select value for property "Status": "Done". Value must be one of the following: "To Do", "Doing", "Done 🙌".',
+    })
+    const { pages } = toolsReturning({ ...text(body), isError: true })
+
+    await expect(pages.setStatus(PAGE_ID, 'Done')).rejects.toThrow(
+      'Invalid select value for property "Status": "Done". Value must be one of the following: "To Do", "Doing", "Done 🙌".',
+    )
   })
 })
