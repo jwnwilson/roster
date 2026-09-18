@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Agent } from '@shared/types'
+import { contextWindowFor } from '@shared/models'
 import { CustomRunner } from '@main/runners/custom'
 import { CodexRunner, codexPermissionOverrides } from '@main/runners/codex'
 import { getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
@@ -324,6 +325,30 @@ describe('CodexRunner', () => {
   test('answering an approval is a no-op, since Codex gates via its sandbox', () => {
     const runner = new CodexRunner()
     expect(() => runner.respondToApproval()).not.toThrow()
+  })
+})
+
+describe('ClaudeRunner', () => {
+  test('offers the current Claude models', async () => {
+    const ids = (await new ClaudeRunner().models()).map((model) => model.id)
+
+    expect(ids).toContain('claude-fable-5-1')
+    expect(ids).toContain('claude-opus-5')
+  })
+
+  test('sizes every model it offers, so no picker entry draws a blank bar', async () => {
+    // The two tables are edited separately and only this ties them together:
+    // a model added to the picker but not to CONTEXT_WINDOWS reports null,
+    // and the session loses its context bar with nothing to explain why.
+    for (const model of await new ClaudeRunner().models()) {
+      expect(contextWindowFor(model.id), model.id).not.toBeNull()
+    }
+  })
+
+  test('prices every model it offers, unlike Codex', async () => {
+    for (const model of await new ClaudeRunner().models()) {
+      expect(model.price, model.id).not.toBe('')
+    }
   })
 })
 
