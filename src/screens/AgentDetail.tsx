@@ -9,6 +9,7 @@ import { contextFraction, contextLabel } from '@shared/models'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
 import { SessionName } from './SessionName'
+import { SessionWorkflowLink } from './SessionWorkflowLink'
 import { PlanModal } from './PlanModal'
 import { messageFor } from '@/lib/errors'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
@@ -528,6 +529,9 @@ function ConfigRail({ agent }: { agent: Agent }) {
       </section>
 
       <SessionTask />
+      {/* Under the task, because it is the same question widened: not what
+          this session answers but who else is answering it. */}
+      <SessionWorkflowLink />
       <SessionCard />
     </aside>
   )

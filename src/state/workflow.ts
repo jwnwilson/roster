@@ -118,6 +118,36 @@ export function visibleFlowIds(
   return new Set([...inProject].filter((id) => reachable.has(id)))
 }
 
+/** One session's place in the graph: what it is joined to, and where the work came from. */
+export interface SessionFlow {
+  /** Every session joined to it by handoffs, itself included. */
+  ids: Set<string>
+  /** The task the chain started from, or null when no mention opened it. */
+  taskId: string | null
+}
+
+/**
+ * The flow one session belongs to, for the jump from a transcript to the graph.
+ *
+ * Asking the session for its own `taskId` answers only for the agent a
+ * mention opened, never for the ones it handed the work to. So the chain is
+ * walked instead — the same undirected walk `visibleFlowIds` makes from the
+ * task's end, which is what makes the two agree — and the oldest
+ * task-carrying session on it says where the work came from.
+ */
+export function flowOfSession(
+  sessions: readonly Session[],
+  edges: readonly FlowEdge[],
+  sessionId: string,
+): SessionFlow {
+  const ids = componentOf([sessionId], edges)
+  const carrying = sessions
+    .filter((session) => ids.has(session.id) && session.taskId)
+    .sort((a, b) => a.createdAt - b.createdAt)
+
+  return { ids, taskId: carrying[0]?.taskId ?? null }
+}
+
 /** Everything joined to a seed by any chain of handoffs, in either direction. */
 function componentOf(seeds: readonly string[], edges: readonly FlowEdge[]): Set<string> {
   const neighbours = new Map<string, string[]>()
