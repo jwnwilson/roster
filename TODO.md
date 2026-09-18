@@ -30,7 +30,7 @@
 - [x] Verify agents can @ other agents in comments to continue work for all models
 - [x] Use the updated design handoff to design a graph visualisation for agents to show all the sessions related to a task to make it easier to follow the flow.
 - [x] Ensure the workspace dir is where the agent is working, with global roster files staying in `~/roster` — plan and rationale in `docs/superpowers/plans/2026-09-06-workspace-and-agent-sharing.md`. Bugs 1-3 are done (per-agent scoped workspaces; skills registered via a local plugin rather than `additionalDirectories`, which only granted read access; frontmatter written and repaired; skills inlined for Codex). The shareable agent bundle is still open.
-- [ ] Plan for extending agents to work with multi repos and for the context logic to updated to work per project
+- [x] Plan for extending agents to work with multi repos and for the context logic to updated to work per project
 - [ ] Look at opensource design tools to mimic claude design that will work with any agent starting with codex
 - [ ] Increase plan window size
 - [ ] Change search agents to search sessions, add collapsible list of sessions under each agent, search can find session
