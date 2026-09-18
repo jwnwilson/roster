@@ -1,5 +1,6 @@
 import { vi } from 'vitest'
 import type { RosterApi } from '@shared/ipc'
+import type { NotionStatusMap } from '@shared/notion'
 
 /**
  * A stub for the preload bridge. Component tests exercise the renderer, not
@@ -67,11 +68,15 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       authStatus: vi.fn().mockResolvedValue({ state: 'connected', workspaceName: 'Test workspace' }),
       beginAuth: vi.fn().mockResolvedValue(undefined),
       clearAuth: vi.fn().mockResolvedValue(undefined),
-      inspect: vi.fn().mockResolvedValue(null),
-      connect: vi.fn().mockResolvedValue(null),
-      connections: vi.fn().mockResolvedValue([]),
-      importNow: vi.fn().mockResolvedValue({ created: 0, updated: 0, skipped: 0, failed: [] }),
-      disconnect: vi.fn().mockResolvedValue(undefined),
+      importTask: vi.fn().mockResolvedValue(null),
+      statusMap: vi.fn().mockResolvedValue({
+        backlog: 'Not started',
+        todo: 'Not started',
+        in_progress: 'In progress',
+        in_review: 'In progress',
+        done: 'Done',
+      }),
+      saveStatusMap: vi.fn((map: NotionStatusMap) => Promise.resolve(map)),
     },
 
     projects: {

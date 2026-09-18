@@ -271,15 +271,15 @@ function NotionImportAuthentication() {
 
   const connected = status?.state === "connected"
   const label = connected
-    ? `Connected for task import${status.workspaceName ? `: ${status.workspaceName}` : "."}`
-    : "Not connected for task import."
+    ? `Connected${status.workspaceName ? `: ${status.workspaceName}` : "."}`
+    : "Not connected."
 
   return (
     <section className="rounded-[9px] border border-line bg-card p-[13px]">
-      <p className="m-0 font-ui text-lg font-semibold">Task import access</p>
+      <p className="m-0 font-ui text-lg font-semibold">Notion access</p>
       <p className="mt-[5px] text-md text-dim">{label}</p>
       <p className="mt-[5px] text-md text-dim">
-        Connect here to inspect and import Notion tasks without starting an agent session.
+        Connect here to add Notion pages to the board without starting an agent session.
       </p>
       <div className="mt-[10px] flex gap-[8px]">
         <button

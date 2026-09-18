@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Its import decision is superseded by [Import Notion tasks one page at a time](2026-09-18-notion-tasks-are-imported-one-page-at-a-time.md); the OAuth decision stands.
 
 ## Context
 

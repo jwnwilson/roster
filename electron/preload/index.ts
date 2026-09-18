@@ -107,11 +107,9 @@ const api: RosterApi = {
     authStatus: () => ipcRenderer.invoke(CHANNELS.notionAuthStatus),
     beginAuth: () => ipcRenderer.invoke(CHANNELS.notionBeginAuth),
     clearAuth: () => ipcRenderer.invoke(CHANNELS.notionClearAuth),
-    inspect: (databaseInput) => ipcRenderer.invoke(CHANNELS.notionInspect, databaseInput),
-    connect: (input) => ipcRenderer.invoke(CHANNELS.notionConnect, input),
-    connections: () => ipcRenderer.invoke(CHANNELS.notionConnections),
-    importNow: (connectionId) => ipcRenderer.invoke(CHANNELS.notionImport, connectionId),
-    disconnect: (id) => ipcRenderer.invoke(CHANNELS.notionDisconnect, id),
+    importTask: (input) => ipcRenderer.invoke(CHANNELS.notionImportTask, input),
+    statusMap: () => ipcRenderer.invoke(CHANNELS.notionStatusMap),
+    saveStatusMap: (map) => ipcRenderer.invoke(CHANNELS.notionSaveStatusMap, map),
   },
 
   projects: {

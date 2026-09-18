@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import { openDatabase, type Db } from '@main/db'
 import { NotionMcpAuth } from '@main/notion/mcpAuth'
-import type { SecretBox } from '@main/notion/auth'
+import type { SecretBox } from '@main/notion/secretBox'
 
 const box: SecretBox = {
   encrypt: (value) => `encrypted:${Buffer.from(value).toString('base64')}`,

@@ -1,36 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import type { NotionInspection } from '@shared/notion'
 import { NotionModal } from '@/screens/NotionModal'
 import { useRoster } from '@/state/store'
-import { aProject } from './factories'
+import { aProject, aTask } from './factories'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
-
-const FOUND: NotionInspection = {
-  databaseId: 'db-1',
-  dataSourceId: 'ds-1',
-  name: 'Engineering tasks',
-  properties: [
-    { name: 'Name', type: 'title', options: [] },
-    { name: 'Status', type: 'status', options: ['To Do', 'Done'] },
-    { name: 'Urgency', type: 'select', options: ['High'] },
-    { name: 'Owner', type: 'people', options: [] },
-  ],
-  mapping: {
-    title: 'Name',
-    status: 'Status',
-    priority: null,
-    assignee: 'Owner',
-    statusValues: { 'To Do': 'todo', Done: 'done' },
-    priorityValues: {},
-  },
-  unmapped: ['in_progress', 'in_review'],
-}
-
-const SUMMARY = { created: 4, updated: 1, skipped: 0, failed: [] }
+const PAGE_URL = 'https://www.notion.so/Ship-it-1f8d872b594c80a4b2f400370af2b13f'
 
 beforeEach(() => {
   useRoster.setState(INITIAL, true)
@@ -38,242 +15,137 @@ beforeEach(() => {
   installRosterApi()
 })
 
-/** Gets as far as the mapping being on screen. */
-async function lookUp(user: ReturnType<typeof userEvent.setup>) {
-  await user.type(screen.getByLabelText('Notion database'), 'https://notion.so/db')
-  await user.click(screen.getByRole('button', { name: 'Look up' }))
-  await screen.findByLabelText('Status property')
-}
-
 describe('connecting', () => {
-  beforeEach(() => {
+  test('offers the browser sign-in until Notion answers', async () => {
+    const authStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ state: 'disconnected' })
+      .mockResolvedValue({ state: 'connected', workspaceName: 'Product' })
+    installRosterApi({ notion: { authStatus } })
+    const user = userEvent.setup()
+    render(<NotionModal />)
+
+    await user.click(await screen.findByRole('button', { name: 'Connect Notion' }))
+
+    expect(window.roster.notion.beginAuth).toHaveBeenCalled()
+    expect(await screen.findByLabelText('Notion task')).toBeTruthy()
+  })
+
+  test('shows what Notion said when sign-in failed', async () => {
     installRosterApi({
-      notion: {
-        connections: vi.fn().mockResolvedValue([]),
-        inspect: vi.fn().mockResolvedValue(FOUND),
-        connect: vi.fn().mockResolvedValue({ id: 'c1', ...FOUND, projectId: null, createdAt: 0 }),
-        importNow: vi.fn().mockResolvedValue(SUMMARY),
-      },
+      notion: { authStatus: vi.fn().mockResolvedValue({ state: 'error', message: 'Roster was not authorized.' }) },
     })
-  })
+    render(<NotionModal />)
 
-  test('starts browser OAuth before exposing the database picker', async () => {
-    installRosterApi({
-      notion: {
-        authStatus: vi
-          .fn()
-          .mockResolvedValueOnce({ state: 'disconnected' })
-          .mockResolvedValue({ state: 'needs_configuration', message: 'Configured after callback' }),
-        beginAuth: vi.fn().mockResolvedValue(undefined),
-        connections: vi.fn().mockResolvedValue([]),
-      },
-    })
+    expect(await screen.findByText('Roster was not authorized.')).toBeTruthy()
+  })
+})
+
+describe('importing a Notion task', () => {
+  test('sends the pasted link and the chosen project', async () => {
+    const importTask = vi.fn().mockResolvedValue({ task: aTask({ id: 'ROS-12' }), created: true })
+    installRosterApi({ notion: { importTask } })
     const user = userEvent.setup()
     render(<NotionModal />)
 
-    expect(await screen.findByRole('button', { name: 'Connect Notion' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Notion database')).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Connect Notion' }))
-
-    expect(window.roster.notion.beginAuth).toHaveBeenCalledOnce()
-  })
-
-  test('will not look anything up until something is pasted', () => {
-    render(<NotionModal />)
-
-    expect(screen.getByRole('button', { name: 'Look up' })).toBeDisabled()
-  })
-
-  test('shows what it found, and what it guessed each field was', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-
-    await lookUp(user)
-
-    expect(window.roster.notion.inspect).toHaveBeenCalledWith('https://notion.so/db')
-    expect(screen.getByLabelText('Title property')).toHaveValue('Name')
-    expect(screen.getByLabelText('Status property')).toHaveValue('Status')
-    expect(screen.getByLabelText('Assignee property')).toHaveValue('Owner')
-  })
-
-  test('a field it could not find reads as not mapped, rather than as a wrong guess', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-
-    await lookUp(user)
-
-    expect(screen.getByLabelText('Priority property')).toHaveValue('none')
-  })
-
-  test('offers only properties of a type that could play the part', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-    await lookUp(user)
-
-    const options = Array.from(
-      screen.getByLabelText('Assignee property').querySelectorAll('option'),
-    ).map((option) => option.textContent)
-
-    // A people or a select could be an assignee; a title could not. The order
-    // is the database's own, so the list reads as Notion lays it out.
-    expect(options).toEqual(['Not mapped', 'Urgency (select)', 'Owner (people)'])
-  })
-
-  test('says which board columns nothing will import into', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-
-    await lookUp(user)
-
-    // Worth knowing before importing three hundred rows, not after.
-    expect(screen.getByText(/Nothing in Notion maps onto/)).toHaveTextContent(
-      'In Progress, In Review',
-    )
-  })
-
-  test('warns when there is no title, since every page would be skipped', async () => {
-    installRosterApi({
-      notion: {
-        connections: vi.fn().mockResolvedValue([]),
-        inspect: vi.fn().mockResolvedValue({ ...FOUND, mapping: { ...FOUND.mapping, title: null } }),
-      },
-    })
-    const user = userEvent.setup()
-    render(<NotionModal />)
-
-    await user.type(screen.getByLabelText('Notion database'), 'db')
-    await user.click(screen.getByRole('button', { name: 'Look up' }))
-
-    expect(await screen.findByText(/nothing to put on a card/)).toBeInTheDocument()
-  })
-
-  test('a correction is what gets saved, not the guess', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-    await lookUp(user)
-
-    await user.selectOptions(screen.getByLabelText('Priority property'), 'Urgency')
+    await user.type(await screen.findByLabelText('Notion task'), PAGE_URL)
     await user.selectOptions(screen.getByLabelText('Import into'), 'p1')
     await user.click(screen.getByRole('button', { name: 'Import' }))
 
     await waitFor(() =>
-      expect(window.roster.notion.connect).toHaveBeenCalledWith(
-        expect.objectContaining({
-          dataSourceId: 'ds-1',
-          projectId: 'p1',
-          mapping: expect.objectContaining({ priority: 'Urgency' }),
-        }),
+      expect(importTask).toHaveBeenCalledWith({ url: PAGE_URL, projectId: 'p1' }),
+    )
+    expect(await screen.findByRole('button', { name: 'Added ROS-12' })).toBeTruthy()
+  })
+
+  test('says when the page is already on the board', async () => {
+    installRosterApi({
+      notion: { importTask: vi.fn().mockResolvedValue({ task: aTask({ id: 'ROS-9' }), created: false }) },
+    })
+    const user = userEvent.setup()
+    render(<NotionModal />)
+
+    await user.type(await screen.findByLabelText('Notion task'), PAGE_URL)
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+
+    expect(await screen.findByRole('button', { name: 'Already on the board as ROS-9' })).toBeTruthy()
+  })
+
+  test('opens the task it imported', async () => {
+    installRosterApi({
+      notion: { importTask: vi.fn().mockResolvedValue({ task: aTask({ id: 'ROS-12' }), created: true }) },
+    })
+    const user = userEvent.setup()
+    render(<NotionModal />)
+
+    await user.type(await screen.findByLabelText('Notion task'), PAGE_URL)
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+    await user.click(await screen.findByRole('button', { name: 'Added ROS-12' }))
+
+    expect(useRoster.getState().openTaskId).toBe('ROS-12')
+    expect(useRoster.getState().notionOpen).toBe(false)
+  })
+
+  test('shows why a link was refused', async () => {
+    installRosterApi({
+      notion: { importTask: vi.fn().mockRejectedValue(new Error('That does not look like a Notion page link.')) },
+    })
+    const user = userEvent.setup()
+    render(<NotionModal />)
+
+    await user.type(await screen.findByLabelText('Notion task'), 'nonsense')
+    await user.click(screen.getByRole('button', { name: 'Import' }))
+
+    expect(await screen.findByText('That does not look like a Notion page link.')).toBeTruthy()
+  })
+
+  test('will not import an empty box', async () => {
+    render(<NotionModal />)
+
+    expect((await screen.findByRole('button', { name: 'Import' })).hasAttribute('disabled')).toBe(true)
+  })
+})
+
+describe('the status map', () => {
+  test('shows a name for every Roster column', async () => {
+    render(<NotionModal />)
+
+    expect((await screen.findByLabelText<HTMLInputElement>('Done in Notion')).value).toBe('Done')
+    expect(screen.getByLabelText<HTMLInputElement>('In Progress in Notion').value).toBe('In progress')
+    expect(screen.getByLabelText<HTMLInputElement>('Backlog in Notion').value).toBe('Not started')
+  })
+
+  test('saves an edited name', async () => {
+    const user = userEvent.setup()
+    render(<NotionModal />)
+
+    const input = await screen.findByLabelText('In Review in Notion')
+    await user.clear(input)
+    await user.type(input, 'Needs review')
+    await user.click(screen.getByRole('button', { name: 'Save status names' }))
+
+    await waitFor(() =>
+      expect(window.roster.notion.saveStatusMap).toHaveBeenCalledWith(
+        expect.objectContaining({ in_review: 'Needs review', done: 'Done' }),
       ),
     )
-  })
-
-  test('imports straight after connecting, and says what it did', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-    await lookUp(user)
-
-    await user.click(screen.getByRole('button', { name: 'Import' }))
-
-    expect(await screen.findByText('4 created · 1 updated.')).toBeInTheDocument()
-    expect(window.roster.notion.importNow).toHaveBeenCalledWith('c1')
-  })
-
-  test('refreshes the board, which is stale the moment an import lands', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-    await lookUp(user)
-
-    await user.click(screen.getByRole('button', { name: 'Import' }))
-
-    await waitFor(() => expect(window.roster.tasks.list).toHaveBeenCalled())
+    expect(await screen.findByText('Saved')).toBeTruthy()
   })
 })
 
-describe('when Notion says no', () => {
-  test('shows what it said, rather than failing quietly', async () => {
-    installRosterApi({
-      notion: {
-        connections: vi.fn().mockResolvedValue([]),
-        inspect: vi
-          .fn()
-          .mockRejectedValue(new Error('Notion cannot see that database. Open it in Notion…')),
-      },
-    })
+describe('disconnecting', () => {
+  test('forgets the credential and goes back to the sign-in', async () => {
+    const authStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ state: 'connected', workspaceName: 'Product' })
+      .mockResolvedValue({ state: 'disconnected' })
+    installRosterApi({ notion: { authStatus } })
     const user = userEvent.setup()
     render(<NotionModal />)
 
-    await user.type(screen.getByLabelText('Notion database'), 'db')
-    await user.click(screen.getByRole('button', { name: 'Look up' }))
+    await user.click(await screen.findByRole('button', { name: 'Disconnect Notion' }))
 
-    expect(await screen.findByText(/cannot see that database/)).toBeInTheDocument()
-  })
-
-  test('a failed import is reported per row rather than swallowed', async () => {
-    installRosterApi({
-      notion: {
-        connections: vi.fn().mockResolvedValue([]),
-        inspect: vi.fn().mockResolvedValue(FOUND),
-        connect: vi.fn().mockResolvedValue({ id: 'c1', ...FOUND, projectId: null, createdAt: 0 }),
-        importNow: vi
-          .fn()
-          .mockResolvedValue({ created: 1, updated: 0, skipped: 1, failed: ['Fix it: nope'] }),
-      },
-    })
-    const user = userEvent.setup()
-    render(<NotionModal />)
-    await lookUp(user)
-
-    await user.click(screen.getByRole('button', { name: 'Import' }))
-
-    expect(await screen.findByText('1 created · 0 updated · 1 skipped.')).toBeInTheDocument()
-    expect(screen.getByText('Fix it: nope')).toBeInTheDocument()
-  })
-})
-
-describe('once connected', () => {
-  beforeEach(() => {
-    installRosterApi({
-      notion: {
-        connections: vi.fn().mockResolvedValue([
-          {
-            id: 'c1',
-            name: 'Engineering tasks',
-            databaseId: 'db-1',
-            dataSourceId: 'ds-1',
-            mapping: FOUND.mapping,
-            projectId: null,
-            createdAt: 0,
-          },
-        ]),
-        importNow: vi.fn().mockResolvedValue(SUMMARY),
-        disconnect: vi.fn().mockResolvedValue(undefined),
-      },
-    })
-  })
-
-  test('names the database rather than asking for it again', async () => {
-    render(<NotionModal />)
-
-    expect(await screen.findByText('Engineering tasks')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Notion database')).not.toBeInTheDocument()
-  })
-
-  test('pulling again is a button, since nothing polls', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-
-    await user.click(await screen.findByRole('button', { name: 'Import now' }))
-
-    expect(window.roster.notion.importNow).toHaveBeenCalledWith('c1')
-    expect(await screen.findByText('4 created · 1 updated.')).toBeInTheDocument()
-  })
-
-  test('disconnecting asks the main process to forget it', async () => {
-    const user = userEvent.setup()
-    render(<NotionModal />)
-
-    await user.click(await screen.findByRole('button', { name: 'Disconnect' }))
-
-    expect(window.roster.notion.disconnect).toHaveBeenCalledWith('c1')
+    expect(window.roster.notion.clearAuth).toHaveBeenCalled()
+    expect(await screen.findByRole('button', { name: 'Connect Notion' })).toBeTruthy()
   })
 })

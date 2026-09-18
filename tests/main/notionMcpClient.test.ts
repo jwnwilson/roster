@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { openDatabase, type Db } from '@main/db'
-import type { SecretBox } from '@main/notion/auth'
+import type { SecretBox } from '@main/notion/secretBox'
 import type { OAuthCallbackListener, OAuthCallbackOptions } from '@main/notion/loopbackCallback'
 import { NotionMcpAuth } from '@main/notion/mcpAuth'
 import { NotionMcpClient } from '@main/notion/mcpClient'

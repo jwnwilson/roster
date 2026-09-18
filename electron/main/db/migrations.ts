@@ -330,4 +330,17 @@ export const MIGRATIONS: readonly string[] = [
   );
   DELETE FROM notion_auth;
   `,
+
+  // 16 — a Notion page is now linked one at a time by its URL, so the only
+  // thing left to configure is what each Roster status is called in Notion.
+  // One row, because the map is the user's answer for their workspace rather
+  // than a property of any one page. The retired per-database connections are
+  // left in place: they are no longer read, and dropping them would throw
+  // away the page ids of anything imported before this.
+  `
+  CREATE TABLE notion_settings (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    status_map  TEXT NOT NULL
+  );
+  `,
 ]

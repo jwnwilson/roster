@@ -8,10 +8,11 @@ import {
   type ProjectPatch,
   type PtySize,
   type SendOptions,
-  type NewConnectionInput,
+  type ImportTaskInput,
   type TaskChange,
 } from '../../../shared/ipc'
 import type { PlanDocument, RunnerStatus, Session, SetupState, SpendSummary } from '../../../shared/types'
+import type { NotionStatusMap } from '../../../shared/notion'
 import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
@@ -27,15 +28,14 @@ import { ProjectStore } from '../store/projects'
 import { SessionStore } from '../store/sessions'
 import { TaskStore } from '../store/tasks'
 import { PlanStore } from '../store/plans'
-import { NotionStore } from '../store/notion'
+import { NotionSettingsStore } from '../store/notionSettings'
 import { PlanFlow } from '../sessions/planFlow'
-import { databaseIdFrom } from '../notion/client'
-import { type SecretBox } from '../notion/auth'
+import { type SecretBox } from '../notion/secretBox'
 import { NotionMcpAuth } from '../notion/mcpAuth'
 import { NotionMcpClient } from '../notion/mcpClient'
-import { NotionMcpBoardClient } from '../notion/mcpBoardClient'
-import { detectMapping, unmappedStatuses } from '../notion/mapping'
-import { NotionPush, importConnection } from '../notion/sync'
+import { NotionMcpPages } from '../notion/mcpPages'
+import { importNotionTask } from '../notion/importTask'
+import { NotionPush } from '../notion/sync'
 import { SkillStore } from '../store/skills'
 import { ProjectNotesStore } from '../store/projectNotes'
 import { UsageStore } from '../store/usage'
@@ -56,7 +56,7 @@ let nudges: SessionNudges | null = null
 let planStore: PlanStore | null = null
 let planFlow: PlanFlow | null = null
 let mentions: TaskMentions | null = null
-let notionStore: NotionStore | null = null
+let notionSettings: NotionSettingsStore | null = null
 let notionPush: NotionPush | null = null
 let notionAuth: NotionMcpAuth | null = null
 let notionMcp: NotionMcpClient | null = null
@@ -155,14 +155,14 @@ function requireProjects(): ProjectStore {
   return projectStore
 }
 
-function requireNotion(): NotionStore {
-  if (!notionStore) throw new Error('notion store is not initialised')
-  return notionStore
+function requireNotionSettings(): NotionSettingsStore {
+  if (!notionSettings) throw new Error('notion settings are not initialised')
+  return notionSettings
 }
 
-function requireNotionClient(): NotionMcpBoardClient {
-  if (!notionMcp) throw new Error('Notion authorization is not initialised')
-  return new NotionMcpBoardClient(notionMcp)
+function requireNotionPages(): NotionMcpPages {
+  if (!notionMcp) throw new Error('Connect Notion before using it.')
+  return new NotionMcpPages(notionMcp)
 }
 
 function requireNotionAuth(): NotionMcpAuth {
@@ -225,7 +225,7 @@ export async function initStores(): Promise<void> {
   // Agent ids resolve to display names through the agent store, since agents
   // live in agent.toml rather than in this database.
   taskStore = new TaskStore(db, (id) => agentStore.findById(id)?.name ?? null)
-  notionStore = new NotionStore(db)
+  notionSettings = new NotionSettingsStore(db)
   notionAuth = new NotionMcpAuth(db, electronSecretBox)
   notionMcp = new NotionMcpClient(notionAuth)
   seedBoardIfEmpty(projectStore, taskStore, agentStore.findAll())
@@ -265,16 +265,17 @@ export async function initStores(): Promise<void> {
     manager,
     (link) => broadcast(CHANNELS.tasksEvent, { type: 'task-session', taskId: link.taskId, link }),
   )
-  // A second subscriber: what changes here is written back to the Notion page
-  // it came from. Silent for tasks that did not come from Notion.
+  // A second subscriber: a status move or a comment on an imported task is
+  // written to the Notion page it came from. Silent for tasks that did not
+  // come from Notion, which is most of them.
   notionPush = new NotionPush(
     taskStore,
-    notionStore,
-    () => agentStore.findAll(),
-    () => (notionAuth?.status().state === 'connected' ? requireNotionClient() : null),
+    notionSettings,
+    () => (notionAuth?.status().state === 'connected' ? requireNotionPages() : null),
   )
   taskStore.subscribe((event) => {
     if (event.type === 'task-updated') notionPush?.taskChanged(event.task.id)
+    if (event.type === 'comment') notionPush?.commentAdded(event.taskId, event.comment)
   })
   // Notes have the same two writers the board has — the person editing them
   // and any agent holding the memory tools — so a change has to reach an open
@@ -499,65 +500,26 @@ export function registerIpc(): void {
     requireSessions().setName(sessionId, name),
   )
 
-  ipcMain.handle(CHANNELS.notionInspect, async (_e, databaseInput: string) => {
-    const databaseId = databaseIdFrom(databaseInput)
-    if (databaseId === null) {
-      throw new Error('That is not a Notion database link or id.')
-    }
-
-    const client = requireNotionClient()
-    const sources = await client.dataSources(databaseId)
-    const source = sources[0]
-    if (!source) {
-      throw new Error('That database has no data sources Roster can read.')
-    }
-
-    const schema = await client.schema(source.id)
-    const mapping = detectMapping(schema.properties)
-
-    return {
-      databaseId,
-      dataSourceId: source.id,
-      name: schema.title === '' ? source.name : schema.title,
-      properties: schema.properties,
-      mapping,
-      unmapped: unmappedStatuses(mapping),
-    }
-  })
-
-  ipcMain.handle(CHANNELS.notionConnect, (_e, input: NewConnectionInput) =>
-    requireNotion().create(input),
-  )
   ipcMain.handle(CHANNELS.notionAuthStatus, () => requireNotionAuth().status())
   ipcMain.handle(CHANNELS.notionBeginAuth, async () => {
     if (!notionMcp) throw new Error('Notion authorization is not initialised')
     const url = await notionMcp.beginAuthorization()
     await shell.openExternal(url)
   })
-  ipcMain.handle(CHANNELS.notionClearAuth, () => requireNotionAuth().clear())
-  ipcMain.handle(CHANNELS.notionConnections, () => requireNotion().findAll())
-  ipcMain.handle(CHANNELS.notionDisconnect, (_e, id: string) => {
-    requireNotion().delete(id)
-    // One board connection is all that currently exposes an OAuth workspace.
-    // Removing the last one also forgets its local credential; no bearer token
-    // lingers after the user said Disconnect.
-    if (requireNotion().count() === 0) {
-      notionMcp?.close()
-      requireNotionAuth().clear()
-    }
+  ipcMain.handle(CHANNELS.notionClearAuth, () => {
+    // The transport outlives the credential otherwise, and agents proxying
+    // through it would keep using a workspace the user just disconnected.
+    notionMcp?.close()
+    requireNotionAuth().clear()
   })
 
-  ipcMain.handle(CHANNELS.notionImport, async (_e, connectionId: string) => {
-    const connection = requireNotion().findById(connectionId)
-    if (!connection) throw new Error(`unknown Notion connection "${connectionId}"`)
-
-    const client = requireNotionClient()
-    const tasks = requireTasks()
-
-    // Suppressed for the duration, or every row pulled in would immediately
-    // push straight back out again.
-    const run = () => importConnection(client, connection, tasks, () => agentStore.findAll())
-    return notionPush ? notionPush.duringImport(run) : run()
+  ipcMain.handle(CHANNELS.notionImportTask, (_e, input: ImportTaskInput) =>
+    importNotionTask(requireNotionPages(), requireTasks(), requireNotionSettings(), input),
+  )
+  ipcMain.handle(CHANNELS.notionStatusMap, () => requireNotionSettings().statusMap())
+  ipcMain.handle(CHANNELS.notionSaveStatusMap, (_e, map: NotionStatusMap) => {
+    requireNotionSettings().saveStatusMap(map)
+    return requireNotionSettings().statusMap()
   })
 
   ipcMain.handle(CHANNELS.projectsList, () => requireProjects().findAll())

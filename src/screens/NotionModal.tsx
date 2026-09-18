@@ -1,50 +1,54 @@
 import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
-import type { TaskStatus } from '@shared/types'
-import type { ImportSummary, NotionAuthStatus, NotionConnection, NotionInspection, NotionMapping } from '@shared/notion'
+import { TASK_STATUSES, type TaskStatus } from '@shared/types'
+import type { NotionAuthStatus, NotionStatusMap } from '@shared/notion'
 import { taskStatusLabel } from '@shared/tasks'
 import { Field, Modal, Select, TextInput } from '@/components/primitives'
 import { messageFor } from '@/lib/errors'
 import { activeProjects, useRoster } from '@/state/store'
 
 const NO_PROJECT = 'none'
-const UNMAPPED = 'none'
 
 /**
- * Connecting the board to a Notion database, and pulling it in.
+ * Putting a Notion task on the board, and saying what its statuses are called.
  *
- * One modal for the whole flow, because it is one decision: which database,
- * how its properties line up with ours, and where the tasks should land. The
- * mapping is shown rather than assumed — a Notion database is whatever
- * somebody made it, and a wrong guess would import every row into the wrong
- * column silently.
+ * One page at a time, by its link: a Notion database is whatever somebody
+ * made it, and importing every row of one turned out to be far more machinery
+ * than the thing people actually do — which is paste the task they are about
+ * to work on.
+ *
+ * The status map is the only configuration left. Roster has five columns and
+ * a Notion board usually has three, so the names cannot be guessed reliably;
+ * they are shown, with sensible defaults, and the user corrects them.
  */
 export function NotionModal() {
   const close = () => useRoster.getState().setNotionOpen(false)
-  // Importing into an archived project would file the pages somewhere
-  // the board does not show, so only active ones are offered.
+  // Filing a page under an archived project would put it where the board does
+  // not show it, so only active ones are offered.
   const projects = useRoster(useShallow(activeProjects))
 
-  const [connections, setConnections] = useState<NotionConnection[]>([])
-  const [databaseInput, setDatabaseInput] = useState('')
-  const [found, setFound] = useState<NotionInspection | null>(null)
-  const [mapping, setMapping] = useState<NotionMapping | null>(null)
-  const [project, setProject] = useState<string>(NO_PROJECT)
-  const [summary, setSummary] = useState<ImportSummary | null>(null)
   const [auth, setAuth] = useState<NotionAuthStatus | null>(null)
-  const [busy, setBusy] = useState<'' | 'looking' | 'importing' | 'authorizing'>('')
+  const [url, setUrl] = useState('')
+  const [project, setProject] = useState<string>(NO_PROJECT)
+  const [statusMap, setStatusMap] = useState<NotionStatusMap | null>(null)
+  const [imported, setImported] = useState<{ taskId: string; created: boolean } | null>(null)
+  const [saved, setSaved] = useState(false)
+  const [busy, setBusy] = useState<'' | 'importing' | 'authorizing' | 'saving'>('')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    void Promise.all([window.roster.notion.connections(), window.roster.notion.authStatus()])
-      .then(([nextConnections, nextAuth]) => {
-        setConnections(nextConnections)
+    void Promise.all([window.roster.notion.authStatus(), window.roster.notion.statusMap()])
+      .then(([nextAuth, nextMap]) => {
         setAuth(nextAuth)
+        setStatusMap(nextMap)
       })
       .catch((cause: unknown) => setError(messageFor(cause)))
   }, [])
 
-  const connected = connections[0] ?? null
+  const connected = auth?.state === 'connected'
+  // A sign-in that failed is remembered by the main process, so the reason is
+  // shown on opening rather than only to whoever was watching at the time.
+  const shown = error ?? (auth?.state === 'error' ? auth.message : null)
 
   async function beginAuth(): Promise<void> {
     setBusy('authorizing')
@@ -69,39 +73,18 @@ export function NotionModal() {
     }
   }
 
-  async function inspect(): Promise<void> {
-    setBusy('looking')
-    setError(null)
-    setSummary(null)
-
-    try {
-      const inspection = await window.roster.notion.inspect(databaseInput)
-      setFound(inspection)
-      setMapping(inspection.mapping)
-    } catch (cause) {
-      setError(messageFor(cause))
-    } finally {
-      setBusy('')
-    }
-  }
-
-  async function connectAndImport(): Promise<void> {
-    if (!found || !mapping) return
+  async function importTask(): Promise<void> {
     setBusy('importing')
     setError(null)
+    setImported(null)
 
     try {
-      const connection = await window.roster.notion.connect({
-        name: found.name,
-        databaseId: found.databaseId,
-        dataSourceId: found.dataSourceId,
-        mapping,
+      const result = await window.roster.notion.importTask({
+        url,
         projectId: project === NO_PROJECT ? null : project,
       })
-      setSummary(await window.roster.notion.importNow(connection.id))
-      setConnections(await window.roster.notion.connections())
-      // The board is stale the moment an import lands.
-      useRoster.getState().setTasks(await window.roster.tasks.list())
+      setImported({ taskId: result.task.id, created: result.created })
+      setUrl('')
     } catch (cause) {
       setError(messageFor(cause))
     } finally {
@@ -109,13 +92,14 @@ export function NotionModal() {
     }
   }
 
-  async function refresh(id: string): Promise<void> {
-    setBusy('importing')
+  async function saveStatusMap(): Promise<void> {
+    if (!statusMap) return
+    setBusy('saving')
     setError(null)
 
     try {
-      setSummary(await window.roster.notion.importNow(id))
-      useRoster.getState().setTasks(await window.roster.tasks.list())
+      setStatusMap(await window.roster.notion.saveStatusMap(statusMap))
+      setSaved(true)
     } catch (cause) {
       setError(messageFor(cause))
     } finally {
@@ -123,17 +107,19 @@ export function NotionModal() {
     }
   }
 
-  async function disconnect(id: string): Promise<void> {
+  async function disconnect(): Promise<void> {
     setError(null)
-
     try {
-      await window.roster.notion.disconnect(id)
-      setConnections(await window.roster.notion.connections())
-      setFound(null)
-      setSummary(null)
+      await window.roster.notion.clearAuth()
+      setAuth(await window.roster.notion.authStatus())
     } catch (cause) {
       setError(messageFor(cause))
     }
+  }
+
+  function openImported(taskId: string): void {
+    useRoster.getState().openTask(taskId)
+    close()
   }
 
   return (
@@ -145,7 +131,7 @@ export function NotionModal() {
       footer={
         <>
           <span className="text-sm text-faint">
-            Roster pushes changes back on its own. Pulling is this button.
+            Status moves and comments on an imported task are written to its Notion page.
           </span>
           <button
             type="button"
@@ -155,11 +141,11 @@ export function NotionModal() {
           >
             Close
           </button>
-          {found && !connected ? (
+          {connected ? (
             <button
               type="button"
-              disabled={busy !== ''}
-              onClick={() => void connectAndImport()}
+              disabled={busy !== '' || url.trim() === ''}
+              onClick={() => void importTask()}
               className="cursor-pointer rounded-pill border-0 bg-accent px-[15px] py-[7px] font-ui text-lg font-semibold text-white hover:bg-accent-hover disabled:cursor-default disabled:opacity-50"
             >
               {busy === 'importing' ? 'Importing…' : 'Import'}
@@ -170,38 +156,68 @@ export function NotionModal() {
     >
       <div className="flex min-h-0 flex-1 flex-col gap-[18px] overflow-y-auto p-[18px]">
         {connected ? (
-          <Connected
-            connection={connected}
-            busy={busy === 'importing'}
-            onRefresh={() => void refresh(connected.id)}
-            onDisconnect={() => void disconnect(connected.id)}
-          />
-        ) : auth?.state !== 'disconnected' &&
-          auth?.state !== 'needs_configuration' &&
-          auth?.state !== 'error' ? (
-          <Field
-            label="Notion database"
-            caption="Paste the database link, or its id. The integration needs access to it — open the database in Notion and use ••• → Connect to."
-          >
-            <div className="flex gap-[8px]">
+          <>
+            <Field
+              label="Notion task"
+              caption="Paste the link to a Notion page. Roster needs access to it — open the page in Notion and use ••• → Connect to."
+            >
               <TextInput
-                ariaLabel="Notion database"
+                ariaLabel="Notion task"
                 placeholder="https://notion.so/…"
-                value={databaseInput}
-                onChange={setDatabaseInput}
-                className="min-w-0 flex-1"
+                value={url}
+                onChange={setUrl}
               />
+            </Field>
+
+            <Field label="Import into" caption="Imported tasks are filed under this project.">
+              <Select
+                ariaLabel="Import into"
+                value={project}
+                onChange={setProject}
+                options={[
+                  { value: NO_PROJECT, label: 'No project' },
+                  ...projects.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+            </Field>
+
+            {imported ? (
               <button
                 type="button"
-                disabled={busy !== '' || databaseInput.trim() === ''}
-                onClick={() => void inspect()}
-                className="flex-none cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-ink-3 hover:border-line-hover disabled:cursor-default disabled:opacity-40"
+                onClick={() => openImported(imported.taskId)}
+                className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[7px] text-left font-ui text-md text-ink-3 hover:border-line-hover"
                 data-hoverable
               >
-                {busy === 'looking' ? 'Looking…' : 'Look up'}
+                {imported.created
+                  ? `Added ${imported.taskId}`
+                  : `Already on the board as ${imported.taskId}`}
+              </button>
+            ) : null}
+
+            {statusMap ? (
+              <StatusMap
+                map={statusMap}
+                busy={busy === 'saving'}
+                saved={saved}
+                onChange={(next) => {
+                  setStatusMap(next)
+                  setSaved(false)
+                }}
+                onSave={() => void saveStatusMap()}
+              />
+            ) : null}
+
+            <div>
+              <button
+                type="button"
+                onClick={() => void disconnect()}
+                className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-dim hover:border-line-hover"
+                data-hoverable
+              >
+                Disconnect Notion
               </button>
             </div>
-          </Field>
+          </>
         ) : (
           <Field
             label="Connect Notion"
@@ -223,175 +239,58 @@ export function NotionModal() {
           </Field>
         )}
 
-        {found && mapping && !connected ? (
-          <>
-            <Mapping found={found} mapping={mapping} onChange={setMapping} />
-
-            <Field label="Import into" caption="Imported tasks are filed under this project.">
-              <Select
-                ariaLabel="Import into"
-                value={project}
-                onChange={setProject}
-                options={[
-                  { value: NO_PROJECT, label: 'No project' },
-                  ...projects.map((p) => ({ value: p.id, label: p.name })),
-                ]}
-              />
-            </Field>
-          </>
-        ) : null}
-
-        {summary ? <Summary summary={summary} /> : null}
-        {error ? <p className="m-0 text-md text-error">{error}</p> : null}
+        {shown ? <p className="m-0 text-md text-error">{shown}</p> : null}
       </div>
     </Modal>
   )
 }
 
-function Connected({
-  connection,
-  busy,
-  onRefresh,
-  onDisconnect,
-}: {
-  connection: NotionConnection
+interface StatusMapProps {
+  map: NotionStatusMap
   busy: boolean
-  onRefresh: () => void
-  onDisconnect: () => void
-}) {
-  return (
-    <Field label="Connected to" caption="Changes on the board are written back to these pages.">
-      <div className="flex items-center gap-[8px]">
-        <span className="min-w-0 flex-1 truncate text-md text-ink">{connection.name}</span>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={onRefresh}
-          className="flex-none cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-ink-3 hover:border-line-hover disabled:cursor-default disabled:opacity-40"
-          data-hoverable
-        >
-          {busy ? 'Importing…' : 'Import now'}
-        </button>
-        <button
-          type="button"
-          onClick={onDisconnect}
-          className="flex-none cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-dim hover:border-line-hover hover:text-error"
-          data-hoverable
-        >
-          Disconnect
-        </button>
-      </div>
-    </Field>
-  )
+  saved: boolean
+  onChange: (map: NotionStatusMap) => void
+  onSave: () => void
 }
 
 /**
- * The detected mapping, shown so it can be corrected.
+ * What each Roster column is called in Notion.
  *
- * Every board column gets a row, so a column nothing imports into is visible
- * rather than something you discover after importing three hundred rows.
+ * Free text rather than a picker: the names belong to whichever database the
+ * page lives in, and Roster does not read a schema any more. Two columns may
+ * share a name, which is how a five-column board fits a three-column one.
  */
-function Mapping({
-  found,
-  mapping,
-  onChange,
-}: {
-  found: NotionInspection
-  mapping: NotionMapping
-  onChange: (mapping: NotionMapping) => void
-}) {
-  const options = (types: readonly string[]) => [
-    { value: UNMAPPED, label: 'Not mapped' },
-    ...found.properties
-      .filter((property) => types.includes(property.type))
-      .map((property) => ({ value: property.name, label: `${property.name} (${property.type})` })),
-  ]
-
-  const set = (patch: Partial<NotionMapping>) => onChange({ ...mapping, ...patch })
-  const pick = (value: string) => (value === UNMAPPED ? null : value)
-
+function StatusMap({ map, busy, saved, onChange, onSave }: StatusMapProps) {
   return (
-    <Field label={`Fields in "${found.name}"`} caption="Roster guessed these. Change any that are wrong.">
+    <Field
+      label="Status names in Notion"
+      caption="Moving a card writes the matching name to its Notion page. Leave two columns sharing a name if Notion has fewer."
+    >
       <div className="flex flex-col gap-[8px]">
-        <Row label="Title">
-          <Select
-            ariaLabel="Title property"
-            value={mapping.title ?? UNMAPPED}
-            onChange={(value) => set({ title: pick(value) })}
-            options={options(['title', 'rich_text'])}
-          />
-        </Row>
-        <Row label="Status">
-          <Select
-            ariaLabel="Status property"
-            value={mapping.status ?? UNMAPPED}
-            onChange={(value) => set({ status: pick(value) })}
-            options={options(['status', 'select'])}
-          />
-        </Row>
-        <Row label="Priority">
-          <Select
-            ariaLabel="Priority property"
-            value={mapping.priority ?? UNMAPPED}
-            onChange={(value) => set({ priority: pick(value) })}
-            options={options(['select', 'status'])}
-          />
-        </Row>
-        <Row label="Assignee">
-          <Select
-            ariaLabel="Assignee property"
-            value={mapping.assignee ?? UNMAPPED}
-            onChange={(value) => set({ assignee: pick(value) })}
-            options={options(['people', 'select'])}
-          />
-        </Row>
+        {TASK_STATUSES.map((status: TaskStatus) => (
+          <div key={status} className="flex items-center gap-[8px]">
+            <span className="w-[96px] flex-none text-md text-dim">{taskStatusLabel(status)}</span>
+            <TextInput
+              ariaLabel={`${taskStatusLabel(status)} in Notion`}
+              value={map[status]}
+              onChange={(value) => onChange({ ...map, [status]: value })}
+              className="min-w-0 flex-1"
+            />
+          </div>
+        ))}
+        <div className="flex items-center gap-[8px]">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onSave}
+            className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-ink-3 hover:border-line-hover disabled:cursor-default disabled:opacity-40"
+            data-hoverable
+          >
+            {busy ? 'Saving…' : 'Save status names'}
+          </button>
+          {saved ? <span className="text-sm text-faint">Saved</span> : null}
+        </div>
       </div>
-
-      {found.unmapped.length > 0 ? (
-        <p className="m-0 text-sm text-amber-text">
-          Nothing in Notion maps onto{' '}
-          {found.unmapped.map((status: TaskStatus) => taskStatusLabel(status)).join(', ')}. Work in
-          a column Roster does not recognise imports into the backlog.
-        </p>
-      ) : null}
-
-      {mapping.title === null ? (
-        <p className="m-0 text-sm text-error">
-          Without a title there is nothing to put on a card, and every page will be skipped.
-        </p>
-      ) : null}
     </Field>
-  )
-}
-
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-[10px]">
-      <span className="w-[68px] flex-none text-md text-muted">{label}</span>
-      <div className="min-w-0 flex-1">{children}</div>
-    </div>
-  )
-}
-
-function Summary({ summary }: { summary: ImportSummary }) {
-  const parts = [
-    `${summary.created} created`,
-    `${summary.updated} updated`,
-    ...(summary.skipped > 0 ? [`${summary.skipped} skipped`] : []),
-  ]
-
-  return (
-    <div className="flex flex-col gap-[6px]">
-      <p className="m-0 text-md text-ink">{parts.join(' · ')}.</p>
-      {summary.failed.length > 0 ? (
-        <ul className="m-0 flex list-none flex-col gap-[3px] p-0">
-          {summary.failed.map((failure) => (
-            <li key={failure} className="text-sm text-error">
-              {failure}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
   )
 }
