@@ -558,7 +558,7 @@ export function selectSidebarAgents(state: RosterState): Agent[] {
   const visible = selectVisibleAgents(state)
   const q = state.query.trim().toLowerCase()
   if (q === '') return visible
-  return visible.filter((a) => matchesSearch(a, state.sessions[a.id] ?? NO_SESSIONS, q))
+  return visible.filter((a) => matchesSearch(a, selectSidebarSessions(state, a), q))
 }
 
 /**
@@ -569,7 +569,19 @@ export function selectSidebarAgents(state: RosterState): Agent[] {
  * was asked for and every session it owns belongs under it.
  */
 export function selectSidebarSessions(state: RosterState, agent: Agent): readonly Session[] {
-  const sessions = state.sessions[agent.id] ?? NO_SESSIONS
+  // The project filter first, and it narrows the sessions rather than the
+  // roster. The grid drops an agent whose sessions are all filtered out; the
+  // sidebar deliberately does not, because it is the app's navigation —
+  // hiding an agent here would leave no way to open it, and every session is
+  // unfiled until somebody files it, so "no work in this project" is the
+  // ordinary state of a new agent rather than a reason to make it
+  // unreachable. The count on the row is what says there is nothing here.
+  const sessions = sessionsInProject(
+    state.sessions[agent.id] ?? NO_SESSIONS,
+    state.projectFilter,
+    archivedProjectIds(state),
+  )
+
   const q = state.query.trim().toLowerCase()
   if (q === '' || agent.name.toLowerCase().includes(q)) return sessions
 

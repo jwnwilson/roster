@@ -13,6 +13,7 @@ import { sessionLabel } from '@shared/sessions'
 import { formatUsageCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { Logo } from './Logo'
+import { ProjectFilter } from './ProjectFilter'
 import { UpdateRow } from './UpdateRow'
 import { ChevronIcon } from './icons'
 import { StatusDot } from './primitives'
@@ -107,7 +108,7 @@ export function Sidebar() {
         </span>
       </div>
 
-      <div className="px-[8px] pb-[8px]">
+      <div className="flex flex-col gap-[6px] px-[8px] pb-[8px]">
         <input
           type="text"
           value={query}
@@ -116,6 +117,10 @@ export function Sidebar() {
           onChange={(e) => setQuery(e.target.value)}
           className="w-full rounded-chip border border-line bg-card px-[9px] py-[6px] font-ui text-md text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
         />
+        {/* The shared control over the shared key, so picking a project here
+            narrows the board and the grid too. That is this filter's whole
+            design — see ProjectFilter. */}
+        <ProjectFilter compact />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-[1px] overflow-y-auto px-[8px] pb-[8px]">
