@@ -843,6 +843,70 @@ describe('AgentDetail — the task a session answers', () => {
   })
 })
 
+describe('AgentDetail — the flow a session belongs to', () => {
+  const TASK = aTask({ id: 'ROS-1', title: 'Fix connection pool leak', projectId: 'proj-a' })
+
+  /** A session handed the work from `root`, which lives on another agent. */
+  const HANDED_TO = aSession({
+    id: 'session-1',
+    origin: 'agent',
+    spawnedFrom: { agentId: 'architect', sessionId: 'root', label: 'Architect Agent' },
+  })
+
+  function withParent(parent: Session): void {
+    useRoster.setState((s) => ({ sessions: { ...s.sessions, architect: [parent] } }))
+  }
+
+  test('says nothing for a session standing on its own', async () => {
+    withSessions([aSession({ id: 'session-1' })])
+    render(<AgentDetail />)
+
+    await screen.findByText('Debugging Agent')
+    expect(screen.queryByRole('button', { name: 'View workflow' })).not.toBeInTheDocument()
+  })
+
+  test('opens the graph filtered to the task a mention opened the session from', async () => {
+    // Arrange
+    withSessions([aSession({ id: 'session-1', taskId: 'ROS-1' })])
+    useRoster.setState({ tasks: [TASK] })
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    // Act
+    await user.click(await screen.findByRole('button', { name: 'View workflow' }))
+
+    // Assert
+    const state = useRoster.getState()
+    expect(state.screen).toBe('grid')
+    expect(state.gridView).toBe('workflow')
+    expect(state.workflowTaskId).toBe('ROS-1')
+    expect(state.projectFilter).toBe('proj-a')
+  })
+
+  test('finds the task from a session the work was handed to', async () => {
+    // A handed-off session carries no task of its own, so the only way to
+    // the flow is back up the chain.
+    withSessions([HANDED_TO])
+    withParent(aSession({ id: 'root', agentId: 'architect', taskId: 'ROS-1' }))
+    useRoster.setState({ tasks: [TASK] })
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'View workflow' }))
+
+    expect(useRoster.getState().workflowTaskId).toBe('ROS-1')
+  })
+
+  test('says why there is no workflow when no task started the chain', async () => {
+    withSessions([HANDED_TO])
+    withParent(aSession({ id: 'root', agentId: 'architect' }))
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: 'View workflow' })).toBeDisabled()
+    expect(screen.getByText(/No task opened this chain/)).toBeInTheDocument()
+  })
+})
+
 describe('AgentDetail — naming a session', () => {
   const UNNAMED = aSession({ id: 's1', agentId: 'debugging', title: 'New session' })
 

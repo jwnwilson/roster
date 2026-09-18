@@ -7,6 +7,7 @@ import {
   NODE_WIDTH,
   ROW_GAP,
   flowEdges,
+  flowOfSession,
   layoutFlow,
   visibleFlowIds,
 } from '@/state/workflow'
@@ -211,5 +212,45 @@ describe('layoutFlow', () => {
     const { positions } = layoutFlow(sessions, flowEdges(sessions))
 
     expect(Object.keys(positions).sort()).toEqual(['a', 'b'])
+  })
+})
+
+describe('flowOfSession', () => {
+  const sessions = [
+    aSession({ id: 'root', taskId: 'ROS-101', createdAt: 1 }),
+    child('kid', 'root', { createdAt: 2 }),
+    child('grandkid', 'kid', { createdAt: 3 }),
+    aSession({ id: 'alone', createdAt: 4 }),
+  ]
+  const edges = flowEdges(sessions)
+
+  test('joins a session to everything its work was handed through', () => {
+    // Act
+    const flow = flowOfSession(sessions, edges, 'kid')
+
+    // Assert — back to whoever started the work, on to whoever finished it.
+    expect([...flow.ids].sort()).toEqual(['grandkid', 'kid', 'root'])
+  })
+
+  test('finds the task from a session that carries none of its own', () => {
+    expect(flowOfSession(sessions, edges, 'grandkid').taskId).toBe('ROS-101')
+  })
+
+  test('leaves a session nothing was handed to or from on its own', () => {
+    const flow = flowOfSession(sessions, edges, 'alone')
+
+    expect([...flow.ids]).toEqual(['alone'])
+    expect(flow.taskId).toBeNull()
+  })
+
+  test('takes the oldest task when the chain carries more than one', () => {
+    // One session per agent per task, so a chain can pass through two of
+    // them. The work started from the older.
+    const crossed = [
+      aSession({ id: 'first', taskId: 'ROS-101', createdAt: 1 }),
+      child('second', 'first', { taskId: 'ROS-102', createdAt: 2 }),
+    ]
+
+    expect(flowOfSession(crossed, flowEdges(crossed), 'second').taskId).toBe('ROS-101')
   })
 })
