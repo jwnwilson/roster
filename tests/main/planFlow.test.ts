@@ -140,6 +140,16 @@ describe('sending comments back', () => {
     expect(() => flow.submit('nope', 'x')).toThrow('unknown plan "nope"')
   })
 
+  test('refuses a plan the agent has closed', () => {
+    // Otherwise a note would set it back to 'revising' and hand a superseded
+    // plan to an agent that has already moved on to its replacement.
+    const plan = planAwaitingReview()
+    plans.close(plan.id, { author: 'debugging', reason: 'Replaced by a newer plan.' })
+
+    expect(() => flow.submit(plan.id, 'one more thing')).toThrow('closed')
+    expect(plans.findById(plan.id)?.status).toBe('closed')
+  })
+
   test('files the passage the note was written about', () => {
     const plan = planAwaitingReview()
 
@@ -254,6 +264,17 @@ describe('approving a plan', () => {
 
     // Two builds would be two branches and two pull requests for one plan.
     expect(() => flow.approve(plan.id)).toThrow('already been approved')
+    expect(manager.enqueue).not.toHaveBeenCalled()
+  })
+
+  test('refuses one the agent has closed', () => {
+    // The modal offers no button for a closed plan, but it may have been open
+    // since before the agent abandoned it, and this is reachable over IPC.
+    // Building a superseded plan would spend a turn on work already replaced.
+    const plan = planAwaitingReview()
+    plans.close(plan.id, { author: 'debugging', reason: 'Replaced by a newer plan.' })
+
+    expect(() => flow.approve(plan.id)).toThrow('closed')
     expect(manager.enqueue).not.toHaveBeenCalled()
   })
 })

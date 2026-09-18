@@ -46,7 +46,7 @@ function fullSet(): BuiltinToolSet {
     },
     plans: {
       propose: () => ({}) as never,
-      currentStatus: () => null,
+      current: () => null,
       recordPullRequest: () => ({}) as never,
     },
     memory: { recall: () => '', remember: async () => undefined },

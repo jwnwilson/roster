@@ -1,3 +1,5 @@
+import type { PlanStatus } from './types'
+
 /**
  * Plan mode's edges, shared between the main process and the renderer.
  *
@@ -8,6 +10,30 @@
 
 /** The tool an agent calls to present its plan and leave plan mode. */
 export const EXIT_PLAN_MODE = 'ExitPlanMode'
+
+/**
+ * The states where the agent is acting on a plan rather than waiting on you,
+ * and how each reads in a sentence.
+ *
+ * One table for one rule, because two sides enforce it: the store refuses to
+ * rewrite such a plan without a reason, and `propose_plan` is what tells the
+ * agent so. Kept apart they would drift into a refusal the agent is told one
+ * thing about and the store applies differently.
+ */
+export const IN_FLIGHT: Partial<Record<PlanStatus, string>> = {
+  building: 'being built',
+  in_review: 'up for review',
+}
+
+/**
+ * Whether a plan has passed the point where rewriting it is free.
+ *
+ * Replacing one of these throws work away — a branch already cut, a pull
+ * request already open — so it costs the agent a reason.
+ */
+export function isInFlight(status: PlanStatus): boolean {
+  return IN_FLIGHT[status] !== undefined
+}
 
 /**
  * The plan out of an ExitPlanMode call's arguments.

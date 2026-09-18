@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Db } from '../db'
 import type { Plan, PlanComment, PlanStatus } from '../../../shared/types'
+import { IN_FLIGHT, isInFlight } from '../../../shared/plans'
 import { summarisePlan } from '../runners/normalizeClaude'
 import { planDir } from './paths'
 
@@ -47,6 +48,13 @@ export interface CaptureInput {
   agentId: string
   /** The whole plan, as the agent wrote it. */
   body: string
+  /**
+   * Why the plan already in flight is obsolete, when the agent says it is.
+   *
+   * Only consulted once a plan has moved past your review: until then a new
+   * body is simply the next version, and there is nothing to abandon.
+   */
+  supersedeReason?: string
 }
 
 /** Said in the agent's own name, so the thread reads as a conversation. */
@@ -114,20 +122,53 @@ export class PlanStore {
    *
    * A plan reaches Roster twice — once through the approval callback and once
    * through the tool stream, in no guaranteed order — so an identical body is
-   * the same plan, returned unchanged. Anything else is the next version, and
-   * comes back to you as a draft however far the old one had got.
+   * the same plan, returned unchanged.
+   *
+   * Otherwise it depends on how far the session's open plan had got:
+   *
+   * - still in your hands — a draft, or out being revised — and the new body
+   *   is its next version, back with you as a draft. Nothing is in flight, so
+   *   there is nothing to abandon.
+   * - building or up for review, and the agent said why it is obsolete: that
+   *   plan is closed with the reason, keeping its history, branch and pull
+   *   request, and the new body starts a plan of its own at v1. Two
+   *   approaches are two documents.
+   * - building or up for review with no reason given: refused. Versioning in
+   *   place would reset work already under way to a draft and offer you
+   *   "Approve & build" on a branch that is already building.
    */
   capture(input: CaptureInput): Plan {
-    const current = this.newestFor(input.sessionId)
+    const current = this.newestOpenFor(input.sessionId)
 
     if (current && this.body(current.id) === input.body) return current
 
+    if (current && isInFlight(current.status)) {
+      return this.supersede(current, input)
+    }
+
     const plan = current
-      ? this.writeVersion(current, input.body)
+      ? this.writeVersion(current, input.body, input.supersedeReason)
       : this.writeFirst(input, input.body)
 
     this.emit({ type: 'plan-updated', plan })
     return plan
+  }
+
+  /**
+   * Closes a plan the agent has given up on.
+   *
+   * Terminal, and deliberately says why in the thread: a plan that simply
+   * stopped being offered for approval reads as a bug, and the reason is the
+   * only record of what replaced it.
+   */
+  close(planId: string, input: { author: string; reason: string }): Plan {
+    const plan = this.require(planId)
+    const closed: Plan = { ...plan, status: 'closed', updatedAt: Date.now() }
+
+    this.save(closed)
+    this.writeComment(closed, { author: input.author, tone: 'agent', text: input.reason })
+    this.emit({ type: 'plan-updated', plan: closed })
+    return closed
   }
 
   comment(planId: string, input: NewPlanComment): PlanComment {
@@ -180,10 +221,39 @@ export class PlanStore {
     return plan
   }
 
-  /** The plan a session is currently working on — its most recent. */
-  private newestFor(sessionId: string): Plan | null {
-    const rows = this.listBySession(sessionId)
-    return rows.length === 0 ? null : (rows[rows.length - 1] as Plan)
+  /**
+   * The plan a session is currently working on — its most recent open one.
+   *
+   * Closed plans are skipped, and that is the whole point of the word "open":
+   * a closed plan is finished history, and versioning one would bring it back
+   * as a draft you would be asked to approve all over again.
+   */
+  private newestOpenFor(sessionId: string): Plan | null {
+    const open = this.listBySession(sessionId).filter((plan) => plan.status !== 'closed')
+    return open.at(-1) ?? null
+  }
+
+  /**
+   * Closes the plan in flight and opens the replacement beside it.
+   *
+   * `capture` has already established there is a reason to do this; without
+   * one the caller is refused, because silently resetting a build to a draft
+   * is worse than an error an agent can read.
+   */
+  private supersede(current: Plan, input: CaptureInput): Plan {
+    const reason = input.supersedeReason?.trim()
+    if (reason === undefined || reason === '') {
+      throw new Error(
+        `plan "${current.id}" is already ${IN_FLIGHT[current.status]}` +
+          ' — say why it is obsolete to supersede it',
+      )
+    }
+
+    this.close(current.id, { author: agentAuthor(current), reason })
+
+    const plan = this.writeFirst(input, input.body)
+    this.emit({ type: 'plan-updated', plan })
+    return plan
   }
 
   private writeFirst(input: CaptureInput, body: string): Plan {
@@ -221,7 +291,7 @@ export class PlanStore {
     return plan
   }
 
-  private writeVersion(current: Plan, body: string): Plan {
+  private writeVersion(current: Plan, body: string, reason?: string): Plan {
     const updated: Plan = {
       ...current,
       title: planTitle(body),
@@ -236,7 +306,9 @@ export class PlanStore {
     this.writeComment(updated, {
       author: agentAuthor(updated),
       tone: 'agent',
-      text: revisedLine(updated.version),
+      // The agent's own account of why it rewrote the plan beats "Revised
+      // the plan — v3." whenever it gave one.
+      text: reason?.trim() || revisedLine(updated.version),
     })
 
     return updated

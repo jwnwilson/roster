@@ -343,4 +343,54 @@ export const MIGRATIONS: readonly string[] = [
     status_map  TEXT NOT NULL
   );
   `,
+
+  // 17 — a plan can be closed: abandoned because the agent proposed a newer
+  // one in its place, so the two read as a history rather than as one document
+  // that changed its mind.
+  //
+  // SQLite cannot widen a CHECK, so plans is rebuilt — and plan_comments has
+  // to be rebuilt alongside it, for the same reason migration 5 rebuilt
+  // task_comments with tasks: renaming plans aside rewrites the child's
+  // REFERENCES to point at plans_old, and dropping that scrap table performs
+  // an implicit DELETE FROM which fires ON DELETE CASCADE. Touching only
+  // plans would take every thread on every plan with it.
+  `
+  ALTER TABLE plans RENAME TO plans_old;
+  ALTER TABLE plan_comments RENAME TO plan_comments_old;
+
+  CREATE TABLE plans (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+    agent_id   TEXT NOT NULL,
+    title      TEXT NOT NULL,
+    status     TEXT NOT NULL
+      CHECK (status IN ('draft', 'revising', 'building', 'in_review', 'closed')),
+    version    INTEGER NOT NULL,
+    branch     TEXT,
+    pr_url     TEXT,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+
+  INSERT INTO plans SELECT * FROM plans_old;
+
+  CREATE TABLE plan_comments (
+    id         TEXT PRIMARY KEY,
+    plan_id    TEXT NOT NULL REFERENCES plans (id) ON DELETE CASCADE,
+    author     TEXT NOT NULL,
+    tone       TEXT NOT NULL CHECK (tone IN ('you', 'agent')),
+    text       TEXT NOT NULL,
+    version    INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    quote      TEXT
+  );
+
+  INSERT INTO plan_comments SELECT * FROM plan_comments_old;
+
+  DROP TABLE plan_comments_old;
+  DROP TABLE plans_old;
+
+  CREATE INDEX ix_plans_session        ON plans (session_id, created_at);
+  CREATE INDEX ix_plan_comments_plan   ON plan_comments (plan_id, created_at);
+  `,
 ]
