@@ -711,8 +711,17 @@ describe('SessionManager — where a turn runs', () => {
       { findAll: () => [] } as never,
       usage,
       {
-        tasks: { findAll: () => [] },
-        projects: { findById: () => null },
+        tasks: { findAll: () => [], comments: () => [] },
+        projects: {
+          findById: (id: string) => ({
+            id,
+            name: 'Checkout rewrite',
+            color: '#fff',
+            description: '',
+            createdAt: 0,
+            archivedAt: null,
+          }),
+        },
         repos: {
           listByProject: () =>
             repos.map((repo, position) => ({
@@ -766,6 +775,19 @@ describe('SessionManager — where a turn runs', () => {
     // The root is not also an additional root; handing it over twice is at
     // best noise and at worst a second, conflicting grant.
     expect(runnerStub.run.mock.calls[0]?.[1]?.additionalRoots).toBeUndefined()
+  })
+
+  test('tells the agent what the repositories are, and which it is standing in', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const manager = withRepos([{ path: '/work/payments' }, { path: '/work/types' }])
+    const session = manager.create('debugging', 'x', 'p1')
+
+    await manager.send(session.id, 'go')
+
+    const prompt = runnerStub.run.mock.calls[0]?.[0] as string
+    expect(prompt).toContain('Repositories')
+    expect(prompt).toContain('/work/payments (you are here)')
+    expect(prompt).toContain('/work/types')
   })
 
   test('a session that has run stays where it ran, even when the primary changes', async () => {

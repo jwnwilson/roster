@@ -45,7 +45,7 @@ import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
 import { createMemoryMcpServer, type MemoryTools } from '../runners/memoryTools'
 import { describeActivity, THINKING } from './activity'
 import { resolveSessionProject } from './defaultProject'
-import { resolveWorkspace } from './workspace'
+import { resolveWorkspace, samePath, type Workspace } from './workspace'
 import { buildProjectBrief } from './projectBrief'
 import type { ProjectRepoStore } from '../store/projectRepos'
 import { estimateCodexCost } from '../costs/codex'
@@ -462,7 +462,7 @@ export class SessionManager {
       const workspace = resolveWorkspace({ agent, session, repos: this.reposFor(session) })
       this.sessions.pinWorkspace(session.id, workspace.root)
 
-      const stream = runner.run(this.withProjectBrief(session, prompt), {
+      const stream = runner.run(this.withProjectBrief(session, prompt, workspace), {
         cwd: workspace.root,
         ...(workspace.additional.length > 0 ? { additionalRoots: workspace.additional } : {}),
         model: agent.model,
@@ -528,7 +528,7 @@ export class SessionManager {
    * and writing it into `messages` would put a wall of generated text in the
    * user's chat every turn.
    */
-  private withProjectBrief(session: Session, prompt: string): string {
+  private withProjectBrief(session: Session, prompt: string, workspace: Workspace): string {
     const board = this.board
     const projectId = session.projectId
     if (!board || projectId === null || projectId === undefined) return prompt
@@ -546,12 +546,24 @@ export class SessionManager {
     // starter block Roster wrote for the reader is not paid for every turn.
     const notes = this.notes?.body(projectId) ?? ''
 
+    // `samePath`, not ===: the workspace root may have come from the session
+    // pin or from agent.cwd and be spelled differently from the row naming
+    // the same directory. When none match, none is marked — the turn really
+    // is running outside every repository the project lists.
+    const repos = this.reposFor(session).map((repo) => ({
+      name: repo.name,
+      pathLabel: repo.pathLabel,
+      description: repo.description,
+      isCurrent: samePath(repo.path, workspace.root),
+    }))
+
     const brief = buildProjectBrief({
       project,
       tasks: filed,
       comments: filed.flatMap((task) => board.tasks.comments(task.id)),
       agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
       ...(notes.trim() === '' ? {} : { notes }),
+      ...(repos.length === 0 ? {} : { repos }),
     })
 
     if (this.hasAlreadyRead(session, brief)) return prompt
