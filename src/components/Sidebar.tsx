@@ -2,16 +2,19 @@ import { useShallow } from 'zustand/shallow'
 import {
   agentStatus,
   useRoster,
+  matchedBySession,
   selectSidebarAgents,
+  selectSidebarSessions,
   selectVisibleAgents,
-  NO_SESSIONS,
   type Screen,
 } from '@/state/store'
-import type { Agent } from '@shared/types'
+import type { Agent, Session } from '@shared/types'
+import { sessionLabel } from '@shared/sessions'
 import { formatUsageCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { Logo } from './Logo'
 import { UpdateRow } from './UpdateRow'
+import { ChevronIcon } from './icons'
 import { StatusDot } from './primitives'
 
 interface NavItem {
@@ -21,6 +24,14 @@ interface NavItem {
   dot?: string
   disabled?: boolean
 }
+
+/** The disclosure column, which every roster row reserves so names line up. */
+const DISCLOSURE_PX = 13
+/** How far a session sits inside the agent it belongs to. */
+const SESSION_INDENT_PX = 10
+
+/** What the rail's box searches, said in the box and to a screen reader. */
+const SEARCH_LABEL = 'Search agents and sessions'
 
 const NAV: NavItem[] = [
   { key: 'grid', label: 'Agents' },
@@ -35,7 +46,6 @@ export function Sidebar() {
   const go = useRoster((s) => s.go)
   const query = useRoster((s) => s.query)
   const setQuery = useRoster((s) => s.setQuery)
-  const openAgent = useRoster((s) => s.openAgent)
   // The roster you can actually see. Counting hidden agents here would put a
   // number on the badge that no list below it accounts for.
   const rosterSize = useRoster((s) => selectVisibleAgents(s).length)
@@ -101,8 +111,8 @@ export function Sidebar() {
         <input
           type="text"
           value={query}
-          aria-label="Search agents"
-          placeholder="Search agents"
+          aria-label={SEARCH_LABEL}
+          placeholder={SEARCH_LABEL}
           onChange={(e) => setQuery(e.target.value)}
           className="w-full rounded-chip border border-line bg-card px-[9px] py-[6px] font-ui text-md text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
         />
@@ -110,7 +120,7 @@ export function Sidebar() {
 
       <div className="flex min-h-0 flex-1 flex-col gap-[1px] overflow-y-auto px-[8px] pb-[8px]">
         {agents.map((agent) => (
-          <SidebarAgentRow key={agent.id} agent={agent} onOpen={() => openAgent(agent.id)} />
+          <SidebarAgentRow key={agent.id} agent={agent} />
         ))}
       </div>
 
@@ -136,24 +146,105 @@ export function Sidebar() {
 
 interface SidebarAgentRowProps {
   agent: Agent
+}
+
+/**
+ * An agent, and — once its row is unfolded — the sessions underneath it.
+ *
+ * The disclosure is a control of its own beside the name, as the Skills tree
+ * draws it, so opening a row and opening the agent stay separate acts.
+ */
+function SidebarAgentRow({ agent }: SidebarAgentRowProps) {
+  const status = useRoster((s) => agentStatus(s, agent))
+  const sessions = useRoster(useShallow((s) => selectSidebarSessions(s, agent)))
+  const expanded = useRoster((s) => s.expandedAgents[agent.id] === true)
+  const revealed = useRoster((s) => matchedBySession(s, agent))
+  const openAgent = useRoster((s) => s.openAgent)
+  const toggleAgentExpanded = useRoster((s) => s.toggleAgentExpanded)
+  // Which session this agent is showing, so the rail marks where you are.
+  const openSessionId = useRoster((s) =>
+    s.screen === 'agent' && s.agentId === agent.id ? s.sess[agent.id] : undefined,
+  )
+
+  // A search that reached this row through a session opens it whatever state
+  // it was left in: a match you cannot see is not an answer.
+  const isExpanded = expanded || revealed
+
+  return (
+    <div className="flex flex-col gap-[1px]">
+      <div className="flex items-center rounded-chip text-muted hover:bg-[#1a1c23] hover:text-ink">
+        {sessions.length === 0 ? (
+          // A row with nothing under it keeps the column so the names still
+          // line up, but gets no control: one that does nothing is worse.
+          <span aria-hidden className="flex-none" style={{ width: DISCLOSURE_PX }} />
+        ) : (
+          <button
+            type="button"
+            // Announced, not merely drawn: a caret alone says nothing aloud.
+            aria-expanded={isExpanded}
+            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${agent.name}`}
+            title={`${isExpanded ? 'Collapse' : 'Expand'} ${agent.name}`}
+            onClick={() => toggleAgentExpanded(agent.id)}
+            style={{ width: DISCLOSURE_PX }}
+            className="flex h-[16px] flex-none cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-dim-2 hover:text-ink"
+          >
+            <ChevronIcon expanded={isExpanded} />
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => openAgent(agent.id)}
+          title={agent.statusDetail ?? agent.name}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-[9px] border-0 bg-transparent py-[6px] pr-[8px] pl-[5px] text-left font-ui text-xl text-inherit"
+        >
+          <StatusDot status={status} />
+          <span className="truncate">{agent.name}</span>
+          {/* What the row will list, not what the agent owns: under a search
+              the two differ, and the badge belongs to the list below it. */}
+          <span className="ml-auto font-mono text-xs text-faint-2">{sessions.length}</span>
+        </button>
+      </div>
+
+      {isExpanded
+        ? sessions.map((session) => (
+            <SidebarSessionRow
+              key={session.id}
+              session={session}
+              active={session.id === openSessionId}
+              onOpen={() => openAgent(agent.id, session.id)}
+            />
+          ))
+        : null}
+    </div>
+  )
+}
+
+interface SidebarSessionRowProps {
+  session: Session
+  active: boolean
   onOpen: () => void
 }
 
-function SidebarAgentRow({ agent, onOpen }: SidebarAgentRowProps) {
-  const status = useRoster((s) => agentStatus(s, agent))
-  const sessionCount = useRoster((s) => (s.sessions[agent.id] ?? NO_SESSIONS).length)
+function SidebarSessionRow({ session, active, onOpen }: SidebarSessionRowProps) {
+  const label = sessionLabel(session)
 
   return (
-          <button
-            type="button"
-            onClick={onOpen}
-            title={agent.statusDetail ?? agent.name}
-            className="flex cursor-pointer items-center gap-[9px] rounded-chip border-0 bg-transparent px-[8px] py-[6px] text-left font-ui text-xl text-muted hover:bg-[#1a1c23] hover:text-ink"
-          >
-            <StatusDot status={status} />
-            <span className="truncate">{agent.name}</span>
-            <span className="ml-auto font-mono text-xs text-faint-2">{sessionCount}</span>
-          </button>
+    <button
+      type="button"
+      aria-current={active ? 'true' : undefined}
+      onClick={onOpen}
+      // The rail is 216px wide, so most names are cut short. The whole one is
+      // a hover away rather than lost.
+      title={label}
+      style={{ paddingLeft: DISCLOSURE_PX + SESSION_INDENT_PX }}
+      className={`flex cursor-pointer items-center gap-[8px] rounded-chip border-0 py-[4px] pr-[8px] text-left font-ui text-lg hover:bg-[#1a1c23] hover:text-ink ${
+        active ? 'bg-[#1c1e26] text-ink' : 'bg-transparent text-muted-2'
+      }`}
+    >
+      <StatusDot status={session.status} size={5} />
+      <span className="truncate">{label}</span>
+    </button>
   )
 }
 

@@ -31,3 +31,25 @@ export function TrashIcon() {
     </svg>
   )
 }
+
+interface ChevronIconProps {
+  expanded: boolean
+}
+
+/**
+ * The disclosure caret. Down for open, right for shut — the same mark turned,
+ * so the two states read as one control rather than two different glyphs.
+ */
+export function ChevronIcon({ expanded }: ChevronIconProps) {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path
+        d={expanded ? 'm4.5 6.5 3.5 3.5 3.5-3.5' : 'm6.5 4.5 3.5 3.5-3.5 3.5'}
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}

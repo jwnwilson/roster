@@ -8,7 +8,7 @@ import {
   ScreenHeader,
   SectionLabel,
 } from '@/components/primitives'
-import { TrashIcon } from '@/components/icons'
+import { ChevronIcon, TrashIcon } from '@/components/icons'
 import { useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
 import { relativeTime } from '@/state/format'
@@ -606,28 +606,6 @@ function FolderIcon() {
         d="M1.75 12.75v-9.5a.75.75 0 0 1 .75-.75h3.1a.75.75 0 0 1 .6.3l1.05 1.4h6a.75.75 0 0 1 .75.75v7.8a.75.75 0 0 1-.75.75H2.5a.75.75 0 0 1-.75-.75Z"
         stroke="currentColor"
         strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
-}
-
-interface ChevronIconProps {
-  expanded: boolean
-}
-
-/**
- * The disclosure caret. Down for open, right for shut — the same mark turned,
- * so the two states read as one control rather than two different glyphs.
- */
-function ChevronIcon({ expanded }: ChevronIconProps) {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
-      <path
-        d={expanded ? 'm4.5 6.5 3.5 3.5 3.5-3.5' : 'm6.5 4.5 3.5 3.5-3.5 3.5'}
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinecap="round"
         strokeLinejoin="round"
       />
     </svg>
