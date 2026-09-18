@@ -44,6 +44,8 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
   const setPlan = useRoster((s) => s.setPlan)
   const setPlanComments = useRoster((s) => s.setPlanComments)
   const setPlanMode = useRoster((s) => s.setPlanMode)
+  const expanded = useRoster((s) => s.planExpanded)
+  const setPlanExpanded = useRoster((s) => s.setPlanExpanded)
 
   const [text, setText] = useState('')
   const [quote, setQuote] = useState<string | null>(null)
@@ -105,11 +107,13 @@ function PlanBody({ planId, onClose }: PlanBodyProps) {
       onClose={onClose}
       maxWidth={MODAL_WIDTH}
       fixedHeight
+      fill={expanded}
       header={
         <div className="flex min-w-0 items-center gap-[10px]">
           <h2 className="m-0 truncate text-xl font-semibold tracking-[-0.01em]">{plan.title}</h2>
           <span className="flex-none font-mono text-base text-dim-2">v{plan.version}</span>
           <StatusChip status={plan.status} />
+          <SizeToggle expanded={expanded} onChange={setPlanExpanded} />
         </div>
       }
       footer={
@@ -258,6 +262,32 @@ function Quote({ children }: { children: string }) {
     <q className="border-l-2 border-accent-line pl-[8px] text-sm leading-[1.5] text-muted-2 before:content-none after:content-none">
       {children}
     </q>
+  )
+}
+
+/**
+ * Switches the plan between the reading width and the whole window.
+ *
+ * Labelled with the size it goes to rather than the one it is in: the size it
+ * is in is already on screen, and a toggle that names its current state is
+ * read as a button that would keep it.
+ */
+function SizeToggle({
+  expanded,
+  onChange,
+}: {
+  expanded: boolean
+  onChange: (expanded: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!expanded)}
+      className="flex-none cursor-pointer rounded-pill border border-line-input bg-transparent px-[8px] py-[2px] font-ui text-sm text-muted hover:border-line-hover hover:text-ink"
+      data-hoverable
+    >
+      {expanded ? 'Reading width' : 'Fill window'}
+    </button>
   )
 }
 

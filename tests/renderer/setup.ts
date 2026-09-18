@@ -30,3 +30,20 @@ if (!Element.prototype.scrollTo) {
 if (!Element.prototype.scrollBy) {
   Element.prototype.scrollBy = function scrollBy(): void {}
 }
+
+// Node defines its own `localStorage` global, which shadows jsdom's and does
+// nothing at all unless the process was started with `--localstorage-file`.
+// An in-memory stand-in restores the one behaviour the renderer wants from
+// it: what was written can be read back.
+if (typeof window.localStorage?.getItem !== 'function') {
+  const entries = new Map<string, string>()
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => entries.get(key) ?? null,
+      setItem: (key: string, value: string) => void entries.set(key, value),
+      removeItem: (key: string) => void entries.delete(key),
+      clear: () => entries.clear(),
+    },
+  })
+}

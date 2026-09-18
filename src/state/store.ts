@@ -28,6 +28,7 @@ import { sessionLabel } from '@shared/sessions'
 import { rollUpAgentStatus } from '@shared/status'
 import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
+import { readFlag, writeFlag } from '@/lib/uiPreference'
 
 export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
 export type PaneMode = 'chat' | 'terminal'
@@ -45,6 +46,9 @@ export const ALL_PRIORITIES = 'all'
 
 /** The Workflow view's task filter's "no filter" value. */
 export const ALL_TASKS = 'all'
+
+/** Where the plan modal's width preference is remembered. */
+export const PLAN_EXPANDED_KEY = 'roster.plan.expanded'
 
 /** Staged edits from the Edit modal, committed to the agent only on Save. */
 export interface Draft {
@@ -155,6 +159,16 @@ export interface RosterState {
   openTaskId: string | null
   /** The plan being reviewed, or null. Mounted by the agent screen. */
   openPlanId: string | null
+  /**
+   * Whether the plan modal fills the window instead of holding a reading
+   * width.
+   *
+   * Remembered, because it is a standing preference about how you read: a
+   * plan full of tables and diffs wants the whole window every time, and
+   * re-clicking for it on every plan is the sort of thing that stops people
+   * opening plans at all.
+   */
+  planExpanded: boolean
   taskQuery: string
   taskTab: TaskTab
   /* ---- Backlog ------------------------------------------------------ */
@@ -240,6 +254,7 @@ export interface RosterState {
   closeTask(): void
   openPlan(planId: string): void
   closePlan(): void
+  setPlanExpanded(expanded: boolean): void
   applyPlanEvent(event: PlanEventPayload): void
   setProjectsOpen(open: boolean): void
   /** The status decides what the modal creates: a board task, or a backlog one. */
@@ -302,6 +317,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   taskView: 'board',
   openTaskId: null,
   openPlanId: null,
+  planExpanded: readFlag(PLAN_EXPANDED_KEY, false),
   taskQuery: '',
   taskTab: 'comments',
   backlogQuery: '',
@@ -419,6 +435,10 @@ export const useRoster = create<RosterState>((set, get) => ({
 
   openPlan: (openPlanId) => set({ openPlanId }),
   closePlan: () => set({ openPlanId: null }),
+  setPlanExpanded: (planExpanded) => {
+    writeFlag(PLAN_EXPANDED_KEY, planExpanded)
+    set({ planExpanded })
+  },
   applyPlanEvent: (event) => set((s) => reducePlanEvent(s, event)),
   setProjectsOpen: (projectsOpen) => set({ projectsOpen }),
   setNewTaskOpen: (newTaskOpen, newTaskStatus = 'todo') => set({ newTaskOpen, newTaskStatus }),

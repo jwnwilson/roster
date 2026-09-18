@@ -3,8 +3,9 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Plan, PlanComment } from '@shared/types'
 import type { RosterApi } from '@shared/ipc'
+import { readFlag } from '@/lib/uiPreference'
 import { PlanModal } from '@/screens/PlanModal'
-import { useRoster } from '@/state/store'
+import { PLAN_EXPANDED_KEY, useRoster } from '@/state/store'
 import { anAgent, aPlan, aPlanComment } from './factories'
 import { installRosterApi } from './rosterApi'
 
@@ -40,6 +41,7 @@ function open(
 }
 
 beforeEach(() => {
+  window.localStorage.clear()
   useRoster.setState(INITIAL, true)
   useRoster.setState({
     agents: [anAgent({ id: 'debugging', name: 'Debugging Agent', mcpServers: ['plans'] })],
@@ -258,6 +260,65 @@ describe('approving a plan', () => {
     await screen.findByRole('heading', { name: 'Steps' })
 
     expect(screen.queryByText(/plans.*server/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('how much of the window the plan takes', () => {
+  /** The card inside the overlay — the element the size is set on. */
+  function card(): HTMLElement {
+    return screen.getByRole('dialog').firstElementChild as HTMLElement
+  }
+
+  test('opens at a reading width', async () => {
+    open()
+    render(<PlanModal />)
+    await screen.findByRole('heading', { name: 'Steps' })
+
+    expect(card()).toHaveStyle({ maxWidth: '860px' })
+  })
+
+  test('fills the window when asked to', async () => {
+    open()
+    render(<PlanModal />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Fill window' }))
+
+    expect(card()).toHaveStyle({ maxWidth: '100%', height: '100%' })
+  })
+
+  test('goes back to the reading width when asked to', async () => {
+    open()
+    render(<PlanModal />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Fill window' }))
+    await user.click(screen.getByRole('button', { name: 'Reading width' }))
+
+    expect(card()).toHaveStyle({ maxWidth: '860px' })
+  })
+
+  test('remembers the choice for the next plan opened', async () => {
+    open()
+    const { unmount } = render(<PlanModal />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Fill window' }))
+    unmount()
+    render(<PlanModal />)
+
+    expect(await screen.findByRole('button', { name: 'Reading width' })).toBeInTheDocument()
+    expect(card()).toHaveStyle({ maxWidth: '100%' })
+  })
+
+  test('remembers the choice for the next run of the app', async () => {
+    open()
+    render(<PlanModal />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Fill window' }))
+
+    expect(readFlag(PLAN_EXPANDED_KEY, false)).toBe(true)
   })
 })
 

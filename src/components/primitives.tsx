@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, type CSSProperties, type ReactNode } from 'react'
 import type { Status } from '@shared/types'
 import { statusColor } from '@shared/status'
 
@@ -352,6 +352,33 @@ interface ModalProps {
    * grow to the viewport.
    */
   minHeight?: number
+  /**
+   * Let the card take the whole overlay, ignoring every other size here.
+   *
+   * A reading width is right for prose and wrong for a document full of
+   * tables and diffs, and which of the two you are looking at is a matter for
+   * the reader — so one modal offers both.
+   */
+  fill?: boolean
+}
+
+/** Tall enough for the task modal's two columns, short enough for a laptop. */
+const FIXED_CARD_HEIGHT = 'min(680px, 100%)'
+
+type CardSize = Pick<ModalProps, 'maxWidth' | 'fixedHeight' | 'minHeight' | 'fill'>
+
+/** How a modal card is sized: filled, pinned, or grown to its contents. */
+function cardSize({ maxWidth, fixedHeight, minHeight, fill }: CardSize): CSSProperties {
+  if (fill) return { maxWidth: '100%', height: '100%' }
+  if (fixedHeight) return { maxWidth, height: FIXED_CARD_HEIGHT }
+
+  return {
+    maxWidth,
+    maxHeight: '100%',
+    // Capped at the viewport as well, or the floor would push the card off a
+    // short screen.
+    ...(minHeight === undefined ? {} : { minHeight: `min(${minHeight}px, 100%)` }),
+  }
 }
 
 /**
@@ -371,6 +398,7 @@ export function Modal({
   maxWidth = 520,
   fixedHeight = false,
   minHeight,
+  fill,
 }: ModalProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -395,17 +423,7 @@ export function Modal({
     >
       <div
         className="flex w-full flex-col overflow-hidden rounded-modal border border-line-card bg-app shadow-[0_24px_60px_rgba(0,0,0,0.5)]"
-        style={{
-          maxWidth,
-          ...(fixedHeight
-            ? { height: 'min(680px, 100%)' }
-            : {
-                maxHeight: '100%',
-                // Capped at the viewport as well, or the floor would push the
-                // card off a short screen.
-                ...(minHeight === undefined ? {} : { minHeight: `min(${minHeight}px, 100%)` }),
-              }),
-        }}
+        style={cardSize({ maxWidth, fixedHeight, minHeight, fill })}
       >
         <header className="flex flex-none items-center gap-[10px] border-b border-line px-[18px] py-[13px]">
           {header}
