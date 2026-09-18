@@ -12,6 +12,9 @@ import {
   projectPickerProjects,
   projectOptionLabel,
   sessionsInProject,
+  selectSidebarSessions,
+  matchedBySession,
+  NO_SESSIONS,
   ALL_PROJECTS,
 } from '@/state/store'
 import { ALL_TASKS } from '@/state/workflow'
@@ -84,6 +87,26 @@ describe('filtering', () => {
     expect(selectSidebarAgents(useRoster.getState())).toHaveLength(3)
   })
 
+  test('the sidebar also matches on session titles', () => {
+    useRoster.setState({
+      query: 'leak',
+      sessions: { review: [aSession({ agentId: 'review', title: 'Session leak on 504' })] },
+    })
+
+    expect(selectSidebarAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
+  })
+
+  test('the sidebar matches a session by the name it was given', () => {
+    useRoster.setState({
+      query: 'pool',
+      sessions: {
+        review: [aSession({ agentId: 'review', title: 'New session', name: 'Pool leak on 504' })],
+      },
+    })
+
+    expect(selectSidebarAgents(useRoster.getState()).map((a) => a.id)).toEqual(['review'])
+  })
+
   test('the grid also matches on session titles', () => {
     useRoster.setState({
       gridQuery: 'leak',
@@ -109,6 +132,79 @@ describe('filtering', () => {
   test('the grid returns nothing when neither name nor session matches', () => {
     useRoster.setState({ gridQuery: 'nonexistent' })
     expect(selectGridAgents(useRoster.getState())).toEqual([])
+  })
+})
+
+describe('the sidebar session list', () => {
+  const SESSIONS = {
+    review: [
+      aSession({ id: 's1', agentId: 'review', title: 'New session', name: 'Pool leak on 504' }),
+      aSession({ id: 's2', agentId: 'review', title: 'Flaky retry test' }),
+    ],
+  }
+
+  beforeEach(() => {
+    useRoster.setState({ agents: AGENTS, sessions: SESSIONS })
+  })
+
+  test('returns every session of an agent when nothing is being searched', () => {
+    const state = useRoster.getState()
+
+    // Reference equality matters: a fresh array here re-renders forever.
+    expect(selectSidebarSessions(state, AGENTS[2]!)).toBe(state.sessions['review'])
+  })
+
+  test('returns a stable empty list for an agent with no sessions', () => {
+    expect(selectSidebarSessions(useRoster.getState(), AGENTS[0]!)).toBe(NO_SESSIONS)
+  })
+
+  test('lists only the sessions matching the query', () => {
+    useRoster.setState({ query: 'pool' })
+
+    expect(selectSidebarSessions(useRoster.getState(), AGENTS[2]!).map((s) => s.id)).toEqual(['s1'])
+  })
+
+  test('keeps every session when the agent itself is what matched', () => {
+    useRoster.setState({ query: 'review' })
+
+    expect(selectSidebarSessions(useRoster.getState(), AGENTS[2]!)).toHaveLength(2)
+  })
+
+  test('reports a row reached only through its sessions, so it can open itself', () => {
+    useRoster.setState({ query: 'pool' })
+
+    expect(matchedBySession(useRoster.getState(), AGENTS[2]!)).toBe(true)
+  })
+
+  test('reports no session match when the agent name is what matched', () => {
+    useRoster.setState({ query: 'review' })
+
+    expect(matchedBySession(useRoster.getState(), AGENTS[2]!)).toBe(false)
+  })
+
+  test('reports no session match when nothing is being searched', () => {
+    expect(matchedBySession(useRoster.getState(), AGENTS[2]!)).toBe(false)
+  })
+})
+
+describe('expanded sidebar rows', () => {
+  test('every row starts collapsed', () => {
+    expect(useRoster.getState().expandedAgents).toEqual({})
+  })
+
+  test('toggling a row opens it, and toggling again shuts it', () => {
+    useRoster.getState().toggleAgentExpanded('review')
+    expect(useRoster.getState().expandedAgents['review']).toBe(true)
+
+    useRoster.getState().toggleAgentExpanded('review')
+    expect(useRoster.getState().expandedAgents['review']).toBe(false)
+  })
+
+  test('opening one row leaves the others alone', () => {
+    useRoster.getState().toggleAgentExpanded('review')
+    useRoster.getState().toggleAgentExpanded('debugging')
+
+    expect(useRoster.getState().expandedAgents).toEqual({ review: true, debugging: true })
   })
 })
 

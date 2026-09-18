@@ -10,7 +10,7 @@ import { Tasks } from '@/screens/Tasks'
 import { AgentsGrid } from '@/screens/AgentsGrid'
 import { Sidebar } from '@/components/Sidebar'
 import { ALL_PROJECTS, useRoster } from '@/state/store'
-import { anAgent, aProject, aRunner, aSkill, aTask, anMcpServer } from './factories'
+import { anAgent, aProject, aRunner, aSession, aSkill, aTask, anMcpServer } from './factories'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
@@ -23,6 +23,14 @@ beforeEach(() => {
 /* ----------------------------------------------------------------- sidebar */
 
 describe('Sidebar', () => {
+  const SEARCH_LABEL = 'Search agents and sessions'
+  const SESSIONS = {
+    b: [
+      aSession({ id: 's1', agentId: 'b', title: 'New session', name: 'Pool leak on 504' }),
+      aSession({ id: 's2', agentId: 'b', title: 'Flaky retry test' }),
+    ],
+  }
+
   beforeEach(() => {
     useRoster.setState({
       agents: [anAgent({ id: 'a', name: 'Architect Agent' }), anAgent({ id: 'b', name: 'Review Agent' })],
@@ -95,7 +103,7 @@ describe('Sidebar', () => {
     const user = userEvent.setup()
     render(<Sidebar />)
 
-    await user.type(screen.getByLabelText('Search agents'), 'review')
+    await user.type(screen.getByLabelText(SEARCH_LABEL), 'review')
 
     expect(screen.queryByText('Architect Agent')).not.toBeInTheDocument()
     expect(screen.getByText('1/2')).toBeInTheDocument()
@@ -115,6 +123,88 @@ describe('Sidebar', () => {
 
     await user.click(screen.getByLabelText('Close window'))
     expect(window.roster.window.close).toHaveBeenCalled()
+  })
+
+  test('keeps an agent\u2019s sessions out of the rail until the row is opened', () => {
+    useRoster.setState({ sessions: SESSIONS })
+    render(<Sidebar />)
+
+    expect(screen.queryByText('Pool leak on 504')).not.toBeInTheDocument()
+  })
+
+  test('lists the sessions under an agent once its row is opened', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ sessions: SESSIONS })
+    render(<Sidebar />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand Review Agent' }))
+
+    expect(screen.getByText('Pool leak on 504')).toBeInTheDocument()
+    expect(screen.getByText('Flaky retry test')).toBeInTheDocument()
+  })
+
+  test('gives no disclosure to an agent with nothing under it', () => {
+    useRoster.setState({ sessions: SESSIONS })
+    render(<Sidebar />)
+
+    expect(screen.queryByRole('button', { name: /Architect Agent/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand Architect Agent' })).not.toBeInTheDocument()
+  })
+
+  test('clicking a session opens the agent on that session', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ sessions: SESSIONS })
+    render(<Sidebar />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand Review Agent' }))
+    await user.click(screen.getByText('Flaky retry test'))
+
+    expect(useRoster.getState().agentId).toBe('b')
+    expect(useRoster.getState().sess['b']).toBe('s2')
+  })
+
+  test('remembers which rows were open across a re-render', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ sessions: SESSIONS })
+    const { unmount } = render(<Sidebar />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand Review Agent' }))
+    unmount()
+    render(<Sidebar />)
+
+    expect(screen.getByText('Pool leak on 504')).toBeInTheDocument()
+  })
+
+  test('finds an agent by a session name its own name does not mention', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ sessions: SESSIONS })
+    render(<Sidebar />)
+
+    await user.type(screen.getByLabelText(SEARCH_LABEL), 'pool')
+
+    expect(screen.getByText('Review Agent')).toBeInTheDocument()
+    expect(screen.queryByText('Architect Agent')).not.toBeInTheDocument()
+  })
+
+  test('opens a matched row by itself, showing only the sessions that matched', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ sessions: SESSIONS })
+    render(<Sidebar />)
+
+    await user.type(screen.getByLabelText(SEARCH_LABEL), 'pool')
+
+    expect(screen.getByText('Pool leak on 504')).toBeInTheDocument()
+    expect(screen.queryByText('Flaky retry test')).not.toBeInTheDocument()
+  })
+
+  test('leaves a row matched by its own name shut', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ sessions: SESSIONS })
+    render(<Sidebar />)
+
+    await user.type(screen.getByLabelText(SEARCH_LABEL), 'review')
+
+    expect(screen.queryByText('Pool leak on 504')).not.toBeInTheDocument()
   })
 
   test('leaves a hidden agent out of the roster list', () => {

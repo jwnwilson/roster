@@ -129,6 +129,13 @@ export interface RosterState {
    * is how naming gets encouraged without ever blocking the composer.
    */
   namingSessionId: string | null
+  /**
+   * Sidebar rows showing their sessions, by agent id.
+   *
+   * Absent means shut: the rail is 216px wide, and a roster that unfolded
+   * itself on startup would bury the navigation above it.
+   */
+  expandedAgents: Record<string, boolean>
   query: string
   gridQuery: string
   /** Cards or the session graph. */
@@ -227,6 +234,8 @@ export interface RosterState {
   toggleTool(id: string): void
   togglePlanMode(sessionId: string): void
   setPlanMode(sessionId: string, on: boolean): void
+  /** Folds one sidebar row's sessions in or out. */
+  toggleAgentExpanded(agentId: string): void
   setQuery(value: string): void
   setGridQuery(value: string): void
   setGridView(view: GridView): void
@@ -290,6 +299,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   openTools: {},
   planMode: {},
   namingSessionId: null,
+  expandedAgents: {},
   query: '',
   gridQuery: '',
   gridView: 'cards',
@@ -392,6 +402,8 @@ export const useRoster = create<RosterState>((set, get) => ({
     set((s) => ({ planMode: { ...s.planMode, [sessionId]: !s.planMode[sessionId] } })),
   setPlanMode: (sessionId, on) =>
     set((s) => ({ planMode: { ...s.planMode, [sessionId]: on } })),
+  toggleAgentExpanded: (agentId) =>
+    set((s) => ({ expandedAgents: { ...s.expandedAgents, [agentId]: !s.expandedAgents[agentId] } })),
   setQuery: (query) => set({ query }),
   setGridQuery: (gridQuery) => set({ gridQuery }),
   setGridView: (gridView) => set({ gridView }),
@@ -497,11 +509,51 @@ export function selectVisibleAgents(state: RosterState): Agent[] {
   return state.agents.filter((agent) => !agent.hidden)
 }
 
+/**
+ * Whether a roster row answers a search — its own name, or a session's label.
+ *
+ * Shared by the rail and the grid: two copies of this would drift, and an
+ * agent would then answer a search on one surface but not the other.
+ */
+function matchesSearch(agent: Agent, sessions: readonly Session[], q: string): boolean {
+  if (agent.name.toLowerCase().includes(q)) return true
+  return sessions.some((session) => sessionLabel(session).toLowerCase().includes(q))
+}
+
 export function selectSidebarAgents(state: RosterState): Agent[] {
   const visible = selectVisibleAgents(state)
   const q = state.query.trim().toLowerCase()
   if (q === '') return visible
-  return visible.filter((a) => a.name.toLowerCase().includes(q))
+  return visible.filter((a) => matchesSearch(a, state.sessions[a.id] ?? NO_SESSIONS, q))
+}
+
+/**
+ * The sessions to list under a sidebar row.
+ *
+ * A search narrows them, so what is on show is the answer and nothing else —
+ * unless the agent's own name is what matched, in which case the whole agent
+ * was asked for and every session it owns belongs under it.
+ */
+export function selectSidebarSessions(state: RosterState, agent: Agent): readonly Session[] {
+  const sessions = state.sessions[agent.id] ?? NO_SESSIONS
+  const q = state.query.trim().toLowerCase()
+  if (q === '' || agent.name.toLowerCase().includes(q)) return sessions
+
+  return sessions.filter((session) => sessionLabel(session).toLowerCase().includes(q))
+}
+
+/**
+ * Whether this row is in the rail only because one of its sessions matched.
+ *
+ * The row unfolds itself when it is: a match you have to go looking for is
+ * not an answer. Nothing matched means nothing to reveal, so a row that got
+ * there on its own name stays as the user left it.
+ */
+export function matchedBySession(state: RosterState, agent: Agent): boolean {
+  const q = state.query.trim().toLowerCase()
+  if (q === '' || agent.name.toLowerCase().includes(q)) return false
+
+  return selectSidebarSessions(state, agent).length > 0
 }
 
 /**
@@ -547,8 +599,7 @@ export function selectGridAgents(state: RosterState): Agent[] {
     }
 
     if (q === '') return true
-    if (agent.name.toLowerCase().includes(q)) return true
-    return visible.some((session) => sessionLabel(session).toLowerCase().includes(q))
+    return matchesSearch(agent, visible, q)
   })
 }
 
