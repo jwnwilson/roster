@@ -52,7 +52,7 @@ describe('McpServerModal — opening', () => {
     expect(within(dialog).getByText(/No variables/)).toBeInTheDocument()
   })
 
-  test('connects Notion for task import without starting an agent', async () => {
+  test('connects Notion without starting an agent', async () => {
     const user = userEvent.setup()
     installRosterApi({
       notion: { authStatus: vi.fn().mockResolvedValue({ state: 'disconnected' }) },
@@ -65,7 +65,7 @@ describe('McpServerModal — opening', () => {
     await user.click(screen.getByRole('button', { name: 'Configure notion' }))
     const dialog = await screen.findByRole('dialog', { name: 'Configure notion' })
 
-    expect(within(dialog).getByText('Not connected for task import.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Not connected.')).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Connect Notion' }))
 
     expect(window.roster.notion.beginAuth).toHaveBeenCalledOnce()
@@ -83,7 +83,7 @@ describe('McpServerModal — opening', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Disconnect' }))
 
     expect(window.roster.notion.clearAuth).toHaveBeenCalledOnce()
-    expect(within(dialog).getByText('Not connected for task import.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Not connected.')).toBeInTheDocument()
   })
 
   test('closes without saving on Cancel', async () => {

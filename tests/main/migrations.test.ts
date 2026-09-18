@@ -477,6 +477,23 @@ describe('migration 6 — tasks remember the Notion page they came from', () => 
   })
 })
 
+describe('migration 16 — the Notion status map', () => {
+  test('gives the map a home without touching what was imported before', () => {
+    const columns = (db.pragma('table_info(notion_settings)') as { name: string }[]).map((c) => c.name)
+
+    expect(columns).toEqual(expect.arrayContaining(['id', 'status_map']))
+    // The retired per-database connections are left alone: they still carry
+    // the page ids of anything imported before this.
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'notion_connections'").get()).toBeTruthy()
+  })
+
+  test('holds one row only, so there is one answer for the workspace', () => {
+    db.prepare("INSERT INTO notion_settings (id, status_map) VALUES (1, '{}')").run()
+
+    expect(() => db.prepare("INSERT INTO notion_settings (id, status_map) VALUES (2, '{}')").run()).toThrow()
+  })
+})
+
 describe('migration 7 — a project can be archived instead of destroyed', () => {
   /** A database stopped at version 6, as an install from before this would be. */
   function atVersion6() {

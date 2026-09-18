@@ -21,13 +21,7 @@ import type {
   UpdateState,
   Usage,
 } from './types'
-import type {
-  ImportSummary,
-  NotionConnection,
-  NotionAuthStatus,
-  NotionInspection,
-  NotionMapping,
-} from './notion'
+import type { NotionAuthStatus, NotionStatusMap } from './notion'
 
 /**
  * The contract exposed on `window.roster`. The renderer may only reach the
@@ -147,18 +141,16 @@ export interface RosterApi {
     authStatus(): Promise<NotionAuthStatus>
     /** Opens Notion in the default browser and returns once approval is pending. */
     beginAuth(): Promise<void>
-    /** Forgets the local import credential without deleting saved mappings. */
+    /** Forgets the local credential. Imported tasks keep their page link. */
     clearAuth(): Promise<void>
     /**
-     * Looks at a pasted database URL or id without saving anything: resolves
-     * its data source, reads the schema, and guesses a mapping to correct.
+     * Puts one Notion page on the board. A page already imported comes back
+     * as it is, so pasting the same link twice is not a second task.
      */
-    inspect(databaseInput: string): Promise<NotionInspection>
-    connect(input: NewConnectionInput): Promise<NotionConnection>
-    connections(): Promise<NotionConnection[]>
-    /** Pulls the data source onto the board. Push happens on its own. */
-    importNow(connectionId: string): Promise<ImportSummary>
-    disconnect(id: string): Promise<void>
+    importTask(input: ImportTaskInput): Promise<ImportedTask>
+    /** What each Roster status is called in Notion. */
+    statusMap(): Promise<NotionStatusMap>
+    saveStatusMap(map: NotionStatusMap): Promise<NotionStatusMap>
   }
   projects: {
     /** Every project, archived ones included — the renderer splits them. */
@@ -260,13 +252,16 @@ export interface SendOptions {
   planMode?: boolean
 }
 
-/** What the connect modal sends once the mapping has been confirmed. */
-export interface NewConnectionInput {
-  name: string
-  databaseId: string
-  dataSourceId: string
-  mapping: NotionMapping
-  projectId?: string | null
+/** What the Notion modal sends when someone pastes a task link. */
+export interface ImportTaskInput {
+  url: string
+  projectId: string | null
+}
+
+/** The task a pasted link became, and whether this call is what made it. */
+export interface ImportedTask {
+  task: Task
+  created: boolean
 }
 
 export interface NewProjectInput {
@@ -438,11 +433,9 @@ export const CHANNELS = {
   sessionsSetProject: 'sessions:setProject',
   sessionsSetName: 'sessions:setName',
 
-  notionInspect: 'notion:inspect',
-  notionConnect: 'notion:connect',
-  notionConnections: 'notion:connections',
-  notionImport: 'notion:import',
-  notionDisconnect: 'notion:disconnect',
+  notionImportTask: 'notion:importTask',
+  notionStatusMap: 'notion:statusMap',
+  notionSaveStatusMap: 'notion:saveStatusMap',
   notionAuthStatus: 'notion:authStatus',
   notionBeginAuth: 'notion:beginAuth',
   notionClearAuth: 'notion:clearAuth',

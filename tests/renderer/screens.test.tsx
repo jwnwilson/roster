@@ -1129,7 +1129,7 @@ describe('McpServers — Install', () => {
     await user.click(screen.getByRole('button', { name: 'Configure notion' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Configure notion' })
-    expect(within(dialog).getByText('Task import access')).toBeInTheDocument()
+    expect(within(dialog).getByText('Notion access')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: /Connect Notion|Reconnect Notion/ })).toBeEnabled()
     expect(within(dialog).queryByLabelText('Launch command')).not.toBeInTheDocument()
   })

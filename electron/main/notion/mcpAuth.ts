@@ -3,7 +3,7 @@ import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } fr
 import type { OAuthClientProvider, OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { Db } from '../db'
 import type { NotionAuthStatus } from '../../../shared/notion'
-import type { SecretBox } from './auth'
+import type { SecretBox } from './secretBox'
 
 /** Path of the loopback redirect; the port is chosen per sign-in attempt. */
 export const NOTION_MCP_CALLBACK_PATH = '/notion/mcp-oauth'
