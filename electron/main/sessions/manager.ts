@@ -888,8 +888,15 @@ export class SessionManager {
     if (!enabled) return undefined
 
     return {
-      propose: (body) => {
-        const plan = plans.capture({ sessionId: session.id, agentId: agent.id, body })
+      propose: (body, options) => {
+        const plan = plans.capture({
+          sessionId: session.id,
+          agentId: agent.id,
+          body,
+          ...(options?.supersedeReason === undefined
+            ? {}
+            : { supersedeReason: options.supersedeReason }),
+        })
         // The transcript row is written here rather than left to `handle`,
         // which writes it for Claude's ExitPlanMode. normalizeCodex drops MCP
         // tool events, so for a Codex agent that capture site can never fire,
@@ -912,7 +919,7 @@ export class SessionManager {
       // review, and this is how it knows. Read through the store on every
       // call rather than captured once, because the status changes underneath
       // a long turn.
-      currentStatus: () => plans.listBySession(session.id).at(-1)?.status ?? null,
+      current: () => plans.listBySession(session.id).at(-1) ?? null,
       recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
     }
   }
@@ -922,12 +929,24 @@ export class SessionManager {
    *
    * Returns null when this manager has no plan store, or when the session has
    * gone — capturing a plan is worth nothing next to finishing the turn.
+   *
+   * Also when the store refuses it, which is how ExitPlanMode is kept from
+   * doing what propose_plan is gated against. This path carries no reason and
+   * has nowhere to put one: an agent asked to leave plan mode again while its
+   * last plan is out being built would otherwise reset that plan to a draft,
+   * still showing the branch and pull request it had picked up. Leaving the
+   * plan alone and the tool row unlinked is the honest outcome, and it must
+   * not take the turn down with it.
    */
   private capturePlan(sessionId: string, body: string): string | null {
     const session = this.sessions.findById(sessionId)
     if (!this.plans || !session) return null
 
-    return this.plans.capture({ sessionId, agentId: session.agentId, body }).id
+    try {
+      return this.plans.capture({ sessionId, agentId: session.agentId, body }).id
+    } catch {
+      return null
+    }
   }
 
   private failTurn(sessionId: string, message: string): void {

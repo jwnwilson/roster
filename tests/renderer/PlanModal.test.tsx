@@ -352,6 +352,55 @@ describe('a plan that is no longer yours to answer', () => {
   })
 })
 
+describe('a plan the agent has closed', () => {
+  test('says it was superseded rather than naming an agent waiting on it', async () => {
+    open(aPlan({ status: 'closed' }))
+    render(<PlanModal />)
+
+    // Nobody is working on it and nobody is waiting: it was abandoned in
+    // favour of a newer plan, and the thread says why.
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Closed — superseded by a newer plan.',
+    )
+    expect(screen.getByRole('status')).not.toHaveTextContent('Debugging Agent')
+  })
+
+  test('does not name the branch the abandoned work was on', async () => {
+    open(aPlan({ status: 'closed', branch: 'roster/plan-abc-archive' }))
+    render(<PlanModal />)
+
+    // The row keeps the branch so the history is intact, but repeating it here
+    // reads as work still in progress.
+    expect(await screen.findByRole('status')).not.toHaveTextContent('roster/plan-abc-archive')
+  })
+
+  test('labels it Closed in the header', async () => {
+    open(aPlan({ status: 'closed' }))
+    render(<PlanModal />)
+
+    expect(await screen.findByText('Closed')).toBeInTheDocument()
+  })
+
+  test('offers neither approval nor comments, because nothing would read them', async () => {
+    open(aPlan({ status: 'closed' }))
+    render(<PlanModal />)
+
+    await screen.findByRole('status')
+    expect(screen.queryByRole('button', { name: 'Approve & build' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Send comments' })).not.toBeInTheDocument()
+  })
+
+  test('still shows the plan and the thread, so the record survives', async () => {
+    open(aPlan({ status: 'closed' }), [
+      aPlanComment({ author: 'debugging', tone: 'agent', text: 'The endpoint was deleted in v3.' }),
+    ])
+    render(<PlanModal />)
+
+    expect(await screen.findByRole('heading', { name: 'Steps' })).toBeInTheDocument()
+    expect(screen.getByText('The endpoint was deleted in v3.')).toBeInTheDocument()
+  })
+})
+
 describe('commenting on a passage', () => {
   /** Stages a selection over the rendered plan, as dragging across it would. */
   function selectInPlan(text: string): void {

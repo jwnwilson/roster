@@ -177,6 +177,61 @@ describe('a plan reaching Roster', () => {
     expect(plans.listBySession(sessionId)[0]?.version).toBe(2)
   })
 
+  test('will not rewrite a plan whose pull request is up for review', async () => {
+    // ExitPlanMode bypasses propose_plan's gate entirely: a Claude agent
+    // asked to leave plan mode on a later turn used to rewrite the plan in
+    // flight and reset it to a draft, still showing the branch and pull
+    // request it had picked up. There is no way to pass a reason down this
+    // path, so the only safe answer is to leave the plan alone.
+    const sessionId = await runTurn(approvalEvent(BODY))
+    const plan = plans.listBySession(sessionId)[0]!
+    plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc' })
+    plans.recordPullRequest(plan.id, { url: 'https://github.com/o/r/pull/31' })
+
+    await runTurnOn(sessionId, approvalEvent(NEXT))
+
+    expect(plans.findById(plan.id)).toMatchObject({
+      status: 'in_review',
+      version: 1,
+      branch: 'roster/plan-abc',
+      prUrl: 'https://github.com/o/r/pull/31',
+    })
+    expect(plans.listBySession(sessionId)).toHaveLength(1)
+  })
+
+  test('nor one still being built, which settleBuild hands back instead', async () => {
+    const sessionId = await runTurn(approvalEvent(BODY))
+    const plan = plans.listBySession(sessionId)[0]!
+    plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc' })
+
+    await runTurnOn(sessionId, approvalEvent(NEXT))
+
+    // Still v1 with its branch: the body was never rewritten. The status is
+    // 'draft' because the build turn ended without a pull request, which is
+    // settleBuild doing its own job — approving again continues the same work.
+    expect(plans.findById(plan.id)).toMatchObject({
+      status: 'draft',
+      version: 1,
+      branch: 'roster/plan-abc',
+    })
+    expect(plans.body(plan.id)).toBe(BODY)
+    expect(plans.listBySession(sessionId)).toHaveLength(1)
+  })
+
+  test('and finishes the turn, rather than dying inside it', async () => {
+    const sessionId = await runTurn(approvalEvent(BODY))
+    plans.setStatus(plans.listBySession(sessionId)[0]!.id, 'building')
+
+    await runTurnOn(sessionId, toolEvent(NEXT))
+
+    // The tool row is still written — it just links to no plan, because no
+    // plan was captured. The first turn arrived as an approval, which writes
+    // no tool row, so this is the only one.
+    const rows = toolMessages(sessionId).filter((m) => m.tool === 'ExitPlanMode')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.planId).toBeUndefined()
+  })
+
   test('leaves other tools alone', async () => {
     const sessionId = await runTurn({
       kind: 'tool',

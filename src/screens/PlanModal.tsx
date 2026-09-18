@@ -10,12 +10,24 @@ import { NO_PLAN_COMMENTS, useRoster } from '../state/store'
 /** Wide enough for a plan to read as a document rather than as a column. */
 const MODAL_WIDTH = 860
 
-/** What each state is waiting on, said in the agent's name. */
-const WAITING: Record<Exclude<PlanStatus, 'draft'>, string> = {
+/** The states where the agent owns the plan, and what each is waiting on. */
+type AgentHeld = Exclude<PlanStatus, 'draft' | 'closed'>
+
+/** Said in the agent's name, because it is the one doing the thing. */
+const WAITING: Record<AgentHeld, string> = {
   revising: 'is revising this plan',
   building: 'is building this plan',
   in_review: 'has opened a pull request',
 }
+
+/**
+ * Said of a closed plan, in nobody's name.
+ *
+ * The one state with no agent behind it: the plan was abandoned in favour of a
+ * newer one, so naming an agent would suggest work still going on. Why it was
+ * abandoned is in the thread, where the agent put it.
+ */
+const CLOSED = 'Closed — superseded by a newer plan.'
 
 /**
  * A plan, rendered and answerable.
@@ -236,11 +248,21 @@ function Waiting({ plan, agentName }: { plan: Plan; agentName: string }) {
     )
   }
 
+  if (plan.status === 'closed') {
+    // Deliberately without the branch the row still carries: the history is
+    // worth keeping, but repeating it here reads as work in progress.
+    return (
+      <span role="status" className="text-md text-dim">
+        {CLOSED}
+      </span>
+    )
+  }
+
   return (
     // A status region: what it says changes underneath the reader as the
     // agent works, and it is the only thing here that does.
     <span role="status" className="text-md text-dim">
-      {agentName} {WAITING[plan.status as Exclude<PlanStatus, 'draft'>]}
+      {agentName} {WAITING[plan.status as AgentHeld]}
       {plan.branch === undefined ? '' : ' on '}
       {plan.branch === undefined ? null : (
         <span className="font-mono text-base text-muted-2">{plan.branch}</span>

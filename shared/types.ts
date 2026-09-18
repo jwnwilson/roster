@@ -470,10 +470,11 @@ export type UpdateState =
 /**
  * Where a plan has got to.
  *
- * `draft` is the only state that is waiting on you; the other three are
- * waiting on the agent.
+ * `draft` is the only state that is waiting on you, and `closed` is the only
+ * one waiting on nobody: a plan the agent abandoned because a newer one
+ * replaced it. The rest are waiting on the agent.
  */
-export type PlanStatus = 'draft' | 'revising' | 'building' | 'in_review'
+export type PlanStatus = 'draft' | 'revising' | 'building' | 'in_review' | 'closed'
 
 export interface Plan {
   id: string

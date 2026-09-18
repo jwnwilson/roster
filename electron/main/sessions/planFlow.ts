@@ -13,6 +13,22 @@ import {
 } from './planPrompt'
 
 /**
+ * Refuses anything you can do to a plan the agent has abandoned.
+ *
+ * The modal offers neither button for one, but it may have been open since
+ * before the agent superseded it, and both paths are reachable over IPC.
+ * Building a closed plan spends a turn on work already replaced; commenting on
+ * one sets it back to 'revising' and hands it to an agent that has moved on.
+ */
+function refuseClosed(plan: Plan): void {
+  if (plan.status === 'closed') {
+    throw new Error(
+      `plan "${plan.id}" was closed and replaced by a newer one. Open that plan instead.`,
+    )
+  }
+}
+
+/**
  * Who a note from the app is filed as.
  *
  * Decided here rather than taken from the renderer, for the same reason the
@@ -59,6 +75,7 @@ export class PlanFlow {
    */
   submit(planId: string, text: string, quote?: string): Plan {
     const plan = this.require(planId)
+    refuseClosed(plan)
 
     const note = text.trim()
     if (note === '') throw new Error('a comment cannot be empty')
@@ -101,6 +118,7 @@ export class PlanFlow {
    */
   approve(planId: string): Plan {
     const plan = this.require(planId)
+    refuseClosed(plan)
     if (plan.status === 'building' || plan.status === 'in_review') {
       throw new Error(`plan "${planId}" has already been approved`)
     }
