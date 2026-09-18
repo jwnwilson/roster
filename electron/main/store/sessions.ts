@@ -24,6 +24,7 @@ interface SessionRow {
   project_id: string | null
   task_id: string | null
   last_nudged_at: number | null
+  workspace_root: string | null
   created_at: number
 }
 
@@ -86,6 +87,9 @@ export class SessionStore {
       // Keep a just-created session structurally identical to the same row
       // read back from SQLite. NULL means Roster has never checked in.
       lastNudgedAt: null,
+      // Nothing has run yet, so there is no directory to record. The first
+      // turn pins it; see pinWorkspace.
+      workspaceRoot: null,
       createdAt: Date.now(),
       ...(input.from
         ? {
@@ -247,6 +251,21 @@ export class SessionStore {
   }
 
   /** Mark before starting a check-in, so two ticks cannot enqueue it twice. */
+  /**
+   * Records where this session's turns run, the first time one starts.
+   *
+   * Write-once by the `IS NULL` guard rather than by the caller remembering:
+   * a resumed Codex thread cannot be moved off the directory it started in,
+   * so an answer that changed under a live session would mean one thing
+   * under Claude and another under Codex. Later calls are no-ops, which is
+   * what makes it safe to call at the top of every turn.
+   */
+  pinWorkspace(id: string, root: string): void {
+    this.db
+      .prepare('UPDATE sessions SET workspace_root = ? WHERE id = ? AND workspace_root IS NULL')
+      .run(root, id)
+  }
+
   markNudged(id: string, at: number): void {
     this.db.prepare('UPDATE sessions SET last_nudged_at = ? WHERE id = ?').run(at, id)
   }
@@ -451,6 +470,7 @@ function toSession(row: SessionRow): Session {
     projectId: row.project_id,
     taskId: row.task_id,
     lastNudgedAt: row.last_nudged_at,
+    workspaceRoot: row.workspace_root,
   }
 }
 

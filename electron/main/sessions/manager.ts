@@ -1,6 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import type { Agent, Approval, Message, Question, Session, ToolMessage, Usage } from '../../../shared/types'
+import type {
+  Agent,
+  Approval,
+  Message,
+  ProjectRepo,
+  Question,
+  Session,
+  ToolMessage,
+  Usage,
+} from '../../../shared/types'
 import {
   isBuiltinMcpServer,
   MEMORY_SERVER,
@@ -36,7 +45,9 @@ import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
 import { createMemoryMcpServer, type MemoryTools } from '../runners/memoryTools'
 import { describeActivity, THINKING } from './activity'
 import { resolveSessionProject } from './defaultProject'
+import { resolveWorkspace } from './workspace'
 import { buildProjectBrief } from './projectBrief'
+import type { ProjectRepoStore } from '../store/projectRepos'
 import { estimateCodexCost } from '../costs/codex'
 
 /** Per-turn choices the caller makes, rather than the agent's configuration. */
@@ -161,7 +172,16 @@ export class SessionManager {
      * tools is a separate concern from running a turn — a manager without
      * one simply exposes no task tools.
      */
-    private readonly board?: { tasks: TaskStore; projects: ProjectStore },
+    private readonly board?: {
+      tasks: TaskStore
+      projects: ProjectStore
+      /**
+       * The repositories each project names. Optional like the rest: without
+       * it every turn falls back to `agent.cwd`, which is what Roster did
+       * before a project could own a directory.
+       */
+      repos?: ProjectRepoStore
+    },
     /**
      * Where plans are kept. Optional for the same reason as the board: a
      * manager without one runs turns exactly as before and captures nothing.
@@ -436,8 +456,15 @@ export class SessionManager {
         mcpServers = { ...mcpServers, [NOTION_SERVER]: notionBridge.launchSpec() }
       }
 
+      // Resolved once per turn but *pinned* on the first, so a session cannot
+      // be moved out from under a runner that has already started. See
+      // resolveWorkspace.
+      const workspace = resolveWorkspace({ agent, session, repos: this.reposFor(session) })
+      this.sessions.pinWorkspace(session.id, workspace.root)
+
       const stream = runner.run(this.withProjectBrief(session, prompt), {
-        cwd: agent.cwd,
+        cwd: workspace.root,
+        ...(workspace.additional.length > 0 ? { additionalRoots: workspace.additional } : {}),
         model: agent.model,
         systemPrompt: agent.systemPrompt,
         skills: this.skillsFor(agent),
@@ -1179,6 +1206,25 @@ export class SessionManager {
    * loads the skill itself — so reading one here would put file I/O in front
    * of every turn for the benefit of the runner that does not take it.
    */
+  /**
+   * The repositories of the project this session is filed under.
+   *
+   * Empty for an unfiled session, and for a manager built without a repo
+   * store — in both cases resolveWorkspace falls through to `agent.cwd`,
+   * which is what Roster did before a project could own a directory.
+   *
+   * Archived projects still answer. Archiving is a view control, and a
+   * session that is running should not relocate because somebody tidied a
+   * picker.
+   */
+  private reposFor(session: Session): readonly ProjectRepo[] {
+    const repos = this.board?.repos
+    const projectId = session.projectId
+    if (!repos || projectId === null || projectId === undefined) return []
+
+    return repos.listByProject(projectId)
+  }
+
   private skillsFor(agent: Agent): EnabledSkill[] {
     const enabled = new Set(agent.skills)
     return this.skills

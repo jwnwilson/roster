@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { openDatabase, type Db } from '@main/db'
 import { ProjectRepoStore } from '@main/store/projectRepos'
 import { ProjectStore } from '@main/store/projects'
-import { canonicalPath, samePath } from '@main/sessions/workspace'
+import { canonicalPath, resolveWorkspace, samePath } from '@main/sessions/workspace'
+import type { Agent, ProjectRepo, Session } from '@shared/types'
 
 let dir: string
 let db: Db
@@ -191,5 +192,90 @@ describe('ProjectRepoStore', () => {
     // of work, and often does.
     expect(repos.listByProject(projectId)).toHaveLength(1)
     expect(repos.listByProject(other)).toHaveLength(1)
+  })
+})
+
+/* --------------------------------------------------------- resolveWorkspace */
+
+const AGENT = { id: 'a1', cwd: '/agents/a1/workspace' } as Agent
+
+function aSession(overrides: Partial<Session> = {}): Session {
+  return { id: 's1', agentId: 'a1', ...overrides } as Session
+}
+
+function aRepo(path: string, position: number): ProjectRepo {
+  return {
+    id: `r${position}`,
+    projectId: 'p1',
+    path,
+    pathLabel: path,
+    name: path.split('/').pop() ?? path,
+    description: '',
+    position,
+    exists: true,
+    isRepository: true,
+  }
+}
+
+describe('resolveWorkspace', () => {
+  test('falls back to the agent when the project names no repositories', () => {
+    const workspace = resolveWorkspace({ agent: AGENT, session: aSession(), repos: [] })
+
+    // Yesterday's behaviour, and still the answer for every unfiled session.
+    expect(workspace).toMatchObject({ root: AGENT.cwd, additional: [], source: 'agent' })
+  })
+
+  test('runs in the project primary rather than the agent directory', () => {
+    const repos = [aRepo('/work/api', 0), aRepo('/work/web', 1)]
+
+    const workspace = resolveWorkspace({ agent: AGENT, session: aSession(), repos })
+
+    // This is what makes one agent reusable across projects.
+    expect(workspace.root).toBe('/work/api')
+    expect(workspace.source).toBe('project')
+    expect(workspace.additional).toEqual(['/work/web'])
+  })
+
+  test('a session that has already run stays where it ran', () => {
+    const repos = [aRepo('/work/api', 0)]
+    const session = aSession({ workspaceRoot: '/work/payments' })
+
+    const workspace = resolveWorkspace({ agent: AGENT, session, repos })
+
+    // A resumed Codex thread cannot be moved off its original directory, so
+    // the pin outranks a primary that has since changed.
+    expect(workspace.root).toBe('/work/payments')
+    expect(workspace.source).toBe('session')
+  })
+
+  test('the pinned root is still offered as reachable when it is not the primary', () => {
+    const repos = [aRepo('/work/api', 0), aRepo('/work/web', 1)]
+    const session = aSession({ workspaceRoot: '/work/web' })
+
+    const workspace = resolveWorkspace({ agent: AGENT, session, repos })
+
+    expect(workspace.root).toBe('/work/web')
+    expect(workspace.additional).toEqual(['/work/api'])
+  })
+
+  test('never offers the root as one of the additional roots', () => {
+    const repos = [aRepo('/work/api', 0)]
+
+    const workspace = resolveWorkspace({ agent: AGENT, session: aSession(), repos })
+
+    // Handing the same directory over twice is at best noise and at worst a
+    // second, conflicting grant.
+    expect(workspace.additional).toEqual([])
+  })
+
+  test('deduplicates the root even when it is spelled differently', () => {
+    const repos = [aRepo('/work/api/', 0), aRepo('/work/web', 1)]
+    const session = aSession({ workspaceRoot: '/work/api' })
+
+    const workspace = resolveWorkspace({ agent: AGENT, session, repos })
+
+    // The pin and the row can disagree about a trailing slash; samePath is
+    // what stops that becoming a duplicate grant.
+    expect(workspace.additional).toEqual(['/work/web'])
   })
 })

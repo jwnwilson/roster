@@ -269,7 +269,7 @@ export async function initStores(): Promise<void> {
     skillStore,
     mcpStore,
     usageStore,
-    { tasks: taskStore, projects: projectStore },
+    { tasks: taskStore, projects: projectStore, repos: projectRepoStore },
     planStore,
     projectNotesStore,
     { removeSession: (sessionId) => deleteSession(sessionId, false) },

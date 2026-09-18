@@ -121,6 +121,15 @@ export interface Session {
   taskId?: string | null
   /** The last time Roster automatically asked this task session to check in. */
   lastNudgedAt?: number | null
+  /**
+   * The directory this session's turns run in, fixed when the first one
+   * started. Null until then, and for every session that predates it.
+   *
+   * Never rewritten. A resumed Codex thread inherits its directory from the
+   * stored session and cannot be moved, so an answer that could change under
+   * a live session would mean one thing under Claude and another under Codex.
+   */
+  workspaceRoot?: string | null
   createdAt: number
 }
 

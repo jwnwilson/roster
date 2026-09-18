@@ -1,5 +1,10 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
+import {
+  resolveWorkspace as resolveShared,
+  type Workspace,
+  type WorkspaceInput,
+} from '../../../shared/workspace'
 import { expandHome } from '../store/agentToml'
 
 /**
@@ -65,3 +70,17 @@ export function canonicalPath(path: string): string {
     return absolute
   }
 }
+
+/**
+ * The shared resolver, bound to the filesystem-aware comparison above.
+ *
+ * The renderer calls the same function with the weaker default comparison —
+ * it only decides what a label says, never what a runner is granted. This
+ * binding is the one that matters, because its answer becomes a cwd and a
+ * set of directory grants.
+ */
+export function resolveWorkspace(input: WorkspaceInput): Workspace {
+  return resolveShared(input, samePath)
+}
+
+export type { Workspace, WorkspaceInput }

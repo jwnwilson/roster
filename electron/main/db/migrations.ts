@@ -374,4 +374,22 @@ export const MIGRATIONS: readonly string[] = [
   CREATE UNIQUE INDEX ux_project_repos ON project_repos (project_id, path);
   CREATE INDEX ix_project_repos_project ON project_repos (project_id, position);
   `,
+
+  // 18 — the directory this session's turns actually ran in, written the
+  // first time one starts and never rewritten. NULL means it has not run
+  // yet, which is every session that predates this column.
+  //
+  // A path rather than a project_repos reference, deliberately. A row id is
+  // silently invalidated by reordering, editing or removing a repository and
+  // by deleting the project; in each of those `codex exec resume` keeps
+  // running in the directory it started in — it inherits its cwd from the
+  // stored session and rejects `-C` — while the rail and the brief would
+  // claim the new one. A path survives all four.
+  //
+  // It is a record of what happened, not a setting. That is why nothing
+  // rewrites it: if the answer could move under a live session, Claude would
+  // follow it and Codex would not.
+  `
+  ALTER TABLE sessions ADD COLUMN workspace_root TEXT;
+  `,
 ]
