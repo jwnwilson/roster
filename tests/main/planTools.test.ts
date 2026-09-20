@@ -29,10 +29,18 @@ function handlers(): Map<string, (args: never) => Promise<ToolResult>> {
   }) as never
 
   const tools: PlanTools = {
-    propose: (body) => plans.capture({ sessionId: 's1', agentId: 'debugging', body }),
+    propose: (body, options) =>
+      plans.capture({
+        sessionId: 's1',
+        agentId: 'debugging',
+        body,
+        ...(options?.supersedeReason === undefined
+          ? {}
+          : { supersedeReason: options.supersedeReason }),
+      }),
     // Reads the real store, so a test that moves the plan on moves what the
     // handler sees with it.
-    currentStatus: () => plans.listBySession('s1').at(-1)?.status ?? null,
+    current: () => plans.listBySession('s1').at(-1) ?? null,
     recordPullRequest: (planId, input) => plans.recordPullRequest(planId, input),
   }
 
@@ -133,6 +141,77 @@ describe('an agent presenting a plan', () => {
     expect(result.isError).toBe(true)
     expect(result.content[0]?.text).toMatch(/already being built/i)
     expect(plans.findById(plan.id)).toMatchObject({ status: 'building', version: 1 })
+  })
+
+  test('and says how to replace it, so the refusal is not a dead end', async () => {
+    // An agent that has genuinely found the plan unbuildable needs to know
+    // there is a way through; without this it either gives up or retries the
+    // same call forever.
+    const plan = aPlan()
+    plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc' })
+
+    const result = await proposePlan()({ plan: '# Something else\n\nWhy.' } as never)
+
+    expect(result.content[0]?.text).toContain('supersedes_reason')
+  })
+
+  test('replaces a plan being built when told why it is obsolete', async () => {
+    const plan = aPlan()
+    plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc' })
+
+    const result = await proposePlan()({
+      plan: '# Something else\n\nWhy.',
+      supersedes_reason: 'The endpoint this plan builds on was deleted in v3.',
+    } as never)
+
+    expect(result.isError).toBeUndefined()
+    expect(plans.findById(plan.id)?.status).toBe('closed')
+    expect(plans.listBySession('s1').map((p) => [p.title, p.status])).toEqual([
+      ['Do it', 'closed'],
+      ['Something else', 'draft'],
+    ])
+  })
+
+  test('names both plans back, so the agent knows what it just abandoned', async () => {
+    const plan = aPlan()
+    plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc' })
+
+    const result = await proposePlan()({
+      plan: '# Something else\n\nWhy.',
+      supersedes_reason: 'The endpoint this plan builds on was deleted in v3.',
+    } as never)
+
+    expect(result.content[0]?.text).toContain('Do it')
+    expect(result.content[0]?.text).toContain('Something else')
+  })
+
+  test('records why in the abandoned plan’s thread', async () => {
+    const plan = aPlan()
+    plans.recordPullRequest(plan.id, { url: 'https://github.com/o/r/pull/31' })
+
+    await proposePlan()({
+      plan: '# Something else\n\nWhy.',
+      supersedes_reason: 'The endpoint this plan builds on was deleted in v3.',
+    } as never)
+
+    expect(plans.comments(plan.id).map((c) => c.text)).toEqual([
+      'The endpoint this plan builds on was deleted in v3.',
+    ])
+  })
+
+  test('refuses a reason that says nothing', async () => {
+    // "Because" is not a reason, and neither is a space. Closing work already
+    // under way should cost the agent a sentence.
+    const plan = aPlan()
+    plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc' })
+
+    const result = await proposePlan()({
+      plan: '# Something else\n\nWhy.',
+      supersedes_reason: '   ',
+    } as never)
+
+    expect(result.isError).toBe(true)
+    expect(plans.findById(plan.id)?.status).toBe('building')
   })
 
   test('will not reopen a plan whose pull request is already up for review', async () => {

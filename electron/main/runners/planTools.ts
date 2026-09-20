@@ -1,6 +1,7 @@
 import { z } from 'zod'
-import type { Plan, PlanStatus } from '../../../shared/types'
+import type { Plan } from '../../../shared/types'
 import { PLANS_SERVER } from '../../../shared/mcp'
+import { IN_FLIGHT } from '../../../shared/plans'
 
 /**
  * Plans, as an agent sees them.
@@ -20,18 +21,23 @@ export interface PlanTools {
    * The session is bound by the caller rather than passed as an argument:
    * which session a plan belongs to is Roster's fact, not the agent's to
    * choose.
+   *
+   * `supersedeReason` is only consulted when the session's plan has moved past
+   * review, and it closes that plan so this one can start beside it.
    */
-  propose(body: string): Plan
+  propose(body: string, options?: { supersedeReason?: string }): Plan
 
   /**
-   * How far the session's current plan has got, or null when it has none.
+   * The session's current plan, or null when it has none.
    *
    * The one read this interface offers, and it exists because proposing is
    * destructive: a capture rewrites the session's newest plan in place and
    * resets it to a draft. `propose` alone cannot tell whether that would undo
-   * work already under way, so the caller says.
+   * work already under way, so the caller says — and the plan rather than its
+   * status alone, so a refusal and a supersede can both name what they are
+   * about.
    */
-  currentStatus(): PlanStatus | null
+  current(): Plan | null
 
   recordPullRequest(planId: string, input: { url: string; branch?: string }): Plan
 }
@@ -54,6 +60,15 @@ export const PROPOSE_PLAN_SCHEMA = {
     .describe(
       'The plan itself, as Markdown. Open with a heading naming what you propose to do — ' +
         'that heading becomes the plan’s title.',
+    ),
+  supersedes_reason: z
+    .string()
+    .optional()
+    .describe(
+      'Only needed when this session already has a plan being built or up for review, and ' +
+        'that plan turned out to be impossible or obsolete. Say why in a sentence. The old ' +
+        'plan is closed, keeping its history, and this one starts beside it. Leave it out ' +
+        'to revise a plan that is still waiting on review.',
     ),
 }
 
@@ -99,11 +114,15 @@ export function buildPlanTools(plans: PlanTools, tool: ToolFactory) {
     'propose_plan',
     'Present your plan for review and end the turn. Call this once your research is done. Do not start the work.',
     PROPOSE_PLAN_SCHEMA,
-    async (args: { plan: string }) => {
+    async (args: { plan: string; supersedes_reason?: string }) => {
       const body = args.plan.trim()
       if (body === '') {
         return text('A plan cannot be empty. Put the plan itself in `plan`.', true)
       }
+
+      const reason = args.supersedes_reason?.trim() ?? ''
+      const current = plans.current()
+      const inFlight = blocking(current)
 
       // A capture rewrites the session's newest plan and resets it to a
       // draft, keeping the branch and pull request it had already picked up.
@@ -113,19 +132,29 @@ export function buildPlanTools(plans: PlanTools, tool: ToolFactory) {
       // only matches a plan still reading 'building'. Refusing here rather
       // than in the store keeps the reset available to the revise flow,
       // which is what it is for.
-      const status = plans.currentStatus()
-      if (status === 'building' || status === 'in_review') {
+      //
+      // The refusal names the way out. A plan that turned out to be
+      // unbuildable is a real situation, and an agent given only "no" either
+      // abandons the work or calls this again on every turn for the rest of
+      // the session.
+      if (inFlight !== null && reason === '') {
         return text(
-          `This session's plan is already ${status === 'building' ? 'being built' : 'up for review'}, ` +
-            'so it cannot be replaced. Carry on with the work you were given, and report the ' +
-            'pull request with record_pull_request when it exists.',
+          `This session's plan is already ${inFlight.label}, so it ` +
+            'cannot be revised. Carry on with the work you were given, and report the pull ' +
+            'request with record_pull_request when it exists. If that plan is genuinely ' +
+            'impossible or obsolete, pass `supersedes_reason` saying why, and it will be ' +
+            'closed so this one can replace it.',
           true,
         )
       }
 
-      const plan = plans.propose(body)
+      const plan =
+        reason === '' ? plans.propose(body) : plans.propose(body, { supersedeReason: reason })
+
       return text(
-        `Presented "${plan.title}" for review. Stop here — you will be told whether to build it.`,
+        (inFlight === null ? '' : `Closed "${inFlight.title}". `) +
+          `Presented "${plan.title}" for review. Stop here — you will be told whether to ` +
+          'build it.',
       )
     },
   )
@@ -153,6 +182,17 @@ export function buildPlanTools(plans: PlanTools, tool: ToolFactory) {
   )
 
   return [proposePlan, recordPullRequest]
+}
+
+/**
+ * The plan a proposal would throw away, and how to describe it to the agent.
+ *
+ * Null when there is nothing in flight: no plan at all, or one still waiting
+ * on your review, which a new body is simply the next version of.
+ */
+function blocking(plan: Plan | null): { title: string; label: string } | null {
+  const label = plan === null ? undefined : IN_FLIGHT[plan.status]
+  return plan === null || label === undefined ? null : { title: plan.title, label }
 }
 
 /** A pull request lives at an address, and the modal turns this into a link. */

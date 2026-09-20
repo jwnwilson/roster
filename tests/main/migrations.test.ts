@@ -893,3 +893,132 @@ describe('migration 11 — a session can be given a name', () => {
     old.close()
   })
 })
+
+describe('migration 19 — a plan can be closed', () => {
+  /** A database stopped at version 18, as an install on the last build would be. */
+  function atVersion18() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (const step of MIGRATIONS.slice(0, 18)) old.exec(step)
+    old.pragma('user_version = 18')
+    return old
+  }
+
+  /** A plan that has got as far as a pull request, and its thread. */
+  function seed(target: Database.Database): void {
+    target
+      .prepare(
+        'INSERT INTO sessions (id, agent_id, title, origin, status, created_at)' +
+          " VALUES ('s1', 'debugging', 'Work', 'you', 'idle', 0)",
+      )
+      .run()
+    target
+      .prepare(
+        'INSERT INTO plans (id, session_id, agent_id, title, status, version, branch,' +
+          ' pr_url, created_at, updated_at)' +
+          " VALUES ('p1', 's1', 'debugging', 'Archive projects', 'in_review', 3," +
+          " 'roster/plan-p1-archive', 'https://github.com/o/r/pull/31', 11, 22)",
+      )
+      .run()
+    target
+      .prepare(
+        'INSERT INTO plan_comments (id, plan_id, author, tone, text, version, created_at, quote)' +
+          " VALUES ('c1', 'p1', 'You', 'you', 'change section 3', 1, 0, 'Archiving keeps the row.')",
+      )
+      .run()
+  }
+
+  const close = (target: Database.Database) =>
+    target
+      .prepare(
+        'INSERT INTO plans (id, session_id, agent_id, title, status, version, created_at, updated_at)' +
+          " VALUES ('p2', 's1', 'debugging', 'Second go', 'closed', 1, 0, 0)",
+      )
+      .run()
+
+  test('accepts a status version 18 refused', () => {
+    const old = atVersion18()
+    seed(old)
+    expect(() => close(old)).toThrow(/CHECK/)
+
+    migrate(old)
+
+    expect(() => close(old)).not.toThrow()
+    old.close()
+  })
+
+  test('carries every column of the plan across untouched', () => {
+    const old = atVersion18()
+    seed(old)
+
+    migrate(old)
+
+    expect(old.prepare('SELECT * FROM plans').get()).toEqual({
+      id: 'p1',
+      session_id: 's1',
+      agent_id: 'debugging',
+      title: 'Archive projects',
+      status: 'in_review',
+      version: 3,
+      branch: 'roster/plan-p1-archive',
+      pr_url: 'https://github.com/o/r/pull/31',
+      created_at: 11,
+      updated_at: 22,
+    })
+    old.close()
+  })
+
+  test('keeps every note, and the passage each one was written about', () => {
+    // The regression this exists for: widening the CHECK means rebuilding
+    // plans, and dropping the scrap table fires plan_comments' ON DELETE
+    // CASCADE — which would silently take every plan thread with it.
+    const old = atVersion18()
+    seed(old)
+
+    migrate(old)
+
+    expect(old.prepare('SELECT id, text, quote FROM plan_comments').get()).toEqual({
+      id: 'c1',
+      text: 'change section 3',
+      quote: 'Archiving keeps the row.',
+    })
+    old.close()
+  })
+
+  test('leaves the rebuilt tables sound, with their indexes and foreign keys', () => {
+    const old = atVersion18()
+    seed(old)
+
+    migrate(old)
+
+    expect(old.pragma('foreign_key_check')).toEqual([])
+    expect(old.pragma('integrity_check')).toEqual([{ integrity_check: 'ok' }])
+    expect(
+      (old.pragma('index_list(plans)') as { name: string }[]).map((i) => i.name),
+    ).toContain('ix_plans_session')
+    // The child has to point at the new plans table, not the one renamed
+    // aside during the rebuild.
+    expect(old.pragma('foreign_key_list(plan_comments)')).toMatchObject([{ table: 'plans' }])
+    old.close()
+  })
+
+  test('a thread still follows its plan to the grave afterwards', () => {
+    const old = atVersion18()
+    seed(old)
+    migrate(old)
+
+    old.prepare("DELETE FROM sessions WHERE id = 's1'").run()
+
+    expect(old.prepare('SELECT COUNT(*) AS n FROM plans').get()).toEqual({ n: 0 })
+    expect(old.prepare('SELECT COUNT(*) AS n FROM plan_comments').get()).toEqual({ n: 0 })
+    old.close()
+  })
+
+  test('leaves a database with no plans alone', () => {
+    const old = atVersion18()
+
+    expect(() => migrate(old)).not.toThrow()
+    expect(version(old)).toBe(MIGRATIONS.length)
+    old.close()
+  })
+})

@@ -21,8 +21,13 @@ function insertSession(id: string): void {
   ).run(id)
 }
 
-function capture(body: string, sessionId = 's1') {
-  return plans.capture({ sessionId, agentId: 'debugging', body })
+function capture(body: string, sessionId = 's1', supersedeReason?: string) {
+  return plans.capture({
+    sessionId,
+    agentId: 'debugging',
+    body,
+    ...(supersedeReason === undefined ? {} : { supersedeReason }),
+  })
 }
 
 beforeEach(async () => {
@@ -305,5 +310,143 @@ describe('what the rest of the app hears about', () => {
     capture(V1)
 
     expect(seen).toEqual([])
+  })
+})
+
+describe('superseding a plan that has moved past review', () => {
+  const V3 = '# Archive projects\n\nThird time.\n'
+  const WHY = 'The archive column was dropped in v3, so this plan cannot be built.'
+
+  /** A plan the agent is already building, which is what blocks a rewrite. */
+  function building() {
+    const plan = capture(V1)
+    return plans.setStatus(plan.id, 'building', { branch: 'roster/plan-abc-archive' })
+  }
+
+  test('starts a new plan rather than a new version of the old one', () => {
+    const old = building()
+
+    const replacement = plans.capture({
+      sessionId: 's1',
+      agentId: 'debugging',
+      body: V2,
+      supersedeReason: WHY,
+    })
+
+    // A different approach is a different document, not v2 of the abandoned
+    // one — otherwise the two blur into a single history.
+    expect(replacement.id).not.toBe(old.id)
+    expect(replacement).toMatchObject({ status: 'draft', version: 1 })
+    expect(plans.listBySession('s1').map((p) => p.id)).toEqual([old.id, replacement.id])
+  })
+
+  test('closes the old plan, keeping everything it had picked up', () => {
+    const old = building()
+    plans.recordPullRequest(old.id, { url: 'https://github.com/o/r/pull/31' })
+    capture(V2, 's1', WHY)
+
+    expect(plans.findById(old.id)).toMatchObject({
+      status: 'closed',
+      version: 1,
+      branch: 'roster/plan-abc-archive',
+      prUrl: 'https://github.com/o/r/pull/31',
+    })
+  })
+
+  test('says why in the closed plan’s thread, in the agent’s name', () => {
+    const old = building()
+    capture(V2, 's1', WHY)
+
+    expect(plans.comments(old.id)).toEqual([
+      expect.objectContaining({ tone: 'agent', author: 'debugging', text: WHY }),
+    ])
+  })
+
+  test('refuses to replace a plan being built when no reason is given', () => {
+    building()
+
+    expect(() => capture(V2)).toThrow('is already being built')
+  })
+
+  test('refuses to replace a plan up for review when no reason is given', () => {
+    const old = building()
+    plans.recordPullRequest(old.id, { url: 'https://github.com/o/r/pull/31' })
+
+    expect(() => capture(V2)).toThrow('is already up for review')
+    // The refusal must leave the plan exactly as it was.
+    expect(plans.findById(old.id)?.status).toBe('in_review')
+  })
+
+  test('never brings a closed plan back to life', () => {
+    const old = building()
+    const replacement = capture(V2, 's1', WHY)
+
+    const revised = capture(V3)
+
+    // The next proposal belongs to the plan that is open, not to the one that
+    // was abandoned — versioning a closed plan would resurrect it as a draft.
+    expect(revised.id).toBe(replacement.id)
+    expect(revised.version).toBe(2)
+    expect(plans.findById(old.id)?.status).toBe('closed')
+  })
+
+  test('starts fresh when every plan on the session is closed', () => {
+    const old = building()
+    const replacement = capture(V2, 's1', WHY)
+    plans.close(replacement.id, { author: 'debugging', reason: 'Abandoned too.' })
+
+    const third = capture(V3)
+
+    expect(third.id).not.toBe(old.id)
+    expect(third.id).not.toBe(replacement.id)
+    expect(third).toMatchObject({ status: 'draft', version: 1 })
+  })
+
+  test('a reason on a plan still in your hands revises it instead', () => {
+    const plan = capture(V1)
+
+    const revised = capture(V2, 's1', WHY)
+
+    // Nothing was in flight, so there is nothing to abandon: a draft being
+    // rewritten is the ordinary revise path.
+    expect(revised.id).toBe(plan.id)
+    expect(revised.version).toBe(2)
+    expect(plans.findById(plan.id)?.status).toBe('draft')
+  })
+
+  test('and the reason becomes that revision’s thread line', () => {
+    const plan = capture(V1)
+
+    capture(V2, 's1', WHY)
+
+    // Better than "Revised the plan — v2." when the agent said why.
+    expect(plans.comments(plan.id).map((c) => c.text)).toEqual([WHY])
+  })
+
+  test('both plans announce themselves, so an open modal sees the close', () => {
+    building()
+    const seen: PlanEvent[] = []
+    plans.subscribe((event) => seen.push(event))
+
+    capture(V2, 's1', WHY)
+
+    expect(seen.filter((e) => e.type === 'plan-updated')).toHaveLength(2)
+  })
+})
+
+describe('closing a plan outright', () => {
+  test('marks it closed and says why in the thread', () => {
+    const plan = capture(V1)
+
+    const closed = plans.close(plan.id, { author: 'debugging', reason: 'Not worth doing.' })
+
+    expect(closed.status).toBe('closed')
+    expect(plans.comments(plan.id)).toEqual([
+      expect.objectContaining({ tone: 'agent', author: 'debugging', text: 'Not worth doing.' }),
+    ])
+  })
+
+  test('refuses a plan that does not exist', () => {
+    expect(() => plans.close('nope', { author: 'a', reason: 'b' })).toThrow('unknown plan "nope"')
   })
 })
