@@ -231,3 +231,90 @@ describe('buildProjectBrief — notes', () => {
     expect(brief('   \n\n')).not.toContain('Project notes')
   })
 })
+
+describe('buildProjectBrief — the repositories block', () => {
+  function repo(name: string, isCurrent = false, description = '') {
+    return { name, pathLabel: `~/work/${name}`, description, isCurrent }
+  }
+
+  function withRepos(repos: ReturnType<typeof repo>[]): string {
+    const filed = tasks.findAll().filter((task) => task.projectId === project.id)
+    return buildProjectBrief({
+      project,
+      tasks: filed,
+      comments: commentsOf(filed),
+      agentName,
+      repos,
+    })
+  }
+
+  test('a project with no repositories reads exactly as it did before', () => {
+    // The whole compatibility story in one assertion: every existing install
+    // has no repositories, and none of them should see the brief change.
+    const filed = tasks.findAll().filter((task) => task.projectId === project.id)
+    const before = buildProjectBrief({ project, tasks: filed, comments: commentsOf(filed), agentName })
+
+    expect(withRepos([])).toBe(before)
+  })
+
+  test('lists each repository with its path', () => {
+    const text = withRepos([repo('api'), repo('web')])
+
+    expect(text).toContain('Repositories')
+    expect(text).toContain('~/work/api')
+    expect(text).toContain('~/work/web')
+  })
+
+  test('marks the one the turn is running in', () => {
+    const text = withRepos([repo('api'), repo('web', true)])
+
+    expect(text).toContain('web — ~/work/web (you are here)')
+    expect(text).not.toContain('api — ~/work/api (you are here)')
+  })
+
+  test('marks nothing when the turn runs outside every one of them', () => {
+    // A real state, not a bug — and the one Task "turns run where the project
+    // says" exists to fix. Marking the primary anyway would assert a
+    // directory the agent is not standing in.
+    const text = withRepos([repo('api'), repo('web')])
+
+    expect(text).not.toContain('you are here')
+  })
+
+  test('puts the current repository first, so a tight budget cannot drop it', () => {
+    const text = withRepos([repo('api'), repo('web'), repo('types', true)])
+    const block = text.slice(text.indexOf('Repositories'))
+
+    // `fit` keeps a block's head, so the marked line has to be in it.
+    expect(block.split('\n')[1]).toContain('you are here')
+  })
+
+  test('carries the one-line description an agent needs to tell them apart', () => {
+    const text = withRepos([repo('types', false, 'protobuf definitions')])
+
+    expect(text).toContain('protobuf definitions')
+  })
+
+  test('comes before the notes, which may refer to a repository by name', () => {
+    const text = buildProjectBrief({
+      project,
+      tasks: [],
+      comments: [],
+      agentName,
+      notes: 'The retry logic is in the gateway.',
+      repos: [repo('gateway', true)],
+    })
+
+    expect(text.indexOf('Repositories')).toBeLessThan(text.indexOf('Project notes'))
+  })
+
+  test('admits what it left out rather than trailing off', () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      repo(`service-with-a-fairly-long-name-${i}`, false, 'one of very many'),
+    )
+
+    const text = withRepos(many)
+
+    expect(text).toContain('more repositories')
+  })
+})

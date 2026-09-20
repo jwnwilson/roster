@@ -51,6 +51,31 @@ interface ClaudeSkillOptions {
  * Registering Roster's library as a local plugin fixes that from any working
  * directory, which is the point: the path is Roster's home, not the agent's cwd.
  */
+/**
+ * The skill options, plus the project's other repositories.
+ *
+ * Separate from `claudeSkillOptions` because that function answers `{}` when
+ * an agent has no skills, and an agent with no skills is exactly the common
+ * case. Folding the roots in there would grant them only to agents that
+ * happened to have a skill enabled — a feature that reads correctly in the
+ * brief and fails at write time.
+ *
+ * `additionalDirectories` is read *and* write under the SDK; there is no
+ * read-only mode. That asymmetry with Codex is documented rather than
+ * papered over — see StartOptions.additionalRoots.
+ */
+export function withAdditionalRoots(
+  options: ClaudeSkillOptions,
+  roots: readonly string[] | undefined,
+): ClaudeSkillOptions {
+  if (roots === undefined || roots.length === 0) return options
+
+  return {
+    ...options,
+    additionalDirectories: [...(options.additionalDirectories ?? []), ...roots],
+  }
+}
+
 export function claudeSkillOptions(skills: readonly EnabledSkill[]): ClaudeSkillOptions {
   if (skills.length === 0) return {}
 
@@ -145,7 +170,10 @@ export class ClaudeRunner implements Runner {
         ...(options.systemPrompt !== ''
           ? { systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: options.systemPrompt } }
           : {}),
-        ...claudeSkillOptions(options.skills),
+        // Merged here rather than inside claudeSkillOptions, which returns {}
+        // when no skills are enabled — appending there would silently grant
+        // nothing for every agent without skills, which is most of them.
+        ...withAdditionalRoots(claudeSkillOptions(options.skills), options.additionalRoots),
         ...(Object.keys(options.mcpServers).length > 0 ||
         Object.keys(options.inProcessMcpServers ?? {}).length > 0
           ? {

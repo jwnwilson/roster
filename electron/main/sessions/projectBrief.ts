@@ -33,6 +33,17 @@ export const PROJECT_BRIEF_BUDGET = 2000
  */
 const NOTES_BUDGET_SHARE = 0.5
 
+/**
+ * The most of the budget the repository list may take.
+ *
+ * A repository line costs roughly 60-80 characters, so 15% covers three or
+ * four and admits the rest. Deliberately a share of the existing budget
+ * rather than an increase to it: the comment on PROJECT_BRIEF_BUDGET is
+ * explicit that every turn pays for this, so a project with eight checkouts
+ * would otherwise silently cost half again on every turn of every session.
+ */
+const REPOS_BUDGET_SHARE = 0.15
+
 /** One comment, cut to a line. Long enough for a conclusion, not a transcript. */
 const COMMENT_EXCERPT_CHARS = 220
 
@@ -57,6 +68,29 @@ export interface ProjectBriefInput {
   agentName: (agentId: string) => string | null
   /** The project's NOTES.md, when it has one. */
   notes?: string
+  /**
+   * The project's repositories, and which one this turn runs in.
+   *
+   * Omitted entirely for a project that names none, in which case the brief
+   * is byte-identical to the one Roster sent before it could.
+   */
+  repos?: readonly BriefRepo[]
+}
+
+export interface BriefRepo {
+  name: string
+  /** Home collapsed to ~; the agent reads paths, it does not resolve them. */
+  pathLabel: string
+  description: string
+  /**
+   * Whether this is the directory the turn is actually running in.
+   *
+   * At most one is true, and **none** is when the turn runs outside every
+   * repository the project lists. That is a real state, not a bug, and the
+   * brief says so by marking nothing rather than falling back to the primary
+   * — asserting the wrong directory is the one thing this must never do.
+   */
+  isCurrent: boolean
 }
 
 /**
@@ -117,6 +151,14 @@ function blocksOf(input: ProjectBriefInput): Block[] {
 
   return [
     {
+      // First, above the notes: an agent reading "the retry logic is in the
+      // gateway, not the API" has to already know what "the gateway" names.
+      heading: 'Repositories',
+      lines: repoLines(input.repos),
+      more: (n) => `(+${n} more repositories)`,
+      share: REPOS_BUDGET_SHARE,
+    },
+    {
       heading: 'Project notes',
       lines: noteLines(input.notes),
       more: (n) => `(+${n} earlier lines — use recall)`,
@@ -143,6 +185,29 @@ function blocksOf(input: ProjectBriefInput): Block[] {
       more: (n) => `(+${n} more comments — use read_task)`,
     },
   ]
+}
+
+/**
+ * One line per repository, the one the turn runs in first.
+ *
+ * Ordered by relevance rather than by position, because `fit` keeps a block's
+ * head and drops its tail: under a tight budget, position order would throw
+ * away the `(you are here)` line — the single most load-bearing one in the
+ * block — and replace it with "(+1 more repositories)". The primary is still
+ * first in the common case, because it usually is where the turn runs.
+ */
+function repoLines(repos: readonly BriefRepo[] | undefined): string[] {
+  if (repos === undefined || repos.length === 0) return []
+
+  const ordered = [...repos].sort(
+    (a, b) => Number(b.isCurrent) - Number(a.isCurrent),
+  )
+
+  return ordered.map((repo) => {
+    const here = repo.isCurrent ? ' (you are here)' : ''
+    const about = repo.description.trim() === '' ? '' : ` — ${repo.description.trim()}`
+    return `- ${repo.name} — ${repo.pathLabel}${here}${about}`
+  })
 }
 
 function headerOf(project: Project): string {

@@ -6,6 +6,7 @@ import type {
   McpServer,
   Message,
   Project,
+  ProjectRepo,
   RunnerStatus,
   Session,
   SetupState,
@@ -89,6 +90,15 @@ export interface RosterState {
   /** agentId -> the last few lines of its most recent session. */
   transcripts: Record<string, TranscriptLine[]>
   projects: Project[]
+  /**
+   * Each project's repositories, primary first, by project id.
+   *
+   * Loaded per project rather than all at once: only the modal editing a
+   * project and the rail of a session filed under one ever need them, and a
+   * project nobody has opened has nothing worth holding. A missing key means
+   * "not asked yet", which is why it is absent rather than an empty array.
+   */
+  projectRepos: Record<string, readonly ProjectRepo[]>
   tasks: Task[]
   /** taskId -> its thread, loaded when the task is opened. */
   taskComments: Record<string, TaskComment[]>
@@ -218,6 +228,7 @@ export interface RosterState {
   setMcpServers(servers: McpServer[]): void
   setSkills(skills: Skill[]): void
   setProjects(projects: Project[]): void
+  setProjectRepos(projectId: string, repos: readonly ProjectRepo[]): void
   setTasks(tasks: Task[]): void
   setSetup(setup: SetupState): void
   /** Replaces a session's pending approvals, as read back from the main process. */
@@ -297,6 +308,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   spendByProject: {},
   transcripts: {},
   projects: [],
+  projectRepos: {},
   tasks: [],
   taskComments: {},
   plans: {},
@@ -364,6 +376,8 @@ export const useRoster = create<RosterState>((set, get) => ({
   setMcpServers: (mcpServers) => set({ mcpServers }),
   setSkills: (skills) => set({ skills }),
   setProjects: (projects) => set({ projects }),
+  setProjectRepos: (projectId, repos) =>
+    set((s) => ({ projectRepos: { ...s.projectRepos, [projectId]: repos } })),
   setTasks: (tasks) => set({ tasks }),
   setSetup: (setup) => set({ setup }),
   setApprovals: (sessionId, approvals) =>
@@ -544,7 +558,7 @@ export function selectSidebarAgents(state: RosterState): Agent[] {
   const visible = selectVisibleAgents(state)
   const q = state.query.trim().toLowerCase()
   if (q === '') return visible
-  return visible.filter((a) => matchesSearch(a, state.sessions[a.id] ?? NO_SESSIONS, q))
+  return visible.filter((a) => matchesSearch(a, selectSidebarSessions(state, a), q))
 }
 
 /**
@@ -555,7 +569,19 @@ export function selectSidebarAgents(state: RosterState): Agent[] {
  * was asked for and every session it owns belongs under it.
  */
 export function selectSidebarSessions(state: RosterState, agent: Agent): readonly Session[] {
-  const sessions = state.sessions[agent.id] ?? NO_SESSIONS
+  // The project filter first, and it narrows the sessions rather than the
+  // roster. The grid drops an agent whose sessions are all filtered out; the
+  // sidebar deliberately does not, because it is the app's navigation —
+  // hiding an agent here would leave no way to open it, and every session is
+  // unfiled until somebody files it, so "no work in this project" is the
+  // ordinary state of a new agent rather than a reason to make it
+  // unreachable. The count on the row is what says there is nothing here.
+  const sessions = sessionsInProject(
+    state.sessions[agent.id] ?? NO_SESSIONS,
+    state.projectFilter,
+    archivedProjectIds(state),
+  )
+
   const q = state.query.trim().toLowerCase()
   if (q === '' || agent.name.toLowerCase().includes(q)) return sessions
 
@@ -1103,6 +1129,15 @@ export function reduceTaskEvent(
           : {}),
       }
     }
+
+    case 'project-repos':
+      // Held only for projects somebody has already looked at. Caching a list
+      // for a project this window has never opened would mean holding state
+      // nothing on screen reads, and going stale while it did.
+      if (state.projectRepos[event.projectId] === undefined) return {}
+      return {
+        projectRepos: { ...state.projectRepos, [event.projectId]: event.repos },
+      }
   }
 }
 
