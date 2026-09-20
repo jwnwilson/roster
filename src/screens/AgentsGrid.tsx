@@ -77,7 +77,7 @@ export function AgentsGrid() {
         : `${visible} configured · ${running} running`
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       <ScreenHeader title="Agents">
         <Segmented<GridView>
           ariaLabel="Agents view"

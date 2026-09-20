@@ -187,15 +187,10 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   }
 
   return (
-    <div className="flex h-screen flex-col">
-      <header
-        className="flex h-header flex-none items-center gap-[10px] border-b border-line px-[18px]"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-      >
-        <div
-          className="flex flex-1 items-center gap-[10px]"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
+    <div className="flex h-full flex-col">
+      {/* Not a drag region — the title bar above moves the window. */}
+      <header className="flex h-header flex-none items-center gap-[10px] border-b border-line px-[18px]">
+        <div className="flex flex-1 items-center gap-[10px]">
           <button
             type="button"
             onClick={() => go('grid')}

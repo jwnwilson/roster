@@ -12,7 +12,6 @@ import type { Agent, Session } from '@shared/types'
 import { sessionLabel } from '@shared/sessions'
 import { formatUsageCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
-import { Logo } from './Logo'
 import { ProjectFilter } from './ProjectFilter'
 import { UpdateRow } from './UpdateRow'
 import { ChevronIcon } from './icons'
@@ -66,9 +65,7 @@ export function Sidebar() {
   }
 
   return (
-    <nav className="flex w-sidebar flex-none flex-col border-r border-line bg-rail">
-      <WindowChrome />
-
+    <nav className="flex w-sidebar min-h-0 flex-none flex-col border-r border-line bg-rail">
       <div className="flex flex-col gap-[1px] px-[8px] py-[12px]">
         {NAV.map((item) => {
           const active = screen === item.key
@@ -253,56 +250,3 @@ function SidebarSessionRow({ session, active, onOpen }: SidebarSessionRowProps) 
   )
 }
 
-/**
- * The design draws its own window controls in the sidebar header, so the
- * native frame is disabled and these three dots are the real controls.
- */
-function WindowChrome() {
-  // The traffic-light convention, in the app's own palette rather than
-  // macOS's saturated one, which would shout next to everything else here.
-  // Colour alone does not identify a button, so each keeps its label and
-  // gains a tooltip.
-  const controls = [
-    {
-      label: 'Minimize window',
-      color: 'var(--color-amber)',
-      action: () => window.roster.window.minimize(),
-    },
-    {
-      label: 'Maximize window',
-      color: 'var(--color-done)',
-      action: () => window.roster.window.maximize(),
-    },
-    {
-      label: 'Close window',
-      color: 'var(--color-error)',
-      action: () => window.roster.window.close(),
-    },
-  ]
-
-  return (
-    <header
-      className="flex h-header flex-none items-center gap-[8px] border-b border-line px-[14px]"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-    >
-      <Logo />
-      <span className="font-semibold tracking-[-0.01em]">Roster</span>
-      <div
-        className="ml-auto flex gap-[5px]"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      >
-        {controls.map((control) => (
-          <button
-            key={control.label}
-            type="button"
-            aria-label={control.label}
-            title={control.label}
-            onClick={control.action}
-            style={{ background: control.color }}
-            className="h-[9px] w-[9px] cursor-pointer rounded-full border-0 p-0 opacity-85 hover:opacity-100"
-          />
-        ))}
-      </div>
-    </header>
-  )
-}

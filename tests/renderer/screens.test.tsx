@@ -117,14 +117,6 @@ describe('Sidebar', () => {
     expect(useRoster.getState().agentId).toBe('b')
   })
 
-  test('the window controls are real', async () => {
-    const user = userEvent.setup()
-    render(<Sidebar />)
-
-    await user.click(screen.getByLabelText('Close window'))
-    expect(window.roster.window.close).toHaveBeenCalled()
-  })
-
   test('keeps an agent\u2019s sessions out of the rail until the row is opened', () => {
     useRoster.setState({ sessions: SESSIONS })
     render(<Sidebar />)

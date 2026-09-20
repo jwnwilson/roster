@@ -104,7 +104,7 @@ export function Tasks() {
 
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       <ScreenHeader title="Tasks">
         <Segmented
           ariaLabel="Tasks view"
