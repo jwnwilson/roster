@@ -7,7 +7,7 @@ import { contextWindowFor } from '@shared/models'
 import { CustomRunner } from '@main/runners/custom'
 import { CodexRunner, codexPermissionOverrides } from '@main/runners/codex'
 import { getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
-import { ClaudeRunner, claudeSkillOptions, describeCommand } from '@main/runners/claude'
+import { ClaudeRunner, claudeSkillOptions, withAdditionalRoots, describeCommand } from '@main/runners/claude'
 import type { RunnerEvent, StartOptions } from '@main/runners/types'
 import { rosterHome, worktreesDir } from '@main/store/paths'
 import { ROSTER_PLUGIN_NAME } from '@main/store/skillPlugin'
@@ -137,6 +137,32 @@ describe('claudeSkillOptions — what makes a skill invocable', () => {
     // An empty `skills` array would mean "enable none", which is right — but
     // loading a plugin to then filter it to nothing is work for no reason.
     expect(claudeSkillOptions([])).toEqual({})
+  })
+})
+
+describe('withAdditionalRoots — the project’s other repositories', () => {
+  test('grants them to an agent that has no skills at all', () => {
+    // The trap this exists for: claudeSkillOptions answers {} for an agent
+    // with no skills, which is most of them. Folding the roots in there
+    // would grant nothing while still reading correctly in the brief.
+    expect(withAdditionalRoots(claudeSkillOptions([]), ['/work/web'])).toEqual({
+      additionalDirectories: ['/work/web'],
+    })
+  })
+
+  test('keeps the skill directories it was already granting', () => {
+    const skills = [{ name: 'repro', path: '/skills/repro' }]
+
+    const options = withAdditionalRoots(claudeSkillOptions(skills), ['/work/web'])
+
+    expect(options.additionalDirectories).toEqual(['/skills/repro', '/work/web'])
+  })
+
+  test('changes nothing when the project names no other repository', () => {
+    const options = claudeSkillOptions([])
+
+    expect(withAdditionalRoots(options, [])).toBe(options)
+    expect(withAdditionalRoots(options, undefined)).toBe(options)
   })
 })
 

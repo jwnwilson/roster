@@ -121,6 +121,15 @@ export interface Session {
   taskId?: string | null
   /** The last time Roster automatically asked this task session to check in. */
   lastNudgedAt?: number | null
+  /**
+   * The directory this session's turns run in, fixed when the first one
+   * started. Null until then, and for every session that predates it.
+   *
+   * Never rewritten. A resumed Codex thread inherits its directory from the
+   * stored session and cannot be moved, so an answer that could change under
+   * a live session would mean one thing under Claude and another under Codex.
+   */
+  workspaceRoot?: string | null
   createdAt: number
 }
 
@@ -301,8 +310,13 @@ export const TASK_PRIORITIES = ['urgent', 'high', 'medium', 'low'] as const
 export type TaskPriority = (typeof TASK_PRIORITIES)[number]
 
 /**
- * A named grouping of work. Deliberately just metadata: a project does not
- * own a directory or a set of agents, it only labels tasks and sessions.
+ * A named grouping of work.
+ *
+ * Still not an owner of agents — it labels tasks and sessions rather than
+ * holding them. It does now name the repositories its work happens in, which
+ * live in `project_repos` rather than on this row: a project may have none,
+ * one, or several, and which of them a turn runs in is answered by
+ * `resolveWorkspace`, not by a field here.
  */
 export interface Project {
   id: string
@@ -319,6 +333,42 @@ export interface Project {
    * brings the whole grouping back.
    */
   archivedAt: number | null
+}
+
+/**
+ * A checkout a project's work happens in.
+ *
+ * Position 0 is the **primary**: the directory a turn runs in, the terminal
+ * opens in, and a plan would branch from. The rest are reachable — an agent
+ * working on the API can read the protobuf definitions it has to match —
+ * without being the place it is standing.
+ *
+ * A row here is a pointer, never the directory itself. Removing one, or
+ * deleting the project it belongs to, removes Roster's note of the checkout
+ * and leaves the checkout alone.
+ */
+export interface ProjectRepo {
+  id: string
+  projectId: string
+  /** Absolute and normalised; see `canonicalPath`. */
+  path: string
+  /** `path` with the home directory collapsed to ~, for display. */
+  pathLabel: string
+  /** What to call it in the brief and the picker. Defaults to basename(path). */
+  name: string
+  /** One line on what this repository is, for the brief. May be empty. */
+  description: string
+  position: number
+  /**
+   * Derived, never persisted: whether the path is still there, and whether it
+   * still looks like a checkout.
+   *
+   * A repository that has been moved or deleted is shown and marked, not
+   * hidden — dropping it silently would read as "this project has one repo",
+   * which is a different and wrong claim.
+   */
+  exists: boolean
+  isRepository: boolean
 }
 
 export interface Task {

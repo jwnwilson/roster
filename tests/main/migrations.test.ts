@@ -894,13 +894,13 @@ describe('migration 11 — a session can be given a name', () => {
   })
 })
 
-describe('migration 17 — a plan can be closed', () => {
-  /** A database stopped at version 16, as an install on the last build would be. */
-  function atVersion16() {
+describe('migration 19 — a plan can be closed', () => {
+  /** A database stopped at version 18, as an install on the last build would be. */
+  function atVersion18() {
     const old = new Database(':memory:')
     old.pragma('foreign_keys = ON')
-    for (const step of MIGRATIONS.slice(0, 16)) old.exec(step)
-    old.pragma('user_version = 16')
+    for (const step of MIGRATIONS.slice(0, 18)) old.exec(step)
+    old.pragma('user_version = 18')
     return old
   }
 
@@ -936,8 +936,8 @@ describe('migration 17 — a plan can be closed', () => {
       )
       .run()
 
-  test('accepts a status version 16 refused', () => {
-    const old = atVersion16()
+  test('accepts a status version 18 refused', () => {
+    const old = atVersion18()
     seed(old)
     expect(() => close(old)).toThrow(/CHECK/)
 
@@ -948,7 +948,7 @@ describe('migration 17 — a plan can be closed', () => {
   })
 
   test('carries every column of the plan across untouched', () => {
-    const old = atVersion16()
+    const old = atVersion18()
     seed(old)
 
     migrate(old)
@@ -972,7 +972,7 @@ describe('migration 17 — a plan can be closed', () => {
     // The regression this exists for: widening the CHECK means rebuilding
     // plans, and dropping the scrap table fires plan_comments' ON DELETE
     // CASCADE — which would silently take every plan thread with it.
-    const old = atVersion16()
+    const old = atVersion18()
     seed(old)
 
     migrate(old)
@@ -986,7 +986,7 @@ describe('migration 17 — a plan can be closed', () => {
   })
 
   test('leaves the rebuilt tables sound, with their indexes and foreign keys', () => {
-    const old = atVersion16()
+    const old = atVersion18()
     seed(old)
 
     migrate(old)
@@ -1003,7 +1003,7 @@ describe('migration 17 — a plan can be closed', () => {
   })
 
   test('a thread still follows its plan to the grave afterwards', () => {
-    const old = atVersion16()
+    const old = atVersion18()
     seed(old)
     migrate(old)
 
@@ -1015,7 +1015,7 @@ describe('migration 17 — a plan can be closed', () => {
   })
 
   test('leaves a database with no plans alone', () => {
-    const old = atVersion16()
+    const old = atVersion18()
 
     expect(() => migrate(old)).not.toThrow()
     expect(version(old)).toBe(MIGRATIONS.length)

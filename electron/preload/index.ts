@@ -124,6 +124,14 @@ const api: RosterApi = {
       ipcRenderer.invoke(CHANNELS.projectsWriteNotes, id, contents),
     onNotesChanged: (listener) =>
       subscribe<ProjectNotesPayload>(CHANNELS.projectsNotesChanged, listener),
+    repos: {
+      list: (projectId) => ipcRenderer.invoke(CHANNELS.projectsReposList, projectId),
+      add: (input) => ipcRenderer.invoke(CHANNELS.projectsReposAdd, input),
+      update: (id, patch) => ipcRenderer.invoke(CHANNELS.projectsReposUpdate, id, patch),
+      remove: (id) => ipcRenderer.invoke(CHANNELS.projectsReposRemove, id),
+      reorder: (projectId, orderedIds) =>
+        ipcRenderer.invoke(CHANNELS.projectsReposReorder, projectId, orderedIds),
+    },
   },
 
   tasks: {

@@ -148,6 +148,50 @@ describe('reduceTaskEvent — projects', () => {
   })
 })
 
+describe('reduceTaskEvent — project repositories', () => {
+  const REPOS = [
+    {
+      id: 'r1',
+      projectId: 'p1',
+      path: '/work/api',
+      pathLabel: '~/work/api',
+      name: 'api',
+      description: '',
+      position: 0,
+      exists: true,
+      isRepository: true,
+    },
+  ]
+
+  test('replaces the list for a project this window has loaded', () => {
+    const current = { ...state(), projectRepos: { p1: [] } }
+
+    const patch = reduceTaskEvent(current, { type: 'project-repos', projectId: 'p1', repos: REPOS })
+
+    expect(patch.projectRepos?.['p1']).toEqual(REPOS)
+  })
+
+  test('ignores a project this window never opened', () => {
+    // Caching a list nothing on screen reads would only go stale while it sat
+    // there; the list is read in full when the project is opened.
+    const patch = reduceTaskEvent(state(), {
+      type: 'project-repos',
+      projectId: 'p1',
+      repos: REPOS,
+    })
+
+    expect(patch).toEqual({})
+  })
+
+  test('leaves other projects alone', () => {
+    const current = { ...state(), projectRepos: { p1: [], p2: REPOS } }
+
+    const patch = reduceTaskEvent(current, { type: 'project-repos', projectId: 'p1', repos: REPOS })
+
+    expect(patch.projectRepos?.['p2']).toEqual(REPOS)
+  })
+})
+
 describe('columnOf — what a drop landed on', () => {
   const TASKS = [aTask({ id: 'ROS-1', status: 'todo' }), aTask({ id: 'ROS-2', status: 'done' })]
 

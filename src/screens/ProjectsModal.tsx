@@ -7,6 +7,7 @@ import { messageFor } from '@/lib/errors'
 import { relativeTime } from '@/state/format'
 import { ALL_PROJECTS, activeProjects, archivedProjects, useRoster } from '@/state/store'
 import { ProjectNotes } from './ProjectNotes'
+import { ProjectRepos } from './ProjectRepos'
 
 interface Draft {
   name: string
@@ -57,6 +58,7 @@ export function ProjectsModal() {
   const [error, setError] = useState<string | null>(null)
   /** The project whose NOTES.md fills the card, in place of the list. */
   const [notesFor, setNotesFor] = useState<Project | null>(null)
+  const [reposFor, setReposFor] = useState<Project | null>(null)
 
   const showing = tab === 'active' ? active : archived
   const matching = useMemo(() => matchingProjects(showing, query), [showing, query])
@@ -160,6 +162,8 @@ export function ProjectsModal() {
       header={
         notesFor ? (
           <h2 className="m-0 text-2xl font-semibold">Notes</h2>
+        ) : reposFor ? (
+          <h2 className="m-0 text-2xl font-semibold">Repositories</h2>
         ) : (
           <div className="flex items-center gap-[12px]">
             <h2 className="m-0 text-2xl font-semibold">Projects</h2>
@@ -180,7 +184,7 @@ export function ProjectsModal() {
         )
       }
       footer={
-        notesFor === null && pageCount > 1 ? (
+        notesFor === null && reposFor === null && pageCount > 1 ? (
           <>
             <span className="text-md text-dim">
               Page {current + 1} of {pageCount}
@@ -203,6 +207,8 @@ export function ProjectsModal() {
     >
       {notesFor ? (
         <ProjectNotes project={notesFor} onBack={() => setNotesFor(null)} />
+      ) : reposFor ? (
+        <ProjectRepos project={reposFor} onBack={() => setReposFor(null)} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="flex flex-none items-center gap-[10px] border-b border-line px-[18px] py-[10px]">
@@ -235,6 +241,7 @@ export function ProjectsModal() {
                     project={project}
                     taskCount={tasks.filter((task) => task.projectId === project.id).length}
                     onNotes={() => setNotesFor(project)}
+                    onRepos={() => setReposFor(project)}
                     onEdit={() => beginEdit(project)}
                     onArchive={() => void setArchived(project, true)}
                     onRestore={() => void setArchived(project, false)}
@@ -317,6 +324,7 @@ interface ProjectRowProps {
   project: Project
   taskCount: number
   onNotes: () => void
+  onRepos: () => void
   onEdit: () => void
   onArchive: () => void
   onRestore: () => void
@@ -327,6 +335,7 @@ function ProjectRow({
   project,
   taskCount,
   onNotes,
+  onRepos,
   onEdit,
   onArchive,
   onRestore,
@@ -367,6 +376,9 @@ function ProjectRow({
         ) : (
           <>
             <SecondaryButton label="Notes" onClick={onNotes} className="ml-auto" />
+            {/* Where the work happens. Separate from Edit because the edit
+                form stages its changes and these write through. */}
+            <SecondaryButton label="Repos" onClick={onRepos} />
             <SecondaryButton label="Edit" onClick={onEdit} />
             {/* Not destructive: nothing is lost, and it can be taken back. */}
             <SecondaryButton label="Archive" onClick={onArchive} />
