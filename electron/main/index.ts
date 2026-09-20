@@ -143,6 +143,7 @@ async function captureIfRequested(win: BrowserWindow): Promise<void> {
 }
 
 void app.whenReady().then(async () => {
+  process.stdout.write('Hello, world!\n')
   applyDevIcon()
   registerIpc()
 
