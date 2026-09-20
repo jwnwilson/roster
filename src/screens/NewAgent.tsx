@@ -101,7 +101,7 @@ export function NewAgent() {
   }
 
   return (
-    <div className="flex h-screen justify-center overflow-y-auto px-[24px] pt-[56px] pb-[80px]">
+    <div className="flex h-full justify-center overflow-y-auto px-[24px] pt-[56px] pb-[80px]">
       <div className="flex w-full max-w-[560px] flex-col gap-[28px]">
         <header className="flex flex-col gap-[10px]">
           <h1 className="m-0 text-title font-semibold tracking-[-0.02em]">Roster</h1>

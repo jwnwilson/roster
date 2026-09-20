@@ -47,17 +47,12 @@ interface ScreenHeaderProps {
 /** The 44px header every screen opens with. */
 export function ScreenHeader({ title, children }: ScreenHeaderProps) {
   return (
-    <header
-      className="flex h-header flex-none items-center gap-[10px] border-b border-line px-[18px]"
-      style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-    >
+    // Not a drag region: the window is moved by the title bar above it. A
+    // draggable content header lurches the whole window when you try to
+    // select the text in it.
+    <header className="flex h-header flex-none items-center gap-[10px] border-b border-line px-[18px]">
       <h1 className="text-xl font-semibold tracking-[-0.01em]">{title}</h1>
-      <div
-        className="flex flex-1 items-center gap-[10px]"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      >
-        {children}
-      </div>
+      <div className="flex flex-1 items-center gap-[10px]">{children}</div>
     </header>
   )
 }

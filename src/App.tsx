@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { Sidebar } from './components/Sidebar'
+import { TitleBar } from './components/TitleBar'
 import { AgentDetail } from './screens/AgentDetail'
 import { AgentsGrid } from './screens/AgentsGrid'
 import { McpServers } from './screens/McpServers'
@@ -128,11 +129,17 @@ export function App() {
   ])
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-app font-ui text-xl text-ink">
-      <Sidebar />
-      <main className="flex min-w-0 flex-1 flex-col">
-        {!loaded ? <Loading /> : <Screen screen={screen} />}
-      </main>
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-app font-ui text-xl text-ink">
+      {/* Above the rail and the screen rather than inside either: the bar is
+          the window's chrome, and one only as wide as the sidebar leaves a
+          few hundred pixels to grab a 1440px window by. */}
+      <TitleBar />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar />
+        <main className="flex min-w-0 flex-1 flex-col">
+          {!loaded ? <Loading /> : <Screen screen={screen} />}
+        </main>
+      </div>
     </div>
   )
 }

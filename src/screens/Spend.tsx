@@ -30,7 +30,7 @@ export function Spend() {
   const nothingRun = byProvider.length === 0 && byAgent.length === 0 && byProject.length === 0
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       <ScreenHeader title="Spend">
         <span className="text-md text-dim" title={totals.hasEstimatedCost ? ESTIMATE_EXPLANATION : undefined}>
           {formatUsageCost(totals.costUsd, totals.hasEstimatedCost, totals.hasUnavailableCost)} across all agents

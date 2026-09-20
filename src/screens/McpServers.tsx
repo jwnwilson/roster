@@ -37,7 +37,7 @@ export function McpServers() {
   const [editing, setEditing] = useState<McpServerDraft | null>(null)
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       <ScreenHeader title="MCP servers">
         <Segmented
           ariaLabel="MCP view"
