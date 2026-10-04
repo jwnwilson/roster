@@ -5,6 +5,7 @@ describe('contextWindowFor', () => {
   test('knows the models Roster ships with', () => {
     expect(contextWindowFor('claude-opus-5')).toBe(1_000_000)
     expect(contextWindowFor('claude-haiku-4-5')).toBe(200_000)
+    expect(contextWindowFor('gpt-6-astra')).toBe(1_050_000)
   })
 
   test('reports nothing for an unknown model rather than guessing', () => {

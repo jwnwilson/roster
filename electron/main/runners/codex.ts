@@ -21,6 +21,7 @@ import type {
  * publishes no prices, so the price column stays empty rather than invented.
  */
 const FALLBACK_MODELS: ModelInfo[] = [
+  { id: 'gpt-6-astra', price: '' },
   { id: 'gpt-5.6-terra', price: '' },
   { id: 'gpt-5.6-luna', price: '' },
   { id: 'gpt-5.5', price: '' },
@@ -61,9 +62,9 @@ export class CodexRunner implements Runner {
    * Read from the CLI's own model cache, so the list is whatever the user's
    * Codex actually offers rather than a table Roster has to keep current.
    */
-  async models(): Promise<ModelInfo[]> {
+  async models(cachePath = join(homedir(), '.codex', 'models_cache.json')): Promise<ModelInfo[]> {
     try {
-      const raw = await readFile(join(homedir(), '.codex', 'models_cache.json'), 'utf8')
+      const raw = await readFile(cachePath, 'utf8')
       const parsed = JSON.parse(raw) as { models?: { slug?: unknown }[] }
 
       const models = (parsed.models ?? [])

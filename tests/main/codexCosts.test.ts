@@ -14,6 +14,7 @@ describe('Codex API-equivalent estimates', () => {
   })
 
   test.each([
+    ['gpt-6-astra', 60],
     ['gpt-5.6-terra', 14],
     ['gpt-5.6-luna', 1.4],
     ['gpt-5.4-mini', 5.25],
