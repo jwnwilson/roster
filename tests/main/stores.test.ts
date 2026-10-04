@@ -7,6 +7,7 @@ import { McpStore } from '@main/store/mcp'
 import { SessionStore } from '@main/store/sessions'
 import { SkillStore } from '@main/store/skills'
 import { UsageStore } from '@main/store/usage'
+import { CODEX_RATE_TABLE_VERSION } from '@main/costs/codex'
 import { seedIfEmpty } from '@main/store/seed'
 import { ROSTER_PLUGIN_NAME, writeSkillPluginManifest } from '@main/store/skillPlugin'
 import {
@@ -170,7 +171,7 @@ describe('UsageStore', () => {
 
     store.backfillCodex([{ id: 'codex-agent', runner: 'codex', model: 'gpt-5.1-codex' } as Agent])
 
-    expect(store.forSession(codex.id)).toMatchObject({ costType: 'estimated', costUsd: 11.25, model: 'gpt-5.1-codex', rateTableVersion: '2026-09-11' })
+    expect(store.forSession(codex.id)).toMatchObject({ costType: 'estimated', costUsd: 11.25, model: 'gpt-5.1-codex', rateTableVersion: CODEX_RATE_TABLE_VERSION })
     expect(store.forSession(actual.id)).toMatchObject({ costType: 'actual', costUsd: 1.5 })
   })
 
@@ -192,7 +193,7 @@ describe('UsageStore', () => {
       costType: 'estimated',
       costUsd: 35,
       model: 'gpt-5.5',
-      rateTableVersion: '2026-09-11',
+      rateTableVersion: CODEX_RATE_TABLE_VERSION,
     })
   })
 
