@@ -1,7 +1,7 @@
 import type { CostType } from '../../../shared/types'
 
 /** Bump this when changing a rate: completed rows retain their old version. */
-export const CODEX_RATE_TABLE_VERSION = '2026-09-11'
+export const CODEX_RATE_TABLE_VERSION = '2026-10-04'
 
 interface ModelRate {
   input: number
@@ -14,6 +14,7 @@ const RATES: Readonly<Record<string, ModelRate>> = {
   // These are the Codex runner's fallback choices. Keep this set in step with
   // FALLBACK_MODELS in runners/codex.ts; an offered fallback must either have
   // an explicit rate or be deliberately left unavailable.
+  'gpt-6-astra': { input: 10, cachedInput: 1, output: 50 },
   'gpt-5.6-terra': { input: 2, cachedInput: 0.2, output: 12 },
   'gpt-5.6-luna': { input: 0.2, cachedInput: 0.02, output: 1.2 },
   'gpt-5.5': { input: 5, cachedInput: 0.5, output: 30 },

@@ -334,9 +334,10 @@ describe('CodexRunner', () => {
 
   test('falls back to a known model list when the cache is unreadable', async () => {
     const runner = new CodexRunner()
-    const models = await runner.models()
+    const models = await runner.models(join(dir, 'missing-models-cache.json'))
 
     expect(models.length).toBeGreaterThan(0)
+    expect(models.map((model) => model.id)).toContain('gpt-6-astra')
     // Codex publishes no prices, so the column stays empty rather than invented.
     expect(models.every((m) => m.price === '')).toBe(true)
   })
