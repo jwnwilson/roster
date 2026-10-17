@@ -280,11 +280,16 @@ describe('AssistantChatPane — composer', () => {
     expect(screen.getByRole('button', { name: 'Record voice message' })).toBeEnabled()
   })
 
-  test('keeps the composer available while the agent is working', () => {
-    render(pane({ isStreaming: true }))
+  test('keeps the composer available while the agent is working', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    render(pane({ isStreaming: true, onSend }))
 
     expect(screen.getByLabelText('Message Debugging Agent')).toBeEnabled()
+    await user.type(screen.getByLabelText('Message Debugging Agent'), 'queue this')
     expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+    expect(onSend).toHaveBeenCalledWith('queue this')
   })
 
   test('sends what was typed', async () => {
@@ -362,10 +367,10 @@ describe('AssistantChatPane — composer', () => {
     expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('keep this')
   })
 
-  test('locks the composer while a turn is in flight', () => {
+  test('shows the streaming indicator while the composer remains available', () => {
     render(pane({ isStreaming: true }))
 
-    expect(screen.getByLabelText('Message Debugging Agent')).toBeDisabled()
+    expect(screen.getByLabelText('Message Debugging Agent')).toBeEnabled()
     expect(screen.getByText('Debugging Agent is working…')).toBeInTheDocument()
   })
 

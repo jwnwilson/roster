@@ -630,7 +630,9 @@ export class SessionManager {
    */
   private drain(sessionId: string): void {
     const queue = this.queued.get(sessionId)
-    const next = queue?.shift()
+    if (!queue) return
+
+    const next = queue.shift()
     if (!next) return
 
     if (queue.length === 0) this.queued.delete(sessionId)

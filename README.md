@@ -272,6 +272,8 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
 ## Design and decisions
 
 - `docs/design_handoff/` — the original design: screens, tokens, and the HTML prototype
+- `docs/adr/` — accepted architectural and operational decisions, including the
+  [scoped Computer Use pilot](docs/adr/0011-computer-use-is-scoped-to-approved-desktop-apps.md)
 - `docs/superpowers/specs/2026-08-23-roster-design.md` — the design spec, including
   every deviation from the handoff and why it was made
 

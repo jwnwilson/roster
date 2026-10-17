@@ -70,7 +70,10 @@ export function AssistantChatPane({
   const runtime = useExternalStoreRuntime<Message>({
     messages,
     convertMessage,
-    isRunning: isStreaming,
+    // Roster renders the running state itself and accepts follow-up messages
+    // into its session-local queue. Letting assistant-ui see a running turn
+    // would disable its Send control before onNew can enqueue that follow-up.
+    isRunning: false,
     onNew: async (message) => {
       const text = message.content
         .map((part) => (part.type === 'text' ? part.text : ''))
