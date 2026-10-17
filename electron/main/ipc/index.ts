@@ -406,7 +406,7 @@ export function registerIpc(): void {
   ipcMain.handle(
     CHANNELS.sessionsSend,
     (_e, sessionId: string, prompt: string, options?: SendOptions) =>
-      requireManager().send(sessionId, prompt, options ?? {}),
+      requireManager().enqueue(sessionId, prompt, options ?? {}),
   )
   ipcMain.handle(CHANNELS.voiceTranscribe, (_e, input: TranscriptionInput) =>
     requireTranscription().transcribe(input),

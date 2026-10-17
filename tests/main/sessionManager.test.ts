@@ -1098,7 +1098,7 @@ describe('SessionManager.enqueue', () => {
     )
   })
 
-  test('only the last queued prompt runs', async () => {
+  test('runs every queued prompt in send order', async () => {
     const release = gatedTurn()
     const session = manager.create('debugging', 'x')
     const turn = manager.send(session.id, 'first')
@@ -1108,9 +1108,9 @@ describe('SessionManager.enqueue', () => {
     release()
     await turn
 
-    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledTimes(2))
-    expect(runnerStub.run.mock.calls[1]?.[0]).toBe('fresh')
-    expect(runnerStub.run).not.toHaveBeenCalledWith('stale', expect.anything())
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledTimes(3))
+    expect(runnerStub.run.mock.calls[1]?.[0]).toBe('stale')
+    expect(runnerStub.run.mock.calls[2]?.[0]).toBe('fresh')
   })
 
   test('a session that has gone is dropped, not thrown', async () => {

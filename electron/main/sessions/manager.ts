@@ -86,6 +86,8 @@ export type SessionEvent =
   | { type: 'approval'; sessionId: string; approval: Approval }
   | { type: 'approval-resolved'; sessionId: string; approvalId: string }
   | { type: 'streaming'; sessionId: string; active: boolean }
+  /** How many submitted turns are waiting behind the one in flight. */
+  | { type: 'queued'; sessionId: string; count: number }
   /** What the agent is doing right now, for the streaming indicator. */
   | { type: 'activity'; sessionId: string; text: string }
   | { type: 'session-deleted'; sessionId: string; agentId: string }
@@ -150,8 +152,8 @@ interface ActiveRun {
 export class SessionManager {
   private active = new Map<string, ActiveRun>()
   private listeners = new Set<(event: SessionEvent) => void>()
-  /** Turns Roster owes a session once its current one ends. See enqueue. */
-  private queued = new Map<string, { prompt: string; options: SendOptions }>()
+  /** Turns Roster owes a session once its current one ends, in send order. */
+  private queued = new Map<string, Array<{ prompt: string; options: SendOptions }>>()
   /**
    * The last project brief each session was sent, so an unchanged one is not
    * sent twice. See withProjectBrief.
@@ -346,14 +348,18 @@ export class SessionManager {
    * cannot ask the person who clicked to wait for the agent to fall quiet
    * first.
    *
-   * One queued turn per session: a second replaces the first, because these
-   * are instructions about the same plan and the newest is the one meant.
+   * Queued turns remain distinct and run in FIFO order. A person may have
+   * written a useful follow-up while the agent was still working; replacing
+   * it would silently lose that instruction.
    * Nothing awaits this, so a failure is recorded on the session rather than
    * thrown into a promise no one is holding.
    */
   enqueue(sessionId: string, prompt: string, options: SendOptions = {}): void {
     if (this.active.has(sessionId)) {
-      this.queued.set(sessionId, { prompt, options })
+      const queue = this.queued.get(sessionId) ?? []
+      queue.push({ prompt, options })
+      this.queued.set(sessionId, queue)
+      this.emit({ type: 'queued', sessionId, count: queue.length })
       return
     }
 
@@ -623,10 +629,13 @@ export class SessionManager {
    * caller of send() is owed only the one it asked for.
    */
   private drain(sessionId: string): void {
-    const next = this.queued.get(sessionId)
+    const queue = this.queued.get(sessionId)
+    const next = queue?.shift()
     if (!next) return
 
-    this.queued.delete(sessionId)
+    if (queue.length === 0) this.queued.delete(sessionId)
+    else this.queued.set(sessionId, queue)
+    this.emit({ type: 'queued', sessionId, count: queue.length })
     this.enqueue(sessionId, next.prompt, next.options)
   }
 
@@ -653,7 +662,7 @@ export class SessionManager {
    * session gone, which `enqueue` already treats as nothing to report.
    */
   async stop(sessionId: string): Promise<void> {
-    this.queued.delete(sessionId)
+    if (this.queued.delete(sessionId)) this.emit({ type: 'queued', sessionId, count: 0 })
     // A delete stops the turn first, so this is also where what the manager
     // remembers about a session stops outliving it.
     this.lastBrief.delete(sessionId)
