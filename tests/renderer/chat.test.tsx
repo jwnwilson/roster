@@ -77,6 +77,7 @@ function pane(overrides: Partial<Parameters<typeof AssistantChatPane>[0]> = {}) 
       agentName="Debugging Agent"
       messages={[]}
       isStreaming={false}
+      queuedCount={0}
       streamingText="Debugging Agent is working…"
       skillsLine="skills: repro-harness"
       planMode={false}
@@ -262,6 +263,12 @@ describe('AssistantChatPane — transcript', () => {
     expect(screen.getByText('tool call')).toBeInTheDocument()
     expect(screen.getByText('opened sessions')).toBeInTheDocument()
   })
+
+  test('shows how many submitted messages are waiting', () => {
+    render(pane({ isStreaming: true, queuedCount: 2 }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('2 messages are queued.')
+  })
 })
 
 describe('AssistantChatPane — composer', () => {
@@ -271,6 +278,13 @@ describe('AssistantChatPane — composer', () => {
     expect(screen.getByText('skills: repro-harness')).toBeInTheDocument()
     expect(screen.getByText('drop files here')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Start listening for voice message' })).toBeEnabled()
+  })
+
+  test('keeps the composer available while the agent is working', () => {
+    render(pane({ isStreaming: true }))
+
+    expect(screen.getByLabelText('Message Debugging Agent')).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
   })
 
   test('sends what was typed', async () => {

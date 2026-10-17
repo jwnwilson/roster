@@ -411,6 +411,7 @@ export type SessionEventPayload =
   | { type: 'approval'; sessionId: string; approval: Approval }
   | { type: 'approval-resolved'; sessionId: string; approvalId: string }
   | { type: 'streaming'; sessionId: string; active: boolean }
+  | { type: 'queued'; sessionId: string; count: number }
   | { type: 'activity'; sessionId: string; text: string }
   | { type: 'session-deleted'; sessionId: string; agentId: string }
 

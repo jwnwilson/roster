@@ -150,6 +150,16 @@ describe('reduceSessionEvent — status', () => {
 })
 
 describe('reduceSessionEvent — streaming and usage', () => {
+  test('tracks queued turns and clears the count when the queue drains', () => {
+    const queued = reduceSessionEvent(state(), { type: 'queued', sessionId: 's1', count: 2 })
+    useRoster.setState(queued)
+
+    expect(state().queued['s1']).toBe(2)
+
+    const drained = reduceSessionEvent(state(), { type: 'queued', sessionId: 's1', count: 0 })
+    expect(drained.queued?.['s1']).toBeUndefined()
+  })
+
   test('records that a turn is in flight', () => {
     const next = reduceSessionEvent(state(), {
       type: 'streaming',
