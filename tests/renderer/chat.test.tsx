@@ -280,10 +280,16 @@ describe('AssistantChatPane — composer', () => {
     expect(screen.getByRole('button', { name: 'Record voice message' })).toBeEnabled()
   })
 
-  test('keeps the composer available while the agent is working', () => {
-    render(pane({ isStreaming: true }))
+  test('queues a message while the agent is working', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    render(pane({ isStreaming: true, onSend }))
 
     expect(screen.getByLabelText('Message Debugging Agent')).toBeEnabled()
+    await user.type(screen.getByLabelText('Message Debugging Agent'), 'queue this')
+    await user.click(screen.getByRole('button', { name: 'Send' }))
+
+    expect(onSend).toHaveBeenCalledWith('queue this')
   })
 
   test('sends what was typed', async () => {
