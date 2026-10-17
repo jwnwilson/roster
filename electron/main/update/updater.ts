@@ -169,3 +169,9 @@ export class Updater {
 function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
+
+/** Local app bundles opt out; unpackaged development can opt in for testing. */
+export function shouldCheckForUpdatesOnLaunch(isPackaged: boolean, setting: string | undefined): boolean {
+  if (setting === '0') return false
+  return isPackaged || setting === '1'
+}

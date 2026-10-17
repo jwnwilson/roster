@@ -2,11 +2,19 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { Updater } from '@main/update/updater'
+import { Updater, shouldCheckForUpdatesOnLaunch } from '@main/update/updater'
 import type { UpdateState } from '@shared/types'
 
 let downloads: string
 let states: UpdateState[]
+
+test('local packaged development suppresses updates while allowing an explicit test override', () => {
+  expect(shouldCheckForUpdatesOnLaunch(true, '0')).toBe(false)
+  expect(shouldCheckForUpdatesOnLaunch(true, undefined)).toBe(true)
+  expect(shouldCheckForUpdatesOnLaunch(false, undefined)).toBe(false)
+  expect(shouldCheckForUpdatesOnLaunch(false, '1')).toBe(true)
+  expect(shouldCheckForUpdatesOnLaunch(true, '1')).toBe(true)
+})
 
 beforeEach(async () => {
   downloads = await mkdtemp(join(tmpdir(), 'roster-update-'))

@@ -67,7 +67,7 @@ Roster also checks for new releases on launch and offers to fetch them.
 
 ```bash
 npm install     # also rebuilds better-sqlite3 and node-pty for Electron
-npm run dev     # launches the app with hot reload
+npm run dev     # macOS: builds and opens Roster.app; other platforms: hot reload
 ```
 
 On first run Roster seeds `~/roster` with a starter roster — a Tech Lead, an
@@ -98,28 +98,36 @@ ROSTER_HOME=/tmp/roster-debug npm run dev:debug
 ```
 
 It exposes the Electron main-process inspector on port 9229 and Chromium DevTools
-on port 9222, with source maps enabled. Attach a Node debugger to `localhost:9229`
+on port 9222. Attach a Node debugger to `localhost:9229`
 for main-process code, or open `http://localhost:9222` in Chrome to inspect the
 renderer. Electron must be able to reach macOS LaunchServices; a headless or
 sandboxed executor cannot create a GUI window and exits before Roster code runs.
 
 ### macOS voice-permission development launch
 
-When macOS attributes a development voice permission request to the editor that
-started `npm run dev`, use the current source as an application bundle instead:
+On macOS, `npm run dev` and `npm run dev:debug` build the current source as an
+application bundle and launch it through Launch Services. This avoids the direct
+Electron launch that caused voice requests to be attributed to VS Code. The
+explicit alias remains available:
 
 ```bash
 ROSTER_HOME=/tmp/roster-voice npm run dev:app
 ```
 
-This packages the current worktree and opens it through Launch Services, so the
-permission request is attributed to Roster rather than VS Code. It preserves
-`ROSTER_HOME`, `PATH`, terminal output, and shutdown status. Use
+This packages the current worktree and opens Roster through Launch Services
+as its own application identity. It preserves
+`ROSTER_HOME`, `PATH`, and terminal output, and waits for the app to close. Use
 `npm run dev:app:debug` for the main-process inspector on 9229 and Chromium
-remote debugging on 9222. This is intentionally an explicit, rebuild-and-
-relaunch workflow; electron-vite's normal hot-reload launcher owns a direct
-Electron child process, so wrapping it in Launch Services would break reliable
-restart and shutdown handling.
+remote debugging on 9222. Quit the app and re-run the command after source edits;
+this path does not hot reload. **Quit Roster with Cmd-Q before restarting or
+switching launch modes.** Ctrl-C can stop the waiting command while leaving the
+app running. Automatic release checks are suppressed for this local bundle;
+`ROSTER_UPDATE_CHECK=1` opts in for updater testing.
+Use `npm run dev:hot` or `npm run dev:hot:debug` (with source maps)
+for electron-vite hot reload. That direct Electron mode can still fail voice
+permission requests when started by an editor. Other platforms use hot reload
+by default. Permission prompts and spoken-text capture still need verification
+in a normal macOS GUI session.
 
 The landing page is `site/index.html` — static HTML and CSS, no build step and no
 dependency on this project's `package.json`. Open the file, or serve the folder

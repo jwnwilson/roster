@@ -6,8 +6,8 @@ import { localAppPath, openArguments, openLocalApp } from '../../scripts/localAp
 describe('local macOS app launch', () => {
   test('prepares Electron before packaging the local app bundle', () => {
     const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts as Record<string, string>
-    expect(scripts['dev:app']).toMatch(/^npm run predev && npm run build/)
-    expect(scripts['dev:app:debug']).toMatch(/^npm run predev && npm run build/)
+    expect(scripts['dev:app']).toMatch(/^npm run prepare:dev && npm run build/)
+    expect(scripts['dev:app:debug']).toMatch(/^npm run prepare:dev && npm run build/)
   })
 
   test('uses an absolute architecture-specific app bundle path', () => {
@@ -27,11 +27,16 @@ describe('local macOS app launch', () => {
       '-n', '-W',
       '--stdout', '/dev/stdout',
       '--stderr', '/dev/stderr',
+      '--env', 'ROSTER_UPDATE_CHECK=0',
       '--env', 'ROSTER_HOME=/tmp/roster-voice',
       '--env', 'PATH=/usr/local/bin:/usr/bin',
       '/worktrees/voice/release/mac-arm64/Roster.app',
       '--args', '--inspect=9229',
     ])
+  })
+
+  test('only enables release checks for an explicit local updater test', () => {
+    expect(openArguments('/app/Roster.app', { ROSTER_UPDATE_CHECK: '1' }, [])).toContain('ROSTER_UPDATE_CHECK=1')
   })
 
   test('keeps the command alive until the launched app exits', async () => {
