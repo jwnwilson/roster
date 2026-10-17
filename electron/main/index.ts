@@ -1,9 +1,13 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, shell } from 'electron'
+import { configureElectronUserData } from './electronUserData'
 import { checkForUpdatesOnLaunch, disposeStores, initStores, registerIpc } from './ipc'
 
 const isDev = !app.isPackaged
+
+// This has to precede the instance lock: Electron puts that lock in userData.
+configureElectronUserData(app)
 
 // One instance owns the roster database. Notion sign-in does not rely on this:
 // its loopback callback returns to the process that started it.
