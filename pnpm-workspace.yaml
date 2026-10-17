@@ -1,0 +1,13 @@
+# pnpm 11 requires an explicit decision for dependency install scripts.
+allowBuilds:
+  # Rebuilt for Electron by the root postinstall instead of the host Node ABI.
+  better-sqlite3: false
+  node-pty: false
+  electron: true
+  esbuild: true
+  # Windows packaging is not part of the current macOS release workflow.
+  electron-winstaller: false
+  # Transitive dependencies of the local Whisper engine (Transformers.js).
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true

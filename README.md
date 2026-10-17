@@ -70,6 +70,16 @@ npm install     # also rebuilds better-sqlite3 and node-pty for Electron
 npm run dev     # macOS: builds and opens Roster.app; other platforms: hot reload
 ```
 
+If you use pnpm 11, `pnpm-workspace.yaml` records the dependency build-script
+approvals, including the Transformers.js dependencies used by local Whisper.
+Run `pnpm install` again after updating it. If an older local copy contains
+`set this to true or false` for `onnxruntime-node`, `protobufjs`, or `sharp`,
+replace those placeholders with `true`; otherwise pnpm stops with
+`ERR_PNPM_IGNORED_BUILDS`. The root postinstall rebuilds `better-sqlite3` and
+`node-pty` for Electron, so their separate host-Node install scripts stay disabled.
+Use one package manager per checkout; npm and `package-lock.json` remain the CI
+installation path.
+
 On first run Roster seeds `~/roster` with a starter roster — a Tech Lead, an
 Implementer and a Reviewer — plus five skills and an MCP config, and opens onto a
 dismissable card pointing at the Tech Lead. The agents are pointed at whichever
