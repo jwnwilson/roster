@@ -20,10 +20,11 @@ the browser recognition service available.
 ## Decision
 
 Do not use the Web Speech `SpeechRecognition` API as Roster's supported voice
-transcription path. A replacement must explicitly provide its transcription
-engine and lifecycle: either a local/offline engine bundled or installed with
-Roster, or an opt-in hosted provider with its credentials, data handling, and
-costs clearly presented to the user.
+transcription path. Roster uses the explicit hosted OpenAI Audio
+`gpt-4o-mini-transcribe` path: audio is recorded locally, sent only after
+the person stops recording, and authenticated in the main process with the
+opt-in `OPENAI_API_KEY` environment variable. The key never crosses the
+preload bridge.
 
 Keep the existing reviewed-draft behaviour: captured speech becomes editable
 composer text and is never sent automatically.
@@ -33,7 +34,8 @@ composer text and is never sent automatically.
 * The current browser-recognition implementation is a known unsupported path
   and should be replaced, rather than debugged as a microphone-permission
   regression.
-* The replacement needs tests for capture, cancellation, transcription failure,
-  and insertion into the existing composer draft.
-* Product must choose between local model distribution/compute cost and an
-  opt-in hosted-transcription privacy/cost trade-off before implementation.
+* Voice transcription requires a user-supplied OpenAI API key and incurs that
+  provider's usage cost; unavailable or invalid credentials are reported in
+  the composer without losing the draft.
+* The implementation needs tests for capture, transcription failure, and
+  insertion into the existing composer draft.
