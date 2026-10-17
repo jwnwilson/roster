@@ -1,52 +1,37 @@
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { describe, expect, test, vi } from 'vitest'
-import { OpenAiTranscriptionClient } from '@main/voice/transcription'
+import { MacSpeechTranscriber } from '@main/voice/transcription'
 
-const AUDIO = new Uint8Array([1, 2, 3]).buffer
-
-function makeClient(
-  response: Response = new Response(JSON.stringify({ text: 'Find the leak.' }), {
-    status: 200,
-    headers: { 'content-type': 'application/json' },
-  }),
-) {
-  const fetchImpl = vi.fn(async () => response) as unknown as typeof fetch
-  return { client: new OpenAiTranscriptionClient(() => 'sk-test', fetchImpl), fetchImpl }
+function helper(): { process: ChildProcessWithoutNullStreams; output: PassThrough } {
+  const output = new PassThrough()
+  const process = Object.assign(new EventEmitter(), {
+    stdin: new PassThrough(),
+    stdout: output,
+    stderr: new PassThrough(),
+  }) as unknown as ChildProcessWithoutNullStreams
+  return { process, output }
 }
 
-describe('OpenAiTranscriptionClient', () => {
-  test('sends a completed audio clip with the key confined to main', async () => {
-    const { client, fetchImpl } = makeClient()
-
-    await expect(client.transcribe({ audio: AUDIO, mimeType: 'audio/webm;codecs=opus' })).resolves.toEqual({
-      text: 'Find the leak.',
-    })
-
-    const [, init] = vi.mocked(fetchImpl).mock.calls[0] ?? []
-    expect(init?.method).toBe('POST')
-    expect((init?.headers as Record<string, string>)['Authorization']).toBe('Bearer sk-test')
-    expect(init?.body).toBeInstanceOf(FormData)
-    expect((init?.body as FormData).get('model')).toBe('gpt-4o-mini-transcribe')
+describe('MacSpeechTranscriber', () => {
+  test('starts the bundled helper and returns its final reviewed text', async () => {
+    const child = helper()
+    const spawn = vi.fn(() => child.process)
+    const client = new MacSpeechTranscriber('darwin', spawn, () => process.execPath)
+    await client.start()
+    const result = client.stop()
+    child.output.write('{"type":"result","text":" Find the leak. "}\n')
+    await expect(result).resolves.toEqual({ text: 'Find the leak.' })
+    expect(spawn).toHaveBeenCalledWith(process.execPath)
   })
 
-  test('rejects an absent credential before it attempts a request', async () => {
-    const fetchImpl = vi.fn() as unknown as typeof fetch
-    const client = new OpenAiTranscriptionClient(() => undefined, fetchImpl)
-
-    await expect(client.transcribe({ audio: AUDIO, mimeType: 'audio/webm' })).rejects.toThrow('OPENAI_API_KEY')
-    expect(fetchImpl).not.toHaveBeenCalled()
+  test('does not offer an OpenAI or browser fallback on other platforms', async () => {
+    await expect(new MacSpeechTranscriber('win32').start()).rejects.toThrow('macOS only')
   })
 
-  test('does not send an empty or unsupported recording', async () => {
-    const { client, fetchImpl } = makeClient()
-
-    await expect(client.transcribe({ audio: new ArrayBuffer(0), mimeType: 'audio/webm' })).rejects.toThrow('No audio')
-    await expect(client.transcribe({ audio: AUDIO, mimeType: 'video/webm' })).rejects.toThrow('format')
-    expect(fetchImpl).not.toHaveBeenCalled()
-  })
-
-  test('makes an authentication failure actionable', async () => {
-    const { client } = makeClient(new Response('', { status: 401 }))
-
-    await expect(client.transcribe({ audio: AUDIO, mimeType: 'audio/webm' })).rejects.toThrow('could not authenticate')
+  test('reports an absent packaged helper clearly', async () => {
+    const client = new MacSpeechTranscriber('darwin', vi.fn(), () => '/missing/roster-voice')
+    await expect(client.start()).rejects.toThrow('helper is missing')
   })
 })

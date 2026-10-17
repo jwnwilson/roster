@@ -29,7 +29,8 @@
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Roster uses your microphone to transcribe voice messages before you send them to an agent."
+        "NSMicrophoneUsageDescription": "Roster uses your microphone to transcribe voice messages before you send them to an agent.",
+        "NSSpeechRecognitionUsageDescription": "Roster uses on-device speech recognition to turn voice messages into editable text."
       },
       "target": [
         {

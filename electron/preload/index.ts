@@ -70,7 +70,8 @@ const api: RosterApi = {
   },
 
   voice: {
-    transcribe: (input) => ipcRenderer.invoke(CHANNELS.voiceTranscribe, input),
+    start: () => ipcRenderer.invoke(CHANNELS.voiceStart),
+    stop: () => ipcRenderer.invoke(CHANNELS.voiceStop),
   },
 
   pty: {

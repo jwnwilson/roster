@@ -39,7 +39,8 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
     voice: {
-      transcribe: vi.fn().mockResolvedValue({ text: '' }),
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn().mockResolvedValue({ text: '' }),
     },
     pty: {
       open: vi.fn().mockResolvedValue({ shell: 'zsh', cwd: '/work', history: '' }),

@@ -17,8 +17,9 @@
 //
 // So it is asserted here, per arch, on every build including local ones.
 
-const { readdirSync, existsSync } = require('node:fs')
+const { readdirSync, existsSync, mkdirSync } = require('node:fs')
 const { join } = require('node:path')
+const { execFileSync } = require('node:child_process')
 
 /** electron-builder passes `Arch` as its enum ordinal, not a name. */
 const ARCH_NAMES = ['ia32', 'x64', 'armv7l', 'arm64', 'universal']
@@ -107,14 +108,21 @@ async function afterPack(context) {
   }
 
   const wrong = wrongArchPackages(packageNames(modules), targetArch)
-  if (wrong.length === 0) return
-
-  throw new Error(
+  if (wrong.length > 0) throw new Error(
     `arch guard: packaging ${targetArch} but bundled ${wrong.join(', ')}.\n` +
       `The install that produced node_modules was for a different CPU, so the ` +
       `agent CLIs in this build cannot run. Reinstall on a ${targetArch} machine ` +
       `— or build ${targetArch} only there — and package again.`,
   )
+
+  if (context.electronPlatformName !== 'darwin') return
+  const app = readdirSync(context.appOutDir).find((name) => name.endsWith('.app'))
+  if (app === undefined) throw new Error(`voice helper: no .app found in ${context.appOutDir}`)
+  const destination = join(context.appOutDir, app, 'Contents', 'Resources', 'voice')
+  mkdirSync(destination, { recursive: true })
+  const source = join(context.packager.projectDir, 'build', 'voice', 'roster-voice.swift')
+  const swiftArch = targetArch === 'x64' ? 'x86_64' : targetArch
+  execFileSync('xcrun', ['swiftc', source, '-framework', 'AVFoundation', '-framework', 'Speech', '-target', `${swiftArch}-apple-macosx10.15`, '-o', join(destination, 'roster-voice')], { stdio: 'inherit' })
 }
 
 module.exports = afterPack
