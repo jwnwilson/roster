@@ -6,7 +6,9 @@ export function localAppPath(root, architecture) {
 }
 
 export function openArguments(appPath, environment, electronArguments) {
-  const args = ['-n', '-W', '--stdout', '/dev/stdout', '--stderr', '/dev/stderr']
+  // Launch Services opens redirection paths in its own context; /dev/stdout
+  // and /dev/stderr are not the invoking terminal and can fail with -10810.
+  const args = ['-n', '-W']
   args.push('--env', `ROSTER_UPDATE_CHECK=${environment.ROSTER_UPDATE_CHECK === '1' ? '1' : '0'}`)
   for (const key of ['ROSTER_HOME', 'PATH']) {
     if (environment[key]) args.push('--env', `${key}=${environment[key]}`)
