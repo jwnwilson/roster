@@ -287,28 +287,18 @@ describe('AssistantChatPane — composer', () => {
   test('puts a stopped recording in the draft for review before it can send', async () => {
     const user = userEvent.setup()
     const onSend = vi.fn()
-    const stopTrack = vi.fn()
-    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop: stopTrack }] })
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: { getUserMedia },
-    })
-    vi.stubGlobal('MediaRecorder', FakeMediaRecorder)
-    vi.mocked(window.roster.voice.transcribe).mockResolvedValue({ text: 'find the leak by voice' })
+    vi.mocked(window.roster.voice.stop).mockResolvedValue({ text: 'find the leak by voice' })
     render(pane({ onSend }))
 
     await user.click(screen.getByRole('button', { name: 'Record voice message' }))
-    await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith({ audio: true }))
+    await waitFor(() => expect(window.roster.voice.start).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'Stop recording voice message' }))
 
     await waitFor(() =>
-      expect(window.roster.voice.transcribe).toHaveBeenCalledWith(
-        expect.objectContaining({ mimeType: 'audio/webm;codecs=opus' }),
-      ),
+      expect(window.roster.voice.stop).toHaveBeenCalled(),
     )
     expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('find the leak by voice')
     expect(onSend).not.toHaveBeenCalled()
-    expect(stopTrack).toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Send' }))
     expect(onSend).toHaveBeenCalledWith('find the leak by voice')
@@ -316,10 +306,7 @@ describe('AssistantChatPane — composer', () => {
 
   test('keeps the typed draft and reports a denied microphone', async () => {
     const user = userEvent.setup()
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: { getUserMedia: vi.fn().mockRejectedValue(new Error('Microphone permission denied')) },
-    })
+    vi.mocked(window.roster.voice.start).mockRejectedValue(new Error('Microphone permission denied'))
     render(pane())
     await user.type(screen.getByLabelText('Message Debugging Agent'), 'keep this')
 
@@ -331,13 +318,7 @@ describe('AssistantChatPane — composer', () => {
 
   test('keeps the typed draft when transcription fails', async () => {
     const user = userEvent.setup()
-    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] })
-    Object.defineProperty(navigator, 'mediaDevices', {
-      configurable: true,
-      value: { getUserMedia },
-    })
-    vi.stubGlobal('MediaRecorder', FakeMediaRecorder)
-    vi.mocked(window.roster.voice.transcribe).mockRejectedValue(new Error('Voice transcription failed (500).'))
+    vi.mocked(window.roster.voice.stop).mockRejectedValue(new Error('Voice transcription failed (500).'))
     render(pane())
     await user.type(screen.getByLabelText('Message Debugging Agent'), 'keep this')
 

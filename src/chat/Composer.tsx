@@ -109,9 +109,8 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
   const composer = unstable_useComposerInput({ disabled })
   const [state, setState] = useState<'idle' | 'recording' | 'transcribing'>('idle')
   const [error, setError] = useState<string | null>(null)
-  const recorder = useRef<MediaRecorder | null>(null)
-  const stream = useRef<MediaStream | null>(null)
   const discard = useRef(false)
+  const recording = useRef(false)
   const draft = useRef(composer.value)
 
   useEffect(() => {
@@ -121,15 +120,8 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
   useEffect(
     () => () => {
       discard.current = true
-      recorder.current?.stop()
-      stream.current?.getTracks().forEach((track) => track.stop())
+      if (recording.current) void window.roster.voice.stop().catch(() => undefined)
     }, [])
-
-  function release(): void {
-    stream.current?.getTracks().forEach((track) => track.stop())
-    stream.current = null
-    recorder.current = null
-  }
 
   async function start(): Promise<void> {
     if (composer.isDisabled || state !== 'idle') return
@@ -137,47 +129,29 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
     discard.current = false
 
     try {
-      const captured = await navigator.mediaDevices.getUserMedia({ audio: true })
-      // The request may settle after a component is disabled or unmounted.
+      await window.roster.voice.start()
       if (discard.current) {
-        captured.getTracks().forEach((track) => track.stop())
+        void window.roster.voice.stop().catch(() => undefined)
         return
       }
-      stream.current = captured
-      const preferred = 'audio/webm;codecs=opus'
-      const mimeType = MediaRecorder.isTypeSupported(preferred) ? preferred : 'audio/webm'
-      const next = new MediaRecorder(captured, { mimeType })
-      const chunks: BlobPart[] = []
-      next.addEventListener('dataavailable', (event) => {
-        if (event.data.size > 0) chunks.push(event.data)
-      })
-      next.addEventListener('stop', () => {
-        release()
-        if (discard.current) return
-        void transcribe(new Blob(chunks, { type: next.mimeType || mimeType }))
-      })
-      recorder.current = next
-      next.start()
+      recording.current = true
       setState('recording')
     } catch (cause) {
-      release()
       setState('idle')
-      setError(messageFor(cause) || 'Roster could not access the microphone.')
+      setError(messageFor(cause) || 'Roster could not start voice dictation.')
     }
   }
 
   function stop(): void {
     if (state !== 'recording') return
+    recording.current = false
     setState('transcribing')
-    recorder.current?.stop()
+    void transcribe()
   }
 
-  async function transcribe(audio: Blob): Promise<void> {
+  async function transcribe(): Promise<void> {
     try {
-      const result = await window.roster.voice.transcribe({
-        audio: await audio.arrayBuffer(),
-        mimeType: audio.type,
-      })
+      const result = await window.roster.voice.stop()
       if (result.text !== '') {
         composer.setText(draft.current === '' ? result.text : `${draft.current}\n${result.text}`)
       }

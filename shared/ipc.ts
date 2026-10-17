@@ -101,7 +101,8 @@ export interface RosterApi {
   }
   /** Speech-to-text for the chat composer; never starts an agent turn itself. */
   voice: {
-    transcribe(input: TranscriptionInput): Promise<TranscriptionResult>
+    start(): Promise<void>
+    stop(): Promise<TranscriptionResult>
   }
   pty: {
     open(sessionId: string, cwd: string, size: PtySize): Promise<PtyInfo>
@@ -271,12 +272,6 @@ export interface SendOptions {
    * and the agent ends by proposing a plan, which arrives as an approval.
    */
   planMode?: boolean
-}
-
-/** A completed, in-memory microphone clip supplied by the renderer. */
-export interface TranscriptionInput {
-  audio: ArrayBuffer
-  mimeType: string
 }
 
 /** Text is returned for review in the composer; it is not sent automatically. */
@@ -458,7 +453,8 @@ export const CHANNELS = {
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsEvent: 'sessions:event',
 
-  voiceTranscribe: 'voice:transcribe',
+  voiceStart: 'voice:start',
+  voiceStop: 'voice:stop',
 
   ptyOpen: 'pty:open',
   ptyWrite: 'pty:write',
