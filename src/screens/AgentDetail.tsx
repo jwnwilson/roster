@@ -67,6 +67,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const activeId = useRoster((s) => s.sess[agent.id])
   const messages = useRoster(useShallow((s) => (activeId ? (s.messages[activeId] ?? []) : [])))
   const streaming = useRoster((s) => (activeId ? (s.streaming[activeId] ?? false) : false))
+  const queuedCount = useRoster((s) => (activeId ? (s.queued[activeId] ?? 0) : 0))
   const activity = useRoster((s) => (activeId ? s.activity[activeId] : undefined))
   const approvals = useRoster(
     useShallow((s) => (activeId ? (s.approvals[activeId] ?? []) : [])),
@@ -248,6 +249,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               agentName={agent.name}
               messages={messages}
               isStreaming={streaming}
+              queuedCount={queuedCount}
               streamingText={activity ?? `${agent.name} is working…`}
               skillsLine={`skills: ${agent.skills.join(', ') || 'none'}`}
               {...(asking !== null && questioning?.sessionId === active.id

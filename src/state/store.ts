@@ -78,6 +78,8 @@ export interface RosterState {
   messages: Record<string, Message[]>
   /** sessionId -> a turn is in flight. */
   streaming: Record<string, boolean>
+  /** sessionId -> submitted turns waiting behind the active turn. */
+  queued: Record<string, number>
   /** sessionId -> what the agent is doing, for the streaming indicator. */
   activity: Record<string, string>
   /** sessionId -> approvals the runner is blocked on. */
@@ -301,6 +303,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   sessions: {},
   messages: {},
   streaming: {},
+  queued: {},
   activity: {},
   approvals: {},
   usage: {},
@@ -945,6 +948,14 @@ export function reduceSessionEvent(
         ...(event.active ? {} : { activity: withoutKey(state.activity, event.sessionId) }),
       }
 
+    case 'queued':
+      return {
+        queued:
+          event.count === 0
+            ? withoutKey(state.queued, event.sessionId)
+            : { ...state.queued, [event.sessionId]: event.count },
+      }
+
     case 'activity':
       return { activity: { ...state.activity, [event.sessionId]: event.text } }
 
@@ -993,6 +1004,7 @@ function forgetSession(state: RosterState, sessionId: string): Partial<RosterSta
     sessions: withoutSession(state.sessions, sessionId),
     messages: withoutKey(state.messages, sessionId),
     streaming: withoutKey(state.streaming, sessionId),
+    queued: withoutKey(state.queued, sessionId),
     activity: withoutKey(state.activity, sessionId),
     approvals: withoutKey(state.approvals, sessionId),
     usage: withoutKey(state.usage, sessionId),

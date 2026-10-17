@@ -26,6 +26,7 @@ interface AssistantChatPaneProps {
   agentName: string
   messages: Message[]
   isStreaming: boolean
+  queuedCount: number
   streamingText: string
   skillsLine: string
   /** What the agent is waiting to be told, when it asked rather than acted. */
@@ -51,6 +52,7 @@ export function AssistantChatPane({
   agentName,
   messages,
   isStreaming,
+  queuedCount,
   streamingText,
   skillsLine,
   questions,
@@ -101,6 +103,11 @@ export function AssistantChatPane({
           <ThreadPrimitive.Messages components={{ Message: RosterMessage }} />
 
           {isStreaming ? <StreamingRow text={streamingText} onCancel={onCancel} /> : null}
+          {queuedCount > 0 ? (
+            <p className="m-0 text-md text-dim" role="status">
+              {queuedCount} {queuedCount === 1 ? 'message is' : 'messages are'} queued.
+            </p>
+          ) : null}
 
           {/* Below the transcript, where the question was asked — not in the
               banner, which has room for one line and two buttons. */}
@@ -118,7 +125,7 @@ export function AssistantChatPane({
         <Composer
           agentName={agentName}
           skillsLine={skillsLine}
-          disabled={isStreaming}
+          disabled={false}
           planMode={planMode}
           onTogglePlanMode={onTogglePlanMode}
         />
