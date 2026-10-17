@@ -31,7 +31,7 @@ import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
 import { readFlag, writeFlag } from '@/lib/uiPreference'
 
-export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
+export type Screen = 'desktop' | 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
 export type PaneMode = 'chat' | 'terminal'
 export type McpTab = 'installed' | 'registry'
 export type TaskTab = 'comments' | 'history'

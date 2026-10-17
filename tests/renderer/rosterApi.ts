@@ -8,6 +8,7 @@ import type { NotionStatusMap } from '@shared/notion'
  */
 export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): RosterApi {
   const api: RosterApi = {
+    desktop: { check: vi.fn() },
     window: { minimize: vi.fn(), maximize: vi.fn(), close: vi.fn() },
     runners: {
       list: vi.fn().mockResolvedValue([]),

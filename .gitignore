@@ -25,3 +25,5 @@ out/
 # test coverage output
 coverage/
 build/voice/roster-voice
+
+/build/desktop/roster-desktop

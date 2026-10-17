@@ -47,7 +47,7 @@
     }
   },
   "scripts": {
-    "predev": "node scripts/buildVoiceHelper.mjs && node scripts/ensureElectron.mjs",
+    "predev": "node scripts/buildVoiceHelper.mjs && node scripts/buildDesktopHelper.mjs && node scripts/ensureElectron.mjs",
     "dev": "electron-vite dev",
     "predev:debug": "npm run predev",
     "dev:debug": "electron-vite dev --inspect=9229 --remoteDebuggingPort=9222 --sourcemap",
