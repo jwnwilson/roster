@@ -21,7 +21,6 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 const api: RosterApi = {
   desktop: {
     check: () => ipcRenderer.invoke(CHANNELS.desktopCheck),
-    request: (permission) => ipcRenderer.invoke(CHANNELS.desktopRequest, permission),
   },
   window: {
     minimize: () => ipcRenderer.send(CHANNELS.windowMinimize),

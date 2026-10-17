@@ -9,16 +9,6 @@ describe('desktop diagnostics', () => {
     expect(await probe.check()).toEqual(report)
     expect(run).toHaveBeenCalledWith('/helper', [])
   })
-  it('only accepts explicit permission request commands', async () => {
-    const run = vi.fn().mockResolvedValue(JSON.stringify(report))
-    const probe = new DesktopDiagnostics('darwin', () => '/helper', run)
-    await probe.request('accessibility')
-    expect(run).toHaveBeenCalledWith('/helper', ['--request-accessibility'])
-    await probe.request('screen')
-    expect(run).toHaveBeenLastCalledWith('/helper', ['--request-screen'])
-    await expect(probe.request('anything' as 'screen')).rejects.toThrow('Unknown desktop permission')
-    expect(run).toHaveBeenCalledTimes(2)
-  })
   it('rejects unsupported platforms without launching a helper', async () => {
     const run = vi.fn()
     await expect(new DesktopDiagnostics('linux', () => '/helper', run).check()).rejects.toThrow('macOS')

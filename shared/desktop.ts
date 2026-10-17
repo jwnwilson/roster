@@ -5,4 +5,3 @@ export interface DesktopReport {
   visibleScreens: number
   frontmostApp: string | null
 }
-export type DesktopPermission = 'accessibility' | 'screen'

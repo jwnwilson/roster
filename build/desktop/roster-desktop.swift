@@ -2,17 +2,9 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 
-// A one-shot probe. Permission prompts require an explicit command from Roster's UI.
-let args = Array(CommandLine.arguments.dropFirst())
-switch args {
-case []: break
-case ["--request-accessibility"]:
-    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-    _ = AXIsProcessTrustedWithOptions(options)
-case ["--request-screen"]:
-    _ = CGRequestScreenCaptureAccess()
-default:
-    fputs("Unknown desktop diagnostic command\n", stderr)
+// Read-only until release signing provides a stable permission identity.
+guard CommandLine.arguments.count == 1 else {
+    fputs("Desktop diagnostics only accepts a read-only probe\n", stderr)
     exit(2)
 }
 struct Report: Encodable {
