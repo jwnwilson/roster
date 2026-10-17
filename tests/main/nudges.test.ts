@@ -35,6 +35,33 @@ function eligibleSession() {
 }
 
 describe('SessionNudges', () => {
+  test('bounds oversized task context while preserving the check-in instruction', () => {
+    const task = tasks.create({
+      title: 'T'.repeat(100_000),
+      description: 'D'.repeat(100_000),
+      status: 'in_progress',
+      assigneeId: 'debugging',
+    })
+    for (let index = 0; index < 25; index++) {
+      tasks.comment(task.id, {
+        author: `Author-${index}`,
+        tone: 'you',
+        text: `Comment-${index}: ${'C'.repeat(100_000)}`,
+      })
+    }
+    tasks.comment(task.id, { author: 'A'.repeat(100_000), tone: 'you', text: 'Oversized author' })
+    new SessionNudges(sessions, { isStreaming: streaming, enqueue }, Date.now, NUDGE_PERIOD_MS, {
+      tasks, agentExists: () => true, onAttached: vi.fn(),
+    }).tick()
+    const prompt = enqueue.mock.calls[0]![1]
+    expect(prompt.length).toBeLessThan(27_000)
+    expect(prompt).toContain('Comment-24:')
+    expect(prompt).not.toContain('Comment-0:')
+    expect(prompt).toContain('(truncated)')
+    expect(prompt).toContain('earlier comments not shown')
+    expect(prompt.endsWith(NUDGE_PROMPT)).toBe(true)
+  })
+
   test('creates a missing assignee session with task context and reuses it', () => {
     const project = new ProjectStore(db).create({ name: 'Recovery', color: '#123456' })
     const task = tasks.create({ title: 'Resume work', description: 'Fix the missing check', status: 'in_progress', assigneeId: 'debugging', projectId: project.id })

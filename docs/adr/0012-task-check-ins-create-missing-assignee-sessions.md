@@ -23,6 +23,12 @@ using the existing bounded task briefing format. Agents must use task tools
 for progress and status updates; replies are not automatically posted as
 comments. Active sessions are skipped and cooldowns remain persisted.
 
+The shared briefing caps titles at 500 characters, descriptions at 4,000,
+and each of the newest 20 non-system comments at 1,000 characters including
+its author. Truncated fields receive a visible marker. This bounds recurring
+task context even when a single comment or author is oversized, while leaving
+the final check-in instruction intact. Stored task content is not modified.
+
 Unassigned tasks, missing agents, and backlog, to-do, in-review, and done tasks
 remain excluded. This change targets in-progress recovery; it does not
 authorize automatic review, approval, or merging.

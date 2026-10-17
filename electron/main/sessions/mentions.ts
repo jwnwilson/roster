@@ -263,6 +263,8 @@ export class TaskMentions {
  * recent end is the part that bears on the question being asked.
  */
 const MAX_THREAD_ENTRIES = 20
+const MAX_THREAD_ENTRY_CHARS = 1000
+const MAX_TITLE_CHARS = 500
 
 /** A ceiling on the quoted description, for the same reason. */
 const MAX_DESCRIPTION_CHARS = 4000
@@ -286,10 +288,11 @@ export function briefFor(
   question: string,
   mode: 'mention' | 'check-in' = 'mention',
 ): string {
+  const title = truncate(task.title, MAX_TITLE_CHARS)
   const lines = [
     mode === 'mention'
-      ? `You have been mentioned on ${task.id} — ${task.title}, on Roster's task board.`
-      : `Roster is checking in on ${task.id} — ${task.title}, assigned to you on the task board.`,
+      ? `You have been mentioned on ${task.id} — ${title}, on Roster's task board.`
+      : `Roster is checking in on ${task.id} — ${title}, assigned to you on the task board.`,
     '',
     // The instruction leads and the question closes. Trailing it after the
     // quoted material made it read as part of the quote: a small model sent
@@ -320,7 +323,9 @@ export function briefFor(
     if (recent.length < written.length) {
       lines.push(`(${written.length - recent.length} earlier comments not shown)`)
     }
-    for (const entry of recent) lines.push(`${entry.author}: ${entry.text}`)
+    for (const entry of recent) {
+      lines.push(truncate(`${entry.author}: ${entry.text}`, MAX_THREAD_ENTRY_CHARS))
+    }
     lines.push('--- end thread ---')
   }
 
