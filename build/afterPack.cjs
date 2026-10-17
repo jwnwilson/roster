@@ -114,6 +114,14 @@ async function afterPack(context) {
       `— or build ${targetArch} only there — and package again.`,
   )
 
+  if (context.electronPlatformName !== 'darwin') return
+  const app = readdirSync(context.appOutDir).find((name) => name.endsWith('.app'))
+  if (app === undefined) throw new Error(`desktop helper: no .app found in ${context.appOutDir}`)
+  const desktopDestination = join(context.appOutDir, app, 'Contents', 'Resources', 'desktop')
+  mkdirSync(desktopDestination, { recursive: true })
+  execFileSync('xcrun', ['swiftc', join(context.packager.projectDir, 'build', 'desktop', 'roster-desktop.swift'),
+    '-target', `${targetArch === 'x64' ? 'x86_64' : targetArch}-apple-macosx10.15`,
+    '-o', join(desktopDestination, 'roster-desktop')], { stdio: 'inherit' })
 }
 
 module.exports = afterPack
