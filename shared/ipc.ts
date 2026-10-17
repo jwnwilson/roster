@@ -1,3 +1,4 @@
+import type { DesktopPermission, DesktopReport } from './desktop'
 import type {
   Agent,
   Approval,
@@ -29,6 +30,10 @@ import type { NotionAuthStatus, NotionStatusMap } from './notion'
  * main process through these calls — no node, no fs, no child processes.
  */
 export interface RosterApi {
+  desktop: {
+    check(): Promise<DesktopReport>
+    request(permission: DesktopPermission): Promise<DesktopReport>
+  }
   window: {
     minimize(): void
     maximize(): void
@@ -427,6 +432,8 @@ export type SessionEventPayload =
 
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
+  desktopCheck: 'desktop:check',
+  desktopRequest: 'desktop:request',
   windowMinimize: 'window:minimize',
   windowMaximize: 'window:maximize',
   windowClose: 'window:close',

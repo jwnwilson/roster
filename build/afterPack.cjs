@@ -118,6 +118,11 @@ async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') return
   const app = readdirSync(context.appOutDir).find((name) => name.endsWith('.app'))
   if (app === undefined) throw new Error(`voice helper: no .app found in ${context.appOutDir}`)
+  const desktopDestination = join(context.appOutDir, app, 'Contents', 'Resources', 'desktop')
+  mkdirSync(desktopDestination, { recursive: true })
+  execFileSync('xcrun', ['swiftc', join(context.packager.projectDir, 'build', 'desktop', 'roster-desktop.swift'),
+    '-target', `${targetArch === 'x64' ? 'x86_64' : targetArch}-apple-macosx10.15`,
+    '-o', join(desktopDestination, 'roster-desktop')], { stdio: 'inherit' })
   const destination = join(context.appOutDir, app, 'Contents', 'Resources', 'voice')
   mkdirSync(destination, { recursive: true })
   const source = join(context.packager.projectDir, 'build', 'voice', 'roster-voice.swift')

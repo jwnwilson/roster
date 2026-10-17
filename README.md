@@ -301,3 +301,18 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
   `mcp.json` by hand.
 - Model prices are a table Roster maintains for Claude; Codex publishes none, so that
   column is left empty rather than invented.
+
+### Desktop diagnostics (macOS)
+
+Open **Desktop** in the sidebar and choose **Run diagnostics**. Roster runs its
+bundled helper to report Accessibility, Screen Recording and input-posting
+permission, the visible screen count and the frontmost application's name.
+The check does not capture screenshots or send input, and does not enable agent
+control. Permission requests happen only when you click the corresponding button.
+
+Run the installed app in your logged-in desktop session. If macOS does not show a
+prompt, check Privacy & Security in System Settings for the app/helper identified
+by macOS. After changing permissions, quit and reopen Roster and rerun the check.
+Development and installed builds can have different permission identities.
+`npm run dev` compiles the helper on macOS; packaging compiles it for the target
+architecture. To compile only this helper, run `node scripts/buildDesktopHelper.mjs`.

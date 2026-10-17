@@ -1,3 +1,4 @@
+import { Desktop } from './screens/Desktop'
 import { useEffect } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { TitleBar } from './components/TitleBar'
@@ -150,6 +151,8 @@ interface ScreenProps {
 
 function Screen({ screen }: ScreenProps) {
   switch (screen) {
+    case 'desktop':
+      return <Desktop />
     case 'grid':
       return <AgentsGrid />
     case 'agent':
