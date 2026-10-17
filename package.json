@@ -46,6 +46,7 @@
     }
   },
   "scripts": {
+    "predev": "node scripts/ensureElectron.mjs",
     "dev": "electron-vite dev",
     "dev:debug": "electron-vite dev --inspect=9229 --remoteDebuggingPort=9222 --sourcemap",
     "build": "electron-vite build",
