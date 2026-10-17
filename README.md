@@ -307,12 +307,14 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
 Open **Desktop** in the sidebar and choose **Run diagnostics**. Roster runs its
 bundled helper to report Accessibility, Screen Recording and input-posting
 permission, the visible screen count and the frontmost application's name.
-The check does not capture screenshots or send input, and does not enable agent
-control. Permission requests happen only when you click the corresponding button.
+This is a read-only developer diagnostic: it does not capture screenshots,
+send input, request permissions or enable agent control.
 
-Run the installed app in your logged-in desktop session. If macOS does not show a
-prompt, check Privacy & Security in System Settings for the app/helper identified
-by macOS. After changing permissions, quit and reopen Roster and rerun the check.
-Development and installed builds can have different permission identities.
+Current releases disable Developer ID signing. Helper permission grants may
+not persist across updates; a stable signed helper and an installed-app update
+test are prerequisites for a durable permission-request flow. Results apply only
+to the helper in the current launch context. Run the installed app in your
+logged-in desktop session to compare with shell results.
+
 `npm run dev` compiles the helper on macOS; packaging compiles it for the target
 architecture. To compile only this helper, run `node scripts/buildDesktopHelper.mjs`.

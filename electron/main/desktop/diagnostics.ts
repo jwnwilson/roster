@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { join } from 'node:path'
 import { z } from 'zod'
-import type { DesktopPermission, DesktopReport } from '../../../shared/desktop'
+import type { DesktopReport } from '../../../shared/desktop'
 
 const reportSchema = z.object({
   accessibilityTrusted: z.boolean(),
@@ -24,7 +24,7 @@ function runHelper(path: string, args: string[]): Promise<string> {
   })
 }
 
-/** No arbitrary commands or agent tools: only observation and user-requested permission prompts. */
+/** No arbitrary commands or agent tools: read-only observation. */
 export class DesktopDiagnostics {
   constructor(
     private readonly platform = process.platform,
@@ -33,11 +33,6 @@ export class DesktopDiagnostics {
   ) {}
 
   check(): Promise<DesktopReport> { return this.execute([]) }
-
-  async request(permission: DesktopPermission): Promise<DesktopReport> {
-    if (permission !== 'accessibility' && permission !== 'screen') throw new Error('Unknown desktop permission.')
-    return this.execute([permission === 'screen' ? '--request-screen' : '--request-accessibility'])
-  }
 
   private async execute(args: string[]): Promise<DesktopReport> {
     if (this.platform !== 'darwin') throw new Error('Desktop diagnostics are currently available on macOS only.')

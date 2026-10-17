@@ -361,7 +361,6 @@ export function checkForUpdatesOnLaunch(): void {
 export function registerIpc(): void {
   const desktop = new DesktopDiagnostics()
   ipcMain.handle(CHANNELS.desktopCheck, () => desktop.check())
-  ipcMain.handle(CHANNELS.desktopRequest, (_event, permission) => desktop.request(permission))
   ipcMain.on(CHANNELS.windowMinimize, (e) => BrowserWindow.fromWebContents(e.sender)?.minimize())
   ipcMain.on(CHANNELS.windowMaximize, (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
