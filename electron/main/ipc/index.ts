@@ -12,6 +12,7 @@ import {
   type SendOptions,
   type ImportTaskInput,
   type TaskChange,
+  type TranscriptionInput,
 } from '../../../shared/ipc'
 import type {
   PlanDocument,
@@ -54,6 +55,7 @@ import { databasePath, mcpConfigPath } from '../store/paths'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
 import { dismissSetup, prepareFirstRun } from '../store/firstRun'
+import { OpenAiTranscriptionClient } from '../voice/transcription'
 
 let runners = new Map<string, RunnerStatus>()
 let db: Db | null = null
@@ -71,6 +73,7 @@ let notionSettings: NotionSettingsStore | null = null
 let notionPush: NotionPush | null = null
 let notionAuth: NotionMcpAuth | null = null
 let notionMcp: NotionMcpClient | null = null
+let transcription: OpenAiTranscriptionClient | null = null
 
 /**
  * What first-run setup decided, held for the renderer to ask for.
@@ -200,6 +203,11 @@ function requireNotionAuth(): NotionMcpAuth {
   return notionAuth
 }
 
+function requireTranscription(): OpenAiTranscriptionClient {
+  if (!transcription) throw new Error('Voice transcription is not initialised')
+  return transcription
+}
+
 const electronSecretBox: SecretBox = {
   encrypt: (value) => {
     if (!safeStorage.isEncryptionAvailable()) {
@@ -222,6 +230,7 @@ export async function initStores(): Promise<void> {
   // and first-run seeding will only point agents at a CLI that is installed.
   runners = await detectAllRunners()
   await agentStore.load()
+  transcription = new OpenAiTranscriptionClient(() => process.env['OPENAI_API_KEY'])
 
   // Seeds the starter roster, once ever, on a genuinely fresh install.
   setup = await prepareFirstRun(agentStore, runners)
@@ -398,6 +407,9 @@ export function registerIpc(): void {
     CHANNELS.sessionsSend,
     (_e, sessionId: string, prompt: string, options?: SendOptions) =>
       requireManager().send(sessionId, prompt, options ?? {}),
+  )
+  ipcMain.handle(CHANNELS.voiceTranscribe, (_e, input: TranscriptionInput) =>
+    requireTranscription().transcribe(input),
   )
   ipcMain.handle(CHANNELS.sessionsCancel, (_e, sessionId: string) =>
     requireManager().cancel(sessionId),
