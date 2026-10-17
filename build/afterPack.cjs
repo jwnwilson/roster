@@ -122,7 +122,10 @@ async function afterPack(context) {
   mkdirSync(destination, { recursive: true })
   const source = join(context.packager.projectDir, 'build', 'voice', 'roster-voice.swift')
   const swiftArch = targetArch === 'x64' ? 'x86_64' : targetArch
-  execFileSync('xcrun', ['swiftc', source, '-framework', 'AVFoundation', '-framework', 'Speech', '-target', `${swiftArch}-apple-macosx10.15`, '-o', join(destination, 'roster-voice')], { stdio: 'inherit' })
+  const infoPlist = join(context.packager.projectDir, 'build', 'voice', 'Info.plist')
+  execFileSync('xcrun', ['swiftc', source, '-framework', 'AVFoundation', '-framework', 'Speech',
+    '-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__info_plist', '-Xlinker', infoPlist,
+    '-target', `${swiftArch}-apple-macosx10.15`, '-o', join(destination, 'roster-voice')], { stdio: 'inherit' })
 }
 
 module.exports = afterPack

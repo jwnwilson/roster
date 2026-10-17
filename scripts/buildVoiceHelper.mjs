@@ -2,8 +2,8 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-// CI runs on Linux and does not need the macOS-only sidecar. Local macOS
-// development does: Electron's resources directory has no packaged helper.
+// Non-macOS hosts do not need this sidecar. Development builds embed the
+// same privacy metadata as the packaged helper.
 if (process.platform === 'darwin') {
   const output = join(process.cwd(), 'build', 'voice', 'roster-voice')
   mkdirSync(dirname(output), { recursive: true })
@@ -17,6 +17,10 @@ if (process.platform === 'darwin') {
       'AVFoundation',
       '-framework',
       'Speech',
+      '-Xlinker', '-sectcreate',
+      '-Xlinker', '__TEXT',
+      '-Xlinker', '__info_plist',
+      '-Xlinker', join(process.cwd(), 'build', 'voice', 'Info.plist'),
       '-target',
       `${arch}-apple-macosx10.15`,
       '-o',
