@@ -284,16 +284,20 @@ export function briefFor(
   task: Task,
   thread: readonly TaskComment[],
   question: string,
+  mode: 'mention' | 'check-in' = 'mention',
 ): string {
   const lines = [
-    `You have been mentioned on ${task.id} — ${task.title}, on Roster's task board.`,
+    mode === 'mention'
+      ? `You have been mentioned on ${task.id} — ${task.title}, on Roster's task board.`
+      : `Roster is checking in on ${task.id} — ${task.title}, assigned to you on the task board.`,
     '',
     // The instruction leads and the question closes. Trailing it after the
     // quoted material made it read as part of the quote: a small model sent
     // this echoed "Your reply is posted back to the task." back as the first
     // line of its answer.
-    'Answer the question at the end of this message. Your reply is posted back',
-    'to the task as a comment, so write it for whoever reads the board next.',
+    mode === 'mention'
+      ? 'Answer the question at the end of this message. Your reply is posted back\nto the task as a comment, so write it for whoever reads the board next.'
+      : 'Use the task tools to record progress, blockers, and status changes. Your reply is not automatically posted to the task.',
     '',
     `Status: ${taskStatusLabel(task.status)}`,
     `Priority: ${taskPriorityLabel(task.priority)}`,
@@ -321,7 +325,7 @@ export function briefFor(
   }
 
   // Last, because the last thing in a prompt is the thing being asked.
-  lines.push('', 'The comment that mentioned you:', '', question)
+  lines.push('', mode === 'mention' ? 'The comment that mentioned you:' : 'Roster check-in:', '', question)
 
   return lines.join('\n')
 }

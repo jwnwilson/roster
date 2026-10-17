@@ -283,14 +283,18 @@ export async function initStores(): Promise<void> {
     { removeSession: (sessionId) => deleteSession(sessionId, false) },
     notionMcp,
   )
-  nudges = new SessionNudges(sessionStore, manager)
-  nudges.start()
   planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
   // One bridge, so a task an agent changes mid-turn reaches the board the
   // same way one the user dragged does.
   taskStore.subscribe((event) => broadcast(CHANNELS.tasksEvent, event))
+  nudges = new SessionNudges(sessionStore, manager, Date.now, undefined, {
+    tasks: taskStore,
+    agentExists: (agentId) => agentStore.findById(agentId) !== null,
+    onAttached: (link) => broadcast(CHANNELS.tasksEvent, { type: 'task-session', taskId: link.taskId, link }),
+  })
+  nudges.start()
   // The same bridge for plans: an agent revising one mid-turn has to reach an
   // open modal, and a second window has to see it too.
   planStore.subscribe((event) => broadcast(CHANNELS.plansEvent, event))
