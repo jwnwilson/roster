@@ -348,6 +348,68 @@ describe('AssistantChatPane — composer', () => {
     expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('keep this')
   })
 
+  test('asks before downloading the local model and never requests the microphone first', async () => {
+    const user = userEvent.setup()
+    const api = installRosterApi({
+      voice: {
+        status: vi.fn().mockResolvedValue({
+          engine: 'transformers',
+          available: true,
+          model: {
+            state: 'missing',
+            modelId: 'onnx-community/whisper-tiny.en',
+            revision: 'fixed',
+            bytesDownloaded: 0,
+            bytesTotal: 45_081_321,
+          },
+        }),
+      },
+    })
+    render(pane())
+
+    await user.click(screen.getByRole('button', { name: 'Record voice message' }))
+
+    expect(await screen.findByRole('button', { name: /Download local model/ })).toBeEnabled()
+    expect(screen.getByRole('status')).toHaveTextContent('Voice runs locally and audio is not uploaded')
+    expect(api.voice.start).not.toHaveBeenCalled()
+  })
+
+  test('downloads the approved model without sending or recording', async () => {
+    const user = userEvent.setup()
+    const onSend = vi.fn()
+    const api = installRosterApi({
+      voice: {
+        status: vi.fn().mockResolvedValue({
+          engine: 'transformers',
+          available: true,
+          model: {
+            state: 'missing',
+            modelId: 'onnx-community/whisper-tiny.en',
+            revision: 'fixed',
+            bytesDownloaded: 0,
+            bytesTotal: 45_081_321,
+          },
+        }),
+        downloadModel: vi.fn().mockResolvedValue({
+          state: 'ready',
+          modelId: 'onnx-community/whisper-tiny.en',
+          revision: 'fixed',
+          bytesDownloaded: 45_081_321,
+          bytesTotal: 45_081_321,
+        }),
+      },
+    })
+    render(pane({ onSend }))
+
+    await user.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await user.click(await screen.findByRole('button', { name: /Download local model/ }))
+
+    await waitFor(() => expect(api.voice.downloadModel).toHaveBeenCalled())
+    expect(screen.getByRole('status')).toHaveTextContent('model is ready')
+    expect(api.voice.start).not.toHaveBeenCalled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
   test('Stop cancels the running turn', async () => {
     const user = userEvent.setup()
     const onCancel = vi.fn()

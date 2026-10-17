@@ -64,13 +64,14 @@
     "test:main": "vitest run --project main",
     "test:renderer": "vitest run --project renderer",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
-    "check": "npm run typecheck && npm run test:coverage && npm run build",
+    "check": "npm run typecheck && npm run test:coverage && npm run build && node scripts/verifyVoiceRuntime.mjs",
     "postinstall": "electron-builder install-app-deps"
   },
   "type": "module",
   "private": true,
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
+    "@huggingface/transformers": "^3.8.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",

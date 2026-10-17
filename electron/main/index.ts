@@ -3,6 +3,9 @@ import { join } from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, shell } from 'electron'
 import { configureElectronUserData } from './electronUserData'
 import { checkForUpdatesOnLaunch, disposeStores, initStores, registerIpc } from './ipc'
+import { registerVoiceModelScheme } from './voice/modelProtocol'
+
+registerVoiceModelScheme()
 
 const isDev = !app.isPackaged
 
@@ -64,6 +67,35 @@ function createWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
     },
+  })
+
+  const trustedVoicePage = (rawUrl: string): boolean => {
+    try {
+      const requested = new URL(rawUrl)
+      const devUrl = process.env['ELECTRON_RENDERER_URL']
+      if (isDev && devUrl) return requested.origin === new URL(devUrl).origin
+      return requested.protocol === 'file:' && requested.pathname.endsWith('/out/renderer/index.html')
+    } catch {
+      return false
+    }
+  }
+  win.webContents.session.setPermissionCheckHandler((contents, permission, origin, details) =>
+    contents === win.webContents
+      && permission === 'media'
+      && details.isMainFrame
+      && details.mediaType === 'audio'
+      && trustedVoicePage(details.requestingUrl ?? origin),
+  )
+  win.webContents.session.setPermissionRequestHandler((contents, permission, callback, details) => {
+    const media = permission === 'media' ? details as Electron.MediaAccessPermissionRequest : null
+    callback(
+      contents === win.webContents
+        && media !== null
+        && media.isMainFrame
+        && media.mediaTypes?.length === 1
+        && media.mediaTypes[0] === 'audio'
+        && trustedVoicePage(media.requestingUrl),
+    )
   })
 
   if (isDev) {

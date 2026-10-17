@@ -23,6 +23,7 @@ import type {
   Usage,
 } from './types'
 import type { NotionAuthStatus, NotionStatusMap } from './notion'
+import type { VoiceModelProgress, VoiceModelStatus, VoiceStatus } from './voice'
 
 /**
  * The contract exposed on `window.roster`. The renderer may only reach the
@@ -101,8 +102,13 @@ export interface RosterApi {
   }
   /** Speech-to-text for the chat composer; never starts an agent turn itself. */
   voice: {
+    status(): Promise<VoiceStatus>
     start(): Promise<void>
     stop(): Promise<TranscriptionResult>
+    downloadModel(): Promise<VoiceModelStatus>
+    cancelModelDownload(): Promise<void>
+    deleteModel(): Promise<void>
+    onModelProgress(listener: (progress: VoiceModelProgress) => void): () => void
   }
   pty: {
     open(sessionId: string, cwd: string, size: PtySize): Promise<PtyInfo>
@@ -456,6 +462,11 @@ export const CHANNELS = {
 
   voiceStart: 'voice:start',
   voiceStop: 'voice:stop',
+  voiceStatus: 'voice:status',
+  voiceModelDownload: 'voice:modelDownload',
+  voiceModelCancel: 'voice:modelCancel',
+  voiceModelDelete: 'voice:modelDelete',
+  voiceModelProgress: 'voice:modelProgress',
 
   ptyOpen: 'pty:open',
   ptyWrite: 'pty:write',

@@ -39,6 +39,13 @@ export default defineConfig({
       exclude: [
         'electron/main/index.ts',
         'electron/main/ipc/index.ts',
+        // Thin Electron protocol adapter. Its allowlist and integrity boundary
+        // live in VoiceModelStore; the built protocol needs Electron itself.
+        'electron/main/voice/modelProtocol.ts',
+        // Web Worker bootstrap imports the real 22 MB ONNX runtime. Its typed
+        // controller is unit-tested and the production worker/assets are
+        // asserted after every build.
+        'src/chat/voice/transcription.worker.ts',
         // xterm requires a real canvas and devicePixelRatio, neither of which
         // jsdom provides. Verified against a live shell in the built app.
         'src/terminal/TerminalPane.tsx',

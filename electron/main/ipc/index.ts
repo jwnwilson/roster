@@ -1,3 +1,4 @@
+import { join } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import {
   CHANNELS,
@@ -55,6 +56,9 @@ import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
 import { dismissSetup, prepareFirstRun } from '../store/firstRun'
 import { MacSpeechTranscriber } from '../voice/transcription'
+import { selectVoiceEngine, type VoiceEngineSelection } from '../voice/engine'
+import { VoiceModelStore } from '../voice/modelStore'
+import { registerVoiceModelProtocol } from '../voice/modelProtocol'
 
 let runners = new Map<string, RunnerStatus>()
 let db: Db | null = null
@@ -73,6 +77,8 @@ let notionPush: NotionPush | null = null
 let notionAuth: NotionMcpAuth | null = null
 let notionMcp: NotionMcpClient | null = null
 let transcription: MacSpeechTranscriber | null = null
+let voiceSelection: VoiceEngineSelection = { engine: 'off', reason: 'Voice input is not initialised.' }
+let voiceModels: VoiceModelStore | null = null
 
 /**
  * What first-run setup decided, held for the renderer to ask for.
@@ -207,6 +213,11 @@ function requireTranscription(): MacSpeechTranscriber {
   return transcription
 }
 
+function requireVoiceModels(): VoiceModelStore {
+  if (!voiceModels) throw new Error('Voice model storage is not initialised')
+  return voiceModels
+}
+
 const electronSecretBox: SecretBox = {
   encrypt: (value) => {
     if (!safeStorage.isEncryptionAvailable()) {
@@ -229,7 +240,11 @@ export async function initStores(): Promise<void> {
   // and first-run seeding will only point agents at a CLI that is installed.
   runners = await detectAllRunners()
   await agentStore.load()
-  transcription = new MacSpeechTranscriber()
+  voiceSelection = selectVoiceEngine()
+  transcription = voiceSelection.engine === 'apple' ? new MacSpeechTranscriber() : null
+  voiceModels = new VoiceModelStore(join(app.getPath('userData'), 'voice-models'))
+  registerVoiceModelProtocol(voiceModels)
+  voiceModels.onProgress((progress) => broadcast(CHANNELS.voiceModelProgress, progress))
 
   // Seeds the starter roster, once ever, on a genuinely fresh install.
   setup = await prepareFirstRun(agentStore, runners)
@@ -414,6 +429,20 @@ export function registerIpc(): void {
   )
   ipcMain.handle(CHANNELS.voiceStart, () => requireTranscription().start())
   ipcMain.handle(CHANNELS.voiceStop, () => requireTranscription().stop())
+  ipcMain.handle(CHANNELS.voiceStatus, async () => {
+    if (voiceSelection.engine === 'apple') return { engine: 'apple', available: true }
+    if (voiceSelection.engine === 'off') {
+      return { engine: 'off', available: false, reason: voiceSelection.reason }
+    }
+    return {
+      engine: 'transformers',
+      available: true,
+      model: await requireVoiceModels().status(),
+    }
+  })
+  ipcMain.handle(CHANNELS.voiceModelDownload, () => requireVoiceModels().download())
+  ipcMain.handle(CHANNELS.voiceModelCancel, () => requireVoiceModels().cancelDownload())
+  ipcMain.handle(CHANNELS.voiceModelDelete, () => requireVoiceModels().delete())
   ipcMain.handle(CHANNELS.sessionsCancel, (_e, sessionId: string) =>
     requireManager().cancel(sessionId),
   )
