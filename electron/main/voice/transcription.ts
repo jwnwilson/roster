@@ -31,7 +31,11 @@ export class MacSpeechTranscriber {
     const path = this.helperPath()
     if (!existsSync(path)) throw new Error('Voice dictation is unavailable because its macOS helper is missing.')
     const child = this.spawnHelper(path)
-    this.active = { child, result: replyFrom(child) }
+    const result = replyFrom(child)
+    // The helper can fail while macOS is showing its permission prompt. Keep
+    // the rejection observed until Stop surfaces it to the renderer.
+    void result.catch(() => undefined)
+    this.active = { child, result }
     child.stdin.write('{"command":"start"}\n')
   }
 
@@ -82,6 +86,9 @@ function replyFrom(child: ChildProcessWithoutNullStreams): Promise<Transcription
     child.stderr.setEncoding('utf8')
     child.stderr.on('data', (chunk: string) => { error += chunk })
     child.on('error', () => fail('Roster could not start the macOS voice dictation helper.'))
-    child.on('close', () => fail(error.trim() || 'Voice dictation ended before it returned text.'))
+    child.on('close', (code, signal) => {
+      const detail = error.trim() || `exit ${code ?? 'unknown'}${signal ? ` (${signal})` : ''}`
+      fail(`Voice dictation ended before it returned text (${detail}).`)
+    })
   })
 }

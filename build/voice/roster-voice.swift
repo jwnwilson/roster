@@ -48,7 +48,12 @@ final class Dictation: NSObject {
 }
 
 let dictation = Dictation()
-while let line = readLine() {
-  if line.contains("start") { dictation.start() }
-  if line.contains("stop") { dictation.stop() }
+// Speech authorization and AVFoundation callbacks require a live main run
+// loop. Read stdin on a background queue and dispatch commands back to main.
+DispatchQueue.global().async {
+  while let line = readLine() {
+    if line.contains("start") { DispatchQueue.main.async { dictation.start() } }
+    if line.contains("stop") { DispatchQueue.main.async { dictation.stop() } }
+  }
 }
+dispatchMain()
