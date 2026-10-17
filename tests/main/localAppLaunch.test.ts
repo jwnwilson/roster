@@ -10,6 +10,13 @@ describe('local macOS app launch', () => {
     expect(scripts['dev:app:debug']).toMatch(/^npm run prepare:dev && npm run build/)
   })
 
+  test('ad-hoc signs local macOS bundles without a Developer ID', () => {
+    const scripts = JSON.parse(readFileSync('package.json', 'utf8')).scripts as Record<string, string>
+    for (const name of ['dev:app', 'dev:app:debug']) {
+      expect(scripts[name]).toContain('-c.mac.identity=-')
+    }
+  })
+
   test('uses an absolute architecture-specific app bundle path', () => {
     expect(localAppPath('/worktrees/voice', 'arm64')).toBe(
       '/worktrees/voice/release/mac-arm64/Roster.app',
@@ -19,14 +26,12 @@ describe('local macOS app launch', () => {
     )
   })
 
-  test('launches through Launch Services with app environment, output, and debug arguments', () => {
+  test('launches through Launch Services with app environment and debug arguments', () => {
     expect(openArguments('/worktrees/voice/release/mac-arm64/Roster.app', {
       ROSTER_HOME: '/tmp/roster-voice',
       PATH: '/usr/local/bin:/usr/bin',
     }, ['--inspect=9229'])).toEqual([
       '-n', '-W',
-      '--stdout', '/dev/stdout',
-      '--stderr', '/dev/stderr',
       '--env', 'ROSTER_UPDATE_CHECK=0',
       '--env', 'ROSTER_HOME=/tmp/roster-voice',
       '--env', 'PATH=/usr/local/bin:/usr/bin',

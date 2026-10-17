@@ -115,8 +115,11 @@ ROSTER_HOME=/tmp/roster-voice npm run dev:app
 ```
 
 This packages the current worktree and opens Roster through Launch Services
-as its own application identity. It preserves
-`ROSTER_HOME`, `PATH`, and terminal output, and waits for the app to close. Use
+as its own application identity. Local bundles are ad-hoc signed so they can
+launch without an Apple Developer ID certificate; release signing is unchanged.
+It preserves `ROSTER_HOME` and `PATH`, and waits for the app to close. App output
+is not forwarded to the terminal: Launch Services cannot reliably open the
+terminal device paths. Use
 `npm run dev:app:debug` for the main-process inspector on 9229 and Chromium
 remote debugging on 9222. Quit the app and re-run the command after source edits;
 this path does not hot reload. **Quit Roster with Cmd-Q before restarting or
