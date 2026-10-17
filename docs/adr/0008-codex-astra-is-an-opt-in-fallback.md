@@ -26,11 +26,15 @@ Do not make Astra the seeded Codex default. Existing rosters keep their model
 selection, and new Codex agents keep the lower-cost `gpt-5.6-terra` default;
 users opt into Astra in the model picker.
 
+Treat Codex's cached catalogue as the ordered, account-specific source for new
+models. Append the offline fallback choices that the cache omits, so a cache
+that has not refreshed after a CLI update cannot hide a supported model such
+as Astra. Duplicate slugs are removed.
+
 ## Consequences
 
-* Astra is available in the offline fallback catalog, and in the normal
-  CLI-backed catalog once the user has updated Codex and their account offers
-  the model.
+* Newly released models from Codex appear in the cache's own order. Astra and
+  other offline choices remain selectable while that cache catches up.
 * Its context meter and API-equivalent estimate are meaningful rather than
   unknown.
 * The estimate does not attempt to apply long-context, regional-processing, or
