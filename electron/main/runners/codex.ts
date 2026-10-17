@@ -72,7 +72,7 @@ export class CodexRunner implements Runner {
         .filter((slug): slug is string => typeof slug === 'string' && !EXCLUDED_SLUGS.has(slug))
         .map((slug) => ({ id: slug, price: '' }))
 
-      return models.length > 0 ? models : FALLBACK_MODELS
+      return mergeFallbackModels(models)
     } catch {
       return FALLBACK_MODELS
     }
@@ -147,6 +147,16 @@ export class CodexRunner implements Runner {
     // nothing for Roster to release. Left explicit rather than silently
     // absent so the asymmetry with the Claude runner is visible.
   }
+}
+
+/**
+ * The CLI cache is the current, account-specific catalogue. It can lag a CLI
+ * update though, so retain Roster's offline choices without displacing the
+ * cache's ordering or duplicating a slug it already supplies.
+ */
+function mergeFallbackModels(models: ModelInfo[]): ModelInfo[] {
+  const seen = new Set(models.map((model) => model.id))
+  return [...models, ...FALLBACK_MODELS.filter((model) => !seen.has(model.id))]
 }
 
 const WORKTREE_PERMISSION_PROFILE = 'roster-worktree'
