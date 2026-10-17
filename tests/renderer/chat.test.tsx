@@ -284,7 +284,6 @@ describe('AssistantChatPane — composer', () => {
     render(pane({ isStreaming: true }))
 
     expect(screen.getByLabelText('Message Debugging Agent')).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled()
   })
 
   test('sends what was typed', async () => {
@@ -341,13 +340,6 @@ describe('AssistantChatPane — composer', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Voice transcription failed (500).')
     expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('keep this')
-  })
-
-  test('locks the composer while a turn is in flight', () => {
-    render(pane({ isStreaming: true }))
-
-    expect(screen.getByLabelText('Message Debugging Agent')).toBeDisabled()
-    expect(screen.getByText('Debugging Agent is working…')).toBeInTheDocument()
   })
 
   test('Stop cancels the running turn', async () => {

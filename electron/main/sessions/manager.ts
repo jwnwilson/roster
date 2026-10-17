@@ -629,8 +629,8 @@ export class SessionManager {
    * caller of send() is owed only the one it asked for.
    */
   private drain(sessionId: string): void {
-    const queue = this.queued.get(sessionId)
-    const next = queue?.shift()
+    const queue = this.queued.get(sessionId) ?? []
+    const next = queue.shift()
     if (!next) return
 
     if (queue.length === 0) this.queued.delete(sessionId)
