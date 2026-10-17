@@ -103,6 +103,24 @@ for main-process code, or open `http://localhost:9222` in Chrome to inspect the
 renderer. Electron must be able to reach macOS LaunchServices; a headless or
 sandboxed executor cannot create a GUI window and exits before Roster code runs.
 
+### macOS voice-permission development launch
+
+When macOS attributes a development voice permission request to the editor that
+started `npm run dev`, use the current source as an application bundle instead:
+
+```bash
+ROSTER_HOME=/tmp/roster-voice npm run dev:app
+```
+
+This packages the current worktree and opens it through Launch Services, so the
+permission request is attributed to Roster rather than VS Code. It preserves
+`ROSTER_HOME`, `PATH`, terminal output, and shutdown status. Use
+`npm run dev:app:debug` for the main-process inspector on 9229 and Chromium
+remote debugging on 9222. This is intentionally an explicit, rebuild-and-
+relaunch workflow; electron-vite's normal hot-reload launcher owns a direct
+Electron child process, so wrapping it in Launch Services would break reliable
+restart and shutdown handling.
+
 The landing page is `site/index.html` — static HTML and CSS, no build step and no
 dependency on this project's `package.json`. Open the file, or serve the folder
 (`python3 -m http.server -d site`), and `.github/workflows/pages.yml` publishes it

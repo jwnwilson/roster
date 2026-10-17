@@ -51,6 +51,8 @@
     "dev": "electron-vite dev",
     "predev:debug": "npm run predev",
     "dev:debug": "electron-vite dev --inspect=9229 --remoteDebuggingPort=9222 --sourcemap",
+    "dev:app": "npm run predev && npm run build && electron-builder --mac --dir -c.electronDist=node_modules/electron/dist && node scripts/open-local-app.mjs",
+    "dev:app:debug": "npm run predev && npm run build && electron-builder --mac --dir -c.electronDist=node_modules/electron/dist && node scripts/open-local-app.mjs --inspect=9229 --remote-debugging-port=9222",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "test": "vitest run",
