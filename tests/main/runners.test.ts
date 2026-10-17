@@ -342,6 +342,21 @@ describe('CodexRunner', () => {
     expect(models.every((m) => m.price === '')).toBe(true)
   })
 
+  test('keeps current cache models first while filling a stale cache with known choices', async () => {
+    const cache = join(dir, 'stale-models-cache.json')
+    await writeFile(
+      cache,
+      JSON.stringify({ models: [{ slug: 'gpt-6.1-sol' }, { slug: 'gpt-5.6-terra' }] }),
+      'utf8',
+    )
+
+    const ids = (await new CodexRunner().models(cache)).map((model) => model.id)
+
+    expect(ids.slice(0, 2)).toEqual(['gpt-6.1-sol', 'gpt-5.6-terra'])
+    expect(ids).toContain('gpt-6-astra')
+    expect(ids.filter((id) => id === 'gpt-5.6-terra')).toHaveLength(1)
+  })
+
   test('never offers the internal review model as a session model', async () => {
     const runner = new CodexRunner()
     const models = await runner.models()
