@@ -44,11 +44,17 @@ export class MacSpeechTranscriber {
   }
 }
 
-function defaultHelperPath(): string {
-  return process.resourcesPath
-    ? join(process.resourcesPath, 'voice', 'roster-voice')
-    : join(process.cwd(), 'build', 'voice', 'roster-voice')
+export function voiceHelperPath(
+  isPackaged = process.defaultApp !== true,
+  resourcesPath = process.resourcesPath,
+  cwd = process.cwd(),
+): string {
+  return isPackaged
+    ? join(resourcesPath, 'voice', 'roster-voice')
+    : join(cwd, 'build', 'voice', 'roster-voice')
 }
+
+const defaultHelperPath = (): string => voiceHelperPath()
 
 function replyFrom(child: ChildProcessWithoutNullStreams): Promise<TranscriptionResult> {
   return new Promise((resolve, reject) => {

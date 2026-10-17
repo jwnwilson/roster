@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { describe, expect, test, vi } from 'vitest'
-import { MacSpeechTranscriber } from '@main/voice/transcription'
+import { MacSpeechTranscriber, voiceHelperPath } from '@main/voice/transcription'
 
 function helper(): { process: ChildProcessWithoutNullStreams; output: PassThrough } {
   const output = new PassThrough()
@@ -15,6 +15,12 @@ function helper(): { process: ChildProcessWithoutNullStreams; output: PassThroug
 }
 
 describe('MacSpeechTranscriber', () => {
+  test('uses the development helper instead of Electron’s resources directory', () => {
+    expect(voiceHelperPath(false, '/Electron.app/Contents/Resources', '/repo')).toBe(
+      '/repo/build/voice/roster-voice',
+    )
+  })
+
   test('starts the bundled helper and returns its final reviewed text', async () => {
     const child = helper()
     const spawn = vi.fn(() => child.process)
