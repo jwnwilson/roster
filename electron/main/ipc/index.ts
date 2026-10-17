@@ -49,7 +49,7 @@ import { NotionPush } from '../notion/sync'
 import { SkillStore } from '../store/skills'
 import { ProjectNotesStore } from '../store/projectNotes'
 import { UsageStore } from '../store/usage'
-import { Updater } from '../update/updater'
+import { Updater, shouldCheckForUpdatesOnLaunch } from '../update/updater'
 import { databasePath, mcpConfigPath } from '../store/paths'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
@@ -354,10 +354,11 @@ export async function initStores(): Promise<void> {
  * Silent, so a laptop that happens to be offline says nothing rather than
  * opening with an error. Skipped in development, where the running version
  * comes from package.json and there is no installed bundle to replace —
- * ROSTER_UPDATE_CHECK=1 forces it for testing the flow.
+ * ROSTER_UPDATE_CHECK=1 forces it for testing the flow; 0 suppresses it for
+ * local packaged development launched through Launch Services.
  */
 export function checkForUpdatesOnLaunch(): void {
-  if (!app.isPackaged && process.env['ROSTER_UPDATE_CHECK'] !== '1') return
+  if (!shouldCheckForUpdatesOnLaunch(app.isPackaged, process.env['ROSTER_UPDATE_CHECK'])) return
   void updater?.check({ silent: true })
 }
 
