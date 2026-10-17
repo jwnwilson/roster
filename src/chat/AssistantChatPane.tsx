@@ -70,7 +70,10 @@ export function AssistantChatPane({
   const runtime = useExternalStoreRuntime<Message>({
     messages,
     convertMessage,
-    isRunning: isStreaming,
+    // Roster shows the running state itself and accepts follow-up messages
+    // into its session-local queue. Passing this through would make
+    // assistant-ui disable Send before onNew can queue the follow-up.
+    isRunning: false,
     onNew: async (message) => {
       const text = message.content
         .map((part) => (part.type === 'text' ? part.text : ''))
