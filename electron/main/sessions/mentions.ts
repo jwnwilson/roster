@@ -263,6 +263,8 @@ export class TaskMentions {
  * recent end is the part that bears on the question being asked.
  */
 const MAX_THREAD_ENTRIES = 20
+const MAX_THREAD_ENTRY_CHARS = 1000
+const MAX_TITLE_CHARS = 500
 
 /** A ceiling on the quoted description, for the same reason. */
 const MAX_DESCRIPTION_CHARS = 4000
@@ -284,16 +286,21 @@ export function briefFor(
   task: Task,
   thread: readonly TaskComment[],
   question: string,
+  mode: 'mention' | 'check-in' = 'mention',
 ): string {
+  const title = truncate(task.title, MAX_TITLE_CHARS)
   const lines = [
-    `You have been mentioned on ${task.id} — ${task.title}, on Roster's task board.`,
+    mode === 'mention'
+      ? `You have been mentioned on ${task.id} — ${title}, on Roster's task board.`
+      : `Roster is checking in on ${task.id} — ${title}, assigned to you on the task board.`,
     '',
     // The instruction leads and the question closes. Trailing it after the
     // quoted material made it read as part of the quote: a small model sent
     // this echoed "Your reply is posted back to the task." back as the first
     // line of its answer.
-    'Answer the question at the end of this message. Your reply is posted back',
-    'to the task as a comment, so write it for whoever reads the board next.',
+    mode === 'mention'
+      ? 'Answer the question at the end of this message. Your reply is posted back\nto the task as a comment, so write it for whoever reads the board next.'
+      : 'Use the task tools to record progress, blockers, and status changes. Your reply is not automatically posted to the task.',
     '',
     `Status: ${taskStatusLabel(task.status)}`,
     `Priority: ${taskPriorityLabel(task.priority)}`,
@@ -316,12 +323,14 @@ export function briefFor(
     if (recent.length < written.length) {
       lines.push(`(${written.length - recent.length} earlier comments not shown)`)
     }
-    for (const entry of recent) lines.push(`${entry.author}: ${entry.text}`)
+    for (const entry of recent) {
+      lines.push(truncate(`${entry.author}: ${entry.text}`, MAX_THREAD_ENTRY_CHARS))
+    }
     lines.push('--- end thread ---')
   }
 
   // Last, because the last thing in a prompt is the thing being asked.
-  lines.push('', 'The comment that mentioned you:', '', question)
+  lines.push('', mode === 'mention' ? 'The comment that mentioned you:' : 'Roster check-in:', '', question)
 
   return lines.join('\n')
 }

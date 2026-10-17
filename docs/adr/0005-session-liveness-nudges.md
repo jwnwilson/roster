@@ -4,6 +4,8 @@
 
 Accepted — 2026-09-11
 
+Missing-session behavior amended by [ADR 0012](0012-task-check-ins-create-missing-assignee-sessions.md).
+
 ## Context
 
 Roster can start an agent session from a task mention, but a turn completing
