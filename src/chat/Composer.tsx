@@ -1,6 +1,9 @@
 import { ComposerPrimitive, unstable_useComposerInput } from '@assistant-ui/react'
 import { useEffect, useRef, useState } from 'react'
 import { messageFor } from '@/lib/errors'
+import type { VoiceEngine, VoiceModelProgress } from '@shared/voice'
+import { BrowserVoiceCapture, MAX_VOICE_SECONDS } from './voice/audio'
+import { VoiceWorkerClient } from './voice/workerClient'
 
 export interface StreamingRowProps {
   text: string
@@ -107,69 +110,174 @@ export function Composer({
  */
 function VoiceInput({ disabled }: { disabled: boolean }) {
   const composer = unstable_useComposerInput({ disabled })
-  const [state, setState] = useState<'idle' | 'recording' | 'transcribing'>('idle')
+  const [state, setState] = useState<'idle' | 'needs-model' | 'downloading' | 'recording' | 'transcribing'>('idle')
+  const stateRef = useRef(state)
   const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
   const discard = useRef(false)
   const recording = useRef(false)
   const draft = useRef(composer.value)
+  const engine = useRef<VoiceEngine | null>(null)
+  const capture = useRef<BrowserVoiceCapture | null>(null)
+  const worker = useRef<VoiceWorkerClient | null>(null)
+  const recordingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     draft.current = composer.value
   }, [composer.value])
 
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
+
   useEffect(
-    () => () => {
-      discard.current = true
-      if (recording.current) void window.roster.voice.stop().catch(() => undefined)
-    }, [])
+    () => {
+      const unsubscribe = window.roster.voice.onModelProgress((progress) => {
+        setStatus(downloadStatus(progress))
+      })
+      return () => {
+        unsubscribe()
+        discard.current = true
+        clearRecordingTimer()
+        capture.current?.cancel()
+        worker.current?.dispose()
+        if (recording.current && engine.current === 'apple') {
+          void window.roster.voice.stop().catch(() => undefined)
+        }
+      }
+    }, [],
+  )
+
+  useEffect(() => {
+    if (state === 'idle' || state === 'needs-model') return
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') void cancel()
+    }
+    window.addEventListener('keydown', cancelOnEscape)
+    return () => window.removeEventListener('keydown', cancelOnEscape)
+  })
 
   async function start(): Promise<void> {
     if (composer.isDisabled || state !== 'idle') return
     setError(null)
+    setStatus(null)
     discard.current = false
 
     try {
-      await window.roster.voice.start()
+      const capability = await window.roster.voice.status()
+      engine.current = capability.engine
+      if (!capability.available || capability.engine === 'off') {
+        throw new Error(capability.reason ?? 'Voice input is unavailable.')
+      }
+      if (capability.engine === 'transformers') {
+        if (capability.model?.state !== 'ready') {
+          setState('needs-model')
+          setStatus('Voice runs locally and audio is not uploaded. Download the English model from Hugging Face before recording.')
+          return
+        }
+        const nextCapture = new BrowserVoiceCapture()
+        capture.current = nextCapture
+        await nextCapture.start()
+      } else {
+        await window.roster.voice.start()
+      }
       if (discard.current) {
-        void window.roster.voice.stop().catch(() => undefined)
+        if (engine.current === 'apple') void window.roster.voice.stop().catch(() => undefined)
+        else capture.current?.cancel()
         return
       }
       recording.current = true
       setState('recording')
+      setStatus('Recording. Press Stop when finished; recording stops automatically after 60 seconds.')
+      recordingTimer.current = setTimeout(() => {
+        setStatus('Maximum recording length reached. Transcribing…')
+        void stop()
+      }, MAX_VOICE_SECONDS * 1_000)
     } catch (cause) {
       setState('idle')
       setError(messageFor(cause) || 'Roster could not start voice dictation.')
     }
   }
 
-  function stop(): void {
-    if (state !== 'recording') return
+  async function stop(): Promise<void> {
+    if (stateRef.current !== 'recording') return
+    clearRecordingTimer()
     recording.current = false
     setState('transcribing')
-    void transcribe()
+    setStatus('Transcribing locally…')
+    await transcribe()
   }
 
   async function transcribe(): Promise<void> {
     try {
-      const result = await window.roster.voice.stop()
-      if (result.text !== '') {
-        composer.setText(draft.current === '' ? result.text : `${draft.current}\n${result.text}`)
+      const text = engine.current === 'transformers'
+        ? await transcribePortable()
+        : (await window.roster.voice.stop()).text
+      if (!discard.current && text !== '') {
+        composer.setText(draft.current === '' ? text : `${draft.current}\n${text}`)
       }
     } catch (cause) {
-      setError(messageFor(cause))
+      if (!discard.current) setError(messageFor(cause))
     } finally {
       setState('idle')
+      setStatus(null)
     }
+  }
+
+  async function transcribePortable(): Promise<string> {
+    const audio = await capture.current!.stop()
+    capture.current = null
+    worker.current ??= new VoiceWorkerClient()
+    return worker.current.transcribe(audio)
+  }
+
+  async function downloadModel(): Promise<void> {
+    discard.current = false
+    setError(null)
+    setState('downloading')
+    setStatus('Downloading local voice model…')
+    try {
+      await window.roster.voice.downloadModel()
+      setState('idle')
+      setStatus('Local voice model is ready. Activate Voice again to record.')
+    } catch (cause) {
+      setState('needs-model')
+      if (discard.current) setStatus('Voice model download cancelled.')
+      else {
+        setError(messageFor(cause))
+        setStatus(null)
+      }
+    }
+  }
+
+  async function cancel(): Promise<void> {
+    discard.current = true
+    clearRecordingTimer()
+    if (state === 'downloading') await window.roster.voice.cancelModelDownload().catch(() => undefined)
+    if (state === 'recording') {
+      recording.current = false
+      if (engine.current === 'apple') await window.roster.voice.stop().catch(() => undefined)
+      else capture.current?.cancel()
+    }
+    if (state === 'transcribing') worker.current?.cancel()
+    capture.current = null
+    setState(state === 'downloading' ? 'needs-model' : 'idle')
+    setStatus(state === 'downloading' ? 'Voice model download cancelled.' : 'Voice input cancelled.')
+  }
+
+  function clearRecordingTimer(): void {
+    if (recordingTimer.current) clearTimeout(recordingTimer.current)
+    recordingTimer.current = null
   }
 
   return (
     <div className="flex items-center gap-[6px]">
       <button
         type="button"
-        aria-label={state === 'recording' ? 'Stop recording voice message' : 'Record voice message'}
+        aria-label={state === 'recording' ? 'Stop recording voice message' : state === 'transcribing' ? 'Cancel voice transcription' : 'Record voice message'}
         aria-pressed={state === 'recording'}
-        disabled={composer.isDisabled || state === 'transcribing'}
-        onClick={() => void (state === 'recording' ? stop() : start())}
+        disabled={composer.isDisabled || state === 'downloading' || state === 'needs-model'}
+        onClick={() => void (state === 'recording' ? stop() : state === 'transcribing' ? cancel() : start())}
         className={`flex-none cursor-pointer rounded-chip border px-[10px] py-[4px] font-ui text-md disabled:cursor-default disabled:opacity-40 ${
           state === 'recording'
             ? 'border-error bg-error/10 text-error'
@@ -177,9 +285,31 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
         }`}
         data-hoverable
       >
-        {state === 'recording' ? 'Stop' : state === 'transcribing' ? 'Transcribing…' : 'Voice'}
+        {state === 'recording' ? 'Stop' : state === 'transcribing' ? 'Cancel' : 'Voice'}
       </button>
+      {state === 'needs-model' ? (
+        <button
+          type="button"
+          onClick={() => void downloadModel()}
+          className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[10px] py-[4px] font-ui text-md text-muted-2 hover:border-line-hover"
+        >
+          Download local model (~45 MB)
+        </button>
+      ) : null}
+      {state === 'downloading' ? (
+        <button type="button" onClick={() => void cancel()} className="cursor-pointer font-ui text-sm text-muted-2 underline">
+          Cancel download
+        </button>
+      ) : null}
+      {status ? <span role="status" aria-live="polite" className="max-w-[300px] text-sm text-dim">{status}</span> : null}
       {error ? <span role="alert" className="max-w-[260px] text-sm text-error">{error}</span> : null}
     </div>
   )
+}
+
+function downloadStatus(progress: VoiceModelProgress): string {
+  const percent = progress.bytesTotal === 0
+    ? 0
+    : Math.min(100, Math.round(progress.bytesDownloaded / progress.bytesTotal * 100))
+  return `Downloading local voice model… ${percent}%`
 }
