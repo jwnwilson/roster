@@ -17,8 +17,9 @@
 //
 // So it is asserted here, per arch, on every build including local ones.
 
-const { readdirSync, existsSync } = require('node:fs')
+const { readdirSync, existsSync, mkdirSync } = require('node:fs')
 const { join } = require('node:path')
+const { execFileSync } = require('node:child_process')
 
 /** electron-builder passes `Arch` as its enum ordinal, not a name. */
 const ARCH_NAMES = ['ia32', 'x64', 'armv7l', 'arm64', 'universal']

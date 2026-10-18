@@ -25,3 +25,19 @@ describe('desktop diagnostics', () => {
     expect(desktopHelperPath(false, '/resources', '/repo')).toBe('/repo/build/desktop/roster-desktop')
   })
 })
+
+it('requests Accessibility explicitly without interpreting the asynchronous prompt as a grant', async () => {
+  const run = vi.fn().mockResolvedValue('{}')
+  const helper = new DesktopDiagnostics('darwin', () => '/helper', run)
+  await expect(helper.requestAccessibility()).resolves.toBeUndefined()
+  expect(run).toHaveBeenCalledWith('/helper', ['--request-accessibility'])
+})
+it('only passes a generated test identifier and the current app PID to the helper', async () => {
+  const run = vi.fn().mockResolvedValue('{}')
+  const helper = new DesktopDiagnostics('darwin', () => '/helper', run)
+  await expect(helper.typeTest('arbitrary text')).rejects.toThrow('Invalid')
+  expect(run).not.toHaveBeenCalled()
+  const nonce = '12345678-1234-1234-1234-123456789abc'
+  await helper.typeTest(nonce)
+  expect(run).toHaveBeenCalledWith('/helper', ['--type-test', String(process.pid), nonce])
+})

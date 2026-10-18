@@ -24,7 +24,7 @@ function runHelper(path: string, args: string[]): Promise<string> {
   })
 }
 
-/** No arbitrary commands or agent tools: read-only observation. */
+/** No arbitrary commands or agent tools: read-a fixed local test in addition to observation. */
 export class DesktopDiagnostics {
   constructor(
     private readonly platform = process.platform,
@@ -33,6 +33,17 @@ export class DesktopDiagnostics {
   ) {}
 
   check(): Promise<DesktopReport> { return this.execute([]) }
+
+  async requestAccessibility(): Promise<void> {
+    if (this.platform !== 'darwin') throw new Error('Desktop testing is available on macOS only.')
+    await this.run(this.helperPath(), ['--request-accessibility'])
+  }
+
+  async typeTest(nonce: string): Promise<void> {
+    if (this.platform !== 'darwin') throw new Error('Desktop testing is available on macOS only.')
+    if (!/^[a-f0-9-]{36}$/.test(nonce)) throw new Error('Invalid desktop test identifier.')
+    await this.run(this.helperPath(), ['--type-test', String(process.pid), nonce])
+  }
 
   private async execute(args: string[]): Promise<DesktopReport> {
     if (this.platform !== 'darwin') throw new Error('Desktop diagnostics are currently available on macOS only.')

@@ -1,3 +1,4 @@
+import type { DesktopTestResult } from '../../../shared/desktop'
 import { z } from 'zod'
 import type { Agent, Question } from '../../../shared/types'
 import { ROSTER_SERVER } from '../../../shared/mcp'
@@ -10,6 +11,8 @@ import { ROSTER_SERVER } from '../../../shared/mcp'
  * both sides show the link.
  */
 export interface RosterTools {
+  /** The main process confirms every invocation before native input. */
+  testLocalDesktop?(): Promise<DesktopTestResult>
   listAgents(): Agent[]
   /**
    * Returns the label to show on the handoff pill, and whether the receiving
@@ -33,11 +36,12 @@ export interface RosterTools {
  * Every tool this server registers, as the SDK namespaces them.
  *
  * Exported so the runner's allowlist cannot drift from what is actually
- * registered — these are affordances of the app rather than actions on the
- * user's machine, so they are auto-approved, and a tool missing from here
- * silently blocks on the approval gate instead.
+ * registered. Desktop testing has its own native confirmation in the main
+ * process; the remaining tools are app affordances. A missing name silently
+ * blocks on the runner's approval gate instead.
  */
 export const ROSTER_TOOL_NAMES = [
+  'mcp__roster__test_local_desktop',
   'mcp__roster__list_agents',
   'mcp__roster__open_session',
   'mcp__roster__close_session',
@@ -218,7 +222,24 @@ export function buildRosterTools(
     },
   )
 
-  return [listAgents, openSession, closeSession, requestUserDecision]
+  const testLocalDesktop = tool(
+    'test_local_desktop',
+    'Test keyboard control on the Mac running Roster. Asks the user to confirm in the app, opens a disposable Roster window, types a fixed test phrase using native events, and returns verified text and a screenshot of only that window. Cannot control other apps or a remote laptop. Requires macOS Accessibility permission configured in Desktop.',
+    {},
+    async () => {
+      try {
+        if (!tools.testLocalDesktop) throw new Error('Local desktop testing is unavailable in this session.')
+        const result = await tools.testLocalDesktop()
+        return { content: [
+          { type: 'text' as const, text: `Local keyboard control verified. Read back: ${result.observed}` },
+          { type: 'image' as const, mimeType: 'image/png', data: result.screenshot.replace(/^data:image\/png;base64,/, '') },
+        ] }
+      } catch (cause) {
+        return { isError: true, content: [{ type: 'text' as const, text: cause instanceof Error ? cause.message : String(cause) }] }
+      }
+    },
+  )
+  return [testLocalDesktop, listAgents, openSession, closeSession, requestUserDecision]
 }
 
 function firstLine(prompt: string): string {

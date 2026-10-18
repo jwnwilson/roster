@@ -360,19 +360,37 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
 - Model prices are a table Roster maintains for Claude; Codex publishes none, so that
   column is left empty rather than invented.
 
-### Desktop diagnostics (macOS)
+### Local desktop control prototype (macOS)
 
-Open **Desktop** in the sidebar and choose **Run diagnostics**. Roster runs its
-bundled helper to report Accessibility, Screen Recording and input-posting
-permission, the visible screen count and the frontmost application's name.
-This is a read-only developer diagnostic: it does not capture screenshots,
-send input, request permissions or enable agent control.
+This experiment proves native keyboard input into a disposable Roster window.
+It does not control arbitrary apps or another laptop over the network.
 
-Current releases disable Developer ID signing. Helper permission grants may
-not persist across updates; a stable signed helper and an installed-app update
-test are prerequisites for a durable permission-request flow. Results apply only
-to the helper in the current launch context. Run the installed app in your
-logged-in desktop session to compare with shell results.
+1. In a normal macOS Terminal, from the prototype checkout, run `npm install`
+   and then `ROSTER_HOME=/tmp/roster-control-prototype npm run dev:app`.
+   This builds an ad-hoc signed app and launches it through Launch Services with
+   a separate local workspace. Keep using that same built app during permission testing.
+2. Open **Desktop → Request Accessibility access**. In **System Settings →
+   Privacy & Security → Accessibility**, enable the Roster app or helper macOS
+   identifies. The prompt is asynchronous; requesting access does not grant it.
+   If no entry appears, add the built app from `release/mac-arm64/Roster.app`
+   (Apple Silicon) or `release/mac/Roster.app` (Intel). The helper is inside
+   `Contents/Resources/desktop/roster-desktop` if macOS identifies it separately.
+3. Quit the prototype. Reopen without rebuilding:
+   `ROSTER_HOME=/tmp/roster-control-prototype node scripts/open-local-app.mjs`.
+4. Choose **Desktop → Run local control test**. Leave the disposable window
+   focused. Close it to stop. A successful test displays **Local keyboard control
+   verified**, the text actually read back and a screenshot of only that window.
+5. To test the agent path, start a normal agent conversation in this build and ask:
+   **“Use test_local_desktop to test local keyboard control.”** Approve **Run test**
+   in Roster's confirmation dialog and leave the disposable window focused.
+   The agent receives verified text and the same window screenshot.
 
-`npm run dev` compiles the helper on macOS; packaging compiles it for the target
-architecture. To compile only this helper, run `node scripts/buildDesktopHelper.mjs`.
+Screen Recording is not needed for this test; it captures only Roster's own
+window. **Run diagnostics** reports the helper's current permissions and desktop
+visibility. A zero screen count means this launch context cannot see the desktop.
+Permission denied, lost focus, closed windows or mismatched text are failures,
+not successful tests. The agent tool is unavailable in plan mode.
+
+Current releases do not use stable Developer ID signing. Rebuilds and updates
+may require granting Accessibility again. Production signing and persistence
+remain ROS-19; see ADR 0014 for the prototype's boundary.

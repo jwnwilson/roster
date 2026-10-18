@@ -1,3 +1,4 @@
+import type { DesktopTestResult } from '../../../shared/desktop'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
 import type {
@@ -150,6 +151,8 @@ interface ActiveRun {
  * finished state, the runner holds none.
  */
 export class SessionManager {
+  /** Installed by the app; the callback must confirm before executing. */
+  testLocalDesktop?: (agentName: string) => Promise<DesktopTestResult>
   private active = new Map<string, ActiveRun>()
   private listeners = new Set<(event: SessionEvent) => void>()
   /** Turns Roster owes a session once its current one ends, in send order. */
@@ -1029,6 +1032,7 @@ export class SessionManager {
    */
   private builtinToolsFor(agent: Agent, session: Session, planMode: boolean): BuiltinToolSet {
     const roster: RosterTools = {
+      ...(!planMode && this.testLocalDesktop ? { testLocalDesktop: () => this.testLocalDesktop!(agent.name) } : {}),
       listAgents: () => this.agents.findAll(),
       openSession: ({ toAgentId, title, brief }) => {
         const result = this.handOff({
