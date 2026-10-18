@@ -31,9 +31,9 @@ import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
 import { readFlag, writeFlag } from '@/lib/uiPreference'
 
-export type Screen = 'desktop' | 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
+export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
 export type PaneMode = 'chat' | 'terminal'
-export type McpTab = 'installed' | 'registry'
+export type McpTab = 'installed' | 'registry' | 'desktop'
 export type TaskTab = 'comments' | 'history'
 export type TaskView = 'backlog' | 'board'
 /** Which of the Agents screen's two views is showing. */

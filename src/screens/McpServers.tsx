@@ -1,3 +1,4 @@
+import { Desktop } from './Desktop'
 import { useState } from 'react'
 import type { Agent, McpServer, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
@@ -9,6 +10,7 @@ import { McpServerModal, type McpServerDraft } from './McpServerModal'
 const TABS = [
   { value: 'installed' as const, label: 'Installed' },
   { value: 'registry' as const, label: 'Registry' },
+  { value: 'desktop' as const, label: 'Desktop' },
 ]
 
 /**
@@ -47,7 +49,9 @@ export function McpServers() {
         />
       </ScreenHeader>
 
-      {tab === 'installed' ? <Installed onEdit={setEditing} /> : <Registry onEdit={setEditing} />}
+      {tab === 'installed' && <Installed onEdit={setEditing} />}
+      {tab === 'registry' && <Registry onEdit={setEditing} />}
+      {tab === 'desktop' && <Desktop />}
 
       {editing ? (
         <McpServerModal

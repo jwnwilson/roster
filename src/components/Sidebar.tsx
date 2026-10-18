@@ -37,7 +37,6 @@ const NAV: NavItem[] = [
   { key: 'grid', label: 'Agents' },
   { key: 'skills', label: 'Skills' },
   { key: 'mcp', label: 'MCP servers' },
-  { key: 'desktop', label: 'Desktop' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'spend', label: 'Spend', dot: 'var(--color-amber)' },
 ]

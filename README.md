@@ -369,7 +369,7 @@ It does not control arbitrary apps or another laptop over the network.
    and then `ROSTER_HOME=/tmp/roster-control-prototype npm run dev:app`.
    This builds an ad-hoc signed app and launches it through Launch Services with
    a separate local workspace. Keep using that same built app during permission testing.
-2. Open **Desktop → Request Accessibility access**. In **System Settings →
+2. Open **MCP servers → Desktop → Request Accessibility access**. In **System Settings →
    Privacy & Security → Accessibility**, enable **roster-desktop**. Approving only
    Roster may leave this separate helper untrusted. If no helper entry appears,
    click **+**, press **Command-Shift-G**, and enter the absolute path to
@@ -378,7 +378,7 @@ It does not control arbitrary apps or another laptop over the network.
    The prompt is asynchronous; requesting access does not grant it.
 3. Quit the prototype. Reopen without rebuilding:
    `ROSTER_HOME=/tmp/roster-control-prototype node scripts/open-local-app.mjs`.
-4. Choose **Desktop → Run local control test**. Leave the disposable window
+4. Choose **MCP servers → Desktop → Run local control test**. Leave the disposable window
    focused. Close it to stop. A successful test displays **Local keyboard control
    verified**, the text actually read back and a screenshot of only that window.
 5. To test the agent path, start a normal agent conversation in this build and ask:

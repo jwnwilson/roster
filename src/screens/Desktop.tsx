@@ -24,7 +24,7 @@ export function Desktop() {
   }
   const button = 'rounded-chip border border-line bg-card px-3 py-2 text-ink disabled:opacity-50'
   return (
-    <section className="flex flex-col gap-4 overflow-y-auto p-6 text-ink">
+    <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-6 text-ink">
       <h1 className="text-2xl font-semibold">Local desktop prototype</h1>
       <p>Test keyboard control on this Mac. Roster opens a disposable window, sends native keyboard events to it, reads back the text and shows a screenshot of that window.</p>
       <ol className="list-decimal pl-6 text-muted">

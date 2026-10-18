@@ -21,3 +21,7 @@ The evidence screenshot uses Electron's own test-window capture, so Screen Recor
 A locally packaged ad-hoc build is sufficient for validation. Users must explicitly approve Accessibility in System Settings, restart the same build and run the test in their logged-in desktop session. Rebuilds/updates may require granting access again. Stable signing, wider app control, per-agent grants and authenticated access to another laptop remain separate work.
 
 Tests exercise fixed helper arguments, busy/focus/failure handling, verified readback, UI permission acknowledgments and MCP evidence/error responses. Native compilation and packaged-app checks supplement the suite; successful actual keyboard delivery still requires a live desktop with permission granted.
+
+## Access configuration location
+
+Following the user's reported successful local trial, place Desktop controls under **MCP servers → Desktop**, alongside Installed and Registry. Remove the standalone sidebar entry so machine and service access have one configuration destination. This is a navigation decision; it does not add remote-machine support or alter permission/confirmation behavior.
