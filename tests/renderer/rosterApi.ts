@@ -39,9 +39,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
     voice: {
-      status: vi.fn().mockResolvedValue({ engine: 'apple', available: true }),
-      start: vi.fn().mockResolvedValue(undefined),
-      stop: vi.fn().mockResolvedValue({ text: '' }),
+      status: vi.fn().mockResolvedValue({ engine: 'transformers', available: true, model: { state: 'ready' } }),
       downloadModel: vi.fn().mockResolvedValue(null),
       cancelModelDownload: vi.fn().mockResolvedValue(undefined),
       deleteModel: vi.fn().mockResolvedValue(undefined),

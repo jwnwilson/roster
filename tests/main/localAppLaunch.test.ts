@@ -44,6 +44,10 @@ describe('local macOS app launch', () => {
     expect(openArguments('/app/Roster.app', { ROSTER_UPDATE_CHECK: '1' }, [])).toContain('ROSTER_UPDATE_CHECK=1')
   })
 
+  test('preserves an explicit voice disable switch through Launch Services', () => {
+    expect(openArguments('/app/Roster.app', { ROSTER_VOICE_ENGINE: 'off' }, [])).toContain('ROSTER_VOICE_ENGINE=off')
+  })
+
   test('keeps the command alive until the launched app exits', async () => {
     const child = {
       once: vi.fn((event: string, listener: (code?: number) => void) => {

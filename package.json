@@ -29,8 +29,7 @@
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Roster uses your microphone to transcribe voice messages before you send them to an agent.",
-        "NSSpeechRecognitionUsageDescription": "Roster uses on-device speech recognition to turn voice messages into editable text."
+        "NSMicrophoneUsageDescription": "Roster uses your microphone to transcribe voice messages before you send them to an agent."
       },
       "target": [
         {
@@ -47,7 +46,7 @@
     }
   },
   "scripts": {
-    "prepare:dev": "node scripts/buildVoiceHelper.mjs && node scripts/ensureElectron.mjs",
+    "prepare:dev": "node scripts/ensureElectron.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:debug": "node scripts/dev.mjs --debug",
     "predev:hot": "npm run prepare:dev",

@@ -1,4 +1,4 @@
-export type VoiceEngine = 'apple' | 'transformers' | 'off'
+export type VoiceEngine = 'transformers' | 'off'
 
 export type VoiceModelState = 'missing' | 'downloading' | 'ready' | 'corrupt'
 

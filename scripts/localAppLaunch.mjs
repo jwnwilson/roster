@@ -10,7 +10,7 @@ export function openArguments(appPath, environment, electronArguments) {
   // and /dev/stderr are not the invoking terminal and can fail with -10810.
   const args = ['-n', '-W']
   args.push('--env', `ROSTER_UPDATE_CHECK=${environment.ROSTER_UPDATE_CHECK === '1' ? '1' : '0'}`)
-  for (const key of ['ROSTER_HOME', 'PATH']) {
+  for (const key of ['ROSTER_HOME', 'PATH', 'ROSTER_VOICE_ENGINE']) {
     if (environment[key]) args.push('--env', `${key}=${environment[key]}`)
   }
   args.push(appPath)

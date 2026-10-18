@@ -126,6 +126,7 @@ export function AssistantChatPane({
         </ThreadPrimitive.Viewport>
 
         <Composer
+          sessionId={sessionId}
           agentName={agentName}
           skillsLine={skillsLine}
           disabled={false}

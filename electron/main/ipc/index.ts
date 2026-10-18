@@ -55,7 +55,6 @@ import { databasePath, mcpConfigPath } from '../store/paths'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
 import { dismissSetup, prepareFirstRun } from '../store/firstRun'
-import { MacSpeechTranscriber } from '../voice/transcription'
 import { selectVoiceEngine, type VoiceEngineSelection } from '../voice/engine'
 import { VoiceModelStore } from '../voice/modelStore'
 import { registerVoiceModelProtocol } from '../voice/modelProtocol'
@@ -76,7 +75,6 @@ let notionSettings: NotionSettingsStore | null = null
 let notionPush: NotionPush | null = null
 let notionAuth: NotionMcpAuth | null = null
 let notionMcp: NotionMcpClient | null = null
-let transcription: MacSpeechTranscriber | null = null
 let voiceSelection: VoiceEngineSelection = { engine: 'off', reason: 'Voice input is not initialised.' }
 let voiceModels: VoiceModelStore | null = null
 
@@ -208,11 +206,6 @@ function requireNotionAuth(): NotionMcpAuth {
   return notionAuth
 }
 
-function requireTranscription(): MacSpeechTranscriber {
-  if (!transcription) throw new Error('Voice transcription is not initialised')
-  return transcription
-}
-
 function requireVoiceModels(): VoiceModelStore {
   if (!voiceModels) throw new Error('Voice model storage is not initialised')
   return voiceModels
@@ -241,7 +234,6 @@ export async function initStores(): Promise<void> {
   runners = await detectAllRunners()
   await agentStore.load()
   voiceSelection = selectVoiceEngine()
-  transcription = voiceSelection.engine === 'apple' ? new MacSpeechTranscriber() : null
   voiceModels = new VoiceModelStore(join(app.getPath('userData'), 'voice-models'))
   registerVoiceModelProtocol(voiceModels)
   voiceModels.onProgress((progress) => broadcast(CHANNELS.voiceModelProgress, progress))
@@ -427,10 +419,7 @@ export function registerIpc(): void {
     (_e, sessionId: string, prompt: string, options?: SendOptions) =>
       requireManager().enqueue(sessionId, prompt, options ?? {}),
   )
-  ipcMain.handle(CHANNELS.voiceStart, () => requireTranscription().start())
-  ipcMain.handle(CHANNELS.voiceStop, () => requireTranscription().stop())
   ipcMain.handle(CHANNELS.voiceStatus, async () => {
-    if (voiceSelection.engine === 'apple') return { engine: 'apple', available: true }
     if (voiceSelection.engine === 'off') {
       return { engine: 'off', available: false, reason: voiceSelection.reason }
     }

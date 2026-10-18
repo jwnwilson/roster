@@ -51,11 +51,11 @@ export async function decodeVoiceBlob(
       { length: decoded.numberOfChannels },
       (_, index) => decoded.getChannelData(index),
     )
-    const result = downmixAndResample(channels, decoded.sampleRate)
-    if (result.length > MAX_VOICE_SAMPLES) throw new Error('Voice recordings are limited to 60 seconds.')
-    return result
-  } catch (cause) {
-    if (cause instanceof Error && cause.message.includes('limited to')) throw cause
+    // MediaRecorder stop events and Opus padding can extend past the UI timer.
+    // Keep the promised first 60 seconds rather than rejecting the whole clip.
+    const bounded = channels.map((channel) => channel.subarray(0, Math.floor(decoded.sampleRate * MAX_VOICE_SECONDS)))
+    return downmixAndResample(bounded, decoded.sampleRate).slice(0, MAX_VOICE_SAMPLES)
+  } catch {
     throw new Error('Roster could not decode that voice recording.')
   } finally {
     await context.close()
@@ -67,14 +67,19 @@ export class BrowserVoiceCapture {
   private stream: MediaStream | null = null
   private chunks: Blob[] = []
   private acceptChunks = false
+  private starting = false
+  private generation = 0
 
   async start(): Promise<void> {
-    if (this.recorder) throw new Error('Voice recording is already active.')
+    if (this.recorder || this.starting) throw new Error('Voice recording is already active.')
     const mimeType = recorderMimeType()
     if (!mimeType) throw new Error('This version of Electron cannot record WebM/Opus audio.')
 
+    const generation = ++this.generation
+    this.starting = true
+    let stream: MediaStream
     try {
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     } catch (cause) {
       const name = cause instanceof DOMException ? cause.name : ''
       if (name === 'NotFoundError') throw new Error('No microphone is available.')
@@ -82,16 +87,29 @@ export class BrowserVoiceCapture {
         throw new Error('Microphone permission was not granted.')
       }
       throw new Error('Roster could not start microphone capture.')
+    } finally {
+      this.starting = false
     }
+
+    if (generation !== this.generation) {
+      for (const track of stream.getTracks()) track.stop()
+      throw new Error('Voice recording was cancelled.')
+    }
+    this.stream = stream
 
     this.chunks = []
     this.acceptChunks = true
-    const recorder = new MediaRecorder(this.stream, { mimeType })
-    recorder.addEventListener('dataavailable', (event) => {
-      if (this.acceptChunks && event.data.size > 0) this.chunks.push(event.data)
-    })
-    recorder.start()
-    this.recorder = recorder
+    try {
+      const recorder = new MediaRecorder(stream, { mimeType })
+      recorder.addEventListener('dataavailable', (event) => {
+        if (this.acceptChunks && event.data.size > 0) this.chunks.push(event.data)
+      })
+      recorder.start()
+      this.recorder = recorder
+    } catch (cause) {
+      this.release()
+      throw cause
+    }
   }
 
   async stop(): Promise<Float32Array> {
@@ -113,8 +131,12 @@ export class BrowserVoiceCapture {
   }
 
   cancel(): void {
-    if (this.recorder?.state !== 'inactive') this.recorder?.stop()
-    this.release()
+    this.generation += 1
+    try {
+      if (this.recorder?.state !== 'inactive') this.recorder?.stop()
+    } finally {
+      this.release()
+    }
   }
 
   private release(): void {

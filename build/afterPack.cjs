@@ -17,9 +17,8 @@
 //
 // So it is asserted here, per arch, on every build including local ones.
 
-const { readdirSync, existsSync, mkdirSync } = require('node:fs')
+const { readdirSync, existsSync } = require('node:fs')
 const { join } = require('node:path')
-const { execFileSync } = require('node:child_process')
 
 /** electron-builder passes `Arch` as its enum ordinal, not a name. */
 const ARCH_NAMES = ['ia32', 'x64', 'armv7l', 'arm64', 'universal']
@@ -115,17 +114,6 @@ async function afterPack(context) {
       `— or build ${targetArch} only there — and package again.`,
   )
 
-  if (context.electronPlatformName !== 'darwin') return
-  const app = readdirSync(context.appOutDir).find((name) => name.endsWith('.app'))
-  if (app === undefined) throw new Error(`voice helper: no .app found in ${context.appOutDir}`)
-  const destination = join(context.appOutDir, app, 'Contents', 'Resources', 'voice')
-  mkdirSync(destination, { recursive: true })
-  const source = join(context.packager.projectDir, 'build', 'voice', 'roster-voice.swift')
-  const swiftArch = targetArch === 'x64' ? 'x86_64' : targetArch
-  const infoPlist = join(context.packager.projectDir, 'build', 'voice', 'Info.plist')
-  execFileSync('xcrun', ['swiftc', source, '-framework', 'AVFoundation', '-framework', 'Speech',
-    '-Xlinker', '-sectcreate', '-Xlinker', '__TEXT', '-Xlinker', '__info_plist', '-Xlinker', infoPlist,
-    '-target', `${swiftArch}-apple-macosx10.15`, '-o', join(destination, 'roster-voice')], { stdio: 'inherit' })
 }
 
 module.exports = afterPack
