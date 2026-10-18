@@ -527,3 +527,24 @@ describe('a bridge that cannot be closed', () => {
     expect(manager.isStreaming(session.id)).toBe(false)
   })
 })
+
+describe('the fixed local desktop test over the Codex bridge', () => {
+  for (const planMode of [false, true]) {
+    test(planMode ? 'cannot execute in plan mode' : 'routes through the app confirmation callback with the bound agent name', async () => {
+      const execute = vi.fn().mockResolvedValue({ expected: 'proof', observed: 'proof', screenshot: 'data:image/png;base64,cHJvb2Y=' })
+      manager.testLocalDesktop = execute
+      runnerStub.run.mockImplementation((_prompt: string, options: StartOptions) => (async function* () {
+        callResult = await callOverBridge(options.mcpServers[ROSTER_SERVER]!, 'test_local_desktop', {})
+        yield { kind: 'done' as const, runnerSessionId: 'thread-1' }
+      })())
+      await run('codey', { planMode })
+      if (planMode) {
+        expect(execute).not.toHaveBeenCalled()
+        expect(callResult?.isError).toBe(true)
+      } else {
+        expect(execute).toHaveBeenCalledWith('Codex Agent')
+        expect(callResult?.content[0]?.text).toContain('Read back: proof')
+      }
+    })
+  }
+})
