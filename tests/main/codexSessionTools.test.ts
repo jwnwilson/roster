@@ -296,7 +296,7 @@ describe('which of Roster’s tools a Codex agent gets', () => {
     expect(names).not.toContain('remember')
   })
 
-  test('is only the handoff tools when it has enabled nothing', async () => {
+  test('serves the roster affordances when no optional integrations are enabled', async () => {
     await run()
 
     expect(served.map((tool) => tool.name).sort()).toEqual([
@@ -304,6 +304,7 @@ describe('which of Roster’s tools a Codex agent gets', () => {
       'list_agents',
       'open_session',
       'request_user_decision',
+      'test_local_desktop',
     ])
   })
 
