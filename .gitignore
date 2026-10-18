@@ -24,3 +24,5 @@ out/
 
 # test coverage output
 coverage/
+
+/build/desktop/roster-desktop

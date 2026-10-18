@@ -378,3 +378,39 @@ npx electron-builder --dir --mac   # release/mac-arm64/Roster.app
   `mcp.json` by hand.
 - Model prices are a table Roster maintains for Claude; Codex publishes none, so that
   column is left empty rather than invented.
+
+### Local desktop control prototype (macOS)
+
+This experiment proves native keyboard input into a disposable Roster window.
+It does not control arbitrary apps or another laptop over the network.
+
+1. In a normal macOS Terminal, from the prototype checkout, run `npm install`
+   and then `ROSTER_HOME=/tmp/roster-control-prototype npm run dev:app`.
+   This builds an ad-hoc signed app and launches it through Launch Services with
+   a separate local workspace. Keep using that same built app during permission testing.
+2. Open **MCP servers → Desktop → Request Accessibility access**. In **System Settings →
+   Privacy & Security → Accessibility**, enable **roster-desktop**. Approving only
+   Roster may leave this separate helper untrusted. If no helper entry appears,
+   click **+**, press **Command-Shift-G**, and enter the absolute path to
+   `release/mac-arm64/Roster.app/Contents/Resources/desktop/roster-desktop`
+   inside this checkout (use `release/mac/` on Intel). Select the helper and enable it.
+   The prompt is asynchronous; requesting access does not grant it.
+3. Quit the prototype. Reopen without rebuilding:
+   `ROSTER_HOME=/tmp/roster-control-prototype node scripts/open-local-app.mjs`.
+4. Choose **MCP servers → Desktop → Run local control test**. Leave the disposable window
+   focused. Close it to stop. A successful test displays **Local keyboard control
+   verified**, the text actually read back and a screenshot of only that window.
+5. To test the agent path, start a normal agent conversation in this build and ask:
+   **“Use test_local_desktop to test local keyboard control.”** Approve **Run test**
+   in Roster's confirmation dialog and leave the disposable window focused.
+   The agent receives verified text and the same window screenshot.
+
+Screen Recording is not needed for this test; it captures only Roster's own
+window. **Run diagnostics** reports the helper's current permissions and desktop
+visibility. A zero screen count means this launch context cannot see the desktop.
+Permission denied, lost focus, closed windows or mismatched text are failures,
+not successful tests. The agent tool is unavailable in plan mode.
+
+Current releases do not use stable Developer ID signing. Rebuilds and updates
+may require granting Accessibility again. Production signing and persistence
+remain ROS-19; see ADR 0014 for the prototype's boundary.

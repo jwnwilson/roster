@@ -1,4 +1,7 @@
+import { DesktopPrototype } from '../desktop/prototype'
+import { LocalDesktopTestWindow } from '../desktop/testWindow'
 import { join } from 'node:path'
+import { DesktopDiagnostics } from '../desktop/diagnostics'
 import { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } from 'electron'
 import {
   CHANNELS,
@@ -58,6 +61,10 @@ import { dismissSetup, prepareFirstRun } from '../store/firstRun'
 import { selectVoiceEngine, type VoiceEngineSelection } from '../voice/engine'
 import { VoiceModelStore } from '../voice/modelStore'
 import { registerVoiceModelProtocol } from '../voice/modelProtocol'
+
+const desktop = new DesktopDiagnostics()
+const desktopTest = new DesktopPrototype(() => new LocalDesktopTestWindow(), (nonce) => desktop.typeTest(nonce))
+let desktopConfirmationPending = false
 
 let runners = new Map<string, RunnerStatus>()
 let db: Db | null = null
@@ -290,6 +297,20 @@ export async function initStores(): Promise<void> {
     { removeSession: (sessionId) => deleteSession(sessionId, false) },
     notionMcp,
   )
+  manager.testLocalDesktop = async (agentName) => {
+    if (desktopConfirmationPending) throw new Error('A desktop test confirmation is already pending.')
+    desktopConfirmationPending = true
+    try {
+      const { response } = await dialog.showMessageBox({
+        type: 'question', title: 'Run local desktop test?',
+        message: `${agentName} wants to test local keyboard control.`,
+        detail: 'Roster will open a disposable window, type a fixed test phrase, and return that window’s screenshot and read-back text to the agent. Leave the test window focused; close it to stop.',
+        buttons: ['Cancel', 'Run test'], defaultId: 0, cancelId: 0,
+      })
+      if (response !== 1) throw new Error('User declined desktop test.')
+      return await desktopTest.run()
+    } finally { desktopConfirmationPending = false }
+  }
   planFlow = new PlanFlow(planStore, manager, (id) => agentStore.findById(id)?.cwd ?? null)
 
   manager.subscribe((event) => broadcast(CHANNELS.sessionsEvent, event))
@@ -370,6 +391,9 @@ export function checkForUpdatesOnLaunch(): void {
 }
 
 export function registerIpc(): void {
+  ipcMain.handle(CHANNELS.desktopCheck, () => desktop.check())
+  ipcMain.handle(CHANNELS.desktopRequestAccessibility, () => desktop.requestAccessibility())
+  ipcMain.handle(CHANNELS.desktopTest, () => desktopTest.run())
   ipcMain.on(CHANNELS.windowMinimize, (e) => BrowserWindow.fromWebContents(e.sender)?.minimize())
   ipcMain.on(CHANNELS.windowMaximize, (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)

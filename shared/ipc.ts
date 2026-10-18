@@ -1,3 +1,4 @@
+import type { DesktopReport, DesktopTestResult } from './desktop'
 import type {
   Agent,
   Approval,
@@ -30,6 +31,11 @@ import type { VoiceModelProgress, VoiceModelStatus, VoiceStatus } from './voice'
  * main process through these calls — no node, no fs, no child processes.
  */
 export interface RosterApi {
+  desktop: {
+    check(): Promise<DesktopReport>
+    requestAccessibility(): Promise<void>
+    test(): Promise<DesktopTestResult>
+  }
   window: {
     minimize(): void
     maximize(): void
@@ -426,6 +432,9 @@ export type SessionEventPayload =
 
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
+  desktopCheck: 'desktop:check',
+  desktopRequestAccessibility: 'desktop:request-accessibility',
+  desktopTest: 'desktop:test',
   windowMinimize: 'window:minimize',
   windowMaximize: 'window:maximize',
   windowClose: 'window:close',

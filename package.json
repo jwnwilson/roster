@@ -46,7 +46,7 @@
     }
   },
   "scripts": {
-    "prepare:dev": "node scripts/ensureElectron.mjs",
+    "prepare:dev": "node scripts/buildDesktopHelper.mjs && node scripts/ensureElectron.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:debug": "node scripts/dev.mjs --debug",
     "predev:hot": "npm run prepare:dev",
