@@ -36,6 +36,7 @@ export type VoiceWorkerReply =
   | { type: 'error'; jobId: string; code: VoiceErrorCode; message: string }
 
 export type VoiceErrorCode =
+  | 'no-signal'
   | 'cancelled'
   | 'decode-failed'
   | 'inference-failed'

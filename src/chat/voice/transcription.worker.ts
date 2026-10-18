@@ -2,6 +2,7 @@
 
 import { env, pipeline } from '@huggingface/transformers'
 import type { VoiceWorkerReply, VoiceWorkerRequest } from '@shared/voice'
+import { inspectVoiceSignal } from './signal'
 
 const MODEL_ID = 'onnx-community/whisper-tiny.en'
 
@@ -54,6 +55,18 @@ async function handle(request: VoiceWorkerRequest): Promise<void> {
     }
 
     if (!transcriber) throw new Error('The local voice model is not loaded.')
+    const signal = inspectVoiceSignal(request.audio)
+    if (!signal.valid) {
+      post({ type: 'error', jobId: request.jobId, code: 'decode-failed', message: 'The recording contains invalid audio. Please record again.' })
+      return
+    }
+    if (!signal.usable) {
+      post({
+        type: 'error', jobId: request.jobId, code: 'no-signal',
+        message: 'The recording was silent or too quiet. Check your microphone input and speak closer to it, then try again.',
+      })
+      return
+    }
     // Whisper accepts 30-second windows. Chunk the supported 60-second clip
     // explicitly, or the feature extractor silently discards its second half.
     const output = await transcriber(request.audio, { chunk_length_s: 30, stride_length_s: 5 })
