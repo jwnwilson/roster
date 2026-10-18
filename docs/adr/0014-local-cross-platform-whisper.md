@@ -2,6 +2,8 @@
 
 ## Status
 
+Default-selection and Apple rollback policy superseded by ADR 0015.
+
 Accepted — 2026-10-17. The portable engine is implemented behind an explicit
 rollout switch until its packaged macOS, Windows and Linux acceptance matrix is
 complete.

@@ -18,7 +18,7 @@ const electron = require('electron')
 if (process.platform === 'darwin') {
   const plist = join(dirname(electron), '..', 'Info.plist')
   const descriptions = require('../package.json').build.mac.extendInfo
-  for (const key of ['NSSpeechRecognitionUsageDescription', 'NSMicrophoneUsageDescription']) {
+  for (const key of ['NSMicrophoneUsageDescription']) {
     execFileSync('/usr/bin/plutil', ['-replace', key, '-string', descriptions[key], plist])
   }
 }

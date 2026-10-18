@@ -103,8 +103,6 @@ export interface RosterApi {
   /** Speech-to-text for the chat composer; never starts an agent turn itself. */
   voice: {
     status(): Promise<VoiceStatus>
-    start(): Promise<void>
-    stop(): Promise<TranscriptionResult>
     downloadModel(): Promise<VoiceModelStatus>
     cancelModelDownload(): Promise<void>
     deleteModel(): Promise<void>
@@ -278,11 +276,6 @@ export interface SendOptions {
    * and the agent ends by proposing a plan, which arrives as an approval.
    */
   planMode?: boolean
-}
-
-/** Text is returned for review in the composer; it is not sent automatically. */
-export interface TranscriptionResult {
-  text: string
 }
 
 /** What the Notion modal sends when someone pastes a task link. */
@@ -460,8 +453,6 @@ export const CHANNELS = {
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsEvent: 'sessions:event',
 
-  voiceStart: 'voice:start',
-  voiceStop: 'voice:stop',
   voiceStatus: 'voice:status',
   voiceModelDownload: 'voice:modelDownload',
   voiceModelCancel: 'voice:modelCancel',

@@ -2,6 +2,39 @@ import { describe, expect, test, vi } from 'vitest'
 import { BrowserVoiceCapture, decodeVoiceBlob, downmixAndResample, MAX_VOICE_SAMPLES, recorderMimeType } from '@/chat/voice/audio'
 
 describe('voice audio conversion', () => {
+  test('releases late microphone permission after cancellation', async () => {
+    let grant!: (stream: MediaStream) => void
+    const stopTrack = vi.fn()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: () => new Promise<MediaStream>((resolve) => { grant = resolve }) },
+    })
+    class Recorder { static isTypeSupported(): boolean { return true } }
+    vi.stubGlobal('MediaRecorder', Recorder)
+    const capture = new BrowserVoiceCapture()
+    const pending = capture.start()
+    capture.cancel()
+    grant({ getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream)
+    await expect(pending).rejects.toThrow('cancelled')
+    expect(stopTrack).toHaveBeenCalledOnce()
+    vi.unstubAllGlobals()
+  })
+
+  test('releases the microphone when recorder construction fails', async () => {
+    const stopTrack = vi.fn()
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: async () => ({ getTracks: () => [{ stop: stopTrack }] }) },
+    })
+    class Recorder {
+      static isTypeSupported(): boolean { return true }
+      constructor() { throw new Error('recorder failed') }
+    }
+    vi.stubGlobal('MediaRecorder', Recorder)
+    await expect(new BrowserVoiceCapture().start()).rejects.toThrow('recorder failed')
+    expect(stopTrack).toHaveBeenCalledOnce()
+    vi.unstubAllGlobals()
+  })
   test('selects the explicit Opus format and reports no unsupported fallback', () => {
     expect(recorderMimeType((type) => type === 'audio/webm;codecs=opus')).toBe('audio/webm;codecs=opus')
     expect(recorderMimeType(() => false)).toBeNull()
@@ -13,7 +46,7 @@ describe('voice audio conversion', () => {
     expect(Array.from(downmixAndResample([left, right], 4, 2))).toEqual([0, 0])
   })
 
-  test('closes the decoder and rejects audio beyond the sample budget', async () => {
+  test('closes the decoder and caps timer/codec overshoot at the sample budget', async () => {
     const close = vi.fn().mockResolvedValue(undefined)
     const samples = new Float32Array(MAX_VOICE_SAMPLES + 1)
     const context = {
@@ -25,7 +58,7 @@ describe('voice audio conversion', () => {
       close,
     }
 
-    await expect(decodeVoiceBlob(new Blob(['x']), () => context)).rejects.toThrow('limited to 60 seconds')
+    await expect(decodeVoiceBlob(new Blob(['x']), () => context)).resolves.toHaveLength(MAX_VOICE_SAMPLES)
     expect(close).toHaveBeenCalled()
   })
 

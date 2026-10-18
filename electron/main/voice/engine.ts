@@ -5,24 +5,16 @@ export interface VoiceEngineSelection {
   reason?: string
 }
 /**
- * The portable engine remains dark until its platform acceptance matrix is
- * complete. An explicit environment override is the rollback boundary used
- * during that rollout.
+ * All platforms use local TypeScript/WASM inference. Migrate the old Apple
+ * override rather than invoking the retired native helper. `off` remains an
+ * explicit opt-out; unknown configuration fails closed.
  */
 export function selectVoiceEngine(
   configured = process.env['ROSTER_VOICE_ENGINE'],
-  platform = process.platform,
+  _platform = process.platform,
 ): VoiceEngineSelection {
-  if (configured === undefined || configured === '') {
-    return platform === 'darwin'
-      ? { engine: 'apple' }
-      : { engine: 'off', reason: 'Voice input is not enabled on this platform yet.' }
-  }
-
-  if (configured === 'apple') {
-    return platform === 'darwin'
-      ? { engine: 'apple' }
-      : { engine: 'off', reason: 'The Apple voice engine is available on macOS only.' }
+  if (configured === undefined || configured === '' || configured === 'apple') {
+    return { engine: 'transformers' }
   }
   if (configured === 'transformers' || configured === 'off') return { engine: configured }
 

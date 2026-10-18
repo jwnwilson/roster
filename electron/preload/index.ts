@@ -71,8 +71,6 @@ const api: RosterApi = {
 
   voice: {
     status: () => ipcRenderer.invoke(CHANNELS.voiceStatus),
-    start: () => ipcRenderer.invoke(CHANNELS.voiceStart),
-    stop: () => ipcRenderer.invoke(CHANNELS.voiceStop),
     downloadModel: () => ipcRenderer.invoke(CHANNELS.voiceModelDownload),
     cancelModelDownload: () => ipcRenderer.invoke(CHANNELS.voiceModelCancel),
     deleteModel: () => ipcRenderer.invoke(CHANNELS.voiceModelDelete),

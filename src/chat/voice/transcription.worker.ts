@@ -6,7 +6,10 @@ import type { VoiceWorkerReply, VoiceWorkerRequest } from '@shared/voice'
 const MODEL_ID = 'onnx-community/whisper-tiny.en'
 
 type TranscriptionOutput = { text: string } | { text: string }[]
-type Transcriber = (audio: Float32Array) => Promise<TranscriptionOutput>
+type Transcriber = (
+  audio: Float32Array,
+  options: { chunk_length_s: number; stride_length_s: number },
+) => Promise<TranscriptionOutput>
 let transcriber: Transcriber | null = null
 
 self.addEventListener('message', (event: MessageEvent<VoiceWorkerRequest>) => {
@@ -51,7 +54,9 @@ async function handle(request: VoiceWorkerRequest): Promise<void> {
     }
 
     if (!transcriber) throw new Error('The local voice model is not loaded.')
-    const output = await transcriber(request.audio)
+    // Whisper accepts 30-second windows. Chunk the supported 60-second clip
+    // explicitly, or the feature extractor silently discards its second half.
+    const output = await transcriber(request.audio, { chunk_length_s: 30, stride_length_s: 5 })
     const text = Array.isArray(output) ? output.map((item) => item.text).join(' ') : output.text
     post({ type: 'result', jobId: request.jobId, text })
   } catch (cause) {

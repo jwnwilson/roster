@@ -24,21 +24,27 @@ export class VoiceWorkerClient {
   ) {}
 
   async transcribe(audio: Float32Array): Promise<string> {
-    if (this.active) throw new Error('Voice transcription is already running.')
-    await this.ensureReady()
+    if (this.activeJobId) throw new Error('Voice transcription is already running.')
     this.clearIdleTimer()
     const jobId = crypto.randomUUID()
     this.activeJobId = jobId
-    const result = new Promise<string>((resolve, reject) => {
-      this.active = { resolve, reject }
-    })
-    const request: VoiceWorkerRequest = { type: 'transcribe', jobId, audio }
-    this.worker!.postMessage(request, [audio.buffer])
-    return result.finally(() => {
-      this.active = null
-      this.activeJobId = null
-      this.armIdleTimer()
-    })
+    try {
+      await this.ensureReady()
+      if (this.activeJobId !== jobId) throw new Error('Voice transcription was cancelled.')
+      const result = new Promise<string>((resolve, reject) => {
+        this.active = { resolve, reject }
+        const request: VoiceWorkerRequest = { type: 'transcribe', jobId, audio }
+        this.worker!.postMessage(request, [audio.buffer])
+      })
+      return await result
+    } finally {
+      // Cancellation may already have started a replacement worker/job.
+      if (this.activeJobId === jobId) {
+        this.active = null
+        this.activeJobId = null
+        this.armIdleTimer()
+      }
+    }
   }
 
   cancel(): void {
@@ -64,8 +70,12 @@ export class VoiceWorkerClient {
     if (this.ready) return this.ready
     const worker = this.createWorker()
     this.worker = worker
-    worker.addEventListener('message', (event: MessageEvent<VoiceWorkerReply>) => this.receive(event.data))
-    worker.addEventListener('error', () => this.fail(new Error('The local voice worker could not start.')))
+    worker.addEventListener('message', (event: MessageEvent<VoiceWorkerReply>) => {
+      if (this.worker === worker) this.receive(event.data)
+    })
+    worker.addEventListener('error', () => {
+      if (this.worker === worker) this.fail(new Error('The local voice worker could not start.'))
+    })
     const jobId = crypto.randomUUID()
     this.initJobId = jobId
     this.ready = new Promise<void>((resolve, reject) => {

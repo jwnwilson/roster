@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { HandoffMessage, Message, SpawnMessage } from '@shared/types'
@@ -16,10 +16,22 @@ import { useRoster } from '@/state/store'
 import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
+const voice = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), cancel: vi.fn(), transcribe: vi.fn(), cancelWorker: vi.fn(), dispose: vi.fn() }))
+vi.mock('@/chat/voice/audio', () => ({
+  MAX_VOICE_SECONDS: 60,
+  BrowserVoiceCapture: class { start = voice.start; stop = voice.stop; cancel = voice.cancel },
+}))
+vi.mock('@/chat/voice/workerClient', () => ({
+  VoiceWorkerClient: class { transcribe = voice.transcribe; cancel = voice.cancelWorker; dispose = voice.dispose },
+}))
 
 beforeEach(() => {
   useRoster.setState(INITIAL, true)
   installRosterApi()
+  Object.values(voice).forEach((mock) => mock.mockReset())
+  voice.start.mockResolvedValue(undefined)
+  voice.stop.mockResolvedValue(new Float32Array([0.1]))
+  voice.transcribe.mockResolvedValue('find the leak by voice')
 })
 
 const AT = new Date('2026-08-23T14:03:00').getTime()
@@ -306,15 +318,14 @@ describe('AssistantChatPane — composer', () => {
   test('puts a stopped recording in the draft for review before it can send', async () => {
     const user = userEvent.setup()
     const onSend = vi.fn()
-    vi.mocked(window.roster.voice.stop).mockResolvedValue({ text: 'find the leak by voice' })
     render(pane({ onSend }))
 
     await user.click(screen.getByRole('button', { name: 'Record voice message' }))
-    await waitFor(() => expect(window.roster.voice.start).toHaveBeenCalled())
+    await waitFor(() => expect(voice.start).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'Stop recording voice message' }))
 
     await waitFor(() =>
-      expect(window.roster.voice.stop).toHaveBeenCalled(),
+      expect(voice.transcribe).toHaveBeenCalled(),
     )
     expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('find the leak by voice')
     expect(onSend).not.toHaveBeenCalled()
@@ -325,7 +336,7 @@ describe('AssistantChatPane — composer', () => {
 
   test('keeps the typed draft and reports a denied microphone', async () => {
     const user = userEvent.setup()
-    vi.mocked(window.roster.voice.start).mockRejectedValue(new Error('Microphone permission denied'))
+    voice.start.mockRejectedValue(new Error('Microphone permission denied'))
     render(pane())
     await user.type(screen.getByLabelText('Message Debugging Agent'), 'keep this')
 
@@ -337,20 +348,20 @@ describe('AssistantChatPane — composer', () => {
 
   test('keeps the typed draft when transcription fails', async () => {
     const user = userEvent.setup()
-    vi.mocked(window.roster.voice.stop).mockRejectedValue(new Error('Voice transcription failed (500).'))
+    voice.transcribe.mockRejectedValue(new Error('Local transcription failed.'))
     render(pane())
     await user.type(screen.getByLabelText('Message Debugging Agent'), 'keep this')
 
     await user.click(screen.getByRole('button', { name: 'Record voice message' }))
     await user.click(screen.getByRole('button', { name: 'Stop recording voice message' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Voice transcription failed (500).')
+    expect(await screen.findByRole('alert')).toHaveTextContent('Local transcription failed.')
     expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('keep this')
   })
 
   test('asks before downloading the local model and never requests the microphone first', async () => {
     const user = userEvent.setup()
-    const api = installRosterApi({
+    installRosterApi({
       voice: {
         status: vi.fn().mockResolvedValue({
           engine: 'transformers',
@@ -371,7 +382,7 @@ describe('AssistantChatPane — composer', () => {
 
     expect(await screen.findByRole('button', { name: /Download local model/ })).toBeEnabled()
     expect(screen.getByRole('status')).toHaveTextContent('Voice runs locally and audio is not uploaded')
-    expect(api.voice.start).not.toHaveBeenCalled()
+    expect(voice.start).not.toHaveBeenCalled()
   })
 
   test('downloads the approved model without sending or recording', async () => {
@@ -406,7 +417,7 @@ describe('AssistantChatPane — composer', () => {
 
     await waitFor(() => expect(api.voice.downloadModel).toHaveBeenCalled())
     expect(screen.getByRole('status')).toHaveTextContent('model is ready')
-    expect(api.voice.start).not.toHaveBeenCalled()
+    expect(voice.start).not.toHaveBeenCalled()
     expect(onSend).not.toHaveBeenCalled()
   })
 
@@ -418,27 +429,141 @@ describe('AssistantChatPane — composer', () => {
     await user.click(screen.getByRole('button', { name: 'Stop' }))
     expect(onCancel).toHaveBeenCalled()
   })
+
+  test('reports unavailable voice without opening the microphone', async () => {
+    vi.mocked(window.roster.voice.status).mockResolvedValue({ engine: 'off', available: false, reason: 'Voice is disabled.' })
+    render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Voice is disabled.')
+    expect(voice.start).not.toHaveBeenCalled()
+  })
+
+  test('appends transcription to the latest editable draft without sending', async () => {
+    let finish!: (text: string) => void
+    voice.transcribe.mockReturnValue(new Promise<string>((resolve) => { finish = resolve }))
+    const onSend = vi.fn()
+    render(pane({ onSend }))
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop recording voice message' }))
+    await userEvent.type(screen.getByLabelText('Message Debugging Agent'), 'new draft')
+    await act(async () => finish('dictation'))
+    expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('new draft\ndictation')
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  test('cancels pending microphone permission and ignores its late completion', async () => {
+    let finish!: () => void
+    voice.start.mockReturnValue(new Promise<void>((resolve) => { finish = resolve }))
+    render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.keyboard('{Escape}')
+    await act(async () => finish())
+    expect(screen.queryByRole('button', { name: 'Stop recording voice message' })).not.toBeInTheDocument()
+    expect(voice.cancel).toHaveBeenCalled()
+    expect(voice.transcribe).not.toHaveBeenCalled()
+  })
+
+  test.each(['cancel', 'unmount'])('does not start inference after %s during audio decoding', async (action) => {
+    let finish!: (audio: Float32Array) => void
+    voice.stop.mockReturnValue(new Promise<Float32Array>((resolve) => { finish = resolve }))
+    const view = render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop recording voice message' }))
+    if (action === 'unmount') view.unmount()
+    else await userEvent.click(screen.getByRole('button', { name: 'Cancel voice transcription' }))
+    await act(async () => finish(new Float32Array([0.1])))
+    expect(voice.transcribe).not.toHaveBeenCalled()
+  })
+
+  test('ignores an old transcription after cancellation and a new recording', async () => {
+    let finish!: (text: string) => void
+    voice.transcribe.mockReturnValueOnce(new Promise<string>((resolve) => { finish = resolve }))
+    render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop recording voice message' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel voice transcription' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await act(async () => finish('discard this'))
+    expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Stop recording voice message' })).toBeInTheDocument()
+  })
+
+  test('switching sessions cancels voice and rejects the previous session transcript', async () => {
+    let finish!: (text: string) => void
+    voice.transcribe.mockReturnValue(new Promise<string>((resolve) => { finish = resolve }))
+    const onSend = vi.fn()
+    const view = render(pane({ sessionId: 's1', onSend }))
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop recording voice message' }))
+    await waitFor(() => expect(voice.transcribe).toHaveBeenCalledOnce())
+    view.rerender(pane({ sessionId: 's2', onSend }))
+    await userEvent.type(screen.getByLabelText('Message Debugging Agent'), 'new session draft')
+    await act(async () => finish('old session dictation'))
+    expect(screen.getByLabelText('Message Debugging Agent')).toHaveValue('new session draft')
+    expect(voice.cancelWorker).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: 'Record voice message' })).toBeEnabled()
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  test('does not open the microphone when unmounted during the capability check', async () => {
+    let finish!: (status: Awaited<ReturnType<typeof window.roster.voice.status>>) => void
+    vi.mocked(window.roster.voice.status).mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    const view = render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    view.unmount()
+    await act(async () => finish({ engine: 'transformers', available: true }))
+    expect(voice.start).not.toHaveBeenCalled()
+  })
+
+  test('reports model download failures and permits retry', async () => {
+    vi.mocked(window.roster.voice.status).mockResolvedValue({ engine: 'transformers', available: true })
+    vi.mocked(window.roster.voice.downloadModel).mockRejectedValue(new Error('Download interrupted'))
+    render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Download local model/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Download interrupted')
+    expect(screen.getByRole('button', { name: /Download local model/ })).toBeEnabled()
+    expect(voice.start).not.toHaveBeenCalled()
+  })
+
+  test('unmount cancels pending inference and handles its rejection', async () => {
+    let reject!: (error: Error) => void
+    voice.transcribe.mockReturnValue(new Promise<string>((_resolve, fail) => { reject = fail }))
+    voice.cancelWorker.mockImplementation(() => reject(new Error('Voice transcription was cancelled.')))
+    const view = render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Stop recording voice message' }))
+    await waitFor(() => expect(voice.transcribe).toHaveBeenCalledOnce())
+    await act(async () => view.unmount())
+    expect(voice.cancelWorker).toHaveBeenCalledOnce()
+  })
+
+  test('unmount aborts an active download and handles its rejection', async () => {
+    let reject!: (error: Error) => void
+    vi.mocked(window.roster.voice.status).mockResolvedValue({ engine: 'transformers', available: true })
+    vi.mocked(window.roster.voice.downloadModel).mockReturnValue(new Promise((_resolve, fail) => { reject = fail }))
+    vi.mocked(window.roster.voice.cancelModelDownload).mockImplementation(async () => { reject(new Error('Download cancelled')) })
+    const view = render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Download local model/ }))
+    await act(async () => view.unmount())
+    expect(window.roster.voice.cancelModelDownload).toHaveBeenCalledOnce()
+  })
+
+  test('cancelled downloads cannot update the next interaction', async () => {
+    let finish!: (result: Awaited<ReturnType<typeof window.roster.voice.downloadModel>>) => void
+    vi.mocked(window.roster.voice.status).mockResolvedValue({ engine: 'transformers', available: true })
+    vi.mocked(window.roster.voice.downloadModel).mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Download local model/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel download' }))
+    await act(async () => finish({ state: 'ready', modelId: 'local', revision: 'fixed', bytesDownloaded: 1, bytesTotal: 1 }))
+    expect(window.roster.voice.cancelModelDownload).toHaveBeenCalledOnce()
+    expect(screen.getByRole('status')).toHaveTextContent('download cancelled')
+    expect(screen.getByRole('button', { name: /Download local model/ })).toBeEnabled()
+  })
 })
-
-class FakeMediaRecorder extends EventTarget {
-  static isTypeSupported(): boolean {
-    return true
-  }
-
-  readonly mimeType = 'audio/webm;codecs=opus'
-
-  constructor(_stream: MediaStream, _options: MediaRecorderOptions) {
-    super()
-  }
-
-  start(): void {}
-
-  stop(): void {
-    const data = new Blob(['voice'], { type: this.mimeType })
-    this.dispatchEvent(Object.assign(new Event('dataavailable'), { data }))
-    this.dispatchEvent(new Event('stop'))
-  }
-}
 
 describe('formatting', () => {
   test('durations under a second read in milliseconds', () => {

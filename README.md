@@ -142,20 +142,24 @@ permission requests when started by an editor. Other platforms use hot reload
 by default. Permission prompts and spoken-text capture still need verification
 in a normal macOS GUI session.
 
-The cross-platform local Whisper replacement is available for acceptance runs
-without changing the current release default:
+Voice uses the same local TypeScript/Transformers.js worker on every platform:
 
 ```bash
-ROSTER_VOICE_ENGINE=transformers ROSTER_HOME=/tmp/roster-whisper npm run dev
+ROSTER_HOME=/tmp/roster-whisper npm run dev
 ```
 
 The first Voice activation explains the local-only behaviour and offers the
 pinned English model download (about 45 MB). Roster verifies every model file
 before exposing it to the renderer; after that, recording and transcription
-work offline and audio is neither uploaded nor stored. `ROSTER_VOICE_ENGINE=apple`
-selects the current macOS rollback path and `ROSTER_VOICE_ENGINE=off` disables
-voice. The Transformers engine will not become the default until packaged
-macOS, Windows and Linux acceptance is complete.
+work offline and audio is neither uploaded nor stored. There is no Swift helper,
+Apple Speech dependency, OpenAI API call, or API key. Whisper is an OpenAI-origin
+model, executed locally using bundled ONNX WebAssembly; the application code is
+TypeScript, not a pure-TypeScript inference implementation. The initial model
+supports English. `ROSTER_VOICE_ENGINE=off` disables voice; the old `apple` value
+migrates to the portable engine. Microphone permission is still required.
+
+The common code path does not establish that every OS/device has been manually
+validated. See ADR 0015 for the rollout decision and remaining acceptance checks.
 
 The landing page is `site/index.html` — static HTML and CSS, no build step and no
 dependency on this project's `package.json`. Open the file, or serve the folder
