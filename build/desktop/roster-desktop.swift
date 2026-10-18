@@ -33,7 +33,7 @@ if args == ["--request-accessibility"] {
         fail("Invalid local test target. The helper can only type into its parent Roster process.")
     }
     guard AXIsProcessTrusted(), CGPreflightPostEventAccess() else {
-        fail("Accessibility access is required. Request access in Desktop, approve the app/helper in System Settings, then quit and reopen Roster.")
+        fail("Accessibility access is required. Request access in Desktop, enable the roster-desktop helper in System Settings (approving only Roster may not grant helper access), then quit and reopen Roster.")
     }
     let title = "Roster Desktop Test " + args[2]
     for character in ("Roster test " + args[2]).utf16 {

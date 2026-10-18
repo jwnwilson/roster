@@ -370,11 +370,12 @@ It does not control arbitrary apps or another laptop over the network.
    This builds an ad-hoc signed app and launches it through Launch Services with
    a separate local workspace. Keep using that same built app during permission testing.
 2. Open **Desktop → Request Accessibility access**. In **System Settings →
-   Privacy & Security → Accessibility**, enable the Roster app or helper macOS
-   identifies. The prompt is asynchronous; requesting access does not grant it.
-   If no entry appears, add the built app from `release/mac-arm64/Roster.app`
-   (Apple Silicon) or `release/mac/Roster.app` (Intel). The helper is inside
-   `Contents/Resources/desktop/roster-desktop` if macOS identifies it separately.
+   Privacy & Security → Accessibility**, enable **roster-desktop**. Approving only
+   Roster may leave this separate helper untrusted. If no helper entry appears,
+   click **+**, press **Command-Shift-G**, and enter the absolute path to
+   `release/mac-arm64/Roster.app/Contents/Resources/desktop/roster-desktop`
+   inside this checkout (use `release/mac/` on Intel). Select the helper and enable it.
+   The prompt is asynchronous; requesting access does not grant it.
 3. Quit the prototype. Reopen without rebuilding:
    `ROSTER_HOME=/tmp/roster-control-prototype node scripts/open-local-app.mjs`.
 4. Choose **Desktop → Run local control test**. Leave the disposable window

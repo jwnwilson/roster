@@ -16,7 +16,7 @@ export function Desktop() {
       if (action === 'check') setReport(await window.roster.desktop.check())
       else if (action === 'request') {
         await window.roster.desktop.requestAccessibility()
-        setNotice('Approve access in System Settings → Privacy & Security → Accessibility for the app/helper macOS identifies. Then quit and reopen this Roster build and run the local control test. A prompt request does not mean access was granted.')
+        setNotice('Approve access in System Settings → Privacy & Security → Accessibility for the roster-desktop helper inside Roster.app/Contents/Resources/desktop. Approving only Roster may leave this helper untrusted. Then quit and reopen this Roster build and run the local control test. A prompt request does not mean access was granted.')
       } else setResult(await window.roster.desktop.test())
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause))
@@ -28,7 +28,7 @@ export function Desktop() {
       <h1 className="text-2xl font-semibold">Local desktop prototype</h1>
       <p>Test keyboard control on this Mac. Roster opens a disposable window, sends native keyboard events to it, reads back the text and shows a screenshot of that window.</p>
       <ol className="list-decimal pl-6 text-muted">
-        <li>Request Accessibility access and approve the app/helper identified by macOS.</li>
+        <li>Request Accessibility access and enable the roster-desktop helper in System Settings.</li>
         <li>Quit and reopen this same Roster build after granting access.</li>
         <li>Run the local control test. Leave its window focused; close it to stop.</li>
       </ol>
