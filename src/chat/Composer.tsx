@@ -116,6 +116,7 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
   const stateRef = useRef(state)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [inputLevel, setInputLevel] = useState<number | null>(0)
   const generation = useRef(0)
   const draft = useRef(composer.value)
   const capture = useRef<BrowserVoiceCapture | null>(null)
@@ -164,6 +165,7 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
     transition('starting')
     setError(null)
     setStatus(null)
+    setInputLevel(0)
 
     try {
       const capability = await window.roster.voice.status()
@@ -176,7 +178,9 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
         setStatus('Voice runs locally and audio is not uploaded. Download the English model from Hugging Face before recording.')
         return
       }
-      const nextCapture = new BrowserVoiceCapture()
+      const nextCapture = new BrowserVoiceCapture((level) => {
+        if (operation === generation.current) setInputLevel(level)
+      })
       capture.current = nextCapture
       await nextCapture.start()
       if (operation !== generation.current) {
@@ -294,6 +298,18 @@ function VoiceInput({ disabled }: { disabled: boolean }) {
         </button>
       ) : null}
       {status ? <span role="status" aria-live="polite" className="max-w-[300px] text-sm text-dim">{status}</span> : null}
+      {state === 'recording' ? (
+        <span className="max-w-[260px] text-sm text-dim">
+          {inputLevel !== null ? (
+            <meter aria-label="Microphone input level" min={0} max={1} value={Math.min(1, inputLevel * 10)} />
+          ) : null}
+          <span role="status" aria-live="polite">
+            {inputLevel === null ? 'Microphone level monitoring unavailable.'
+              : inputLevel < 0.0001 ? 'No microphone signal yet. Check your input device or speak closer.'
+                : 'Microphone signal detected.'}
+          </span>
+        </span>
+      ) : null}
       {error ? <span role="alert" className="max-w-[260px] text-sm text-error">{error}</span> : null}
     </div>
   )

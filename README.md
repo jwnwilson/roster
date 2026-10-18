@@ -161,6 +161,25 @@ migrates to the portable engine. Microphone permission is still required.
 The common code path does not establish that every OS/device has been manually
 validated. See ADR 0015 for the rollout decision and remaining acceptance checks.
 
+While recording, the microphone level indicator shows whether input has energy
+(not whether it is speech). Silent/near-silent recordings are rejected with a
+retry message instead of letting Whisper invent text such as “you.” If the meter
+stays empty, check the operating system's selected input device and microphone
+level. This guard is deliberately not a general noise/speech classifier; see
+ADR 0016 for its measured limits.
+
+For an opt-in real-model regression, supply the already-downloaded model revision
+directory and the public `samples/jfk.wav` fixture from
+[whisper.cpp](https://github.com/ggml-org/whisper.cpp/tree/master/samples):
+
+```bash
+node --experimental-strip-types scripts/verifyVoiceQuality.mjs /path/to/model/revision /path/to/jfk.wav
+```
+
+The script verifies both inputs' checksums, tests the signal guard and real WASM
+inference on normal/quiet speech, and downloads nothing. It requires Node 22 and
+installed dependencies. It is not a substitute for Electron/microphone testing.
+
 The landing page is `site/index.html` — static HTML and CSS, no build step and no
 dependency on this project's `package.json`. Open the file, or serve the folder
 (`python3 -m http.server -d site`), and `.github/workflows/pages.yml` publishes it

@@ -1,7 +1,55 @@
-import { describe, expect, test, vi } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import { BrowserVoiceCapture, decodeVoiceBlob, downmixAndResample, MAX_VOICE_SAMPLES, recorderMimeType } from '@/chat/voice/audio'
 
 describe('voice audio conversion', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+
+  test.each(['cancel', 'stop', 'monitor failure', 'resume failure', 'read failure'] as const)('releases signal monitoring on %s', async (action) => {
+    vi.useFakeTimers()
+    const close = vi.fn().mockResolvedValue(undefined)
+    const disconnect = vi.fn()
+    const stopTrack = vi.fn()
+    const onLevel = vi.fn()
+    class Context {
+      close = close
+      resume = action === 'resume failure' ? vi.fn().mockRejectedValue(new Error('suspended')) : vi.fn().mockResolvedValue(undefined)
+      createMediaStreamSource() { return { connect: vi.fn(), disconnect } }
+      createAnalyser() {
+        if (action === 'monitor failure') throw new Error('monitor unavailable')
+        return { fftSize: 2048, disconnect, getFloatTimeDomainData: (buffer: Float32Array) => {
+          if (action === 'read failure') throw new Error('closed')
+          for (let i = 0; i < buffer.length; i++) buffer[i] = i % 2 ? 0.1 : -0.1
+        } }
+      }
+      decodeAudioData = vi.fn().mockResolvedValue({ numberOfChannels: 1, sampleRate: 16000, getChannelData: () => new Float32Array([0.1]) })
+    }
+    class Recorder extends EventTarget {
+      static isTypeSupported() { return true }
+      state = 'recording'
+      mimeType = 'audio/webm'
+      start() {}
+      stop() { this.state = 'inactive'; this.dispatchEvent(new Event('stop')) }
+    }
+    vi.stubGlobal('AudioContext', Context)
+    vi.stubGlobal('MediaRecorder', Recorder)
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: {
+      getUserMedia: async () => ({ getTracks: () => [{ stop: stopTrack }] }),
+    } })
+    const capture = new BrowserVoiceCapture(onLevel)
+    await capture.start()
+    vi.advanceTimersByTime(100)
+    if (action.endsWith('failure')) expect(onLevel).toHaveBeenCalledWith(null)
+    else expect(onLevel.mock.lastCall![0]).toBeCloseTo(0.1)
+    if (action === 'stop') await capture.stop()
+    else capture.cancel()
+    const calls = onLevel.mock.calls.length
+    vi.advanceTimersByTime(500)
+    expect(onLevel).toHaveBeenCalledTimes(calls)
+    expect(close).toHaveBeenCalled()
+    expect(stopTrack).toHaveBeenCalledOnce()
+    if (action !== 'monitor failure') expect(disconnect).toHaveBeenCalledTimes(2)
+    expect(vi.getTimerCount()).toBe(0)
+  })
   test('releases late microphone permission after cancellation', async () => {
     let grant!: (stream: MediaStream) => void
     const stopTrack = vi.fn()
@@ -11,12 +59,15 @@ describe('voice audio conversion', () => {
     })
     class Recorder { static isTypeSupported(): boolean { return true } }
     vi.stubGlobal('MediaRecorder', Recorder)
-    const capture = new BrowserVoiceCapture()
+    const createContext = vi.fn()
+    vi.stubGlobal('AudioContext', createContext)
+    const capture = new BrowserVoiceCapture(vi.fn())
     const pending = capture.start()
     capture.cancel()
     grant({ getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream)
     await expect(pending).rejects.toThrow('cancelled')
     expect(stopTrack).toHaveBeenCalledOnce()
+    expect(createContext).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
 
@@ -31,8 +82,11 @@ describe('voice audio conversion', () => {
       constructor() { throw new Error('recorder failed') }
     }
     vi.stubGlobal('MediaRecorder', Recorder)
-    await expect(new BrowserVoiceCapture().start()).rejects.toThrow('recorder failed')
+    const createContext = vi.fn()
+    vi.stubGlobal('AudioContext', createContext)
+    await expect(new BrowserVoiceCapture(vi.fn()).start()).rejects.toThrow('recorder failed')
     expect(stopTrack).toHaveBeenCalledOnce()
+    expect(createContext).not.toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
   test('selects the explicit Opus format and reports no unsupported fallback', () => {

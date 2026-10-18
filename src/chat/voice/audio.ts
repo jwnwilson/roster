@@ -69,6 +69,12 @@ export class BrowserVoiceCapture {
   private acceptChunks = false
   private starting = false
   private generation = 0
+  private monitorContext: AudioContext | null = null
+  private monitorSource: MediaStreamAudioSourceNode | null = null
+  private analyser: AnalyserNode | null = null
+  private monitorTimer: ReturnType<typeof setInterval> | null = null
+
+  constructor(private readonly onLevel?: (rms: number | null) => void) {}
 
   async start(): Promise<void> {
     if (this.recorder || this.starting) throw new Error('Voice recording is already active.')
@@ -106,6 +112,7 @@ export class BrowserVoiceCapture {
       })
       recorder.start()
       this.recorder = recorder
+      this.startMonitoring(stream)
     } catch (cause) {
       this.release()
       throw cause
@@ -140,10 +147,59 @@ export class BrowserVoiceCapture {
   }
 
   private release(): void {
+    this.releaseMonitoring()
     for (const track of this.stream?.getTracks() ?? []) track.stop()
     this.stream = null
     this.recorder = null
     this.acceptChunks = false
     this.chunks = []
+  }
+
+  private startMonitoring(stream: MediaStream): void {
+    if (!this.onLevel) return
+    try {
+      const context = new AudioContext()
+      this.monitorContext = context
+      this.monitorSource = context.createMediaStreamSource(stream)
+      const analyser = context.createAnalyser()
+      this.analyser = analyser
+      analyser.fftSize = 2048
+      this.monitorSource.connect(analyser)
+      // Deliberately not connected to speakers: inspect energy without feedback.
+      const samples = new Float32Array(analyser.fftSize)
+      this.monitorTimer = setInterval(() => {
+        try {
+          analyser.getFloatTimeDomainData(samples)
+          let energy = 0
+          let sum = 0
+          for (const sample of samples) { energy += sample * sample; sum += sample }
+          // Ignore DC offsets, matching the decoded recording health check.
+          this.onLevel?.(Math.sqrt(Math.max(0, energy / samples.length - (sum / samples.length) ** 2)))
+        } catch {
+          this.releaseMonitoring()
+          this.onLevel?.(null)
+        }
+      }, 100)
+      void context.resume().catch(() => {
+        if (this.monitorContext !== context) return
+        this.releaseMonitoring()
+        this.onLevel?.(null)
+      })
+    } catch {
+      this.releaseMonitoring()
+      this.onLevel(null)
+    }
+  }
+
+  private releaseMonitoring(): void {
+    if (this.monitorTimer !== null) clearInterval(this.monitorTimer)
+    this.monitorTimer = null
+    this.monitorSource?.disconnect()
+    this.analyser?.disconnect()
+    this.monitorSource = null
+    this.analyser = null
+    const context = this.monitorContext
+    this.monitorContext = null
+    if (context) void context.close().catch(() => undefined)
   }
 }

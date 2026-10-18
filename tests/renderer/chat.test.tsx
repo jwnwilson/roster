@@ -17,9 +17,13 @@ import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
 const voice = vi.hoisted(() => ({ start: vi.fn(), stop: vi.fn(), cancel: vi.fn(), transcribe: vi.fn(), cancelWorker: vi.fn(), dispose: vi.fn() }))
+const levels = vi.hoisted(() => ({ report: undefined as ((level: number | null) => void) | undefined }))
 vi.mock('@/chat/voice/audio', () => ({
   MAX_VOICE_SECONDS: 60,
-  BrowserVoiceCapture: class { start = voice.start; stop = voice.stop; cancel = voice.cancel },
+  BrowserVoiceCapture: class {
+    constructor(onLevel?: (level: number | null) => void) { levels.report = onLevel }
+    start = voice.start; stop = voice.stop; cancel = voice.cancel
+  },
 }))
 vi.mock('@/chat/voice/workerClient', () => ({
   VoiceWorkerClient: class { transcribe = voice.transcribe; cancel = voice.cancelWorker; dispose = voice.dispose },
@@ -29,6 +33,7 @@ beforeEach(() => {
   useRoster.setState(INITIAL, true)
   installRosterApi()
   Object.values(voice).forEach((mock) => mock.mockReset())
+  levels.report = undefined
   voice.start.mockResolvedValue(undefined)
   voice.stop.mockResolvedValue(new Float32Array([0.1]))
   voice.transcribe.mockResolvedValue('find the leak by voice')
@@ -313,6 +318,20 @@ describe('AssistantChatPane — composer', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }))
 
     expect(onSend).toHaveBeenCalledWith('find the leak')
+  })
+
+  test('shows microphone signal feedback and cancels monitoring on unmount', async () => {
+    const view = render(pane())
+    await userEvent.click(screen.getByRole('button', { name: 'Record voice message' }))
+    expect(screen.getByText(/No microphone signal yet/)).toBeInTheDocument()
+    act(() => levels.report?.(0.000142))
+    expect(screen.getByText('Microphone signal detected.')).toBeInTheDocument()
+    expect(screen.getByRole('meter', { name: 'Microphone input level' })).toBeInTheDocument()
+    act(() => levels.report?.(null))
+    expect(screen.getByText('Microphone level monitoring unavailable.')).toBeInTheDocument()
+    view.unmount()
+    expect(voice.cancel).toHaveBeenCalledOnce()
+    act(() => levels.report?.(0.05))
   })
 
   test('puts a stopped recording in the draft for review before it can send', async () => {
