@@ -451,8 +451,13 @@ export class PiRunner implements Runner {
     })
 
     try {
+      const sdk = await this.load()
+      const settings = sdk.SettingsManager.create(options.cwd, sdk.getAgentDir())
       await runtime.login(provider.id, method === 'oauth' ? 'oauth' : 'api_key', interaction, {
         agentName: 'Roster',
+        // Some account logins (ChatGPT) identify the installation. Pi's own
+        // stored id, so Roster and the `pi` CLI read as one install.
+        getDeviceId: () => settings.getOrCreateDeviceId(),
       })
       return true
     } catch (cause) {
