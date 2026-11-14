@@ -8,6 +8,7 @@ import {
   type ProviderAuthInfo,
 } from '@main/runners/pi/signIn'
 import { toModelInfo } from '@main/runners/pi/models'
+import { isAuthFailure } from '@main/runners/pi/runner'
 
 const OPENAI: ProviderAuthInfo = {
   id: 'openai',
@@ -117,5 +118,22 @@ describe('toModelInfo', () => {
       { id: 'anthropic/claude-sonnet-5', price: '' },
       { id: 'openai/gpt-5.5', price: '', signedIn: false, provider: 'OpenAI' },
     ])
+  })
+})
+
+describe('signing in again', () => {
+  test('says the saved sign-in was rejected', async () => {
+    const ask = vi.fn(async () => ({ approved: true }))
+    await askToSignIn(OPENAI, ask, true)
+    const [approval] = ask.mock.calls[0] as unknown as [{ questions: { question: string }[] }]
+    expect(approval.questions[0]!.question).toBe('OpenAI rejected the saved sign-in. Sign in again?')
+  })
+
+  test('recognises a rejected credential, and nothing a sign-in would not fix', () => {
+    expect(isAuthFailure('OpenAI API error (401): Incorrect API key provided')).toBe(true)
+    expect(isAuthFailure('Unauthorized')).toBe(true)
+    expect(isAuthFailure('invalid x-api-key')).toBe(true)
+    expect(isAuthFailure('xai API error (402): You have run out of credits')).toBe(false)
+    expect(isAuthFailure('429 rate limited')).toBe(false)
   })
 })

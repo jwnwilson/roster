@@ -53,8 +53,9 @@ export function toModelInfo(
 /**
  * The model an agent names, among the ones Pi can actually use.
  *
- * Accepts `provider/id` — what Roster writes — and also a bare id, which is
- * what agents written for the Claude or Codex runners carry. A blank name
+ * Accepts `provider/id` — what Roster writes, matched exactly — and also a
+ * bare id, which is what agents written for the Claude or Codex runners
+ * carry and which matches that id under any provider. A blank name
  * means "whatever Pi would pick": the preferred default when it is usable,
  * else the first usable model.
  */
@@ -75,9 +76,10 @@ export function resolveModel<M extends PiModelLike>(
   const exact = available.find((model) => modelKey(model) === wanted)
   if (exact) return exact
 
-  const slash = wanted.indexOf('/')
-  const bare = slash === -1 ? wanted : wanted.slice(slash + 1)
-  return available.find((model) => model.id === bare)
+  // A qualified name means that provider: matching the bare id elsewhere
+  // would quietly run `openai-codex/gpt-6-sol` on OpenAI's API instead.
+  if (wanted.includes('/')) return undefined
+  return available.find((model) => model.id === wanted)
 }
 
 /**

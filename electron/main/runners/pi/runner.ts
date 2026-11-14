@@ -173,7 +173,8 @@ export class PiRunner implements Runner {
       const outcome = await this.signIn(runtime, unsigned.provider, owned, options)
       if (outcome !== true) {
         this.failApprovals(owned, 'The run ended')
-        yield { kind: 'error', message: outcome }
+        // Stopped by the user is not a failure; say nothing.
+        if (!options.signal.aborted) yield { kind: 'error', message: outcome }
         yield { kind: 'done', runnerSessionId: options.resumeFrom ?? '' }
         return
       }
@@ -283,8 +284,14 @@ export class PiRunner implements Runner {
 
     const queue = new EventQueue<RunnerEvent>()
     const normalizer = createPiNormalizer(totalsFrom(session.messages))
+    // Set when the provider rejects the credential, so the turn can offer a
+    // fresh sign-in rather than fail the same way on every message after.
+    let rejected = false
     const unsubscribe = session.subscribe((event) => {
-      for (const out of normalizer.handle(event)) queue.push(out)
+      for (const out of normalizer.handle(event)) {
+        if (out.kind === 'error' && isAuthFailure(out.message)) rejected = true
+        queue.push(out)
+      }
     })
 
     const onAbort = (): void => {
@@ -302,12 +309,28 @@ export class PiRunner implements Runner {
       const sessionFile = session.sessionFile ?? ''
       if (sessionFile !== '') queue.push({ kind: 'session', runnerSessionId: sessionFile })
 
-      const turn = session
-        .prompt(prompt)
-        .catch((cause: unknown) => {
-          if (!options.signal.aborted) queue.push({ kind: 'error', message: describe(cause) })
-        })
-        .finally(() => queue.close())
+      const attempt = async (text: string): Promise<void> => {
+        rejected = false
+        try {
+          await session.prompt(text)
+        } catch (cause) {
+          if (options.signal.aborted) return
+          const message = describe(cause)
+          if (isAuthFailure(message)) rejected = true
+          queue.push({ kind: 'error', message })
+        }
+      }
+
+      const turn = (async () => {
+        await attempt(prompt)
+        // Once per turn: a provider that rejects a credential it was just
+        // given is not going to be fixed by asking a third time.
+        if (rejected && !options.signal.aborted) {
+          const outcome = await this.signIn(runtime, model.provider, owned, options, { again: true })
+          if (outcome === true) await attempt(prompt)
+          else if (!options.signal.aborted) queue.push({ kind: 'error', message: outcome })
+        }
+      })().finally(() => queue.close())
 
       for await (const event of queue) yield event
       await turn
@@ -391,6 +414,7 @@ export class PiRunner implements Runner {
     providerId: string,
     owned: Set<string>,
     options: StartOptions,
+    retry: { again?: boolean } = {},
   ): Promise<true | string> {
     const provider = runtime.getProvider(providerId)
     if (!provider) return `Pi does not know the provider "${providerId}"`
@@ -411,7 +435,7 @@ export class PiRunner implements Runner {
         ...(options.onApprovalWithdrawn ? { onWithdrawn: options.onApprovalWithdrawn } : {}),
       })
 
-    const method = await askToSignIn(info, ask)
+    const method = await askToSignIn(info, ask, retry.again === true)
     if (method === null) return `${provider.name} is not signed in, so this model cannot run`
 
     // Shown, not awaited: a device code is something to read, and the login
@@ -514,6 +538,17 @@ export class EventQueue<T> implements AsyncIterable<T> {
       },
     }
   }
+}
+
+/**
+ * Whether a failure means the provider rejected the credential — a wrong or
+ * revoked key, an expired login — as opposed to anything signing in again
+ * would not fix (credits, rate limits, outages).
+ */
+export function isAuthFailure(message: string): boolean {
+  return /\b401\b|unauthori[sz]ed|invalid[ _]api[ _]key|incorrect api key|invalid x-api-key|authentication (failed|error)|token (has )?expired|not signed in/i.test(
+    message,
+  )
 }
 
 function toRecord(value: unknown): Record<string, unknown> {

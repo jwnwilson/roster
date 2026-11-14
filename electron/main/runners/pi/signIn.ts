@@ -65,6 +65,7 @@ export interface SignInApproval {
 export async function askToSignIn(
   provider: ProviderAuthInfo,
   ask: (approval: SignInApproval) => Promise<ApprovalDecision>,
+  again = false,
 ): Promise<SignInMethod | null> {
   const methods = signInMethods(provider)
   if (methods.length === 0) return null
@@ -75,7 +76,11 @@ export async function askToSignIn(
     return decision.approved ? only.method : null
   }
 
-  const question = `Sign in to ${provider.name} to use this model?`
+  // Asked again after the provider refused what was saved: say so, or the
+  // same question twice reads as Roster forgetting it was answered.
+  const question = again
+    ? `${provider.name} rejected the saved sign-in. Sign in again?`
+    : `Sign in to ${provider.name} to use this model?`
   const decision = await ask({
     toolName: SIGN_IN_TOOL,
     command: signInCommand(provider),
