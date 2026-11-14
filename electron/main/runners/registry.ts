@@ -1,60 +1,41 @@
 import type { Agent, RunnerId } from '../../../shared/types'
-import { ClaudeRunner } from './claude'
-import { CodexRunner } from './codex'
-import { CustomRunner, type CustomDialect } from './custom'
+import { PiRunner } from './pi/runner'
 import type { Runner } from './types'
 
 /**
  * Resolves an agent's `runner` field to an implementation.
  *
- * Adapters are created once and reused, since each owns the approvals it is
- * blocked on. Custom runners are registered lazily from the agents that
- * declare them.
+ * Roster is a UI over Pi: every agent runs on Pi, whatever its agent.toml
+ * says. Agents written for the retired Claude and Codex runners are migrated
+ * to `runner = "pi"` on load (see migrateAgentsToPi); until then they still
+ * resolve here, so nothing an older config names can leave an agent unable
+ * to take a turn.
  */
-const RUNNERS = new Map<RunnerId, Runner>([
-  ['claude', new ClaudeRunner()],
-  ['codex', new CodexRunner()],
-])
+const PI = new PiRunner()
 
-/** Resolves binary paths up front, so the first run cannot fail on PATH. */
-export async function warmUpRunners(): Promise<void> {
-  await Promise.all(
-    [...RUNNERS.values()].map(async (runner) => {
-      const warm = runner as Runner & { warmUp?: () => Promise<void> }
-      if (warm.warmUp) await warm.warmUp()
-    }),
-  )
+export function piRunner(): PiRunner {
+  return PI
 }
 
-export function getRunner(id: RunnerId): Runner | null {
-  return RUNNERS.get(id) ?? null
+/** Loads the SDK up front, so the first turn does not pay for the import. */
+export async function warmUpRunners(): Promise<void> {
+  await PI.warmUp()
+}
+
+export function getRunner(_id: RunnerId): Runner | null {
+  return PI
 }
 
 export function allRunners(): Runner[] {
-  return [...RUNNERS.values()]
+  return [PI]
 }
 
 export function isBuiltinRunner(id: RunnerId): boolean {
-  return id === 'claude' || id === 'codex'
+  return id === 'pi'
 }
 
 /**
- * Registers a runner for every agent that names a custom command, so
- * bringing your own CLI needs only an agent.toml entry.
+ * Custom CLI runners are retired: Pi's own providers and extensions replace
+ * them. Kept as a no-op so callers need not change.
  */
-export function registerCustomRunners(agents: Agent[]): void {
-  for (const agent of agents) {
-    if (isBuiltinRunner(agent.runner) || !agent.custom) continue
-    if (RUNNERS.has(agent.runner)) continue
-
-    RUNNERS.set(
-      agent.runner,
-      new CustomRunner(agent.runner, agent.custom, dialectFor(agent.custom.command)),
-    )
-  }
-}
-
-/** A custom CLI declares its dialect by name; claude-shaped is the default. */
-function dialectFor(command: string): CustomDialect {
-  return /codex/i.test(command) ? 'codex' : 'claude'
-}
+export function registerCustomRunners(_agents: Agent[]): void {}

@@ -3,11 +3,16 @@
 A desktop app for managing a roster of AI coding agents — chat with them, watch
 their terminals, approve risky actions, and let them hand work to one another.
 
-**Roster does not implement an agent loop.** Each agent is backed by an agent CLI
-running on your own account — Claude Code, Codex, or any command you point it at.
-Roster is a harness and a UI over those processes, which means it needs no API
-keys on the primary path, never executes tools itself, and never manages context.
-The CLI owns all of that.
+**Roster does not implement an agent loop.** Every agent runs on
+[Pi](https://github.com/earendil-works/pi), embedded through its SDK, on whichever
+providers you have signed Pi in to — Anthropic, OpenAI/Codex, and the rest. Pi owns
+the loop, the model calls, tools and context; Roster is the UI over it: the roster,
+approvals, handoffs, the task board, plans, skills, MCP servers and spend. See
+ADR 0017.
+
+**Sign in once with Pi:** run `pi`, then `/login`. Roster reads Pi's
+`~/.pi/agent/auth.json`; agents written for the old Claude/Codex runners are moved
+onto Pi automatically, keeping their model.
 
 The [landing page](https://jwnwilson.github.io/roster/) is the same introduction
 with screenshots, for anyone who has not opened the repository.
@@ -20,7 +25,7 @@ with screenshots, for anyone who has not opened the repository.
 |---|---|
 | Node.js | 22 or newer — only if you build from source |
 | Platform | macOS (Windows and Linux are untested) |
-| At least one agent CLI | [`claude`](https://code.claude.com) or [`codex`](https://developers.openai.com/codex/cli), already signed in |
+| Pi signed in to a provider | `npx @earendil-works/pi-coding-agent`, then `/login` — Roster bundles the SDK |
 
 Roster drives whichever CLI you already have installed and logged in. If none is
 available, the app still runs — agents just show `error` with the reason, e.g.

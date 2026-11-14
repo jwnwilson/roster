@@ -14,7 +14,7 @@ export type Status = (typeof STATUSES)[number]
 /* -------------------------------------------------------------------------
  * Runners — an agent is backed by a CLI running on the user's own account.
  * ---------------------------------------------------------------------- */
-export const BUILTIN_RUNNERS = ['claude', 'codex', 'gemini'] as const
+export const BUILTIN_RUNNERS = ['pi', 'claude', 'codex', 'gemini'] as const
 export type BuiltinRunnerId = (typeof BUILTIN_RUNNERS)[number]
 export type RunnerId = BuiltinRunnerId | (string & {})
 

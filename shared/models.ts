@@ -24,7 +24,9 @@ const CONTEXT_WINDOWS: Record<string, number> = {
 }
 
 export function contextWindowFor(model: string): number | null {
-  return CONTEXT_WINDOWS[model] ?? null
+  // Pi names models `provider/id`; the window belongs to the id.
+  const bare = model.slice(model.indexOf('/') + 1)
+  return CONTEXT_WINDOWS[model] ?? CONTEXT_WINDOWS[bare] ?? null
 }
 
 /**

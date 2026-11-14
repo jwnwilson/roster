@@ -6,7 +6,7 @@ import type { Agent } from '@shared/types'
 import { contextWindowFor } from '@shared/models'
 import { CustomRunner } from '@main/runners/custom'
 import { CodexRunner, codexPermissionOverrides } from '@main/runners/codex'
-import { getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
+import { allRunners, getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
 import { ClaudeRunner, claudeSkillOptions, withAdditionalRoots, describeCommand } from '@main/runners/claude'
 import type { RunnerEvent, StartOptions } from '@main/runners/types'
 import { rosterHome, worktreesDir } from '@main/store/paths'
@@ -437,47 +437,24 @@ describe('ClaudeRunner', () => {
 })
 
 describe('registry', () => {
-  test('resolves the builtin runners', () => {
-    expect(getRunner('claude')?.id).toBe('claude')
-    expect(getRunner('codex')?.id).toBe('codex')
+  test('runs every agent on Pi, whatever its agent.toml names', () => {
+    expect(getRunner('pi')?.id).toBe('pi')
+    expect(getRunner('claude')).toBe(getRunner('pi'))
+    expect(getRunner('codex')).toBe(getRunner('pi'))
+    expect(getRunner('ghost')).toBe(getRunner('pi'))
   })
 
-  test('returns nothing for a runner it has never heard of', () => {
-    expect(getRunner('ghost')).toBeNull()
+  test('recognises only Pi as builtin', () => {
+    expect(isBuiltinRunner('pi')).toBe(true)
+    expect(isBuiltinRunner('claude')).toBe(false)
   })
 
-  test('recognises which ids are builtin', () => {
-    expect(isBuiltinRunner('claude')).toBe(true)
-    expect(isBuiltinRunner('mine')).toBe(false)
-  })
-
-  test('registers a runner for an agent that declares a custom command', () => {
-    const agent: Agent = {
-      id: 'a',
-      name: 'Custom Agent',
-      runner: 'my-cli',
-      model: 'm',
-      cwd: '/tmp',
-      cwdLabel: '/tmp',
-      systemPrompt: '',
-      skills: [],
-      mcpServers: [],
-      hidden: false,
-      custom: { command: 'my-cli', args: ['--json'] },
-      status: 'idle',
-    }
-
-    registerCustomRunners([agent])
-    expect(getRunner('my-cli')?.id).toBe('my-cli')
-  })
-
-  test('ignores an agent whose runner is builtin', () => {
-    const before = getRunner('claude')
+  test('registers no custom runners', () => {
     registerCustomRunners([
       {
-        id: 'b',
-        name: 'B',
-        runner: 'claude',
+        id: 'a',
+        name: 'Custom Agent',
+        runner: 'my-cli',
         model: 'm',
         cwd: '/tmp',
         cwdLabel: '/tmp',
@@ -485,32 +462,12 @@ describe('registry', () => {
         skills: [],
         mcpServers: [],
         hidden: false,
+        custom: { command: 'my-cli', args: ['--json'] },
         status: 'idle',
       },
     ])
-
-    // The builtin must not be replaced by a custom wrapper.
-    expect(getRunner('claude')).toBe(before)
-  })
-
-  test('ignores a non-builtin runner with no custom block', () => {
-    registerCustomRunners([
-      {
-        id: 'c',
-        name: 'C',
-        runner: 'incomplete',
-        model: 'm',
-        cwd: '/tmp',
-        cwdLabel: '/tmp',
-        systemPrompt: '',
-        skills: [],
-        mcpServers: [],
-        hidden: false,
-        status: 'idle',
-      },
-    ])
-
-    expect(getRunner('incomplete')).toBeNull()
+    expect(getRunner('my-cli')?.id).toBe('pi')
+    expect(allRunners()).toHaveLength(1)
   })
 })
 

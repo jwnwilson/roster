@@ -1,3 +1,4 @@
+import type { BuiltinToolDefinition } from './toolDefinitions'
 import type { ModelInfo, Question, RunnerId, RunnerStatus } from '../../../shared/types'
 
 /**
@@ -107,6 +108,11 @@ export interface StartOptions {
    * receive these.
    */
   inProcessMcpServers?: Record<string, unknown>
+  /**
+   * Roster's own tools as plain definitions, for a runner that calls them
+   * in process without MCP — Pi.
+   */
+  builtinTools?: readonly BuiltinToolDefinition[]
   /**
    * Research and propose, do not act. The runner refuses edits for the whole
    * turn and the agent presents a plan instead, which arrives as an approval.

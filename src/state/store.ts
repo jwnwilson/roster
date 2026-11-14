@@ -354,7 +354,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   newTaskOpen: false,
   notionOpen: false,
 
-  newRunner: 'claude',
+  newRunner: 'pi',
   newModel: '',
   newPrompt: '',
   picked: {},
