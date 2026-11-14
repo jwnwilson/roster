@@ -92,7 +92,16 @@ describe('PtyManager', () => {
   })
 
   test('notifies listeners when the shell exits', async () => {
-    manager.open('s1', dir, SIZE)
+    // The user's own shell rc can swallow or trap `exit` (instant prompts,
+    // plugin managers), so point zsh at an empty config for this one.
+    const zdotdir = process.env['ZDOTDIR']
+    process.env['ZDOTDIR'] = dir
+    try {
+      manager.open('s1', dir, SIZE)
+    } finally {
+      if (zdotdir === undefined) delete process.env['ZDOTDIR']
+      else process.env['ZDOTDIR'] = zdotdir
+    }
 
     const exited = new Promise<number>((resolve) => {
       manager.onExit((id) => {

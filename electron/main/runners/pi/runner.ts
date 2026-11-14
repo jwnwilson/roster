@@ -52,9 +52,6 @@ export class PiRunner implements Runner {
   private pending = new Map<string, PendingApproval>()
   private sdk: Promise<PiSdk> | null = null
 
-  /** Set by the session manager so approvals reach the UI mid-turn. */
-  onApprovalNeeded?: (event: Extract<RunnerEvent, { kind: 'approval' }>) => void
-
   /** Imported lazily: tests that touch only the normalizer never load Pi. */
   private load(): Promise<PiSdk> {
     this.sdk ??= import('@earendil-works/pi-coding-agent')
@@ -193,7 +190,12 @@ export class PiRunner implements Runner {
           pi.on('tool_call', async (event) => {
             if (UNGATED_BUILTINS.has(event.toolName) || rosterToolNames.has(event.toolName)) return undefined
             if (options.signal.aborted) return { block: true, reason: 'The run was stopped' }
-            const decision = await this.requestApproval(event.toolName, toRecord(event.input), owned)
+            const decision = await this.requestApproval(
+              event.toolName,
+              toRecord(event.input),
+              owned,
+              options.onApproval,
+            )
             return decision.approved
               ? undefined
               : { block: true, reason: decision.reason ?? 'Denied by the user' }
@@ -281,14 +283,17 @@ export class PiRunner implements Runner {
     toolName: string,
     input: Record<string, unknown>,
     owned: Set<string>,
+    raise: StartOptions['onApproval'],
   ): Promise<ApprovalDecision> {
+    // Nobody to ask means nobody can say yes.
+    if (!raise) return Promise.resolve({ approved: false, reason: 'No one is available to approve this' })
     const id = randomUUID()
     owned.add(id)
     const questions = parseQuestions(input['questions'])
 
     return new Promise((resolve) => {
       this.pending.set(id, { resolve })
-      this.onApprovalNeeded?.({
+      raise({
         kind: 'approval',
         id,
         toolName,

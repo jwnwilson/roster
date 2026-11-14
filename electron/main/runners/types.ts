@@ -114,6 +114,11 @@ export interface StartOptions {
    */
   builtinTools?: readonly BuiltinToolDefinition[]
   /**
+   * Where this turn's approvals go. Per turn, not per runner: one runner
+   * serves every session, and a handoff runs two at once.
+   */
+  onApproval?: (event: Extract<RunnerEvent, { kind: 'approval' }>) => void
+  /**
    * Research and propose, do not act. The runner refuses edits for the whole
    * turn and the agent presents a plan instead, which arrives as an approval.
    */

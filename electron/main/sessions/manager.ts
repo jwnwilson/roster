@@ -453,7 +453,6 @@ export class SessionManager {
       if (runner instanceof PiRunner) {
         // Pi runs inside Roster and takes tools as plain functions, so the
         // definitions are handed over directly — no MCP layer at all.
-        runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
         builtinTools = builtinToolDefinitions(toolSet, agent.id)
       } else if (runner instanceof ClaudeRunner) {
         // Claude runs inside Roster, so it is handed the servers themselves.
@@ -493,6 +492,7 @@ export class SessionManager {
         ...(options.planMode === true ? { planMode: true } : {}),
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
         ...(builtinTools ? { builtinTools } : {}),
+        onApproval: (event) => this.raiseApproval(sessionId, run, event),
         ...(session.runnerSessionId !== undefined ? { resumeFrom: session.runnerSessionId } : {}),
       })
 
