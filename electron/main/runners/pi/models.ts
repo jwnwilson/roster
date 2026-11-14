@@ -26,8 +26,28 @@ function trim(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)))
 }
 
-export function toModelInfo(models: readonly PiModelLike[]): ModelInfo[] {
-  return models.map((model) => ({ id: modelKey(model), price: priceLabel(model) }))
+/**
+ * Every model, signed-in providers first, each saying whether it can run now.
+ *
+ * `signedIn` names the providers with credentials; omitted, every model is
+ * treated as signed in. `providerName` gives the display name for grouping.
+ */
+export function toModelInfo(
+  models: readonly PiModelLike[],
+  signedIn?: ReadonlySet<string>,
+  providerName: (provider: string) => string | undefined = () => undefined,
+): ModelInfo[] {
+  const info = models.map((model): ModelInfo => {
+    const name = providerName(model.provider)
+    return {
+      id: modelKey(model),
+      price: priceLabel(model),
+      ...(signedIn === undefined || signedIn.has(model.provider) ? {} : { signedIn: false }),
+      ...(name !== undefined ? { provider: name } : {}),
+    }
+  })
+  // Stable: within each half the catalogue's own order is kept.
+  return [...info.filter((m) => m.signedIn !== false), ...info.filter((m) => m.signedIn === false)]
 }
 
 /**

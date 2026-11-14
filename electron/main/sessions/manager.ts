@@ -493,6 +493,7 @@ export class SessionManager {
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
         ...(builtinTools ? { builtinTools } : {}),
         onApproval: (event) => this.raiseApproval(sessionId, run, event),
+        onApprovalWithdrawn: (approvalId) => this.withdrawApproval(sessionId, run, approvalId),
         ...(session.runnerSessionId !== undefined ? { resumeFrom: session.runnerSessionId } : {}),
       })
 
@@ -889,6 +890,15 @@ export class SessionManager {
     this.emit({ type: 'approval-resolved', sessionId, approvalId })
     // The agent resumes work the moment it is answered.
     if (run.approvals.size === 0) this.setStatus(sessionId, 'running')
+  }
+
+  /** Takes an approval off the banner that the runner no longer needs answered. */
+  private withdrawApproval(sessionId: string, run: ActiveRun, approvalId: string): void {
+    if (!run.approvals.delete(approvalId)) return
+    this.emit({ type: 'approval-resolved', sessionId, approvalId })
+    if (run.approvals.size === 0 && this.sessions.findById(sessionId)?.status === 'approval') {
+      this.setStatus(sessionId, 'running')
+    }
   }
 
   pendingApprovals(sessionId: string): Approval[] {
