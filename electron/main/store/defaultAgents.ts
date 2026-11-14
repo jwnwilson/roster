@@ -1,3 +1,4 @@
+import { BROWSER_MCP_SERVERS } from '../../../shared/mcp'
 import type { RunnerStatus } from '../../../shared/types'
 import type { NewAgentInput } from './agents'
 
@@ -99,7 +100,9 @@ export function defaultAgentsFor(
     // are not there would ship three agents advertising what they cannot do.
     // The prompts stand on their own, and skills are added per agent later.
     skills: [],
-    mcpServers: [],
+    // A browser for every starter agent: checking work in the real app is
+    // what the Tech Lead's prompt asks for.
+    mcpServers: BROWSER_MCP_SERVERS.map((server) => server.name),
   }))
 }
 

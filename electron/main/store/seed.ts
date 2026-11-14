@@ -1,3 +1,4 @@
+import { BROWSER_MCP_SERVERS } from '../../../shared/mcp'
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { agentsDir, skillsDir, workspaceDir, worktreesDir } from './paths'
@@ -73,6 +74,7 @@ const SEED_MCP = {
   servers: [
     { name: 'filesystem', command: 'npx @modelcontextprotocol/server-filesystem ~', env: {} },
     { name: 'github', command: 'npx @modelcontextprotocol/server-github', env: {} },
+    ...BROWSER_MCP_SERVERS.map(({ name, command }) => ({ name, command, env: {} })),
   ],
 }
 
