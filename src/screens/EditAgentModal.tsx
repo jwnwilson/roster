@@ -143,6 +143,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           models={models}
           value={draft.model}
           onChange={(model) => patchDraft({ model })}
+          onModelsChanged={setModels}
         />
 
         <WorkingDirectory

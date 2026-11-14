@@ -45,6 +45,7 @@ import {
   type BuiltinToolSet,
 } from '../runners/toolDefinitions'
 import { PiRunner } from '../runners/pi/runner'
+import { SIGN_IN_TOOL } from '../runners/pi/signIn'
 import { createRosterMcpServer, type RosterTools } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
@@ -170,6 +171,13 @@ export class SessionManager {
    * turn. A session that simply ends holds one brief until the app closes.
    */
   private lastBrief = new Map<string, string>()
+
+  /**
+   * Tools the user allowed for the rest of a session, by session id. In
+   * memory on purpose: "this session" ends when the session is stopped or
+   * Roster quits, and a standing grant should not outlive what it was for.
+   */
+  private allowedForSession = new Map<string, Set<string>>()
 
   constructor(
     private readonly agents: AgentStore,
@@ -696,6 +704,7 @@ export class SessionManager {
     // A delete stops the turn first, so this is also where what the manager
     // remembers about a session stops outliving it.
     this.lastBrief.delete(sessionId)
+    this.allowedForSession.delete(sessionId)
 
     const run = this.active.get(sessionId)
     if (!run) return
@@ -870,6 +879,14 @@ export class SessionManager {
     run: ActiveRun,
     event: Extract<RunnerEvent, { kind: 'approval' }>,
   ): void {
+    // Already allowed for this session: answer for the user, without a
+    // banner. Only plain permission requests — a question, a plan or a
+    // sign-in is asking for something a standing "yes" cannot supply.
+    if (isSessionGrantable(event) && this.allowedForSession.get(sessionId)?.has(event.toolName)) {
+      getRunner(run.runnerId)?.respondToApproval(event.id, { approved: true })
+      return
+    }
+
     const planId = event.plan === undefined ? null : this.capturePlan(sessionId, event.plan)
 
     const approval: Approval = {
@@ -915,6 +932,22 @@ export class SessionManager {
     if (run.approvals.size === 0 && this.sessions.findById(sessionId)?.status === 'approval') {
       this.setStatus(sessionId, 'running')
     }
+  }
+
+  /**
+   * Approves one request and remembers its tool, so later requests for the
+   * same tool in this session go through without asking.
+   */
+  allowForSession(sessionId: string, approvalId: string): void {
+    const approval = this.active.get(sessionId)?.approvals.get(approvalId)
+    if (!approval) return
+
+    if (isSessionGrantable(approval)) {
+      const allowed = this.allowedForSession.get(sessionId) ?? new Set<string>()
+      allowed.add(approval.toolName)
+      this.allowedForSession.set(sessionId, allowed)
+    }
+    this.respondToApproval(sessionId, approvalId, { approved: true })
   }
 
   pendingApprovals(sessionId: string): Approval[] {
@@ -1404,4 +1437,24 @@ export function notionSkippedNotice(cause: unknown): string {
       ? 'macOS did not let Roster read its saved Notion login (Keychain access was refused)'
       : `Notion could not be reached (${detail})`
   return `${why}, so this turn runs without Notion. Connect it under MCP servers → notion, or turn notion off for this agent.`
+}
+
+/**
+ * Whether an approval is the kind a standing "allow for this session" can
+ * answer: a plain permission to run a tool, not a question, a plan or a
+ * sign-in.
+ */
+export function isSessionGrantable(approval: {
+  toolName: string
+  questions?: readonly unknown[]
+  plan?: string
+  planId?: string
+}): boolean {
+  return (
+    approval.questions === undefined &&
+    approval.plan === undefined &&
+    approval.planId === undefined &&
+    approval.toolName !== SIGN_IN_TOOL &&
+    approval.toolName !== EXIT_PLAN_MODE
+  )
 }

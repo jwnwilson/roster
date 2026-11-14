@@ -398,6 +398,14 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
   const isPlan = approval.toolName === EXIT_PLAN_MODE
   const planId = approval.planId
 
+  // A plan, a question or a sign-in needs a fresh answer every time; only a
+  // plain "may I run this tool" can be granted for the rest of the session.
+  const grantable = !isPlan && planId === undefined && approval.toolName !== 'sign_in'
+
+  function allowForSession(): void {
+    void window.roster.sessions.allowForSession(sessionId, approval.id)
+  }
+
   function respond(approved: boolean): void {
     void window.roster.sessions.respondToApproval(sessionId, approval.id, approved)
     // Approving the plan is the moment the agent is meant to start work, so
@@ -439,6 +447,17 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
         >
           {isPlan ? 'Keep planning' : 'Deny'}
         </button>
+        {grantable ? (
+          <button
+            type="button"
+            onClick={allowForSession}
+            title={`Approve, and don't ask again about ${approval.toolName} in this session`}
+            className="cursor-pointer rounded-chip border border-amber-line bg-transparent px-[11px] py-[4px] font-ui text-md text-amber-text hover:border-amber"
+            data-hoverable
+          >
+            Allow {approval.toolName} for session
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => respond(true)}

@@ -13,6 +13,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
     runners: {
       list: vi.fn().mockResolvedValue([]),
       models: vi.fn().mockResolvedValue([]),
+      checkModels: vi.fn().mockResolvedValue([]),
     },
     agents: {
       list: vi.fn().mockResolvedValue([]),
@@ -37,6 +38,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       setName: vi.fn().mockResolvedValue(null),
       respondToApproval: vi.fn().mockResolvedValue(undefined),
       pendingApprovals: vi.fn().mockResolvedValue([]),
+      allowForSession: vi.fn().mockResolvedValue(undefined),
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
     voice: {

@@ -424,6 +424,9 @@ export function registerIpc(): void {
     if (runners.get('pi')?.ready !== before) await agentStore.load()
     return [...runners.values()]
   })
+  ipcMain.handle(CHANNELS.runnersCheckModels, (_e, _runnerId: string, providerId: string) =>
+    piRunner().checkModels(providerId),
+  )
   ipcMain.handle(CHANNELS.runnersModels, (_e, runnerId: string) =>
     getRunner(runnerId)?.models() ?? [],
   )
@@ -517,6 +520,9 @@ export function registerIpc(): void {
   )
   ipcMain.handle(CHANNELS.sessionsPendingApprovals, (_e, sessionId: string) =>
     requireManager().pendingApprovals(sessionId),
+  )
+  ipcMain.handle(CHANNELS.sessionsAllowForSession, (_e, sessionId: string, approvalId: string) =>
+    requireManager().allowForSession(sessionId, approvalId),
   )
 
   ipcMain.handle(CHANNELS.ptyOpen, (_e, sessionId: string, cwd: string, size: PtySize) =>

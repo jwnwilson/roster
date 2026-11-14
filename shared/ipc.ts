@@ -44,6 +44,11 @@ export interface RosterApi {
   runners: {
     list(): Promise<RunnerStatus[]>
     models(runnerId: string): Promise<ModelInfo[]>
+    /**
+     * Probes a signed-in provider's models with a one-word request each and
+     * returns the list again, with the ones the account is refused marked.
+     */
+    checkModels(runnerId: string, providerId: string): Promise<ModelInfo[]>
   }
   agents: {
     list(): Promise<Agent[]>
@@ -103,6 +108,11 @@ export interface RosterApi {
       answers?: Record<string, string>,
     ): Promise<void>
     pendingApprovals(sessionId: string): Promise<Approval[]>
+    /**
+     * Approves this one and every later request for the same tool in this
+     * session, until the session is stopped or Roster restarts.
+     */
+    allowForSession(sessionId: string, approvalId: string): Promise<void>
     /** Live turn events: messages, status, usage, approvals. */
     onEvent(listener: (event: SessionEventPayload) => void): () => void
   }
@@ -441,6 +451,7 @@ export const CHANNELS = {
 
   runnersList: 'runners:list',
   runnersModels: 'runners:models',
+  runnersCheckModels: 'runners:checkModels',
 
   agentsList: 'agents:list',
   agentsGet: 'agents:get',
@@ -460,6 +471,7 @@ export const CHANNELS = {
   sessionsDelete: 'sessions:delete',
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
+  sessionsAllowForSession: 'sessions:allowForSession',
   sessionsEvent: 'sessions:event',
 
   voiceStatus: 'voice:status',

@@ -61,7 +61,8 @@ export function NewAgent() {
       if (cancelled) return
       setModels(loaded)
       // Default to the provider's first model so the form is submittable.
-      if (loaded[0] && !loaded.some((m) => m.id === newModel)) setNewModel(loaded[0].id)
+      const first = loaded.find((m) => m.unavailable === undefined) ?? loaded[0]
+      if (first && !loaded.some((m) => m.id === newModel)) setNewModel(first.id)
     })
     return () => {
       cancelled = true
@@ -119,7 +120,7 @@ export function NewAgent() {
 
         <ProviderPicker runners={runners} value={newRunner} onChange={setNewRunner} />
 
-        <ModelPicker models={models} value={newModel} onChange={setNewModel} />
+        <ModelPicker models={models} value={newModel} onChange={setNewModel} onModelsChanged={setModels} />
 
         <WorkingDirectory
           value={cwd ?? UNSET_WORKING_DIRECTORY}

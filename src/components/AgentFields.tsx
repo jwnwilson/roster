@@ -96,6 +96,13 @@ interface ModelPickerProps {
   models: ModelInfo[]
   value: string
   onChange: (modelId: string) => void
+  /** Receives the list again after a check marks what the account can use. */
+  onModelsChanged?: (models: ModelInfo[]) => void
+}
+
+/** The provider part of `provider/id`. */
+function providerOf(modelId: string): string {
+  return modelId.split('/')[0] ?? ''
 }
 
 /** How many matches a search shows; Pi knows well over a thousand models. */
@@ -123,9 +130,25 @@ export function visibleModels(models: ModelInfo[], value: string, query: string)
   )
 }
 
-export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
+export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelPickerProps) {
   const [query, setQuery] = useState('')
+  const [checking, setChecking] = useState(false)
   const shown = visibleModels(models, value, query)
+
+  // Offered for the selected model's provider once it is signed in: that is
+  // when "which of these can my account use" has an answer.
+  const selected = models.find((model) => model.id === value)
+  const provider = selected && selected.signedIn !== false ? providerOf(selected.id) : ''
+  const providerName = selected?.provider ?? provider
+
+  async function check(): Promise<void> {
+    setChecking(true)
+    try {
+      onModelsChanged?.(await window.roster.runners.checkModels('pi', provider))
+    } finally {
+      setChecking(false)
+    }
+  }
 
   return (
     <Field label="Model">
@@ -140,6 +163,19 @@ export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
             className="rounded-field border border-line-card bg-card px-[12px] py-[8px] text-md text-ink outline-none focus:border-accent"
           />
         ) : null}
+        {provider !== '' && onModelsChanged ? (
+          <button
+            type="button"
+            onClick={() => void check()}
+            disabled={checking}
+            className="cursor-pointer self-start rounded-chip border border-line-card bg-transparent px-[10px] py-[3px] font-ui text-sm text-dim hover:border-line-hover-strong disabled:cursor-wait"
+            data-hoverable
+          >
+            {checking
+              ? `Checking ${providerName} models…`
+              : `Check which ${providerName} models your account can use`}
+          </button>
+        ) : null}
         {models.length === 0 ? (
           <p className="m-0 text-md text-dim">No models available for this provider.</p>
         ) : shown.length === 0 ? (
@@ -148,17 +184,29 @@ export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
           shown.map((model) => {
             const on = model.id === value
             const unsigned = model.signedIn === false
+            const refused = model.unavailable !== undefined
             return (
               <button
                 key={model.id}
                 type="button"
                 role="radio"
                 aria-checked={on}
-                onClick={() => onChange(model.id)}
-                title={unsigned ? 'Not signed in — the agent will ask to sign in when it first runs' : undefined}
-                className={`flex cursor-pointer items-center gap-[10px] rounded-field border px-[12px] py-[9px] ${
+                aria-disabled={refused}
+                // Greyed out, not hidden: knowing a model exists but is not on
+                // your plan is information. Picking it would only fail.
+                onClick={() => {
+                  if (!refused) onChange(model.id)
+                }}
+                title={
+                  refused
+                    ? `Not available on your account: ${model.unavailable}`
+                    : unsigned
+                      ? 'Not signed in — the agent will ask to sign in when it first runs'
+                      : undefined
+                }
+                className={`flex items-center gap-[10px] rounded-field border px-[12px] py-[9px] ${
                   on ? 'border-accent bg-accent-surface' : 'border-line-card bg-card'
-                } hover:border-line-hover-strong`}
+                } ${refused ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-line-hover-strong'}`}
                 data-hoverable
               >
                 <span
@@ -177,6 +225,11 @@ export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
                 {unsigned ? (
                   <span className="rounded-full border border-line-card px-[7px] py-[1px] text-xs text-dim">
                     sign in
+                  </span>
+                ) : null}
+                {refused ? (
+                  <span className="rounded-full border border-line-card px-[7px] py-[1px] text-xs text-dim">
+                    not on your plan
                   </span>
                 ) : null}
                 <span className="ml-auto font-mono text-sm text-dim-2">{model.price}</span>

@@ -220,6 +220,23 @@ describe('AgentDetail — approval banner', () => {
     expect(window.roster.sessions.respondToApproval).toHaveBeenCalledWith('s1', 'a1', false)
   })
 
+  test('Allow for session approves and remembers the tool', async () => {
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Allow Bash for session' }))
+
+    expect(window.roster.sessions.allowForSession).toHaveBeenCalledWith('s1', 'a1')
+  })
+
+  test('offers no session grant for a sign-in', async () => {
+    useRoster.setState({ approvals: { s1: [{ ...APPROVAL, toolName: 'sign_in', command: 'pi auth login openai' }] } })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText(/Waiting on you/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /for session/ })).not.toBeInTheDocument()
+  })
+
   test('no banner when nothing is pending', async () => {
     useRoster.setState({ approvals: {} })
     render(<AgentDetail />)
