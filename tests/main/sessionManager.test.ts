@@ -1226,3 +1226,41 @@ describe('SessionManager.stop', () => {
     expect(runnerStub.run).not.toHaveBeenCalledWith('second', expect.anything())
   })
 })
+
+describe('SessionManager.send — Notion that cannot be reached', () => {
+  test('runs the turn without Notion and says why', async () => {
+    const { NOTION_SERVER } = await import('@shared/mcp')
+    const agent = AGENTS[1]!
+    const original = agent.mcpServers
+    agent.mcpServers = [NOTION_SERVER]
+    const notion = { tools: vi.fn().mockRejectedValue(new Error('Unauthorized')) }
+    ;(manager as unknown as { notion: unknown }).notion = notion
+    runnerStub.run.mockImplementation(streamOf([{ kind: 'text', delta: 'done' }]))
+
+    try {
+      const session = manager.create('review', 'x')
+      await manager.send(session.id, 'go')
+
+      const texts = sessions
+        .messages(session.id)
+        .map((m) => (m.kind === 'text' ? m.text : ''))
+      expect(texts.some((t) => t.startsWith('Notion is not connected, so this turn runs without Notion'))).toBe(true)
+      expect(texts).toContain('done')
+      expect(runnerStub.run).toHaveBeenCalled()
+      const options = runnerStub.run.mock.calls[0]![1] as { mcpServers: Record<string, unknown> }
+      expect(options.mcpServers).not.toHaveProperty(NOTION_SERVER)
+      expect(sessions.findById(session.id)?.status).toBe('done')
+    } finally {
+      agent.mcpServers = original
+    }
+  })
+})
+
+describe('notionSkippedNotice', () => {
+  test('names the cause in terms of what fixes it', async () => {
+    const { notionSkippedNotice } = await import('@main/sessions/manager')
+    expect(notionSkippedNotice(new Error('Unauthorized'))).toMatch(/^Notion is not connected/)
+    expect(notionSkippedNotice(new Error('Secure OS credential storage is unavailable'))).toMatch(/Keychain/)
+    expect(notionSkippedNotice('boom')).toMatch(/could not be reached \(boom\)/)
+  })
+})

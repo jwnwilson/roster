@@ -469,10 +469,24 @@ export class SessionManager {
       // Notion is always proxied, including for Claude. That keeps the hosted
       // MCP OAuth token inside this process rather than copying it into a
       // runner configuration or a child environment.
+      //
+      // Optional, though: Notion not being connected — or the OS keychain that
+      // holds its token refusing — is a reason to work without Notion, not to
+      // lose the whole turn. Say so in the transcript and carry on.
       if (agent.mcpServers.includes(NOTION_SERVER)) {
-        if (!this.notion) throw new Error('Notion is unavailable in this build.')
-        notionBridge = await McpBridge.proxy(this.notion)
-        mcpServers = { ...mcpServers, [NOTION_SERVER]: notionBridge.launchSpec() }
+        try {
+          if (!this.notion) throw new Error('Notion is unavailable in this build.')
+          notionBridge = await McpBridge.proxy(this.notion)
+          mcpServers = { ...mcpServers, [NOTION_SERVER]: notionBridge.launchSpec() }
+        } catch (cause) {
+          this.record(sessionId, {
+            sessionId,
+            kind: 'text',
+            role: 'assistant',
+            who: 'roster',
+            text: notionSkippedNotice(cause),
+          })
+        }
       }
 
       // Resolved once per turn but *pinned* on the first, so a session cannot
@@ -831,7 +845,9 @@ export class SessionManager {
     const agentName = this.agentNameFor(sessionId)
     const existing = this.sessions.messages(sessionId).at(-1)
 
-    if (existing?.kind === 'text' && existing.role === 'assistant') {
+    // The agent's own message only: a note Roster wrote (`who: 'roster'`)
+    // sits between turns' prose and must not have the reply glued onto it.
+    if (existing?.kind === 'text' && existing.role === 'assistant' && existing.who !== 'roster') {
       const updated: Message = { ...existing, text: existing.text + delta }
       // Persist as well as emit: the emitted text is what the open window
       // shows, the stored text is what a reload shows, and they must agree.
@@ -1371,4 +1387,21 @@ function describeCause(cause: unknown): string {
 /** Exported for tests that need a deterministic id. */
 export function newSessionId(): string {
   return randomUUID()
+}
+
+/**
+ * What the transcript says when Notion is left out of a turn.
+ *
+ * The raw causes are opaque — "Unauthorized" reads as the model provider
+ * failing, and the keychain one as Notion being broken — so each is named for
+ * what it is and what fixes it.
+ */
+export function notionSkippedNotice(cause: unknown): string {
+  const detail = cause instanceof Error ? cause.message : String(cause)
+  const why = /unauthori[sz]ed|401/i.test(detail)
+    ? 'Notion is not connected'
+    : /credential storage|keychain/i.test(detail)
+      ? 'macOS did not let Roster read its saved Notion login (Keychain access was refused)'
+      : `Notion could not be reached (${detail})`
+  return `${why}, so this turn runs without Notion. Connect it under MCP servers → notion, or turn notion off for this agent.`
 }
