@@ -26,10 +26,15 @@ import type {
   SpendSummary,
 } from '../../../shared/types'
 import type { NotionStatusMap } from '../../../shared/notion'
-import { detectAllRunners } from '../auth/probes'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
-import { getRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
+import { getRunner, piRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
+import { migrateAgentsToPi } from '../store/migratePi'
+
+/** The runners Roster offers, which is Pi alone. */
+async function detectRunners(): Promise<Map<string, RunnerStatus>> {
+  return new Map([['pi', await piRunner().detect()]])
+}
 import { SessionManager } from '../sessions/manager'
 import { SessionNudges } from '../sessions/nudges'
 import { removeSession } from '../sessions/remove'
@@ -238,15 +243,20 @@ export async function initStores(): Promise<void> {
 
   // Detect first: an agent's status depends on whether its runner is usable,
   // and first-run seeding will only point agents at a CLI that is installed.
-  runners = await detectAllRunners()
+  // Roster is a UI over Pi: Pi is the one runner, and every agent uses it.
+  runners = await detectRunners()
   await agentStore.load()
+  const migrated = await migrateAgentsToPi(agentStore)
+  if (migrated.length > 0) {
+    process.stdout.write(`[pi] moved ${migrated.length} agent(s) onto Pi\n`)
+  }
   voiceSelection = selectVoiceEngine()
   voiceModels = new VoiceModelStore(join(app.getPath('userData'), 'voice-models'))
   registerVoiceModelProtocol(voiceModels)
   voiceModels.onProgress((progress) => broadcast(CHANNELS.voiceModelProgress, progress))
 
   // Seeds the starter roster, once ever, on a genuinely fresh install.
-  setup = await prepareFirstRun(agentStore, runners)
+  setup = await prepareFirstRun(agentStore, runners, { pi: await piRunner().defaultModel() })
   await skillStore.load()
   await mcpStore.load()
   await projectNotesStore.load()
@@ -255,16 +265,6 @@ export async function initStores(): Promise<void> {
   registerCustomRunners(agentStore.findAll())
   await warmUpRunners()
 
-  // Re-detect against any custom runners the loaded agents actually name.
-  // Probed by their [custom] command, not the name the user gave the runner.
-  const custom = agentStore
-    .findAll()
-    .filter((a) => !runners.has(a.runner) && a.custom)
-    .map((a) => ({ id: a.runner, command: a.custom?.command ?? a.runner }))
-  if (custom.length > 0) {
-    runners = await detectAllRunners(custom)
-    await agentStore.load()
-  }
 
   db = openDatabase(databasePath())
   sessionStore = new SessionStore(db)
@@ -402,7 +402,14 @@ export function registerIpc(): void {
   })
   ipcMain.on(CHANNELS.windowClose, (e) => BrowserWindow.fromWebContents(e.sender)?.close())
 
-  ipcMain.handle(CHANNELS.runnersList, () => [...runners.values()])
+  // Re-detected on every ask, so a `/login` done in a terminal shows up
+  // without restarting Roster.
+  ipcMain.handle(CHANNELS.runnersList, async () => {
+    const before = runners.get('pi')?.ready
+    runners = await detectRunners()
+    if (runners.get('pi')?.ready !== before) await agentStore.load()
+    return [...runners.values()]
+  })
   ipcMain.handle(CHANNELS.runnersModels, (_e, runnerId: string) =>
     getRunner(runnerId)?.models() ?? [],
   )

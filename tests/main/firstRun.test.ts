@@ -11,6 +11,23 @@ import { setupStatePath } from '@main/store/paths'
 
 let home: string
 
+const PI_READY: RunnerStatus = {
+  id: 'pi',
+  provider: 'Pi · anthropic',
+  installed: true,
+  ready: true,
+  auth: 'subscription',
+}
+
+const PI_LOGGED_OUT: RunnerStatus = {
+  ...PI_READY,
+  ready: false,
+  auth: 'none',
+  detail: 'no model provider is signed in — run `pi` and then `/login`',
+}
+
+const PI_BROKEN: RunnerStatus = { ...PI_LOGGED_OUT, installed: false }
+
 const CLAUDE_READY: RunnerStatus = {
   id: 'claude',
   provider: 'Anthropic',
@@ -19,37 +36,7 @@ const CLAUDE_READY: RunnerStatus = {
   auth: 'subscription',
 }
 
-const CLAUDE_LOGGED_OUT: RunnerStatus = {
-  ...CLAUDE_READY,
-  ready: false,
-  auth: 'none',
-  detail: 'not signed in — run `claude auth login`',
-}
-
-const CLAUDE_MISSING: RunnerStatus = {
-  id: 'claude',
-  provider: 'Anthropic',
-  installed: false,
-  ready: false,
-  auth: 'none',
-  detail: 'claude is not installed',
-}
-
-const CODEX_READY: RunnerStatus = {
-  id: 'codex',
-  provider: 'OpenAI',
-  installed: true,
-  ready: true,
-  auth: 'subscription',
-}
-
-const GEMINI_READY: RunnerStatus = {
-  id: 'gemini',
-  provider: 'Google',
-  installed: true,
-  ready: true,
-  auth: 'subscription',
-}
+const MODELS = { pi: 'anthropic/claude-sonnet-5' }
 
 function runnerMap(...statuses: RunnerStatus[]): Map<string, RunnerStatus> {
   return new Map(statuses.map((status) => [status.id, status]))
@@ -71,12 +58,12 @@ afterEach(async () => {
 
 describe('defaultAgentsFor', () => {
   test('leads with the Tech Lead, so the recommendation is the first agent', () => {
-    const [first] = defaultAgentsFor(runnerMap(CLAUDE_READY))
+    const [first] = defaultAgentsFor(runnerMap(PI_READY), MODELS)
     expect(first?.name).toBe(TECH_LEAD)
   })
 
   test('gives the Tech Lead a task-backed, validated delivery workflow', () => {
-    const [lead] = defaultAgentsFor(runnerMap(CLAUDE_READY))
+    const [lead] = defaultAgentsFor(runnerMap(PI_READY), MODELS)
 
     expect(lead?.systemPrompt).toContain('Find the task for the request')
     expect(lead?.systemPrompt).toContain('create one before starting')
@@ -86,7 +73,7 @@ describe('defaultAgentsFor', () => {
   })
 
   test('gives every default agent a working directory and a prompt', () => {
-    const defaults = defaultAgentsFor(runnerMap(CLAUDE_READY))
+    const defaults = defaultAgentsFor(runnerMap(PI_READY), MODELS)
 
     expect(defaults.length).toBeGreaterThan(1)
     for (const spec of defaults) {
@@ -97,7 +84,7 @@ describe('defaultAgentsFor', () => {
   })
 
   test('names no skills, because a fresh install has no skill library', () => {
-    const defaults = defaultAgentsFor(runnerMap(CLAUDE_READY))
+    const defaults = defaultAgentsFor(runnerMap(PI_READY), MODELS)
 
     // SkillStore reads ~/roster/skills, which a new install creates empty.
     // A seeded agent naming a skill that is not there is dead configuration:
@@ -108,44 +95,34 @@ describe('defaultAgentsFor', () => {
     }
   })
 
-  test('uses a runner that is installed and signed in', () => {
-    const defaults = defaultAgentsFor(runnerMap(CLAUDE_READY, CODEX_READY))
-    expect(defaults.every((spec) => spec.runner === 'claude')).toBe(true)
+  test('points every default agent at Pi, on the model it was given', () => {
+    const defaults = defaultAgentsFor(runnerMap(PI_READY), MODELS)
+    expect(defaults.every((spec) => spec.runner === 'pi')).toBe(true)
+    expect(defaults.every((spec) => spec.model === MODELS.pi)).toBe(true)
   })
 
-  test('falls back to another runner when the preferred one is not installed', () => {
-    const defaults = defaultAgentsFor(runnerMap(CLAUDE_MISSING, CODEX_READY))
-    expect(defaults.every((spec) => spec.runner === 'codex')).toBe(true)
+  test('still seeds when Pi has no provider signed in yet', () => {
+    // One `/login` then fixes every row, which beats an empty grid.
+    const defaults = defaultAgentsFor(runnerMap(PI_LOGGED_OUT))
+    expect(defaults.every((spec) => spec.runner === 'pi')).toBe(true)
   })
 
-  test('still seeds against an installed runner that is only logged out', () => {
-    const defaults = defaultAgentsFor(runnerMap(CLAUDE_LOGGED_OUT))
-    expect(defaults.every((spec) => spec.runner === 'claude')).toBe(true)
-  })
-
-  test('prefers a signed-in runner over an installed but logged-out one', () => {
-    const defaults = defaultAgentsFor(runnerMap(CLAUDE_LOGGED_OUT, CODEX_READY))
-    expect(defaults.every((spec) => spec.runner === 'codex')).toBe(true)
-  })
-
-  test('seeds nothing when no runner Roster can drive is installed', () => {
-    expect(defaultAgentsFor(runnerMap(CLAUDE_MISSING))).toEqual([])
+  test('seeds nothing when Pi itself could not start', () => {
+    expect(defaultAgentsFor(runnerMap(PI_BROKEN))).toEqual([])
     expect(defaultAgentsFor(new Map())).toEqual([])
   })
 
-  test('ignores a runner Roster has no adapter for', () => {
-    // gemini is detected but has no Runner implementation, so an agent
-    // pointed at it could never take a turn.
-    expect(defaultAgentsFor(runnerMap(GEMINI_READY))).toEqual([])
+  test('ignores the retired CLI runners', () => {
+    expect(defaultAgentsFor(runnerMap(CLAUDE_READY))).toEqual([])
   })
 })
 
 describe('prepareFirstRun', () => {
   test('seeds the default agents on a genuinely fresh install', async () => {
-    const store = storeWith(CLAUDE_READY)
+    const store = storeWith(PI_READY)
     await store.load()
 
-    const state = await prepareFirstRun(store, runnerMap(CLAUDE_READY))
+    const state = await prepareFirstRun(store, runnerMap(PI_READY), MODELS)
 
     expect(state.pending).toBe(true)
     expect(state.startingAgentId).toBe('tech-lead')
@@ -154,10 +131,10 @@ describe('prepareFirstRun', () => {
   })
 
   test('records a marker rather than relying on an empty roster', async () => {
-    const store = storeWith(CLAUDE_READY)
+    const store = storeWith(PI_READY)
     await store.load()
 
-    await prepareFirstRun(store, runnerMap(CLAUDE_READY))
+    await prepareFirstRun(store, runnerMap(PI_READY), MODELS)
 
     const record = await readSetupRecord()
     expect(record?.seededAgentIds).toContain('tech-lead')
@@ -165,28 +142,28 @@ describe('prepareFirstRun', () => {
   })
 
   test('seeds once, so a restart does not duplicate the roster', async () => {
-    const first = storeWith(CLAUDE_READY)
+    const first = storeWith(PI_READY)
     await first.load()
-    await prepareFirstRun(first, runnerMap(CLAUDE_READY))
+    await prepareFirstRun(first, runnerMap(PI_READY), MODELS)
     const seeded = first.findAll().length
 
-    const second = storeWith(CLAUDE_READY)
+    const second = storeWith(PI_READY)
     await second.load()
-    await prepareFirstRun(second, runnerMap(CLAUDE_READY))
+    await prepareFirstRun(second, runnerMap(PI_READY), MODELS)
 
     expect(second.findAll()).toHaveLength(seeded)
   })
 
   test('never re-adds an agent the user deleted', async () => {
-    const first = storeWith(CLAUDE_READY)
+    const first = storeWith(PI_READY)
     await first.load()
-    await prepareFirstRun(first, runnerMap(CLAUDE_READY))
+    await prepareFirstRun(first, runnerMap(PI_READY), MODELS)
 
     await rm(join(home, 'agents', 'tech-lead'), { recursive: true, force: true })
 
-    const second = storeWith(CLAUDE_READY)
+    const second = storeWith(PI_READY)
     await second.load()
-    const state = await prepareFirstRun(second, runnerMap(CLAUDE_READY))
+    const state = await prepareFirstRun(second, runnerMap(PI_READY), MODELS)
 
     expect(second.findById('tech-lead')).toBeNull()
     // Nothing to start with any more, so the card must not offer it.
@@ -201,9 +178,9 @@ describe('prepareFirstRun', () => {
       'utf8',
     )
 
-    const store = storeWith(CLAUDE_READY)
+    const store = storeWith(PI_READY)
     await store.load()
-    const state = await prepareFirstRun(store, runnerMap(CLAUDE_READY))
+    const state = await prepareFirstRun(store, runnerMap(PI_READY), MODELS)
 
     expect(store.findAll().map((a) => a.id)).toEqual(['mine'])
     // An upgrade must not open onto a setup card.
@@ -212,10 +189,10 @@ describe('prepareFirstRun', () => {
   })
 
   test('explains itself rather than seeding when no runner is installed', async () => {
-    const store = storeWith(CLAUDE_MISSING)
+    const store = storeWith(PI_BROKEN)
     await store.load()
 
-    const state = await prepareFirstRun(store, runnerMap(CLAUDE_MISSING))
+    const state = await prepareFirstRun(store, runnerMap(PI_BROKEN))
 
     expect(state.seededAgentIds).toEqual([])
     expect(state.noRunner).toBe(true)
@@ -225,14 +202,14 @@ describe('prepareFirstRun', () => {
   })
 
   test('stays dismissed once the user has dismissed it', async () => {
-    const first = storeWith(CLAUDE_READY)
+    const first = storeWith(PI_READY)
     await first.load()
-    await prepareFirstRun(first, runnerMap(CLAUDE_READY))
+    await prepareFirstRun(first, runnerMap(PI_READY), MODELS)
     await dismissSetup()
 
-    const second = storeWith(CLAUDE_READY)
+    const second = storeWith(PI_READY)
     await second.load()
-    const state = await prepareFirstRun(second, runnerMap(CLAUDE_READY))
+    const state = await prepareFirstRun(second, runnerMap(PI_READY), MODELS)
 
     expect(state.pending).toBe(false)
   })
@@ -241,9 +218,9 @@ describe('prepareFirstRun', () => {
     await mkdir(home, { recursive: true })
     await writeFile(setupStatePath(), '{ not json', 'utf8')
 
-    const store = storeWith(CLAUDE_READY)
+    const store = storeWith(PI_READY)
     await store.load()
-    const state = await prepareFirstRun(store, runnerMap(CLAUDE_READY))
+    const state = await prepareFirstRun(store, runnerMap(PI_READY), MODELS)
 
     expect(store.findAll()).toEqual([])
     expect(state.pending).toBe(false)
@@ -257,9 +234,9 @@ describe('prepareFirstRun', () => {
       'utf8',
     )
 
-    const store = storeWith(CLAUDE_READY)
+    const store = storeWith(PI_READY)
     await store.load()
-    const state = await prepareFirstRun(store, runnerMap(CLAUDE_READY))
+    const state = await prepareFirstRun(store, runnerMap(PI_READY), MODELS)
 
     expect(state.seededAgentIds).toEqual([])
     expect(state.startingAgentId).toBeNull()
@@ -277,9 +254,9 @@ describe('dismissSetup', () => {
   })
 
   test('keeps what was seeded, so the record still says where the roster came from', async () => {
-    const store = storeWith(CLAUDE_READY)
+    const store = storeWith(PI_READY)
     await store.load()
-    await prepareFirstRun(store, runnerMap(CLAUDE_READY))
+    await prepareFirstRun(store, runnerMap(PI_READY), MODELS)
 
     const state = await dismissSetup()
 

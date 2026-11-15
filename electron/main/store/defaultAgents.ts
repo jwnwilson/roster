@@ -19,12 +19,12 @@ export const TECH_LEAD = 'Tech Lead'
  * has no adapter that can drive it, so an agent naming it could never take a
  * turn. Ordered by preference.
  */
-const SEEDABLE_RUNNERS: readonly string[] = ['claude', 'codex']
+const SEEDABLE_RUNNERS: readonly string[] = ['pi']
 
 /** The model each runner starts on. The user can change it in one click. */
 const DEFAULT_MODEL: Record<string, string> = {
-  claude: 'claude-sonnet-5',
-  codex: 'gpt-5.6-terra',
+  // Blank means "whatever Pi would pick"; the caller usually knows better.
+  pi: '',
 }
 
 interface DefaultAgent {
@@ -79,11 +79,14 @@ const DEFAULTS: readonly DefaultAgent[] = [
  * Empty when nothing usable is installed — a seeded agent whose CLI does not
  * exist is a broken row on the grid, which is worse than an empty one.
  */
-export function defaultAgentsFor(runners: Map<string, RunnerStatus>): NewAgentInput[] {
+export function defaultAgentsFor(
+  runners: Map<string, RunnerStatus>,
+  defaultModels: Record<string, string> = {},
+): NewAgentInput[] {
   const runner = chooseRunner(runners)
   if (runner === null) return []
 
-  const model = DEFAULT_MODEL[runner] ?? ''
+  const model = defaultModels[runner] ?? DEFAULT_MODEL[runner] ?? ''
 
   return DEFAULTS.map((agent) => ({
     name: agent.name,

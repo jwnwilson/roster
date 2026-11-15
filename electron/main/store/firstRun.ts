@@ -23,6 +23,7 @@ import {
 export async function prepareFirstRun(
   agents: AgentStore,
   runners: Map<string, RunnerStatus>,
+  defaultModels: Record<string, string> = {},
 ): Promise<SetupState> {
   const record = await readSetupRecord()
   if (record) return stateFrom(record, agents)
@@ -41,7 +42,7 @@ export async function prepareFirstRun(
     return { pending: false, startingAgentId: null, seededAgentIds: [], noRunner: false }
   }
 
-  const defaults = defaultAgentsFor(runners)
+  const defaults = defaultAgentsFor(runners, defaultModels)
   if (defaults.length === 0) {
     // Deliberately no marker: installing a CLI and reopening Roster should
     // still get the starter roster. The card explains what is missing.

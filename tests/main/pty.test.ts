@@ -92,9 +92,18 @@ describe('PtyManager', () => {
   })
 
   test('notifies listeners when the shell exits', async () => {
-    manager.open('s1', dir, SIZE)
-    // Input sent before the shell has printed its prompt can be dropped while
-    // its rc files load, so wait for that first output before asking it to exit.
+    // The user's own shell rc can swallow or trap `exit` (instant prompts,
+    // plugin managers), so point zsh at an empty config for this one.
+    const zdotdir = process.env['ZDOTDIR']
+    process.env['ZDOTDIR'] = dir
+    try {
+      manager.open('s1', dir, SIZE)
+    } finally {
+      if (zdotdir === undefined) delete process.env['ZDOTDIR']
+      else process.env['ZDOTDIR'] = zdotdir
+    }
+    // Input sent before the shell has printed its prompt can still be dropped
+    // while it loads, so wait for that first output before asking it to exit.
     await waitForOutput('s1', /[\s\S]/)
 
     const exited = new Promise<number>((resolve) => {

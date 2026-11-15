@@ -776,8 +776,8 @@ function WorkspaceRow({ agent, session }: { agent: Agent; session: Session }) {
               has no read-only mode for these, and a guarantee Roster cannot
               keep on its default runner is worse than an honest sentence. */}
           also reachable: {workspace.additionalLabels.join(', ')}
-          {agent.runner === 'claude'
-            ? ' — Claude can write to these'
+          {agent.runner === 'pi' || agent.runner === 'claude'
+            ? ' — the agent can write to these'
             : agent.runner === 'codex'
               ? ' — read-only under Codex'
               : ' — not available to this runner'}

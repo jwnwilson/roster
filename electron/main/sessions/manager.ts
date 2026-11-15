@@ -39,7 +39,12 @@ import type {
 import { ClaudeRunner } from '../runners/claude'
 import { CodexRunner } from '../runners/codex'
 import { McpBridge, type ProxiedMcpTools } from '../runners/mcpBridge'
-import { builtinToolDefinitions, type BuiltinToolSet } from '../runners/toolDefinitions'
+import {
+  builtinToolDefinitions,
+  type BuiltinToolDefinition,
+  type BuiltinToolSet,
+} from '../runners/toolDefinitions'
+import { PiRunner } from '../runners/pi/runner'
 import { createRosterMcpServer, type RosterTools } from '../runners/handoffTool'
 import { createTasksMcpServer, type TaskTools } from '../runners/taskTools'
 import { createPlansMcpServer, type PlanTools } from '../runners/planTools'
@@ -442,9 +447,14 @@ export class SessionManager {
       const toolSet = this.builtinToolsFor(agent, session, options.planMode === true)
 
       let inProcessMcpServers: Record<string, unknown> | undefined
+      let builtinTools: BuiltinToolDefinition[] | undefined
       let mcpServers = this.mcpServersFor(agent)
 
-      if (runner instanceof ClaudeRunner) {
+      if (runner instanceof PiRunner) {
+        // Pi runs inside Roster and takes tools as plain functions, so the
+        // definitions are handed over directly — no MCP layer at all.
+        builtinTools = builtinToolDefinitions(toolSet, agent.id)
+      } else if (runner instanceof ClaudeRunner) {
         // Claude runs inside Roster, so it is handed the servers themselves.
         runner.onApprovalNeeded = (event) => this.raiseApproval(sessionId, run, event)
         inProcessMcpServers = await inProcessServersFor(toolSet, agent.id)
@@ -481,6 +491,8 @@ export class SessionManager {
         signal: run.abort.signal,
         ...(options.planMode === true ? { planMode: true } : {}),
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
+        ...(builtinTools ? { builtinTools } : {}),
+        onApproval: (event) => this.raiseApproval(sessionId, run, event),
         ...(session.runnerSessionId !== undefined ? { resumeFrom: session.runnerSessionId } : {}),
       })
 
@@ -1127,6 +1139,15 @@ export class SessionManager {
       this.emit({ type: 'approval-resolved', sessionId, approvalId: id })
     }
     run.decisionResolvers.clear()
+
+    // Whatever the runner was still asking is moot once the turn is over —
+    // it has already answered its own gate. Left here, the banner would ask
+    // about a tool call that no longer exists, and the session would read as
+    // waiting for you for good.
+    for (const id of run.approvals.keys()) {
+      this.emit({ type: 'approval-resolved', sessionId, approvalId: id })
+    }
+    run.approvals.clear()
 
     if (run.approvals.size === 0 && this.sessions.findById(sessionId)?.status === 'approval') {
       this.setStatus(sessionId, 'running')
