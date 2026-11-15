@@ -53,7 +53,7 @@ interface ProviderPickerProps {
  */
 export function ProviderPicker({ runners, value, onChange }: ProviderPickerProps) {
   return (
-    <Field label="Provider">
+    <Field label="Harness">
       <div className="grid grid-cols-3 gap-[9px]">
         {runners.map((runner) => {
           const on = runner.id === value
@@ -100,46 +100,87 @@ interface ModelPickerProps {
   onModelsChanged?: (models: ModelInfo[]) => void
 }
 
+/** Where a model with no `provider/` prefix is listed. */
+const NO_PROVIDER = 'other'
+
 /** The provider part of `provider/id`. */
 function providerOf(modelId: string): string {
-  return modelId.split('/')[0] ?? ''
+  const slash = modelId.indexOf('/')
+  return slash === -1 ? NO_PROVIDER : modelId.slice(0, slash)
 }
 
-/** How many matches a search shows; Pi knows well over a thousand models. */
-const SEARCH_LIMIT = 60
+/** A model's id without its provider, which the Provider dropdown already says. */
+function bareId(modelId: string): string {
+  const slash = modelId.indexOf('/')
+  return slash === -1 ? modelId : modelId.slice(slash + 1)
+}
+
+export interface ProviderOption {
+  id: string
+  /** Display name, e.g. "OpenAI Codex"; the id when Pi gives none. */
+  name: string
+  /** True when any of its models is usable without signing in first. */
+  signedIn: boolean
+}
 
 /**
- * The models worth listing before anything is typed: everything signed in,
- * the featured providers whether or not they are, and whatever is selected.
+ * Every provider the model list mentions, once each. The featured ones come
+ * first in their own order, then whatever else is signed in, then the rest
+ * alphabetically — Pi knows dozens of providers and most go unused.
  */
-export function visibleModels(models: ModelInfo[], value: string, query: string): ModelInfo[] {
-  const needle = query.trim().toLowerCase()
-  if (needle !== '') {
-    return models
-      .filter((model) =>
-        `${model.id} ${model.provider ?? ''}`.toLowerCase().includes(needle),
-      )
-      .slice(0, SEARCH_LIMIT)
+export function providerOptions(models: ModelInfo[]): ProviderOption[] {
+  const byId = new Map<string, ProviderOption>()
+  for (const model of models) {
+    const id = providerOf(model.id)
+    const known = byId.get(id)
+    const signedIn = model.signedIn !== false
+    if (known) known.signedIn ||= signedIn
+    else byId.set(id, { id, name: model.provider ?? (id === NO_PROVIDER ? 'Other' : id), signedIn })
   }
-  const featured = new Set<string>(FEATURED_PROVIDERS)
-  return models.filter(
-    (model) =>
-      model.signedIn !== false ||
-      featured.has(model.id.split('/')[0] ?? '') ||
-      model.id === value,
-  )
+  const featured: readonly string[] = FEATURED_PROVIDERS
+  const rank = (option: ProviderOption): number => {
+    const at = featured.indexOf(option.id)
+    if (at !== -1) return at
+    return featured.length + (option.signedIn ? 0 : 1)
+  }
+  return [...byId.values()].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
 }
 
-export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelPickerProps) {
-  const [query, setQuery] = useState('')
-  const [checking, setChecking] = useState(false)
-  const shown = visibleModels(models, value, query)
+/** One provider's models, in the order Pi lists them. */
+export function modelsFor(models: ModelInfo[], provider: string): ModelInfo[] {
+  return models.filter((model) => providerOf(model.id) === provider)
+}
 
-  // Offered for the selected model's provider once it is signed in: that is
-  // when "which of these can my account use" has an answer.
-  const selected = models.find((model) => model.id === value)
-  const provider = selected && selected.signedIn !== false ? providerOf(selected.id) : ''
-  const providerName = selected?.provider ?? provider
+function modelLabel(model: ModelInfo): string {
+  const parts = [bareId(model.id)]
+  if (model.price !== '') parts.push(model.price)
+  if (model.unavailable !== undefined) parts.push('not on your plan')
+  return parts.join(' · ')
+}
+
+const SELECT_CLASS =
+  'w-full cursor-pointer appearance-none rounded-field border border-line-card bg-card px-[12px] py-[9px] font-ui text-lg text-ink-2 outline-none hover:border-line-hover-strong focus:border-accent-line'
+
+export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelPickerProps) {
+  const providers = providerOptions(models)
+  // Follows the selected model, but is also its own choice: a provider whose
+  // every model is refused can be looked at without a model being picked.
+  const [chosen, setChosen] = useState<string | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  const fromValue = value !== '' && models.some((model) => model.id === value) ? providerOf(value) : null
+  const provider =
+    chosen !== null && (fromValue === null || fromValue === chosen)
+      ? chosen
+      : (fromValue ?? providers.find((p) => p.signedIn)?.id ?? providers[0]?.id ?? '')
+  const current = providers.find((p) => p.id === provider)
+  const listed = modelsFor(models, provider)
+
+  function pickProvider(next: string): void {
+    setChosen(next)
+    const first = modelsFor(models, next).find((model) => model.unavailable === undefined)
+    if (first) onChange(first.id)
+  }
 
   async function check(): Promise<void> {
     setChecking(true)
@@ -150,95 +191,101 @@ export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelP
     }
   }
 
+  if (models.length === 0) {
+    return (
+      <Field label="Model">
+        <p className="m-0 text-md text-dim">No models available.</p>
+      </Field>
+    )
+  }
+
   return (
-    <Field label="Model">
-      <div className="flex flex-col gap-[6px]">
-        {models.length > 0 ? (
-          <input
-            type="search"
-            aria-label="Search models"
-            placeholder="Search every model Pi knows, e.g. gpt, grok, gemini"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            className="rounded-field border border-line-card bg-card px-[12px] py-[8px] text-md text-ink outline-none focus:border-accent"
-          />
-        ) : null}
-        {provider !== '' && onModelsChanged ? (
-          <button
-            type="button"
-            onClick={() => void check()}
-            disabled={checking}
-            className="cursor-pointer self-start rounded-chip border border-line-card bg-transparent px-[10px] py-[3px] font-ui text-sm text-dim hover:border-line-hover-strong disabled:cursor-wait"
+    <>
+      <Field
+        label="Provider"
+        caption={
+          current && !current.signedIn
+            ? `Not signed in to ${current.name} yet — the agent will ask to sign in when it first runs.`
+            : undefined
+        }
+      >
+        <div className="relative">
+          <select
+            aria-label="Provider"
+            value={provider}
+            onChange={(event) => pickProvider(event.target.value)}
+            className={SELECT_CLASS}
             data-hoverable
           >
-            {checking
-              ? `Checking ${providerName} models…`
-              : `Check which ${providerName} models your account can use`}
-          </button>
-        ) : null}
-        {models.length === 0 ? (
-          <p className="m-0 text-md text-dim">No models available for this provider.</p>
-        ) : shown.length === 0 ? (
-          <p className="m-0 text-md text-dim">No model matches “{query}”.</p>
-        ) : (
-          shown.map((model) => {
-            const on = model.id === value
-            const unsigned = model.signedIn === false
-            const refused = model.unavailable !== undefined
-            return (
-              <button
-                key={model.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                aria-disabled={refused}
+            {providers.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.signedIn ? option.name : `${option.name} — sign in`}
+              </option>
+            ))}
+          </select>
+          <Chevron />
+        </div>
+      </Field>
+
+      <Field label="Model">
+        <div className="flex flex-col gap-[6px]">
+          <div className="relative">
+            <select
+              aria-label="Model"
+              // Empty while the provider's every model is refused, so the
+              // select does not claim one it is not set to.
+              value={listed.some((model) => model.id === value) ? value : ''}
+              onChange={(event) => onChange(event.target.value)}
+              className={`${SELECT_CLASS} font-mono`}
+              data-hoverable
+            >
+              {listed.some((model) => model.id === value) ? null : (
+                <option value="" disabled>
+                  Choose a model
+                </option>
+              )}
+              {listed.map((model) => (
                 // Greyed out, not hidden: knowing a model exists but is not on
                 // your plan is information. Picking it would only fail.
-                onClick={() => {
-                  if (!refused) onChange(model.id)
-                }}
-                title={
-                  refused
-                    ? `Not available on your account: ${model.unavailable}`
-                    : unsigned
-                      ? 'Not signed in — the agent will ask to sign in when it first runs'
-                      : undefined
-                }
-                className={`flex items-center gap-[10px] rounded-field border px-[12px] py-[9px] ${
-                  on ? 'border-accent bg-accent-surface' : 'border-line-card bg-card'
-                } ${refused ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-line-hover-strong'}`}
-                data-hoverable
-              >
-                <span
-                  aria-hidden
-                  className="flex h-[12px] w-[12px] flex-none items-center justify-center rounded-full border"
-                  style={{
-                    borderColor: on ? 'var(--color-accent)' : 'var(--color-line-hover-strong)',
-                  }}
+                <option
+                  key={model.id}
+                  value={model.id}
+                  disabled={model.unavailable !== undefined}
+                  title={model.unavailable}
                 >
-                  <span
-                    className="h-[6px] w-[6px] rounded-full"
-                    style={{ background: on ? 'var(--color-accent)' : 'transparent' }}
-                  />
-                </span>
-                <span className={`font-mono text-lg ${unsigned ? 'text-dim' : 'text-ink-2'}`}>{model.id}</span>
-                {unsigned ? (
-                  <span className="rounded-full border border-line-card px-[7px] py-[1px] text-xs text-dim">
-                    sign in
-                  </span>
-                ) : null}
-                {refused ? (
-                  <span className="rounded-full border border-line-card px-[7px] py-[1px] text-xs text-dim">
-                    not on your plan
-                  </span>
-                ) : null}
-                <span className="ml-auto font-mono text-sm text-dim-2">{model.price}</span>
-              </button>
-            )
-          })
-        )}
-      </div>
-    </Field>
+                  {modelLabel(model)}
+                </option>
+              ))}
+            </select>
+            <Chevron />
+          </div>
+          {current?.signedIn && onModelsChanged ? (
+            <button
+              type="button"
+              onClick={() => void check()}
+              disabled={checking}
+              className="cursor-pointer self-start rounded-chip border border-line-card bg-transparent px-[10px] py-[3px] font-ui text-sm text-dim hover:border-line-hover-strong disabled:cursor-wait"
+              data-hoverable
+            >
+              {checking
+                ? `Checking ${current.name} models…`
+                : `Check which ${current.name} models your account can use`}
+            </button>
+          ) : null}
+        </div>
+      </Field>
+    </>
+  )
+}
+
+function Chevron() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute top-1/2 right-[12px] -translate-y-1/2 text-sm text-dim"
+    >
+      ▾
+    </span>
   )
 }
 

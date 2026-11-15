@@ -1,54 +1,90 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
-import { ModelPicker, visibleModels } from '@/components/AgentFields'
+import { ModelPicker, modelsFor, providerOptions } from '@/components/AgentFields'
 import type { ModelInfo } from '@shared/types'
 import { installRosterApi } from './rosterApi'
 
 const MODELS: ModelInfo[] = [
-  { id: 'anthropic/claude-sonnet-5', price: '$2 / $10', provider: 'Anthropic' },
-  { id: 'openai-codex/gpt-6-sol', price: '', signedIn: false, provider: 'OpenAI Codex' },
-  { id: 'openai/gpt-5.5', price: '$1 / $8', signedIn: false, provider: 'OpenAI' },
   { id: 'mistral/devstral', price: '', signedIn: false, provider: 'Mistral' },
+  { id: 'anthropic/claude-sonnet-5', price: '$2 / $10', provider: 'Anthropic' },
+  { id: 'anthropic/claude-opus-5', price: '$5 / $25', provider: 'Anthropic' },
+  { id: 'openai-codex/gpt-6-sol', price: '', signedIn: false, provider: 'OpenAI Codex' },
+  { id: 'xai/grok-5', price: '$3 / $15', provider: 'xAI' },
+  { id: 'aaa/zeta', price: '', signedIn: false },
 ]
 
-describe('visibleModels', () => {
-  test('lists signed-in models and featured providers, not every provider', () => {
-    expect(visibleModels(MODELS, '', '').map((m) => m.id)).toEqual([
-      'anthropic/claude-sonnet-5',
-      'openai-codex/gpt-6-sol',
-      'openai/gpt-5.5',
+describe('providerOptions', () => {
+  test('one entry per provider: featured first, then signed in, then the rest by name', () => {
+    expect(providerOptions(MODELS).map((p) => p.id)).toEqual([
+      'anthropic',
+      'openai-codex',
+      'xai',
+      'aaa',
+      'mistral',
     ])
   })
 
-  test('always keeps the selected model', () => {
-    expect(visibleModels(MODELS, 'mistral/devstral', '').map((m) => m.id)).toContain('mistral/devstral')
+  test('names a provider by its display name, falling back to its id, and says when it needs a sign-in', () => {
+    const byId = Object.fromEntries(providerOptions(MODELS).map((p) => [p.id, p]))
+    expect(byId['anthropic']).toMatchObject({ name: 'Anthropic', signedIn: true })
+    expect(byId['openai-codex']).toMatchObject({ name: 'OpenAI Codex', signedIn: false })
+    expect(byId['aaa']).toMatchObject({ name: 'aaa', signedIn: false })
   })
+})
 
-  test('searches every model by id or provider name', () => {
-    expect(visibleModels(MODELS, '', 'mistral').map((m) => m.id)).toEqual(['mistral/devstral'])
-    expect(visibleModels(MODELS, '', 'OPENAI').map((m) => m.id)).toEqual([
-      'openai-codex/gpt-6-sol',
-      'openai/gpt-5.5',
+test('lists a model with no provider prefix under Other', () => {
+  expect(providerOptions([{ id: 'claude-opus-5', price: '' }])).toEqual([
+    { id: 'other', name: 'Other', signedIn: true },
+  ])
+})
+
+describe('modelsFor', () => {
+  test("keeps only that provider's models", () => {
+    expect(modelsFor(MODELS, 'anthropic').map((m) => m.id)).toEqual([
+      'anthropic/claude-sonnet-5',
+      'anthropic/claude-opus-5',
     ])
   })
 })
 
 describe('ModelPicker', () => {
-  test('marks models that still need a sign-in, and lets them be chosen', () => {
-    const onChange = vi.fn()
-    render(<ModelPicker models={MODELS} value="" onChange={onChange} />)
+  test("starts on the selected model's provider and lists only its models", () => {
+    render(<ModelPicker models={MODELS} value="xai/grok-5" onChange={() => {}} />)
 
-    expect(screen.getAllByText('sign in')).toHaveLength(2)
-    fireEvent.click(screen.getByText('openai/gpt-5.5'))
-    expect(onChange).toHaveBeenCalledWith('openai/gpt-5.5')
+    expect((screen.getByLabelText('Provider') as HTMLSelectElement).value).toBe('xai')
+    const model = screen.getByLabelText('Model') as HTMLSelectElement
+    expect(model.value).toBe('xai/grok-5')
+    expect([...model.options].map((o) => o.value)).toEqual(['xai/grok-5'])
   })
 
-  test('finds a model by searching', () => {
-    render(<ModelPicker models={MODELS} value="" onChange={() => {}} />)
-    fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'devstral' } })
-    expect(screen.getByText('mistral/devstral')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'zzz' } })
-    expect(screen.getByText(/No model matches/)).toBeTruthy()
+  test("switching provider picks that provider's first usable model", () => {
+    const onChange = vi.fn()
+    render(<ModelPicker models={MODELS} value="xai/grok-5" onChange={onChange} />)
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'anthropic' } })
+    expect(onChange).toHaveBeenCalledWith('anthropic/claude-sonnet-5')
+  })
+
+  test('choosing a model reports its full id', () => {
+    const onChange = vi.fn()
+    render(<ModelPicker models={MODELS} value="anthropic/claude-sonnet-5" onChange={onChange} />)
+
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'anthropic/claude-opus-5' } })
+    expect(onChange).toHaveBeenCalledWith('anthropic/claude-opus-5')
+  })
+
+  test('says a provider still needs a sign-in, and lets its models be chosen', () => {
+    render(<ModelPicker models={MODELS} value="openai-codex/gpt-6-sol" onChange={() => {}} />)
+
+    expect(screen.getByRole('option', { name: /OpenAI Codex — sign in/ })).toBeTruthy()
+    expect(screen.getByText(/will ask to sign in/)).toBeTruthy()
+    const option = screen.getByRole('option', { name: /gpt-6-sol/ }) as HTMLOptionElement
+    expect(option.disabled).toBe(false)
+  })
+
+  test('shows nothing to choose when there are no models', () => {
+    render(<ModelPicker models={[]} value="" onChange={() => {}} />)
+    expect(screen.getByText(/No models available/)).toBeTruthy()
   })
 })
 
@@ -58,16 +94,25 @@ describe('ModelPicker — what the account can use', () => {
     { id: 'openai-codex/gpt-6-sol', price: '', provider: 'OpenAI Codex', unavailable: 'not supported with a ChatGPT account' },
   ]
 
-  test('greys out a model the account is refused, and will not pick it', () => {
-    const onChange = vi.fn()
-    render(<ModelPicker models={CODEX} value="openai-codex/gpt-6-luna" onChange={onChange} />)
+  test('greys out a model the account is refused, so it cannot be picked', () => {
+    render(<ModelPicker models={CODEX} value="openai-codex/gpt-6-luna" onChange={() => {}} />)
 
-    expect(screen.getByText('not on your plan')).toBeTruthy()
-    const refused = screen.getByText('openai-codex/gpt-6-sol').closest('button')!
-    expect(refused.getAttribute('aria-disabled')).toBe('true')
-    expect(refused.getAttribute('title')).toMatch(/not supported with a ChatGPT account/)
-    fireEvent.click(refused)
-    expect(onChange).not.toHaveBeenCalled()
+    const refused = screen.getByRole('option', { name: /gpt-6-sol/ }) as HTMLOptionElement
+    expect(refused.disabled).toBe(true)
+    expect(refused.textContent).toMatch(/not on your plan/)
+  })
+
+  test('switching to a provider skips models the account is refused', () => {
+    const onChange = vi.fn()
+    const models: ModelInfo[] = [
+      { id: 'xai/grok-5', price: '', provider: 'xAI' },
+      { ...CODEX[1]! },
+      { ...CODEX[0]! },
+    ]
+    render(<ModelPicker models={models} value="xai/grok-5" onChange={onChange} />)
+
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'openai-codex' } })
+    expect(onChange).toHaveBeenCalledWith('openai-codex/gpt-6-luna')
   })
 
   test('checks the selected provider and hands the updated list back', async () => {
