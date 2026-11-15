@@ -53,6 +53,8 @@ export interface SignInApproval {
   toolName: string
   command: string
   questions?: Question[]
+  /** The question wants a password or API key: type it, do not show it back. */
+  secret?: boolean
 }
 
 /**
@@ -164,6 +166,7 @@ export function loginInteraction(deps: {
           toolName: SIGN_IN_TOOL,
           command: question,
           questions: [{ question, header: 'Sign in', multiSelect: false, options }],
+          ...(prompt.type === 'secret' ? { secret: true } : {}),
         },
         prompt.signal,
       )
@@ -182,6 +185,8 @@ export function loginInteraction(deps: {
     },
   }
 }
+
+export type LoginInteraction = ReturnType<typeof loginInteraction>
 
 /**
  * A sign-in failure in words that say what to do next.

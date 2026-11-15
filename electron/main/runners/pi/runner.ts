@@ -2,7 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
-import type { ModelInfo, RunnerStatus } from '../../../../shared/types'
+import type {
+  ModelInfo,
+  ProviderSummary,
+  RunnerStatus,
+  SignInMethod,
+  SignInResult,
+} from '../../../../shared/types'
 import { isBrowserMcpTool } from '../../../../shared/mcp'
 import { planInstruction } from '../../sessions/planPrompt'
 import { rosterHome } from '../../store/paths'
@@ -11,6 +17,7 @@ import { parseQuestions } from '../questions'
 import type { BuiltinToolDefinition } from '../toolDefinitions'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from '../types'
 import { modelKey, resolveModel, toModelInfo } from './models'
+import { providerAuthInfo, summarizeProviders } from './providers'
 import {
   forgetProvider,
   isModelUnavailable,
@@ -22,6 +29,7 @@ import { createPiNormalizer, resultText, totalsFrom } from './normalize'
 import {
   askToSignIn,
   explainSignInFailure,
+  type LoginInteraction,
   explainUnavailableModel,
   loginInteraction,
   signInMethods,
@@ -112,7 +120,7 @@ export class PiRunner implements Runner {
         auth: available.length === 0 ? 'none' : subscription ? 'subscription' : 'api-key',
         version: sdk.VERSION,
         ...(available.length === 0
-          ? { detail: 'no model provider is signed in — run `pi` and then `/login`' }
+          ? { detail: 'no model provider is signed in — sign in from the welcome card or an agent\'s model settings' }
           : {}),
       }
     } catch (cause) {
@@ -246,7 +254,7 @@ export class PiRunner implements Runner {
         kind: 'error',
         message:
           available.length === 0
-            ? 'Pi has no signed-in model provider — run `pi` and then `/login`'
+            ? 'No model provider is signed in — sign in from the welcome card, or pick a model in the agent\'s settings'
             : `model "${options.model}" is not available in Pi — pick another in the agent's settings`,
       }
       yield { kind: 'done', runnerSessionId: options.resumeFrom ?? '' }
@@ -478,12 +486,7 @@ export class PiRunner implements Runner {
     const provider = runtime.getProvider(providerId)
     if (!provider) return `Pi does not know the provider "${providerId}"`
 
-    const info: ProviderAuthInfo = {
-      id: provider.id,
-      name: provider.name,
-      ...(provider.auth.oauth ? { oauth: provider.auth.oauth.name } : {}),
-      ...(provider.auth.apiKey?.login ? { apiKey: provider.auth.apiKey.name } : {}),
-    }
+    const info = providerAuthInfo(provider)
     if (signInMethods(info).length === 0) {
       return `${provider.name} has no sign-in Roster can run — configure it for Pi (see \`pi auth login ${provider.id}\`)`
     }
@@ -510,8 +513,33 @@ export class PiRunner implements Runner {
     })
 
     try {
+      const result = await this.login(provider.id, method, interaction, options.signal)
+      if (result.ok) return true
+      return options.signal.aborted ? 'The run was stopped' : result.message
+    } finally {
+      this.failApprovals(shown, 'Signed in')
+    }
+  }
+
+  /**
+   * Pi's login for one provider, answered through `interaction`. Shared by a
+   * turn's sign-in and the welcome card's, so both sign in the same way.
+   */
+  async login(
+    providerId: string,
+    method: SignInMethod,
+    interaction: LoginInteraction,
+    signal: AbortSignal,
+  ): Promise<SignInResult> {
+    // A fresh runtime, so a sign-in just finished is what the next read sees.
+    const runtime = await this.runtime()
+    const provider = runtime.getProvider(providerId)
+    if (!provider) return { ok: false, message: `Pi does not know the provider "${providerId}"` }
+    const info = providerAuthInfo(provider)
+
+    try {
       const sdk = await this.load()
-      const settings = sdk.SettingsManager.create(options.cwd, sdk.getAgentDir())
+      const settings = sdk.SettingsManager.create(process.cwd(), sdk.getAgentDir())
       // Exactly the options the `pi auth login` CLI passes, and no more.
       // OpenAI registers a client per ChatGPT sign-in from the agent name it
       // is given; Pi's default is the one that flow is known to work with.
@@ -523,14 +551,24 @@ export class PiRunner implements Runner {
       // A new sign-in may be a different account or plan: what it was
       // refused before says nothing about what it can use now.
       forgetProvider(provider.id)
-      return true
+      return { ok: true }
     } catch (cause) {
-      return options.signal.aborted
-        ? 'The run was stopped'
-        : explainSignInFailure(info, describe(cause))
-    } finally {
-      this.failApprovals(shown, 'Signed in')
+      return {
+        ok: false,
+        message: signal.aborted ? 'Sign-in was cancelled.' : explainSignInFailure(info, describe(cause)),
+      }
     }
+  }
+
+  /** Every provider Pi knows that Roster can sign in to, with who is signed in. */
+  async providers(): Promise<ProviderSummary[]> {
+    const runtime = await this.runtime()
+    const signedIn = new Set((await runtime.getAvailable()).map((model) => model.provider))
+    return summarizeProviders(
+      runtime.getProviders().map(providerAuthInfo),
+      signedIn,
+      (id) => runtime.isUsingSubscription(id),
+    )
   }
 
   private failApprovals(ids: Set<string>, reason: string): void {

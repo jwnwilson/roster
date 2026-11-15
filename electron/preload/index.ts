@@ -9,7 +9,7 @@ import {
   type ProjectNotesPayload,
   type TaskEventPayload,
 } from '../../shared/ipc'
-import type { Agent, UpdateState } from '../../shared/types'
+import type { Agent, SignInEvent, UpdateState } from '../../shared/types'
 
 /** Subscribes to a broadcast channel and returns its unsubscribe. */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -28,6 +28,14 @@ const api: RosterApi = {
     minimize: () => ipcRenderer.send(CHANNELS.windowMinimize),
     maximize: () => ipcRenderer.send(CHANNELS.windowMaximize),
     close: () => ipcRenderer.send(CHANNELS.windowClose),
+  },
+
+  signIn: {
+    providers: () => ipcRenderer.invoke(CHANNELS.signInProviders),
+    start: (providerId, method) => ipcRenderer.invoke(CHANNELS.signInStart, providerId, method),
+    cancel: () => ipcRenderer.invoke(CHANNELS.signInCancel),
+    answer: (promptId, answer) => ipcRenderer.invoke(CHANNELS.signInAnswer, promptId, answer),
+    onEvent: (listener: (event: SignInEvent) => void) => subscribe(CHANNELS.signInEvent, listener),
   },
 
   runners: {
