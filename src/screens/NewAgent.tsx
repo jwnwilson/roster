@@ -13,7 +13,6 @@ import {
 } from '@/components/AgentFields'
 import { projectPickerProjects, useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
-import { BROWSER_MCP_SERVERS } from '@shared/mcp'
 
 /**
  * Shown in place of a path when the user has not picked one.
@@ -37,6 +36,7 @@ export function NewAgent() {
   const skills = useRoster((s) => s.skills)
   const picked = useRoster((s) => s.picked)
   const togglePicked = useRoster((s) => s.togglePicked)
+  const pickAll = useRoster((s) => s.pickAll)
   const newRunner = useRoster((s) => s.newRunner)
   const setNewRunner = useRoster((s) => s.setNewRunner)
   const newModel = useRoster((s) => s.newModel)
@@ -52,14 +52,18 @@ export function NewAgent() {
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState<string | null>(null)
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null)
-  // The browser servers that are configured start on: a new agent that cannot
-  // open a page cannot check its own work, and that is what most agents here are for.
-  const [mcp, setMcp] = useState<Record<string, boolean>>(() => {
-    const browsers = new Set<string>(BROWSER_MCP_SERVERS.map((server) => server.name))
-    return Object.fromEntries(
-      mcpServers.filter((server) => browsers.has(server.name)).map((server) => [server.name, true]),
-    )
-  })
+  // Every configured server starts on, and each can be switched off before the
+  // agent is created. Skills are reset to all-on each time the form opens, so
+  // picks left over from an earlier form do not carry over.
+  const [mcp, setMcp] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(mcpServers.map((server) => [server.name, true])),
+  )
+
+  useEffect(() => {
+    pickAll(skills.map((skill) => skill.name))
+    // Once, on open: a skill list that reloads mid-form must not undo the user's picks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [models, setModels] = useState<ModelInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)

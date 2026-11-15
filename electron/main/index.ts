@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { app, BrowserWindow, dialog, nativeImage, shell } from 'electron'
 import { configureElectronUserData } from './electronUserData'
+import { adoptLoginPath } from './auth/shellPath'
 import { checkForUpdatesOnLaunch, disposeStores, initStores, registerIpc } from './ipc'
 import { registerVoiceModelScheme } from './voice/modelProtocol'
 
@@ -166,6 +167,9 @@ async function captureIfRequested(win: BrowserWindow): Promise<void> {
 
   app.quit()
 }
+
+// Before anything spawns a process: MCP servers and CLIs need the user's PATH.
+adoptLoginPath()
 
 void app.whenReady().then(async () => {
   applyDevIcon()

@@ -717,12 +717,44 @@ describe('NewAgent', () => {
     await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
-    await user.click(screen.getByRole('button', { name: /repro-harness/ }))
     await user.click(screen.getByRole('button', { name: 'Create agent' }))
 
     await waitFor(() => expect(useRoster.getState().screen).toBe('grid'))
     expect(window.roster.agents.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Architect Agent', skills: ['repro-harness'] }),
+    )
+  })
+
+  test('a new agent starts with every skill on', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ skills: [aSkill({ name: 'repro-harness' }), aSkill({ name: 'stack-triage' })] })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ skills: ['repro-harness', 'stack-triage'] }),
+      ),
+    )
+  })
+
+  test('a skill switched off before the agent is created stays off', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ skills: [aSkill({ name: 'repro-harness' }), aSkill({ name: 'stack-triage' })] })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: /stack-triage/ }))
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ skills: ['repro-harness'] }),
+      ),
     )
   })
 
@@ -741,14 +773,16 @@ describe('NewAgent', () => {
     )
   })
 
-  test('offers the MCP servers, so a new agent does not need a second pass', async () => {
+  test('a new agent starts with every MCP server on, not just the browser ones', async () => {
     const user = userEvent.setup()
-    useRoster.setState({ mcpServers: [anMcpServer({ name: 'filesystem' })] })
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'filesystem' }), anMcpServer({ name: 'github' })],
+    })
     render(<NewAgent />)
     await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
-    await user.click(screen.getByRole('button', { name: /filesystem/ }))
+    await user.click(screen.getByRole('button', { name: /github/ }))
     await user.click(screen.getByRole('button', { name: 'Create agent' }))
 
     await waitFor(() =>
@@ -810,9 +844,9 @@ describe('NewAgent', () => {
     )
   })
 
-  test('leaves both out of the payload when neither was chosen', async () => {
+  test('leaves both out of the payload when there are none to give', async () => {
     const user = userEvent.setup()
-    useRoster.setState({ projects: [aProject()], mcpServers: [anMcpServer()] })
+    useRoster.setState({ projects: [aProject()], mcpServers: [], skills: [] })
     render(<NewAgent />)
     await screen.findByRole('option', { name: /^claude-opus-5/ })
 
