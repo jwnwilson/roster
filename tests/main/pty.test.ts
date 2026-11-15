@@ -102,6 +102,9 @@ describe('PtyManager', () => {
       if (zdotdir === undefined) delete process.env['ZDOTDIR']
       else process.env['ZDOTDIR'] = zdotdir
     }
+    // Input sent before the shell has printed its prompt can still be dropped
+    // while it loads, so wait for that first output before asking it to exit.
+    await waitForOutput('s1', /[\s\S]/)
 
     const exited = new Promise<number>((resolve) => {
       manager.onExit((id) => {
