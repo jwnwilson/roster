@@ -161,12 +161,26 @@ function modelLabel(model: ModelInfo): string {
 const SELECT_CLASS =
   'w-full cursor-pointer appearance-none rounded-field border border-line-card bg-card px-[12px] py-[9px] font-ui text-lg text-ink-2 outline-none hover:border-line-hover-strong focus:border-accent-line'
 
+/** Whether a provider matches what has been typed: its name or its id. */
+function matchesProvider(option: ProviderOption, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return true
+  return option.name.toLowerCase().includes(needle) || option.id.includes(needle)
+}
+
+/** The provider Roster refreshes the account's model list for as soon as it is picked. */
+const AUTO_CHECK_PROVIDER = 'anthropic'
+
 export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelPickerProps) {
   const providers = providerOptions(models)
   // Follows the selected model, but is also its own choice: a provider whose
   // every model is refused can be looked at without a model being picked.
   const [chosen, setChosen] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
+  // What is typed into the provider box while it is being searched. Null
+  // while the box shows the chosen provider's name.
+  const [typed, setTyped] = useState<string | null>(null)
+  const [highlight, setHighlight] = useState(0)
 
   const fromValue = value !== '' && models.some((model) => model.id === value) ? providerOf(value) : null
   const provider =
@@ -175,20 +189,29 @@ export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelP
       : (fromValue ?? providers.find((p) => p.signedIn)?.id ?? providers[0]?.id ?? '')
   const current = providers.find((p) => p.id === provider)
   const listed = modelsFor(models, provider)
+  const matches = providers.filter((option) => matchesProvider(option, typed ?? ''))
 
-  function pickProvider(next: string): void {
-    setChosen(next)
-    const first = modelsFor(models, next).find((model) => model.unavailable === undefined)
-    if (first) onChange(first.id)
-  }
-
-  async function check(): Promise<void> {
+  async function refresh(providerId: string): Promise<void> {
+    if (!onModelsChanged) return
     setChecking(true)
     try {
-      onModelsChanged?.(await window.roster.runners.checkModels('pi', provider))
+      onModelsChanged(await window.roster.runners.checkModels('pi', providerId))
     } finally {
       setChecking(false)
     }
+  }
+
+  function pickProvider(next: string): void {
+    setChosen(next)
+    setTyped(null)
+    const first = modelsFor(models, next).find((model) => model.unavailable === undefined)
+    if (first) onChange(first.id)
+    if (next === AUTO_CHECK_PROVIDER) void refresh(next)
+  }
+
+  function openList(query: string | null): void {
+    setTyped(query)
+    setHighlight(0)
   }
 
   if (models.length === 0) {
@@ -199,79 +222,125 @@ export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelP
     )
   }
 
+  const open = typed !== null
+  const listId = 'provider-options'
+
   return (
     <>
       <Field
         label="Provider"
         caption={
-          current && !current.signedIn
-            ? `Not signed in to ${current.name} yet — the agent will ask to sign in when it first runs.`
-            : undefined
+          checking && current
+            ? `Checking which ${current.name} models your account can use…`
+            : current && !current.signedIn
+              ? `Not signed in to ${current.name} yet — the agent will ask to sign in when it first runs.`
+              : undefined
         }
       >
         <div className="relative">
-          <select
+          <input
+            type="text"
+            role="combobox"
             aria-label="Provider"
-            value={provider}
-            onChange={(event) => pickProvider(event.target.value)}
-            className={SELECT_CLASS}
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            autoComplete="off"
+            value={open ? typed : (current?.name ?? '')}
+            placeholder="Type a provider, e.g. xai"
+            onFocus={() => openList('')}
+            onChange={(event) => openList(event.target.value)}
+            onBlur={() => setTyped(null)}
+            onKeyDown={(event) => {
+              if (!open) return
+              if (event.key === 'ArrowDown') {
+                event.preventDefault()
+                setHighlight((at) => Math.min(at + 1, matches.length - 1))
+              } else if (event.key === 'ArrowUp') {
+                event.preventDefault()
+                setHighlight((at) => Math.max(at - 1, 0))
+              } else if (event.key === 'Enter') {
+                event.preventDefault()
+                const picked = matches[highlight]
+                if (picked) pickProvider(picked.id)
+              } else if (event.key === 'Escape') {
+                setTyped(null)
+              }
+            }}
+            className={`${SELECT_CLASS} font-ui`}
             data-hoverable
-          >
-            {providers.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.signedIn ? option.name : `${option.name} — sign in`}
-              </option>
-            ))}
-          </select>
-          <Chevron />
+          />
+          {open ? (
+            <ul
+              id={listId}
+              role="listbox"
+              aria-label="Providers"
+              className="absolute z-10 mt-[4px] max-h-[260px] w-full overflow-y-auto rounded-field border border-line-card bg-card p-[4px] shadow-lg"
+            >
+              {matches.length === 0 ? (
+                <li className="px-[10px] py-[7px] text-md text-dim">No provider matches “{typed}”.</li>
+              ) : (
+                matches.map((option, at) => (
+                  <li key={option.id} role="presentation">
+                    {/* mouseDown, not click: the box blurs first, which would close the list. */}
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={option.id === provider}
+                      onMouseDown={(event) => {
+                        event.preventDefault()
+                        pickProvider(option.id)
+                      }}
+                      onMouseEnter={() => setHighlight(at)}
+                      className={`flex w-full cursor-pointer items-center gap-[8px] rounded-chip px-[10px] py-[7px] text-left font-ui text-lg ${
+                        at === highlight ? 'bg-accent-surface' : ''
+                      } ${option.signedIn ? 'text-ink-2' : 'text-dim'}`}
+                    >
+                      <span>{option.name}</span>
+                      {option.signedIn ? null : (
+                        <span className="ml-auto rounded-full border border-line-card px-[7px] py-[1px] text-xs text-dim">
+                          sign in
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          ) : null}
         </div>
       </Field>
 
       <Field label="Model">
-        <div className="flex flex-col gap-[6px]">
-          <div className="relative">
-            <select
-              aria-label="Model"
-              // Empty while the provider's every model is refused, so the
-              // select does not claim one it is not set to.
-              value={listed.some((model) => model.id === value) ? value : ''}
-              onChange={(event) => onChange(event.target.value)}
-              className={`${SELECT_CLASS} font-mono`}
-              data-hoverable
-            >
-              {listed.some((model) => model.id === value) ? null : (
-                <option value="" disabled>
-                  Choose a model
-                </option>
-              )}
-              {listed.map((model) => (
-                // Greyed out, not hidden: knowing a model exists but is not on
-                // your plan is information. Picking it would only fail.
-                <option
-                  key={model.id}
-                  value={model.id}
-                  disabled={model.unavailable !== undefined}
-                  title={model.unavailable}
-                >
-                  {modelLabel(model)}
-                </option>
-              ))}
-            </select>
-            <Chevron />
-          </div>
-          {current?.signedIn && onModelsChanged ? (
-            <button
-              type="button"
-              onClick={() => void check()}
-              disabled={checking}
-              className="cursor-pointer self-start rounded-chip border border-line-card bg-transparent px-[10px] py-[3px] font-ui text-sm text-dim hover:border-line-hover-strong disabled:cursor-wait"
-              data-hoverable
-            >
-              {checking
-                ? `Checking ${current.name} models…`
-                : `Check which ${current.name} models your account can use`}
-            </button>
-          ) : null}
+        <div className="relative">
+          <select
+            aria-label="Model"
+            // Empty while the provider's every model is refused, so the
+            // select does not claim one it is not set to.
+            value={listed.some((model) => model.id === value) ? value : ''}
+            onChange={(event) => onChange(event.target.value)}
+            className={`${SELECT_CLASS} font-mono`}
+            data-hoverable
+          >
+            {listed.some((model) => model.id === value) ? null : (
+              <option value="" disabled>
+                Choose a model
+              </option>
+            )}
+            {listed.map((model) => (
+              // Greyed out, not hidden: knowing a model exists but is not on
+              // your plan is information. Picking it would only fail.
+              <option
+                key={model.id}
+                value={model.id}
+                disabled={model.unavailable !== undefined}
+                title={model.unavailable}
+              >
+                {modelLabel(model)}
+              </option>
+            ))}
+          </select>
+          <Chevron />
         </div>
       </Field>
     </>
