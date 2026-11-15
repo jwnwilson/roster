@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import {
   agentStatus,
@@ -6,9 +7,11 @@ import {
   selectSidebarAgents,
   selectSidebarSessions,
   selectVisibleAgents,
+  sessionsInProject,
   type Screen,
 } from '@/state/store'
-import type { Agent, Session } from '@shared/types'
+import { flowEdges, sessionsByTask } from '@/state/workflow'
+import type { Agent, Session, Task } from '@shared/types'
 import { sessionLabel } from '@shared/sessions'
 import { formatUsageCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
@@ -55,6 +58,7 @@ export function Sidebar() {
   const agents = useRoster(useShallow(selectSidebarAgents))
   const totals = useRoster(useShallow(selectRosterTotals))
   const appVersion = useRoster((s) => s.appVersion)
+  const taskRows = useLinkedTasks()
 
   const counts: Record<string, string> = {
     grid: String(rosterSize),
@@ -127,6 +131,8 @@ export function Sidebar() {
         {agents.map((agent) => (
           <SidebarAgentRow key={agent.id} agent={agent} />
         ))}
+
+        {taskRows.length > 0 ? <LinkedTasksSection rows={taskRows} /> : null}
       </div>
 
       <UpdateRow />
@@ -146,6 +152,170 @@ export function Sidebar() {
         ) : null}
       </div>
     </nav>
+  )
+}
+
+/** A task with the sessions working on it, as the rail lists them. */
+interface LinkedTaskRow {
+  task: Task
+  /** The sessions to list: the project filter and the search have had their say. */
+  sessions: Session[]
+  /** Whether the session open on screen is one of them. */
+  holdsOpenSession: boolean
+  /** In the rail only because one of its sessions matched a search: it unfolds itself, as an agent does. */
+  revealed: boolean
+}
+
+/**
+ * The tasks that have a session working on them, for the rail.
+ *
+ * Built from the sessions the rail already holds: a session that a mention
+ * opened carries its task, and the handed-off sessions it started are joined
+ * to that task through the same walk the Workflow canvas uses — so the rail
+ * and the canvas agree on who is on a task.
+ *
+ * The project filter narrows the sessions, and a task with none left is
+ * dropped, as an agent is not — the same rule the agent rows follow. A search
+ * keeps a task whose title or key it matches with all its sessions, and
+ * otherwise keeps only the sessions that match.
+ */
+function useLinkedTasks(): LinkedTaskRow[] {
+  const tasks = useRoster((s) => s.tasks)
+  const projects = useRoster((s) => s.projects)
+  const projectFilter = useRoster((s) => s.projectFilter)
+  const query = useRoster((s) => s.query)
+  const sessions = useRoster(useShallow((s) => Object.values(s.sessions).flat()))
+  const openSessionId = useRoster((s) =>
+    s.screen === 'agent' && s.agentId ? s.sess[s.agentId] : undefined,
+  )
+
+  return useMemo(() => {
+    const archived = new Set(projects.filter((p) => p.archivedAt !== null).map((p) => p.id))
+    const byId = new Map(sessions.map((session) => [session.id, session]))
+    const byTask = sessionsByTask(sessions, flowEdges(sessions))
+    const q = query.trim().toLowerCase()
+
+    return tasks.flatMap((task): LinkedTaskRow[] => {
+      const members = byTask.get(task.id)
+      if (members === undefined) return []
+
+      const linked = [...members]
+        .map((id) => byId.get(id))
+        .filter((session): session is Session => session !== undefined)
+      const visible = [...sessionsInProject(linked, projectFilter, archived)]
+      if (visible.length === 0) return []
+
+      const taskMatched =
+        q === '' ||
+        task.id.toLowerCase().includes(q) ||
+        task.title.toLowerCase().includes(q)
+      const shown = taskMatched
+        ? visible
+        : visible.filter((session) => sessionLabel(session).toLowerCase().includes(q))
+      if (shown.length === 0) return []
+
+      return [
+        {
+          task,
+          sessions: shown,
+          holdsOpenSession: visible.some((session) => session.id === openSessionId),
+          revealed: !taskMatched,
+        },
+      ]
+    })
+  }, [tasks, projects, projectFilter, query, sessions, openSessionId])
+}
+
+interface LinkedTasksSectionProps {
+  rows: LinkedTaskRow[]
+}
+
+/**
+ * The tasks being worked on, under the agents: the other half of the rail.
+ *
+ * Agents answer "who is here"; this answers "what is being done", so that from
+ * a session you can see the task it is part of and from a task you can see
+ * every session on it.
+ */
+function LinkedTasksSection({ rows }: LinkedTasksSectionProps) {
+  return (
+    <section aria-label="Linked tasks" className="mt-[10px] flex flex-col gap-[1px]">
+      <div className="flex items-center px-[8px] pt-[4px] pb-[6px]">
+        <span className="text-xs font-semibold uppercase tracking-[0.07em] text-label">
+          Linked tasks
+        </span>
+        <span className="ml-auto font-mono text-xs text-faint-2">{rows.length}</span>
+      </div>
+      {rows.map((row) => (
+        <SidebarTaskRow key={row.task.id} row={row} />
+      ))}
+    </section>
+  )
+}
+
+function SidebarTaskRow({ row }: { row: LinkedTaskRow }) {
+  const { task, sessions, holdsOpenSession, revealed } = row
+  const [expanded, setExpanded] = useState(false)
+  const openSessionId = useRoster((s) =>
+    s.screen === 'agent' && s.agentId ? s.sess[s.agentId] : undefined,
+  )
+  const agentNames = useRoster(
+    useShallow((s) => Object.fromEntries(s.agents.map((agent) => [agent.id, agent.name]))),
+  )
+  const openAgent = useRoster((s) => s.openAgent)
+  const openTask = useRoster((s) => s.openTask)
+  const go = useRoster((s) => s.go)
+
+  // Unfolded when you are in one of its sessions, as a search reveals an agent:
+  // the task you are working on should be the first thing you see.
+  const isExpanded = expanded || holdsOpenSession || revealed
+
+  return (
+    <div className="flex flex-col gap-[1px]">
+      <div className="flex items-center rounded-chip text-muted hover:bg-[#1a1c23] hover:text-ink">
+        <button
+          type="button"
+          aria-expanded={isExpanded}
+          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${task.title}`}
+          title={`${isExpanded ? 'Collapse' : 'Expand'} ${task.title}`}
+          onClick={() => setExpanded((value) => !value)}
+          style={{ width: DISCLOSURE_PX }}
+          className="flex h-[16px] flex-none cursor-pointer items-center justify-center border-0 bg-transparent p-0 text-dim-2 hover:text-ink"
+        >
+          <ChevronIcon expanded={isExpanded} />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            // The task first, so the board is showing it when the screen changes
+            // rather than for one frame with no modal at all — as AgentDetail does.
+            openTask(task.id)
+            go('tasks')
+          }}
+          title={`${task.id} ${task.title}`}
+          className={`flex min-w-0 flex-1 cursor-pointer items-center gap-[7px] border-0 bg-transparent py-[6px] pr-[8px] pl-[5px] text-left font-ui text-lg text-inherit ${
+            holdsOpenSession ? 'text-ink' : ''
+          }`}
+        >
+          <span className="flex-none font-mono text-xs text-faint-2">{task.id}</span>
+          <span className="truncate">{task.title}</span>
+          <span className="ml-auto flex-none font-mono text-xs text-faint-2">{sessions.length}</span>
+        </button>
+      </div>
+
+      {isExpanded
+        ? sessions.map((session) => (
+            <SidebarSessionRow
+              key={session.id}
+              session={session}
+              active={session.id === openSessionId}
+              agentName={agentNames[session.agentId]}
+              onOpen={() => openAgent(session.agentId, session.id)}
+            />
+          ))
+        : null}
+    </div>
   )
 }
 
@@ -229,9 +399,11 @@ interface SidebarSessionRowProps {
   session: Session
   active: boolean
   onOpen: () => void
+  /** Shown beside the label when the row sits under a task, where the agent is not already its parent. */
+  agentName?: string
 }
 
-function SidebarSessionRow({ session, active, onOpen }: SidebarSessionRowProps) {
+function SidebarSessionRow({ session, active, onOpen, agentName }: SidebarSessionRowProps) {
   const label = sessionLabel(session)
 
   return (
@@ -249,6 +421,9 @@ function SidebarSessionRow({ session, active, onOpen }: SidebarSessionRowProps) 
     >
       <StatusDot status={session.status} size={5} />
       <span className="truncate">{label}</span>
+      {agentName ? (
+        <span className="ml-auto flex-none truncate pl-[4px] text-xs text-faint-2">{agentName}</span>
+      ) : null}
     </button>
   )
 }
