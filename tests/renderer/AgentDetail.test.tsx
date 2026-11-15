@@ -237,6 +237,32 @@ describe('AgentDetail — approval banner', () => {
     expect(screen.queryByRole('button', { name: /for session/ })).not.toBeInTheDocument()
   })
 
+  test('the command text gives way before the buttons do', async () => {
+    render(<AgentDetail />)
+
+    const message = (await screen.findByText(/Waiting on you/)).closest('p')
+    expect(message).toHaveClass('truncate', 'min-w-0', 'flex-1')
+
+    const group = screen.getByRole('button', { name: 'Approve' }).parentElement
+    expect(group).toHaveClass('flex-none', 'flex')
+  })
+
+  test('Deny and Approve are wide enough to read and hit comfortably', async () => {
+    render(<AgentDetail />)
+
+    for (const name of ['Deny', 'Approve']) {
+      const button = await screen.findByRole('button', { name })
+      expect(button).toHaveClass('min-w-[104px]', 'whitespace-nowrap', 'px-[16px]', 'py-[6px]', 'text-lg')
+    }
+  })
+
+  test('the session grant never wraps its tool name', async () => {
+    render(<AgentDetail />)
+
+    const grant = await screen.findByRole('button', { name: 'Allow Bash for session' })
+    expect(grant).toHaveClass('whitespace-nowrap', 'text-lg')
+  })
+
   test('no banner when nothing is pending', async () => {
     useRoster.setState({ approvals: {} })
     render(<AgentDetail />)
