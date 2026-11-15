@@ -93,6 +93,9 @@ describe('PtyManager', () => {
 
   test('notifies listeners when the shell exits', async () => {
     manager.open('s1', dir, SIZE)
+    // Input sent before the shell has printed its prompt can be dropped while
+    // its rc files load, so wait for that first output before asking it to exit.
+    await waitForOutput('s1', /[\s\S]/)
 
     const exited = new Promise<number>((resolve) => {
       manager.onExit((id) => {
