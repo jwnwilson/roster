@@ -33,6 +33,8 @@ const api: RosterApi = {
   runners: {
     list: () => ipcRenderer.invoke(CHANNELS.runnersList),
     models: (runnerId) => ipcRenderer.invoke(CHANNELS.runnersModels, runnerId),
+    checkModels: (runnerId, providerId) =>
+      ipcRenderer.invoke(CHANNELS.runnersCheckModels, runnerId, providerId),
   },
 
   agents: {
@@ -70,6 +72,8 @@ const api: RosterApi = {
       ),
     pendingApprovals: (sessionId) =>
       ipcRenderer.invoke(CHANNELS.sessionsPendingApprovals, sessionId),
+    allowForSession: (sessionId, approvalId) =>
+      ipcRenderer.invoke(CHANNELS.sessionsAllowForSession, sessionId, approvalId),
     onEvent: (listener: (event: SessionEventPayload) => void) =>
       subscribe(CHANNELS.sessionsEvent, listener),
   },

@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
 import { ModelPicker, visibleModels } from '@/components/AgentFields'
 import type { ModelInfo } from '@shared/types'
+import { installRosterApi } from './rosterApi'
 
 const MODELS: ModelInfo[] = [
   { id: 'anthropic/claude-sonnet-5', price: '$2 / $10', provider: 'Anthropic' },
@@ -48,5 +49,50 @@ describe('ModelPicker', () => {
     expect(screen.getByText('mistral/devstral')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'zzz' } })
     expect(screen.getByText(/No model matches/)).toBeTruthy()
+  })
+})
+
+describe('ModelPicker — what the account can use', () => {
+  const CODEX: ModelInfo[] = [
+    { id: 'openai-codex/gpt-6-luna', price: '', provider: 'OpenAI Codex' },
+    { id: 'openai-codex/gpt-6-sol', price: '', provider: 'OpenAI Codex', unavailable: 'not supported with a ChatGPT account' },
+  ]
+
+  test('greys out a model the account is refused, and will not pick it', () => {
+    const onChange = vi.fn()
+    render(<ModelPicker models={CODEX} value="openai-codex/gpt-6-luna" onChange={onChange} />)
+
+    expect(screen.getByText('not on your plan')).toBeTruthy()
+    const refused = screen.getByText('openai-codex/gpt-6-sol').closest('button')!
+    expect(refused.getAttribute('aria-disabled')).toBe('true')
+    expect(refused.getAttribute('title')).toMatch(/not supported with a ChatGPT account/)
+    fireEvent.click(refused)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  test('checks the selected provider and hands the updated list back', async () => {
+    const updated = [{ ...CODEX[0]! }, { ...CODEX[1]! }]
+    installRosterApi({ runners: { checkModels: vi.fn().mockResolvedValue(updated) } })
+    const onModelsChanged = vi.fn()
+    render(
+      <ModelPicker models={CODEX} value="openai-codex/gpt-6-luna" onChange={() => {}} onModelsChanged={onModelsChanged} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Check which OpenAI Codex models your account can use' }))
+
+    await vi.waitFor(() => expect(onModelsChanged).toHaveBeenCalledWith(updated))
+    expect(window.roster.runners.checkModels).toHaveBeenCalledWith('pi', 'openai-codex')
+  })
+
+  test('offers no check for a provider that is not signed in', () => {
+    render(
+      <ModelPicker
+        models={[{ id: 'openai/gpt-5.5', price: '', signedIn: false }]}
+        value="openai/gpt-5.5"
+        onChange={() => {}}
+        onModelsChanged={() => {}}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /Check which/ })).toBeNull()
   })
 })

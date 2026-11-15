@@ -1264,3 +1264,53 @@ describe('notionSkippedNotice', () => {
     expect(notionSkippedNotice('boom')).toMatch(/could not be reached \(boom\)/)
   })
 })
+
+describe('SessionManager — allow for this session', () => {
+  test('approves later requests for the same tool without asking, until stopped', async () => {
+    let raise: ((event: Extract<RunnerEvent, { kind: 'approval' }>) => void) | undefined
+    let release = (): void => {}
+    runnerStub.respondToApproval.mockReset()
+    runnerStub.run.mockImplementation((_prompt: string, options: { onApproval?: typeof raise }) => {
+      raise = options.onApproval
+      return (async function* () {
+        await new Promise<void>((resolve) => {
+          release = resolve
+        })
+      })()
+    })
+
+    const session = manager.create('review', 'x')
+    const turn = manager.send(session.id, 'go')
+    await vi.waitFor(() => expect(raise).toBeDefined())
+
+    raise!({ kind: 'approval', id: 'a1', toolName: 'bash', command: 'ls' })
+    expect(manager.pendingApprovals(session.id).map((a) => a.id)).toEqual(['a1'])
+    manager.allowForSession(session.id, 'a1')
+    expect(runnerStub.respondToApproval).toHaveBeenCalledWith('a1', { approved: true })
+
+    raise!({ kind: 'approval', id: 'a2', toolName: 'bash', command: 'pwd' })
+    expect(runnerStub.respondToApproval).toHaveBeenCalledWith('a2', { approved: true })
+    expect(manager.pendingApprovals(session.id)).toEqual([])
+
+    // A different tool still asks, and so does a question.
+    raise!({ kind: 'approval', id: 'a3', toolName: 'write', command: 'a.ts' })
+    raise!({ kind: 'approval', id: 'a4', toolName: 'bash', command: '?', questions: [] })
+    expect(manager.pendingApprovals(session.id).map((a) => a.id)).toEqual(['a3', 'a4'])
+
+    release()
+    await turn
+
+    // Stopping the session ends the grant.
+    await manager.stop(session.id)
+    const again = manager.send(session.id, 'go again')
+    await vi.waitFor(() => expect(runnerStub.run).toHaveBeenCalledTimes(2))
+    raise!({ kind: 'approval', id: 'a5', toolName: 'bash', command: 'ls' })
+    expect(manager.pendingApprovals(session.id).map((a) => a.id)).toEqual(['a5'])
+    release()
+    await again
+  })
+
+  test('ignores an approval it does not know', () => {
+    expect(() => manager.allowForSession('nope', 'nope')).not.toThrow()
+  })
+})

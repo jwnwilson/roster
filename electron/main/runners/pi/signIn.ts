@@ -182,3 +182,46 @@ export function loginInteraction(deps: {
     },
   }
 }
+
+/**
+ * A sign-in failure in words that say what to do next.
+ *
+ * Pi passes the provider's raw response through, which is accurate and opaque
+ * — `{"error":"invalid_grant"}` says nothing about cookies or connected apps.
+ * Known shapes get an explanation; anything else is shown as it came.
+ */
+export function explainSignInFailure(provider: ProviderAuthInfo, message: string): string {
+  const lead = `Could not sign in to ${provider.name}`
+
+  if (/invalid_grant/i.test(message)) {
+    return [
+      `${lead}: ${provider.name} accepted your login in the browser but refused to issue a token (invalid_grant).`,
+      'This is usually stale sign-in cookies in the browser. Try again in a private window, or clear cookies for auth.openai.com,',
+      ...(provider.id === 'openai'
+        ? [
+            'and remove old "Pi" or "Roster" entries under ChatGPT → Settings → Connected apps.',
+            'OpenAI Codex models (openai-codex/…) sign in a different way and may work while this does not.',
+          ]
+        : ['then send your message again to retry.']),
+    ].join(' ')
+  }
+  if (/3p_delegated_access_policy_denied|hasn't enabled access/i.test(message)) {
+    return `${lead}: your ChatGPT workspace does not allow this app. A workspace admin has to enable it — or use OpenAI Codex models (openai-codex/…), which business workspaces usually allow.`
+  }
+  if (/port \d+ is in use|EADDRINUSE/i.test(message)) {
+    return `${lead}: another sign-in is still waiting for its browser callback (a \`pi\` CLI login, the Codex CLI, or another Roster session). Finish or cancel that one, then send your message again.`
+  }
+  if (/cancel/i.test(message)) {
+    return `${lead}: sign-in was cancelled. Send your message again to retry.`
+  }
+  if (/fetch failed|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|network/i.test(message)) {
+    return `${lead}: could not reach ${provider.name}. Check your connection and send your message again.`
+  }
+  return `${lead}: ${message}`
+}
+
+/** A model the account cannot use, said plainly. */
+export function explainUnavailableModel(model: string, message: string): string {
+  const why = message.replace(/^.*?error:\s*/i, '').trim().replace(/\.$/, '')
+  return `${model} is not available on your account (${why}). Roster has greyed it out in the model list — pick another model for this agent.`
+}

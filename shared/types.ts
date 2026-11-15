@@ -51,6 +51,11 @@ export interface ModelInfo {
   signedIn?: boolean
   /** The provider's display name, for grouping, e.g. "OpenAI". */
   provider?: string
+  /**
+   * Why the signed-in account cannot use this model, when Roster has seen it
+   * refused. Such a model is greyed out and cannot be picked.
+   */
+  unavailable?: string
 }
 
 /**

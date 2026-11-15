@@ -10,10 +10,19 @@ import { describeCommand } from '../claude'
 import { parseQuestions } from '../questions'
 import type { BuiltinToolDefinition } from '../toolDefinitions'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from '../types'
-import { resolveModel, toModelInfo } from './models'
+import { modelKey, resolveModel, toModelInfo } from './models'
+import {
+  forgetProvider,
+  isModelUnavailable,
+  markAvailable,
+  markUnavailable,
+  unavailableModels,
+} from './availability'
 import { createPiNormalizer, resultText, totalsFrom } from './normalize'
 import {
   askToSignIn,
+  explainSignInFailure,
+  explainUnavailableModel,
   loginInteraction,
   signInMethods,
   type ProviderAuthInfo,
@@ -128,15 +137,65 @@ export class PiRunner implements Runner {
       const runtime = await this.runtime()
       const available = await runtime.getAvailable()
       const signedIn = new Set(available.map((model) => model.provider))
-      return toModelInfo(runtime.getModels(), signedIn, (id) => runtime.getProvider(id)?.name)
+      const refused = unavailableModels()
+      return toModelInfo(runtime.getModels(), signedIn, (id) => runtime.getProvider(id)?.name).map(
+        (info) => {
+          const known = refused[info.id]
+          return known && info.signedIn !== false ? { ...info, unavailable: known.reason } : info
+        },
+      )
     } catch {
       return []
     }
   }
 
+  /**
+   * Asks each of a signed-in provider's models for a one-word reply, and
+   * records which ones the account is refused. A handful of tiny requests,
+   * run only when asked, so the picker can grey out what would fail.
+   */
+  async checkModels(providerId: string): Promise<ModelInfo[]> {
+    const runtime = await this.runtime()
+    const available = (await runtime.getAvailable()).filter((model) => model.provider === providerId)
+
+    const probe = async (model: (typeof available)[number]): Promise<void> => {
+      const key = modelKey(model)
+      try {
+        const reply = await runtime.completeSimple(model, {
+          messages: [{ role: 'user', content: 'Reply with: ok', timestamp: Date.now() }],
+        })
+        const failure = reply.stopReason === 'error' ? (reply.errorMessage ?? '') : ''
+        if (failure !== '' && isModelUnavailable(failure)) markUnavailable(key, failure)
+        else if (failure === '') markAvailable(key)
+      } catch (cause) {
+        const message = describe(cause)
+        if (isModelUnavailable(message)) markUnavailable(key, message)
+      }
+    }
+
+    // A few at a time: a provider can list dozens, and none of them needs to
+    // wait on the others.
+    for (let i = 0; i < available.length; i += 4) {
+      await Promise.all(available.slice(i, i + 4).map(probe))
+    }
+    return this.models()
+  }
+
+  /** Records a model the account is refused, and says so in plain words. */
+  private explainModelError(
+    key: string,
+    event: Extract<RunnerEvent, { kind: 'error' }>,
+  ): Extract<RunnerEvent, { kind: 'error' }> {
+    if (!isModelUnavailable(event.message)) return event
+    markUnavailable(key, event.message)
+    return { kind: 'error', message: explainUnavailableModel(key, event.message) }
+  }
+
   /** The `provider/id` Pi would choose with nothing named, or '' when none is usable. */
   async defaultModel(): Promise<string> {
-    const models = (await this.models()).filter((model) => model.signedIn !== false)
+    const models = (await this.models()).filter(
+      (model) => model.signedIn !== false && model.unavailable === undefined,
+    )
     const sdk = await this.load()
     const settings = sdk.SettingsManager.create(process.cwd(), sdk.getAgentDir())
     const preferred = `${settings.getDefaultProvider() ?? ''}/${settings.getDefaultModel() ?? ''}`
@@ -290,7 +349,7 @@ export class PiRunner implements Runner {
     const unsubscribe = session.subscribe((event) => {
       for (const out of normalizer.handle(event)) {
         if (out.kind === 'error' && isAuthFailure(out.message)) rejected = true
-        queue.push(out)
+        queue.push(out.kind === 'error' ? this.explainModelError(modelKey(model), out) : out)
       }
     })
 
@@ -317,7 +376,7 @@ export class PiRunner implements Runner {
           if (options.signal.aborted) return
           const message = describe(cause)
           if (isAuthFailure(message)) rejected = true
-          queue.push({ kind: 'error', message })
+          queue.push(this.explainModelError(modelKey(model), { kind: 'error', message }))
         }
       }
 
@@ -461,11 +520,14 @@ export class PiRunner implements Runner {
       await runtime.login(provider.id, method === 'oauth' ? 'oauth' : 'api_key', interaction, {
         getDeviceId: () => settings.getOrCreateDeviceId(),
       })
+      // A new sign-in may be a different account or plan: what it was
+      // refused before says nothing about what it can use now.
+      forgetProvider(provider.id)
       return true
     } catch (cause) {
       return options.signal.aborted
         ? 'The run was stopped'
-        : `Could not sign in to ${provider.name}: ${describe(cause)}`
+        : explainSignInFailure(info, describe(cause))
     } finally {
       this.failApprovals(shown, 'Signed in')
     }
