@@ -65,6 +65,8 @@ export interface Draft {
   cwdLabel: string
   /** The project new sessions on this agent are filed under; null for none. */
   defaultProjectId: string | null
+  /** Run tools without the approval banner. */
+  autoApprove: boolean
 }
 
 export interface RosterState {
@@ -493,6 +495,7 @@ export const useRoster = create<RosterState>((set, get) => ({
         cwd: agent.cwd,
         cwdLabel: agent.cwdLabel,
         defaultProjectId: agent.defaultProjectId ?? null,
+        autoApprove: agent.autoApprove === true,
       },
     })
   },

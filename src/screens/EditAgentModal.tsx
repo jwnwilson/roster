@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Agent, ModelInfo } from "@shared/types";
 import { useShallow } from "zustand/shallow";
 import {
+  AutoApproveField,
   ChipField,
   DefaultProjectField,
   HarnessModelPicker,
@@ -79,6 +80,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           .map(([name]) => name),
         cwd: draft.cwd,
         defaultProjectId: draft.defaultProjectId,
+        autoApprove: draft.autoApprove,
       });
       // Re-read rather than patching locally, so the UI reflects the file.
       setAgents(await window.roster.agents.list());
@@ -165,6 +167,12 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           projects={projectOptions}
           value={draft.defaultProjectId}
           onChange={(defaultProjectId) => patchDraft({ defaultProjectId })}
+        />
+
+        <AutoApproveField
+          on={draft.autoApprove}
+          onToggle={() => patchDraft({ autoApprove: !draft.autoApprove })}
+          supported={runnerId === "claude"}
         />
 
         <ChipField

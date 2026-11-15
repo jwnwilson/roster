@@ -536,6 +536,48 @@ describe('SessionManager.send — session identity and failure', () => {
 })
 
 describe('SessionManager — what the runner is given', () => {
+  /** A manager whose only agent is the debugging one, with the flag as given. */
+  function managerWithAutoApprove(autoApprove: boolean | undefined): InstanceType<typeof SessionManager> {
+    const board = [{ ...AGENTS[0]!, autoApprove }]
+    return new SessionManager(
+      { findAll: () => board, findById: (id: string) => board.find((a) => a.id === id) ?? null } as never,
+      sessions,
+      { findAll: () => SKILLS } as never,
+      { findAll: () => [] } as never,
+      usage,
+    )
+  }
+
+  test('tells the runner to auto approve when the agent opted in', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const opted = managerWithAutoApprove(true)
+
+    const session = opted.create('debugging', 'x')
+    await opted.send(session.id, 'go')
+
+    expect(runnerStub.run.mock.calls[0]?.[1]).toMatchObject({ autoApprove: true })
+  })
+
+  test('never auto approves a planning turn, which is research only', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const opted = managerWithAutoApprove(true)
+
+    const session = opted.create('debugging', 'x')
+    await opted.send(session.id, 'plan it', { planMode: true })
+
+    expect(runnerStub.run.mock.calls[0]?.[1]).not.toHaveProperty('autoApprove')
+  })
+
+  test('does not tell the runner to auto approve for an agent that did not opt in', async () => {
+    runnerStub.run.mockImplementation(streamOf([]))
+    const plain = managerWithAutoApprove(undefined)
+
+    const session = plain.create('debugging', 'x')
+    await plain.send(session.id, 'go')
+
+    expect(runnerStub.run.mock.calls[0]?.[1]).not.toHaveProperty('autoApprove')
+  })
+
   test('passes only the skills this agent has enabled', async () => {
     runnerStub.run.mockImplementation(streamOf([]))
 

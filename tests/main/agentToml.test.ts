@@ -162,3 +162,26 @@ describe('agent.toml — default project', () => {
     expect(serializeAgentToml(cfg)).not.toContain('default_project')
   })
 })
+
+describe('auto_approve', () => {
+  test('defaults to false when agent.toml does not mention it', () => {
+    expect(parseAgentToml('debug', VALID).autoApprove).toBe(false)
+  })
+
+  test('reads auto_approve = true', () => {
+    expect(parseAgentToml('debug', `${VALID}auto_approve = true\n`).autoApprove).toBe(true)
+  })
+
+  test('rejects an auto_approve that is not a boolean', () => {
+    expect(() => parseAgentToml('debug', `${VALID}auto_approve = "yes"\n`)).toThrow(
+      /auto_approve/,
+    )
+  })
+
+  test('writes auto_approve back so the setting survives a rewrite', () => {
+    const cfg = parseAgentToml('debug', VALID)
+    const text = serializeAgentToml({ ...cfg, autoApprove: true })
+    expect(text).toContain('auto_approve = true')
+    expect(parseAgentToml('debug', text).autoApprove).toBe(true)
+  })
+})
