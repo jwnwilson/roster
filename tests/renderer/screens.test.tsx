@@ -688,25 +688,21 @@ describe('NewAgent', () => {
   test('lists the models for the chosen provider with prices', async () => {
     render(<NewAgent />)
 
-    expect(await screen.findByText('claude-opus-5')).toBeInTheDocument()
-    expect(screen.getByText('$5 / $25')).toBeInTheDocument()
+    expect(await screen.findByRole('option', { name: 'claude-opus-5 · $5 / $25' })).toBeInTheDocument()
   })
 
   test('defaults to the first model so the form is submittable', async () => {
     render(<NewAgent />)
 
     await waitFor(() =>
-      expect(screen.getByRole('radio', { name: /claude-opus-5/ })).toHaveAttribute(
-        'aria-checked',
-        'true',
-      ),
+      expect(screen.getByLabelText('Model')).toHaveValue('claude-opus-5'),
     )
   })
 
   test('Create is disabled until the agent is named', async () => {
     const user = userEvent.setup()
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     expect(screen.getByRole('button', { name: 'Create agent' })).toBeDisabled()
 
@@ -717,7 +713,7 @@ describe('NewAgent', () => {
   test('creates the agent and returns to the grid', async () => {
     const user = userEvent.setup()
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
     await user.click(screen.getByRole('button', { name: /repro-harness/ }))
@@ -732,7 +728,7 @@ describe('NewAgent', () => {
   test('trims the name rather than creating one with padding', async () => {
     const user = userEvent.setup()
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), '  Padded  ')
     await user.click(screen.getByRole('button', { name: 'Create agent' }))
@@ -748,7 +744,7 @@ describe('NewAgent', () => {
     const user = userEvent.setup()
     useRoster.setState({ mcpServers: [anMcpServer({ name: 'filesystem' })] })
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
     await user.click(screen.getByRole('button', { name: /filesystem/ }))
@@ -765,7 +761,7 @@ describe('NewAgent', () => {
     const user = userEvent.setup()
     useRoster.setState({ projects: [aProject({ id: 'proj-reliability' })] })
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
     await user.selectOptions(screen.getByLabelText('Default project'), 'proj-reliability')
@@ -782,7 +778,7 @@ describe('NewAgent', () => {
     const user = userEvent.setup()
     useRoster.setState({ projects: [aProject()], mcpServers: [anMcpServer()] })
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
     await user.click(screen.getByRole('button', { name: 'Create agent' }))
@@ -799,7 +795,7 @@ describe('NewAgent', () => {
   test('says there are no projects yet rather than hiding the field', async () => {
     useRoster.setState({ projects: [] })
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     // Hiding it entirely is indistinguishable from the setting not existing,
     // which is exactly how it reads on a fresh install.
@@ -817,7 +813,7 @@ describe('NewAgent', () => {
     // Start where the user actually is, so "did not navigate away" means something.
     useRoster.setState({ screen: 'new' })
     render(<NewAgent />)
-    await screen.findByText('claude-opus-5')
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Doomed')
     await user.click(screen.getByRole('button', { name: 'Create agent' }))
