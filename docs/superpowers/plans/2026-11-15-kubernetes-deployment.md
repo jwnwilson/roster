@@ -11,8 +11,20 @@ projects in a browser, even though nothing in the cluster has a display.
 on hardware that is always on. This also covers the open `TODO.md` item *"deploy agents
 to a provider like kubernetes … so I can have them work when roster is not running"*.
 
-**Status:** Proposal. Open questions are listed at the end and should be answered before
-Phase 3.
+**Status:** Proposal. Deployment decisions are recorded in §0; the remaining open
+questions are listed at the end.
+
+---
+
+## 0. Decisions
+
+| Question | Decision | Consequence for this plan |
+|---|---|---|
+| Exposure | **Public internet** | Real TLS via cert-manager + Let's Encrypt, public DNS, rate limiting, and the in-app identity check (Phase 4.3) is mandatory, not optional |
+| Identity | **Google sign-in through the existing Auth0 tenant** | A new Auth0 application for Roster with the Google social connection; oauth2-proxy uses Auth0 as its OIDC issuer; Roster verifies Auth0-issued JWTs |
+| Cluster | **Raspberry Pi nodes with node-local persistent storage** | arm64-only image built on native arm64 runners; pod pinned to the node holding its volume; tight resource budgets |
+| Users | **Single user** | One allowlisted Google account; no multi-user data model work |
+| Backing services | **Probably needed** | Project services move earlier (Phase 5a now includes them) and are budgeted against Pi resources |
 
 ---
 
@@ -50,8 +62,8 @@ Phase 3.
 ## 2. Target architecture
 
 ```
-Browser ──HTTPS──▶ Ingress / Tailscale ──▶ oauth2-proxy (OIDC, email allowlist, MFA at IdP)
-                                               │  forwarded identity (JWT)
+Browser ──HTTPS──▶ Ingress (Let's Encrypt TLS) ──forwardAuth──▶ oauth2-proxy ──▶ Auth0 ──▶ Google
+                                               │  forwarded identity (Auth0 JWT)
                                                ▼
           ┌──────────────── roster pod (StatefulSet, 1 replica) ─────────────────┐
           │ roster-server (Node 22)                                              │
@@ -99,14 +111,26 @@ PR: `feat: run roster as a headless web server`
 
 ### Phase 3 — Container image and Helm chart
 
-1. `deploy/Dockerfile`, multi-stage, `linux/amd64` + `linux/arm64`:
+1. `deploy/Dockerfile`, multi-stage, **`linux/arm64` only** (Raspberry Pi nodes; amd64
+   can be added later at no design cost):
    - build stage: `npm ci --ignore-scripts`, build renderer + server, then
      `npm rebuild better-sqlite3 node-pty` against the **Node** ABI (the normal
      `postinstall` targets Electron's ABI and must not run here);
    - runtime: git, gh, node, python/uv, the agent CLIs, `@playwright/mcp`,
-     `chrome-devtools-mcp`; non-root uid 1000; `HOME=/data/home`.
+     `chrome-devtools-mcp`; non-root uid 1000; `HOME=/data/home`;
+   - every component must have a linux/arm64 build — Claude Code, Codex, Pi, Playwright
+     Chromium and Node all do; `browserless`-style amd64 images are avoided, Chromium
+     comes from Debian or Playwright's arm64 build;
+   - built on GitHub's native arm64 runners (`ubuntu-24.04-arm`), not QEMU emulation,
+     which is slow and flaky for native module compilation.
 2. `deploy/helm/roster`:
    - StatefulSet, `replicas: 1`, PVC mounted at `/data`, `ROSTER_HOME=/data/roster`;
+   - `nodeSelector: kubernetes.io/arch: arm64`; the PVC is node-local, so the pod is
+     bound to that node by the volume's node affinity — the chart documents this and
+     does not try to reschedule elsewhere;
+   - the volume should be SSD/NVMe-backed, not an SD card: SQLite, git and
+     `node_modules` churn will wear SD cards out quickly;
+   - Pi-sized resource defaults (see §3a) rather than desktop-sized ones;
    - Secrets for agent credentials, a GitHub token (fine-grained PAT or GitHub App) for
      push/PR, and `ROSTER_SECRET_KEY` — compatible with External Secrets / Sealed Secrets;
    - `automountServiceAccountToken: false`, `runAsNonRoot`, dropped capabilities,
@@ -120,31 +144,51 @@ PR: `feat: container image and helm chart`
 
 ### Phase 4 — Secure sign-in
 
-Layered, outermost first:
+Roster is publicly reachable, so every layer below is required. Outermost first:
 
-1. **Reachability.** Preferred: tailnet only via the Tailscale operator (or Cloudflare
-   Access) — nothing is exposed to the internet. Otherwise ingress-nginx with
-   cert-manager TLS.
-2. **Identity.** oauth2-proxy in front of every route, against GitHub, Google or an
-   existing IdP (Authentik/Keycloak). Allowlist the owner's email/GitHub user; enforce
-   MFA at the IdP.
-3. **Defence in depth inside Roster.** `roster-server` verifies the forwarded OIDC JWT
-   against the IdP's JWKS (issuer, audience, expiry, allowlisted subject) on every HTTP
-   request and WebSocket upgrade, so a client that reaches the pod without the proxy
-   gets nothing. Session cookies `Secure; HttpOnly; SameSite=Strict`. Preview and
-   browser routes use the same check.
+1. **Reachability.** A public hostname (e.g. `roster.<domain>`) on the cluster's ingress
+   controller (Traefik if the cluster is k3s, otherwise ingress-nginx) with a
+   cert-manager Let's Encrypt certificate, HSTS, and per-IP rate limiting. If the Pis sit
+   behind home NAT, a Cloudflare Tunnel avoids opening router ports and adds a WAF in
+   front at no cost; the rest of this phase is unchanged either way.
+2. **Identity — Auth0 with Google.**
+   - Create a **separate** Auth0 application (*Regular Web Application*) for Roster in
+     the existing tenant, so its callback URLs, session lifetime and consent never
+     interfere with the other app. Enable only the Google social connection on it.
+   - Create an Auth0 API with audience `https://roster.<domain>/api` so issued access
+     tokens are scoped to Roster.
+   - Add an Auth0 post-login Action that denies any login whose verified email is not
+     the owner's — the allowlist is enforced at the IdP, before a token exists.
+   - Require MFA in Auth0 for this application (or rely on Google 2-step, enforced by
+     the same Action checking `amr`).
+   - oauth2-proxy runs with `--provider=oidc`, `--oidc-issuer-url=https://<tenant>.auth0.com/`,
+     `--email-domain=*` plus `--authenticated-emails-file` containing the one address
+     (a second allowlist, independent of Auth0), short cookie lifetime with refresh,
+     `--cookie-secure`, `--cookie-samesite=strict`. The ingress uses it as
+     forwardAuth / `auth-url` for every route.
+3. **Defence in depth inside Roster.** `roster-server` verifies the forwarded Auth0
+   access token against the tenant's JWKS — issuer, the Roster audience, expiry, and
+   the allowlisted `sub` — on every HTTP request and WebSocket upgrade, and re-checks
+   expiry on long-lived sockets. A client that reaches the pod without the proxy gets
+   nothing. Preview and browser routes use the same check.
 4. **Agent guardrails unchanged.** The approval gate and permission modes behave as on
    the desktop.
 
-PR: `feat: verify proxy identity on every request` (+ Helm values for oauth2-proxy and
-the Tailscale operator).
+PR: `feat: verify proxy identity on every request` (+ Helm values for oauth2-proxy,
+cert-manager issuer and ingress; an Auth0 setup checklist in `deploy/README.md`).
 
 ### Phase 5 — Agents build and run projects in the cluster
 
 - **5a (first).** Projects clone into `/data/workspace/<project>`. Agents install,
   test, run dev servers, commit, push and open PRs with `gh` inside the Roster pod using
-  the image's toolchains. Backing services a project needs (Postgres, Redis) are
-  optional sidecars declared in chart values.
+  the image's toolchains.
+- **5a′ — backing services (pulled forward, since projects will need them).** Each
+  project can declare services (Postgres, Redis, …) in a `roster.services.yaml` or
+  chart values. Roster deploys them as small StatefulSets in a `roster-projects`
+  namespace, reachable only from the Roster pod (NetworkPolicy), with arm64 images and
+  Pi-sized limits. Agents get connection details as env vars in their session. Services
+  are started on demand when a session for the project opens and scaled to zero when
+  idle, because the Pis cannot hold every project's database in memory at once.
 - **5b (later).** A sandbox pod per project (or per session), built from the repo's
   devcontainer or a chosen image, in a dedicated namespace with a narrowly scoped Role,
   ResourceQuota and default-deny NetworkPolicy. Roster runs commands there through the
@@ -178,22 +222,44 @@ PRs: `feat: preview proxy`, `feat: live headless browser panel`
 A *Remote Roster* setting makes the Electron app use `remoteApi` against the cluster,
 signing in through the same IdP with a loopback or device-code flow.
 
+### 3a. Raspberry Pi resource budget
+
+A Pi 5 has 4–8 GB RAM and four cores, shared with everything else on the node. Defaults
+the chart ships with, all overridable:
+
+| Component | Request | Limit | Notes |
+|---|---|---|---|
+| roster-server + agent processes | 512 Mi / 0.5 CPU | 2 Gi / 2 CPU | agent CLIs are mostly network-bound |
+| headless Chromium sidecar | 256 Mi / 0.25 CPU | 1 Gi / 1 CPU | started lazily, one shared browser, a context per session |
+| project dev servers (in pod) | — | counted in roster-server's limit | `npm install`/builds are the real spike |
+| each backing service | 128 Mi | 512 Mi | scaled to zero when idle |
+
+Roster also caps concurrent agent turns (default 2) on this deployment, so a burst of
+handoffs cannot push the node into OOM. Voice transcription (local model) is disabled by
+default on the server: it is the heaviest single feature and gains nothing over the
+browser's own input.
+
 ## 4. Risks
 
 | Risk | Mitigation |
 |---|---|
 | Linux paths untested | Container smoke test in Phase 2 CI: start server, open a session, run a pty |
 | Single replica → brief outage on redeploy | Acceptable for single-user; `Recreate` semantics, graceful shutdown cancels turns cleanly |
-| SQLite on a PVC | Volume snapshots or Litestream backups; never `ReadWriteMany` |
+| Node-local volume → node failure takes Roster down | Accepted for single-user; nightly Litestream/restic backup of `/data/roster` off the node so it can be restored onto another Pi |
+| SD card wear / corruption | Volume on SSD/NVMe; SQLite in WAL mode; backups above |
+| Pi memory pressure (builds + Chromium + services) | §3a limits, concurrent-turn cap, lazy browser, idle services scaled to zero |
+| Public exposure of an RCE-capable API | Auth0 Action allowlist + oauth2-proxy allowlist + in-app JWT check; rate limiting; optional Cloudflare WAF |
 | Long-lived agent/GitHub tokens in the pod | k8s Secrets, rotation, scoped tokens; never mounted into 5b sandboxes |
 | Pty/RPC surface is RCE if exposed | Three independent layers in Phase 4; NetworkPolicy; server verifies identity itself |
 | `ipc/index.ts` is coverage-excluded today | Logic moves to the core, which is covered at the normal thresholds |
 
 ## 5. Open questions
 
-1. Exposure: tailnet-only (Tailscale / Cloudflare Access) or public with oauth2-proxy?
-2. Identity provider: GitHub, Google, or an existing Authentik/Keycloak?
-3. Cluster: ingress controller, cert-manager present, storage class, amd64 vs arm64?
-4. Single user, or several? Multi-user changes the data model substantially and is out
-   of scope here.
-5. Do target projects need backing services, which would pull Phase 5b forward?
+1. Are the Pis running a **64-bit** OS (`uname -m` → `aarch64`)? A 32-bit (`armv7l`)
+   OS is a blocker: the agent CLIs and Playwright's Chromium do not ship 32-bit ARM builds.
+2. Which distribution — k3s (Traefik ingress built in) or something else? Is
+   cert-manager installed?
+3. Pi model and RAM per node, and is the persistent storage SSD/NVMe or SD card?
+4. Is the cluster directly reachable from the internet, or behind home NAT (in which
+   case Cloudflare Tunnel is the recommended entry point)?
+5. Which domain should Roster and (optionally) the wildcard preview hostnames live on?
