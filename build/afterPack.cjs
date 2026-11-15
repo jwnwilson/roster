@@ -98,7 +98,37 @@ function unpackedModules(appOutDir, platform) {
   return join(appOutDir, app, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules')
 }
 
-/** @param {{appOutDir: string, arch: number, electronPlatformName: string}} context */
+/**
+ * The `codesign` call that seals a bundle with an ad-hoc signature.
+ *
+ * Without a Developer ID electron-builder skips signing entirely (it finds no
+ * certificate, and `identity: "-"` is not one it can match), so the bundle keeps
+ * only the linker's signature on its executable. Its resources are not sealed,
+ * and macOS reports a downloaded copy as "damaged". Signing ad hoc seals it,
+ * which is what lets Gatekeeper offer "Open Anyway" instead.
+ *
+ * No `--options runtime`: the hardened runtime needs entitlements an ad-hoc
+ * signature cannot justify, and it would stop the app launching.
+ *
+ * @param {string} appPath
+ * @returns {string[]}
+ */
+function adHocSignArgs(appPath) {
+  return ['--force', '--deep', '--sign', '-', appPath]
+}
+
+/**
+ * The check that the bundle is sealed, run after signing so a build that would
+ * ship "damaged" fails here instead of on a user's machine.
+ *
+ * @param {string} appPath
+ * @returns {string[]}
+ */
+function sealCheckArgs(appPath) {
+  return ['--verify', '--deep', '--strict', appPath]
+}
+
+/** @param {{appOutDir: string, arch: number, electronPlatformName: string, packager: {projectDir: string}}} context */
 async function afterPack(context) {
   const targetArch = ARCH_NAMES[context.arch] ?? String(context.arch)
   const modules = unpackedModules(context.appOutDir, context.electronPlatformName)
@@ -118,13 +148,25 @@ async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') return
   const app = readdirSync(context.appOutDir).find((name) => name.endsWith('.app'))
   if (app === undefined) throw new Error(`desktop helper: no .app found in ${context.appOutDir}`)
-  const desktopDestination = join(context.appOutDir, app, 'Contents', 'Resources', 'desktop')
+  const appPath = join(context.appOutDir, app)
+  const desktopDestination = join(appPath, 'Contents', 'Resources', 'desktop')
   mkdirSync(desktopDestination, { recursive: true })
   execFileSync('xcrun', ['swiftc', join(context.packager.projectDir, 'build', 'desktop', 'roster-desktop.swift'),
     '-target', `${targetArch === 'x64' ? 'x86_64' : targetArch}-apple-macosx10.15`,
     '-o', join(desktopDestination, 'roster-desktop')], { stdio: 'inherit' })
+
+  // Last, so nothing added above is left outside the seal.
+  execFileSync('codesign', adHocSignArgs(appPath), { stdio: 'inherit' })
+  try {
+    execFileSync('codesign', sealCheckArgs(appPath), { stdio: 'pipe' })
+  } catch (cause) {
+    const reason = String(cause?.stderr ?? cause?.message ?? cause)
+    throw new Error(`seal check: ${appPath} is not sealed after ad-hoc signing: ${reason}`)
+  }
 }
 
 module.exports = afterPack
 module.exports.default = afterPack
 module.exports.wrongArchPackages = wrongArchPackages
+module.exports.adHocSignArgs = adHocSignArgs
+module.exports.sealCheckArgs = sealCheckArgs
