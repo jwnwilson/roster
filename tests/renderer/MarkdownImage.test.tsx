@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
 import { Markdown } from '@/components/Markdown'
 import { installRosterApi } from './rosterApi'
@@ -52,5 +52,39 @@ describe('images in Markdown', () => {
     fireEvent.error(img)
 
     expect(screen.getByText('[image not available: broken]')).toBeInTheDocument()
+  })
+
+  test('every image is shown at the same size, half the window height at most', () => {
+    installRosterApi()
+    render(
+      <Markdown>{'![tall](data:image/png;base64,AAAA)\n\n![wide](data:image/png;base64,BBBB)'}</Markdown>,
+    )
+
+    const frames = screen.getAllByRole('button', { name: /^Enlarge / })
+    expect(frames).toHaveLength(2)
+    for (const frame of frames) expect(frame.className).toContain('h-[50vh]')
+  })
+
+  test('clicking an image opens it magnified in a dialog', () => {
+    installRosterApi()
+    render(<Markdown>{'![the chart](data:image/png;base64,AAAA)'}</Markdown>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enlarge the chart' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'the chart' })
+    expect(within(dialog).getByRole('img', { name: 'the chart' })).toHaveAttribute(
+      'src',
+      'data:image/png;base64,AAAA',
+    )
+  })
+
+  test('Escape closes the magnified image', () => {
+    installRosterApi()
+    render(<Markdown>{'![the chart](data:image/png;base64,AAAA)'}</Markdown>)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enlarge the chart' }))
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })
