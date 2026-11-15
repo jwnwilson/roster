@@ -40,6 +40,7 @@ function fullSet(): BuiltinToolSet {
       projectName: () => null,
       isArchivedProject: () => false,
       agentName: () => null,
+      sessionProjectId: null,
       create: () => ({}) as never,
       update: () => ({}) as never,
       comment: () => {},

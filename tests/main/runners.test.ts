@@ -631,6 +631,7 @@ describe('in-process tool allowlists', () => {
         projectName: () => null,
         isArchivedProject: () => false,
         agentName: () => null,
+        sessionProjectId: null,
         create: () => ({}) as never,
         update: () => ({}) as never,
         comment: () => {},
