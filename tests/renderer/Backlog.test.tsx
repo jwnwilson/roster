@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { Sidebar } from '@/components/Sidebar'
 import { Tasks } from '@/screens/Tasks'
 import { ALL_PRIORITIES, ALL_PROJECTS, useRoster } from '@/state/store'
 import { aProject, aTask } from './factories'
@@ -204,15 +205,14 @@ describe('filtering the backlog', () => {
 
   test('narrows by project, using the filter the whole app shares', async () => {
     const user = userEvent.setup()
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
     await openBacklog(user)
 
-    // Two of these are on screen at once here — the header's and the
-    // sidebar's — so they have to be one value.
-    const [header, sidebar] = screen.getAllByLabelText('Filter by project')
-    await user.selectOptions(sidebar!, 'p1')
+    // The project filter lives once, in the rail, and the backlog reads it.
+    const filter = screen.getByLabelText('Filter by project')
+    await user.selectOptions(filter, 'p1')
 
-    expect(header).toHaveValue('p1')
+    expect(filter).toHaveValue('p1')
     expect(within(backlog()).getAllByRole('option')).toHaveLength(1)
     expect(within(backlog()).getByText('ROS-9')).toBeInTheDocument()
   })

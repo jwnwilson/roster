@@ -449,11 +449,11 @@ describe('the project filter', () => {
 
   test('is one filter, so choosing on the board holds on the grid', async () => {
     const user = userEvent.setup()
-    const board = render(<Tasks />)
+    const board = render(<><Sidebar /><Tasks /></>)
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
     board.unmount()
 
-    render(<AgentsGrid />)
+    render(<><Sidebar /><AgentsGrid /></>)
 
     // The two screens kept separate state once; picking a project on one left
     // the other showing everything.
@@ -462,23 +462,23 @@ describe('the project filter', () => {
 
   test('and choosing on the grid holds on the board', async () => {
     const user = userEvent.setup()
-    const grid = render(<AgentsGrid />)
+    const grid = render(<><Sidebar /><AgentsGrid /></>)
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
     grid.unmount()
 
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     expect(screen.getByLabelText('Filter by project')).toHaveValue('p1')
   })
 
   test('offers the same options on both screens', () => {
-    const board = render(<Tasks />)
+    const board = render(<><Sidebar /><Tasks /></>)
     const onBoard = Array.from(
       screen.getByLabelText('Filter by project').querySelectorAll('option'),
     ).map((option) => option.textContent)
     board.unmount()
 
-    render(<AgentsGrid />)
+    render(<><Sidebar /><AgentsGrid /></>)
     const onGrid = Array.from(
       screen.getByLabelText('Filter by project').querySelectorAll('option'),
     ).map((option) => option.textContent)

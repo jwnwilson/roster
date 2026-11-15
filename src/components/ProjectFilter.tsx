@@ -3,13 +3,12 @@ import { Select } from '@/components/primitives'
 import { ALL_PROJECTS, activeProjects, useRoster } from '@/state/store'
 
 /**
- * The project filter, shared by the board, the grid and the backlog.
+ * The app-wide project filter. It is rendered once, at the top of the sidebar,
+ * so it is on screen on every screen and every screen reads the same value.
  *
- * One component and one piece of state, deliberately. Two copies of this
- * control drifted once already — same look, separate filters, so picking a
- * project on the board left the grid showing everything. The Backlog tab
- * puts two of them on screen at once, which makes a shared value the only
- * honest option.
+ * Not repeated in screen headers: two copies of this control drifted once
+ * already — same look, separate filters, so picking a project on one screen
+ * left another showing everything. One control, in one place, cannot drift.
  */
 export function ProjectFilter({
   className,

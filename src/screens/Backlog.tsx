@@ -3,7 +3,6 @@ import { useShallow } from 'zustand/shallow'
 import { TASK_PRIORITIES, type Project, type Task } from '@shared/types'
 import { taskPriorityColor, taskPriorityLabel } from '@shared/tasks'
 import { Select, TextInput } from '@/components/primitives'
-import { ProjectFilter } from '@/components/ProjectFilter'
 import {
   ALL_PRIORITIES,
   projectById,
@@ -51,25 +50,19 @@ export function Backlog() {
             onChange={setBacklogQuery}
           />
 
-          <div className="flex gap-[6px]">
-            {/* The same filter the header and the grid use, deliberately: it
-                is on screen twice here, and two values would read as a bug. */}
-            <ProjectFilter className="min-w-0 flex-1" compact />
-            <Select
-              ariaLabel="Filter by priority"
-              className="min-w-0 flex-1"
-              compact
-              value={backlogPriority}
-              onChange={setBacklogPriority}
-              options={[
-                { value: ALL_PRIORITIES, label: 'All priorities' },
-                ...TASK_PRIORITIES.map((value) => ({
-                  value,
-                  label: taskPriorityLabel(value),
-                })),
-              ]}
-            />
-          </div>
+          <Select
+            ariaLabel="Filter by priority"
+            compact
+            value={backlogPriority}
+            onChange={setBacklogPriority}
+            options={[
+              { value: ALL_PRIORITIES, label: 'All priorities' },
+              ...TASK_PRIORITIES.map((value) => ({
+                value,
+                label: taskPriorityLabel(value),
+              })),
+            ]}
+          />
 
           <button
             type="button"

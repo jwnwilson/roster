@@ -15,7 +15,6 @@ import { SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { BOARD_STATUSES, type Task, type BoardStatus } from '@shared/types'
 import { taskStatusColor, taskStatusLabel } from '@shared/tasks'
 import { PrimaryButton, ScreenHeader, Segmented, TextInput } from '@/components/primitives'
-import { ProjectFilter } from '@/components/ProjectFilter'
 import { TaskCard, TaskCardBody, type TaskCardProps } from '@/components/TaskCard'
 import {
   ALL_PROJECTS,
@@ -114,7 +113,6 @@ export function Tasks() {
         />
         <span className="text-md text-dim">{summary}</span>
         <div className="ml-auto flex items-center gap-[8px]">
-          <ProjectFilter />
           <button
             type="button"
             onClick={() => setProjectsOpen(true)}

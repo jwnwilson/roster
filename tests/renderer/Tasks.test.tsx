@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { Sidebar } from '@/components/Sidebar'
 import { Tasks } from '@/screens/Tasks'
 import { ALL_PROJECTS, useRoster } from '@/state/store'
 import { anAgent, aProject, aTask } from './factories'
@@ -119,7 +120,7 @@ describe('Tasks — the board', () => {
 describe('Tasks — filtering', () => {
   test('filters by title as the user types', async () => {
     const user = userEvent.setup()
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     await user.type(screen.getByLabelText('Filter tasks'), 'leak')
 
@@ -129,7 +130,7 @@ describe('Tasks — filtering', () => {
 
   test('matches on the task key, which is how people refer to one', async () => {
     const user = userEvent.setup()
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     await user.type(screen.getByLabelText('Filter tasks'), 'ROS-2')
 
@@ -139,7 +140,7 @@ describe('Tasks — filtering', () => {
 
   test('switches the summary to a match count while filtering', async () => {
     const user = userEvent.setup()
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     await user.type(screen.getByLabelText('Filter tasks'), 'leak')
 
@@ -155,7 +156,7 @@ describe('Tasks — filtering', () => {
         aTask({ id: 'ROS-2', title: 'Not in it', projectId: null }),
       ],
     })
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
 
@@ -165,7 +166,7 @@ describe('Tasks — filtering', () => {
 
   test('offers every project plus an all-projects option', () => {
     useRoster.setState({ projects: [aProject({ id: 'p1', name: 'API reliability' })] })
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     const select = screen.getByLabelText('Filter by project')
     expect(within(select).getByText('All projects')).toBeInTheDocument()
@@ -277,14 +278,14 @@ describe('Tasks — archived projects', () => {
   })
 
   test('the board does not show work from an archived project', () => {
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     expect(screen.getByText('Live work')).toBeInTheDocument()
     expect(screen.queryByText('Shipped work')).not.toBeInTheDocument()
   })
 
   test('the filter does not offer an archived project', () => {
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     const select = screen.getByLabelText('Filter by project')
     expect(within(select).getByText('API reliability')).toBeInTheDocument()
@@ -292,7 +293,7 @@ describe('Tasks — archived projects', () => {
   })
 
   test('the count matches what is on the board', () => {
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     // Counting hidden work here would claim more tasks than are showing.
     expect(screen.getByText('1 task · 0 in review')).toBeInTheDocument()

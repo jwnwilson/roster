@@ -24,7 +24,6 @@ import {
   TextInput,
 } from '@/components/primitives'
 import { FirstRunCard } from '@/components/FirstRunCard'
-import { ProjectFilter } from '@/components/ProjectFilter'
 import { TaskFilter } from '@/components/TaskFilter'
 import { AgentsWorkflow, useWorkflowGraph, workflowSummary } from './AgentsWorkflow'
 import { ESTIMATE_EXPLANATION, formatUsageCost, formatTokens } from '@/state/format'
@@ -87,7 +86,6 @@ export function AgentsGrid() {
         />
         <span className="text-md text-dim">{summary}</span>
         <div className="ml-auto flex items-center gap-[8px]">
-          <ProjectFilter />
           {workflow ? (
             <TaskFilter />
           ) : (
