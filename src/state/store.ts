@@ -293,6 +293,8 @@ export interface RosterState {
   setNewModel(model: string): void
   setNewPrompt(value: string): void
   togglePicked(name: string): void
+  /** Replaces the picks with every one of these switched on. */
+  pickAll(names: readonly string[]): void
 }
 
 export const useRoster = create<RosterState>((set, get) => ({
@@ -513,6 +515,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   setNewModel: (newModel) => set({ newModel }),
   setNewPrompt: (newPrompt) => set({ newPrompt }),
   togglePicked: (name) => set((s) => ({ picked: { ...s.picked, [name]: !s.picked[name] } })),
+  pickAll: (names) => set({ picked: Object.fromEntries(names.map((name) => [name, true])) }),
 }))
 
 /* ---------------------------------------------------------------------
