@@ -31,6 +31,13 @@ import type { VoiceModelProgress, VoiceModelStatus, VoiceStatus } from './voice'
  * main process through these calls — no node, no fs, no child processes.
  */
 export interface RosterApi {
+  files: {
+    /**
+     * An image on disk, as a data URL, for a chat message that points at it.
+     * Resolves null when the path is not an image Roster will show.
+     */
+    readImage(path: string): Promise<string | null>
+  }
   desktop: {
     check(): Promise<DesktopReport>
     requestAccessibility(): Promise<void>
@@ -448,6 +455,8 @@ export const CHANNELS = {
   windowMinimize: 'window:minimize',
   windowMaximize: 'window:maximize',
   windowClose: 'window:close',
+
+  filesReadImage: 'files:readImage',
 
   runnersList: 'runners:list',
   runnersModels: 'runners:models',

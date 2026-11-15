@@ -30,6 +30,10 @@ const api: RosterApi = {
     close: () => ipcRenderer.send(CHANNELS.windowClose),
   },
 
+  files: {
+    readImage: (path) => ipcRenderer.invoke(CHANNELS.filesReadImage, path),
+  },
+
   runners: {
     list: () => ipcRenderer.invoke(CHANNELS.runnersList),
     models: (runnerId) => ipcRenderer.invoke(CHANNELS.runnersModels, runnerId),
