@@ -5,7 +5,7 @@ import { EXIT_PLAN_MODE } from '@shared/plans'
 import { sessionLabel } from '@shared/sessions'
 import { sessionNeedsAttention, statusColor } from '@shared/status'
 import { taskStatusColor } from '@shared/tasks'
-import { contextFraction, contextLabel } from '@shared/models'
+import { contextFraction, contextLabel, splitModel } from '@shared/models'
 import { resolveWorkspace, type Workspace } from '@shared/workspace'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
@@ -491,9 +491,14 @@ function ConfigRail({ agent }: { agent: Agent }) {
   const go = useRoster((s) => s.go)
   const openEdit = useRoster((s) => s.openEdit)
 
+  // Pi names a model `provider/id`. The provider gets its own row above the
+  // model so the rail reads runner → provider → model, and the id is shown
+  // bare. Bare ids (Claude, Codex) have no provider and no row.
+  const { provider, model } = splitModel(agent.model)
   const rows: { key: string; value: string }[] = [
     { key: 'Runner', value: agent.runner },
-    { key: 'Model', value: agent.model },
+    ...(provider === null ? [] : [{ key: 'Provider', value: provider }]),
+    { key: 'Model', value: model },
     // "Default", because a session filed under a project with repositories
     // runs in that project's primary instead. The session's own `Working in`
     // row below is the one that says where a turn actually goes.
@@ -519,7 +524,8 @@ function ConfigRail({ agent }: { agent: Agent }) {
         {rows.map((row) => (
           <div key={row.key} className="flex items-baseline gap-[10px]">
             <span className="w-[74px] flex-none text-base text-dim">{row.key}</span>
-            <span className="truncate font-mono text-md text-ink-2">{row.value}</span>
+            {/* Wraps rather than truncates: the rail is narrow, and a cut-off model id is unreadable. */}
+            <span className="min-w-0 flex-1 break-all font-mono text-md text-ink-2">{row.value}</span>
           </div>
         ))}
         {agent.status === 'error' ? (

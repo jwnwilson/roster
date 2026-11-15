@@ -496,6 +496,25 @@ describe('AgentDetail — config rail', () => {
     expect(screen.getByText('filesystem')).toBeInTheDocument()
   })
 
+  test('splits a Pi model into its provider and its model name', async () => {
+    useRoster.setState({
+      agents: [anAgent({ runner: 'pi', model: 'anthropic/claude-sonnet-4-5' })],
+    })
+    render(<AgentDetail />)
+
+    expect(await screen.findByText('Provider')).toBeInTheDocument()
+    expect(screen.getByText('anthropic')).toBeInTheDocument()
+    // The rail's Model row carries the bare id, not the prefixed key.
+    expect(screen.getByText('claude-sonnet-4-5')).toBeInTheDocument()
+  })
+
+  test('omits the Provider row when the model names no provider', async () => {
+    render(<AgentDetail />)
+
+    expect(await screen.findByText('Runner')).toBeInTheDocument()
+    expect(screen.queryByText('Provider')).toBeNull()
+  })
+
   test('surfaces why an agent cannot run', async () => {
     useRoster.setState({
       agents: [

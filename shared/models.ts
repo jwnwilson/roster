@@ -52,3 +52,13 @@ export function contextLabel(fraction: number): string {
   const percent = Math.round(fraction * 100)
   return percent === 0 ? '<1%' : `${percent}%`
 }
+
+/**
+ * A model name split into the provider Pi routes it through and the id
+ * under that provider. Bare ids (Claude and Codex agents) have no provider.
+ */
+export function splitModel(model: string): { provider: string | null; model: string } {
+  const slash = model.indexOf('/')
+  if (slash === -1) return { provider: null, model }
+  return { provider: model.slice(0, slash), model: model.slice(slash + 1) }
+}
