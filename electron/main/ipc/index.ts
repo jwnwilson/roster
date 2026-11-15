@@ -28,6 +28,7 @@ import type {
 import type { NotionStatusMap } from '../../../shared/notion'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
+import { readChatImage } from '../images/readChatImage'
 import { allRunners, getRunner, piRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { BROWSER_MCP_SERVERS } from '../../../shared/mcp'
 
@@ -612,6 +613,8 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsSetName, (_e, sessionId: string, name: string | null) =>
     requireSessions().setName(sessionId, name),
   )
+
+  ipcMain.handle(CHANNELS.filesReadImage, (_e, path: string) => readChatImage(path))
 
   ipcMain.handle(CHANNELS.notionAuthStatus, () => requireNotionAuth().status())
   ipcMain.handle(CHANNELS.notionBeginAuth, async () => {
