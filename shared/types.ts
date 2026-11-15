@@ -624,3 +624,32 @@ export interface SetupState {
    */
   permissionsReviewed: boolean
 }
+
+export type CustomisationStatus = 'provisioning' | 'ready' | 'failed'
+
+/**
+ * A customised copy of Roster: a clone of main that its owner may change. It
+ * is never the official app, and it does not take upstream releases.
+ */
+export interface Customisation {
+  id: string
+  name: string
+  /** The checkout's absolute path. */
+  path: string
+  /** `path` with the home directory collapsed to ~, for display. */
+  pathLabel: string
+  /** The user's fork, or null while the copy has none. */
+  forkRemote: string | null
+  /** The main commit the copy was cloned from. */
+  baseSha: string | null
+  /** The copy's own ROSTER_HOME, separate from the official app's. */
+  rosterHome: string
+  devPort: number
+  status: CustomisationStatus
+  /** Why the last provision failed. Null unless status is `failed`. */
+  error: string | null
+  /** The step a provision is on right now. Null when none is running. */
+  progress: string | null
+  acknowledgedAt: number
+  createdAt: number
+}

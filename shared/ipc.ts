@@ -10,6 +10,7 @@ import type {
   PlanComment,
   PlanDocument,
   Project,
+  Customisation,
   ProjectRepo,
   RunnerStatus,
   Session,
@@ -228,6 +229,18 @@ export interface RosterApi {
       reorder(projectId: string, orderedIds: string[]): Promise<ProjectRepo[]>
     }
   }
+  /**
+   * Customised copies of Roster. Creating one is the consent gate: the main
+   * process refuses unless the warning was acknowledged, and nothing is cloned
+   * or installed until then.
+   */
+  customisations: {
+    list(): Promise<Customisation[]>
+    create(input: NewCustomisationInput): Promise<Customisation>
+    /** Resumes a failed provision. Refused for any other status. */
+    retry(id: string): Promise<Customisation>
+    onChanged(listener: (copies: Customisation[]) => void): () => void
+  }
   tasks: {
     list(): Promise<Task[]>
     create(input: NewTaskInput): Promise<Task>
@@ -331,6 +344,14 @@ export interface NewProjectInput {
 }
 
 export type ProjectPatch = Partial<Pick<Project, 'name' | 'color' | 'description'>>
+
+export interface NewCustomisationInput {
+  name: string
+  /** Optional. A git URL, such as https://github.com/you/roster.git. */
+  forkUrl?: string | null
+  /** Must be true; the warning has to be read and the box ticked first. */
+  acknowledged: boolean
+}
 
 export interface NewProjectRepoInput {
   projectId: string
@@ -567,6 +588,11 @@ export const CHANNELS = {
   tasksComment: 'tasks:comment',
   tasksSessions: 'tasks:sessions',
   tasksEvent: 'tasks:event', // broadcast, not invoke
+
+  customisationsList: 'customisations:list',
+  customisationsCreate: 'customisations:create',
+  customisationsRetry: 'customisations:retry',
+  customisationsChanged: 'customisations:changed', // broadcast, not invoke
 
   setupState: 'setup:state',
   setupDismiss: 'setup:dismiss',

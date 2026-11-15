@@ -110,6 +110,12 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
         reorder: vi.fn().mockResolvedValue([]),
       },
     },
+    customisations: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn().mockResolvedValue(null),
+      retry: vi.fn().mockResolvedValue(null),
+      onChanged: vi.fn().mockReturnValue(() => {}),
+    },
     tasks: {
       list: vi.fn().mockResolvedValue([]),
       create: vi.fn().mockResolvedValue(null),

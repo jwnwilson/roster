@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type {
   Agent,
   AgentUsage,
+  Customisation,
   Approval,
   McpServer,
   Message,
@@ -31,7 +32,7 @@ import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
 import { readFlag, writeFlag } from '@/lib/uiPreference'
 
-export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
+export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend' | 'customise'
 export type PaneMode = 'chat' | 'terminal'
 export type McpTab = 'installed' | 'registry' | 'desktop'
 export type TaskTab = 'comments' | 'history'
@@ -75,6 +76,8 @@ export interface RosterState {
   runners: RunnerStatus[]
   skills: Skill[]
   mcpServers: McpServer[]
+  /** Customised copies of Roster, newest last. */
+  customisations: Customisation[]
   sessions: Record<string, Session[]>
   /** sessionId -> transcript, loaded on demand. */
   messages: Record<string, Message[]>
@@ -231,6 +234,7 @@ export interface RosterState {
   setAllSessions(sessions: Record<string, Session[]>): void
   setMcpServers(servers: McpServer[]): void
   setSkills(skills: Skill[]): void
+  setCustomisations(copies: Customisation[]): void
   setProjects(projects: Project[]): void
   setProjectRepos(projectId: string, repos: readonly ProjectRepo[]): void
   setTasks(tasks: Task[]): void
@@ -304,6 +308,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   runners: [],
   skills: [],
   mcpServers: [],
+  customisations: [],
   sessions: {},
   messages: {},
   streaming: {},
@@ -382,6 +387,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   setAllSessions: (sessions) => set({ sessions }),
   setMcpServers: (mcpServers) => set({ mcpServers }),
   setSkills: (skills) => set({ skills }),
+  setCustomisations: (customisations) => set({ customisations }),
   setProjects: (projects) => set({ projects }),
   setProjectRepos: (projectId, repos) =>
     set((s) => ({ projectRepos: { ...s.projectRepos, [projectId]: repos } })),

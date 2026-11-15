@@ -39,6 +39,8 @@ const NAV: NavItem[] = [
   { key: 'mcp', label: 'MCP servers' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'spend', label: 'Spend', dot: 'var(--color-amber)' },
+  // Directly below Spend, as the handoff places it. Counts existing copies.
+  { key: 'customise', label: 'Customise' },
 ]
 
 export function Sidebar() {
@@ -52,6 +54,7 @@ export function Sidebar() {
   const skills = useRoster((s) => s.skills)
   const mcpServers = useRoster((s) => s.mcpServers)
   const tasks = useRoster((s) => s.tasks)
+  const customisations = useRoster((s) => s.customisations)
   const agents = useRoster(useShallow(selectSidebarAgents))
   const totals = useRoster(useShallow(selectRosterTotals))
   const appVersion = useRoster((s) => s.appVersion)
@@ -62,6 +65,7 @@ export function Sidebar() {
     mcp: String(mcpServers.length),
     tasks: String(tasks.length),
     spend: formatUsageCost(totals.costUsd, totals.hasEstimatedCost, totals.hasUnavailableCost),
+    customise: String(customisations.length),
   }
 
   return (
