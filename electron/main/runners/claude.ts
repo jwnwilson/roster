@@ -15,6 +15,24 @@ import { rosterHome } from '../store/paths'
 import { ROSTER_PLUGIN_NAME } from '../store/skillPlugin'
 
 /**
+ * Whether a tool call runs without the approval banner. Only an agent that
+ * opted in gets this, and even then a question to the user and the plan
+ * review still stop and ask: those are conversations with the user, not
+ * permission checks, so skipping them would leave the agent answering itself.
+ */
+export function shouldAutoApprove(
+  toolName: string,
+  input: Record<string, unknown>,
+  autoApprove: boolean,
+): boolean {
+  if (!autoApprove) return false
+  if (toolName === EXIT_PLAN_MODE) return false
+  // Judged by the field being present, not by parsing it: a malformed
+  // question must not slip through as an ordinary call and be answered blank.
+  return !('questions' in input) && toolName !== 'AskUserQuestion'
+}
+
+/**
  * Prices, input/output per million tokens, and the list to offer when the
  * CLI's catalogue cannot be read.
  *
@@ -146,7 +164,10 @@ export class ClaudeRunner implements Runner {
         cwd: options.cwd,
         model: options.model,
         abortController: toController(options.signal),
-        canUseTool: (toolName, input) => this.requestApproval(toolName, input),
+        canUseTool: (toolName, input) =>
+          shouldAutoApprove(toolName, input, options.autoApprove === true)
+            ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
+            : this.requestApproval(toolName, input),
         // Roster owns permissions, not the user's global Claude Code config,
         // so its own allowlist is the one that applies.
         settingSources: [],

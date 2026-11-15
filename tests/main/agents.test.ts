@@ -759,3 +759,34 @@ describe('AgentStore — default project', () => {
     expect(store.findById('bad')?.defaultProjectId).toBeNull()
   })
 })
+
+describe('AgentStore — auto approve', () => {
+  test('creates an agent with auto approve off', async () => {
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const created = await store.create({
+      name: 'Fresh',
+      runner: 'claude',
+      model: 'claude-opus-5',
+      systemPrompt: '',
+      skills: [],
+      cwd: '/tmp',
+    })
+
+    expect(created.autoApprove).toBe(false)
+  })
+
+  test('writes autoApprove back to agent.toml', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+
+    const updated = await store.update('debug', { autoApprove: true })
+
+    expect(updated.autoApprove).toBe(true)
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).toContain(
+      'auto_approve = true',
+    )
+  })
+})
