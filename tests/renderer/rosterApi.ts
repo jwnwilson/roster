@@ -128,18 +128,32 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       approve: vi.fn().mockResolvedValue(undefined),
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
+    permissions: {
+      status: vi.fn().mockResolvedValue({ screen: 'granted', accessibility: 'granted', microphone: 'granted' }),
+      request: vi.fn().mockResolvedValue({ screen: 'granted', accessibility: 'granted', microphone: 'granted' }),
+      openSettings: vi.fn().mockResolvedValue(undefined),
+    },
     setup: {
       state: vi.fn().mockResolvedValue({
         pending: false,
         startingAgentId: null,
         seededAgentIds: [],
         noRunner: false,
+        permissionsReviewed: true,
+      }),
+      reviewPermissions: vi.fn().mockResolvedValue({
+        pending: false,
+        startingAgentId: null,
+        seededAgentIds: [],
+        noRunner: false,
+        permissionsReviewed: true,
       }),
       dismiss: vi.fn().mockResolvedValue({
         pending: false,
         startingAgentId: null,
         seededAgentIds: [],
         noRunner: false,
+        permissionsReviewed: true,
       }),
     },
     update: {

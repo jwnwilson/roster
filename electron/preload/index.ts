@@ -10,6 +10,7 @@ import {
   type TaskEventPayload,
 } from '../../shared/ipc'
 import type { Agent, UpdateState } from '../../shared/types'
+import type { PermissionKind } from '../../shared/permissions'
 
 /** Subscribes to a broadcast channel and returns its unsubscribe. */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -179,6 +180,13 @@ const api: RosterApi = {
   setup: {
     state: () => ipcRenderer.invoke(CHANNELS.setupState),
     dismiss: () => ipcRenderer.invoke(CHANNELS.setupDismiss),
+    reviewPermissions: () => ipcRenderer.invoke(CHANNELS.setupReviewPermissions),
+  },
+
+  permissions: {
+    status: () => ipcRenderer.invoke(CHANNELS.permissionsStatus),
+    request: (kind: PermissionKind) => ipcRenderer.invoke(CHANNELS.permissionsRequest, kind),
+    openSettings: (kind: PermissionKind) => ipcRenderer.invoke(CHANNELS.permissionsOpenSettings, kind),
   },
 
   update: {

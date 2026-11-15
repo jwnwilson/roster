@@ -1,4 +1,5 @@
 import type { DesktopReport, DesktopTestResult } from './desktop'
+import type { PermissionKind, PermissionReport } from './permissions'
 import type {
   Agent,
   Approval,
@@ -273,6 +274,16 @@ export interface RosterApi {
     state(): Promise<SetupState>
     /** Puts the card away for good. Resolves the state it leaves behind. */
     dismiss(): Promise<SetupState>
+    /** Records that the permissions card was dealt with in a session. */
+    reviewPermissions(): Promise<SetupState>
+  }
+  permissions: {
+    /** What macOS says about each permission Roster and its sessions use. */
+    status(): Promise<PermissionReport>
+    /** Asks for one permission where macOS allows asking, then reports again. */
+    request(kind: PermissionKind): Promise<PermissionReport>
+    /** Opens the System Settings pane for one permission. */
+    openSettings(kind: PermissionKind): Promise<void>
   }
   update: {
     /** Look for a newer release; the result arrives on onStatus. */
@@ -559,6 +570,10 @@ export const CHANNELS = {
 
   setupState: 'setup:state',
   setupDismiss: 'setup:dismiss',
+  setupReviewPermissions: 'setup:review-permissions',
+  permissionsStatus: 'permissions:status',
+  permissionsRequest: 'permissions:request',
+  permissionsOpenSettings: 'permissions:open-settings',
 
   updateCheck: 'update:check',
   updateDownload: 'update:download',
