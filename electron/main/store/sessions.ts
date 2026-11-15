@@ -25,6 +25,7 @@ interface SessionRow {
   task_id: string | null
   last_nudged_at: number | null
   workspace_root: string | null
+  archived_at: number | null
   created_at: number
 }
 
@@ -90,6 +91,8 @@ export class SessionStore {
       // Nothing has run yet, so there is no directory to record. The first
       // turn pins it; see pinWorkspace.
       workspaceRoot: null,
+      // Active until somebody puts it away; see setArchived.
+      archivedAt: null,
       createdAt: Date.now(),
       ...(input.from
         ? {
@@ -129,10 +132,14 @@ export class SessionStore {
     return session
   }
 
+  /**
+   * The sessions an agent still has out in the open. Archived ones are read
+   * with listArchived, and only there.
+   */
   listByAgent(agentId: string): Session[] {
     const rows = this.db
       .prepare<[string], SessionRow>(
-        'SELECT * FROM sessions WHERE agent_id = ? ORDER BY created_at ASC',
+        'SELECT * FROM sessions WHERE agent_id = ? AND archived_at IS NULL ORDER BY created_at ASC',
       )
       .all(agentId)
 
@@ -145,12 +152,28 @@ export class SessionStore {
    */
   listAll(): Record<string, Session[]> {
     const rows = this.db
-      .prepare<[], SessionRow>('SELECT * FROM sessions ORDER BY agent_id, created_at ASC')
+      .prepare<[], SessionRow>(
+        'SELECT * FROM sessions WHERE archived_at IS NULL ORDER BY agent_id, created_at ASC',
+      )
       .all()
 
     const byAgent: Record<string, Session[]> = {}
     for (const row of rows) (byAgent[row.agent_id] ??= []).push(toSession(row))
     return byAgent
+  }
+
+  /**
+   * Every archived session, most recently put away first: the order the
+   * archived view reads in, as projects do.
+   */
+  listArchived(): Session[] {
+    const rows = this.db
+      .prepare<[], SessionRow>(
+        'SELECT * FROM sessions WHERE archived_at IS NOT NULL ORDER BY archived_at DESC, id ASC',
+      )
+      .all()
+
+    return rows.map(toSession)
   }
 
   findById(id: string): Session | null {
@@ -170,6 +193,23 @@ export class SessionStore {
     this.db
       .prepare('UPDATE sessions SET runner_session_id = ? WHERE id = ?')
       .run(runnerSessionId, id)
+  }
+
+  /**
+   * Puts a session away, or brings it back. Archiving keeps everything: the
+   * transcript, plans, spend and any task link. Refusing a session with a turn
+   * in flight is the caller's job — this store does not know about runners.
+   *
+   * Throws for an unknown id rather than succeeding quietly, so the renderer
+   * never shows an archived state nothing holds.
+   */
+  setArchived(id: string, archived: boolean): Session {
+    const archivedAt = archived ? Date.now() : null
+    this.db.prepare('UPDATE sessions SET archived_at = ? WHERE id = ?').run(archivedAt, id)
+
+    const session = this.findById(id)
+    if (!session) throw new Error(`unknown session "${id}"`)
+    return session
   }
 
   rename(id: string, title: string): void {
@@ -243,6 +283,7 @@ export class SessionStore {
            JOIN tasks t ON t.id = s.task_id
           WHERE t.status = 'in_progress'
             AND t.assignee_id = s.agent_id
+            AND s.archived_at IS NULL
             AND (s.last_nudged_at IS NULL OR s.last_nudged_at <= ?)`,
       )
       .all(cooldownBefore)
@@ -275,11 +316,15 @@ export class SessionStore {
     this.db.prepare("UPDATE sessions SET status = 'done' WHERE status = 'running'").run()
   }
 
-  /** Every session attached to a task, for the detail panel's rail. */
+  /**
+   * Every live session attached to a task, for the detail panel's rail. An
+   * archived one is left off, as it is everywhere else; a mention on the task
+   * brings it back.
+   */
   linksForTask(taskId: string): TaskSessionLink[] {
     const rows = this.db
       .prepare<[string], SessionRow>(
-        'SELECT * FROM sessions WHERE task_id = ? ORDER BY created_at ASC',
+        'SELECT * FROM sessions WHERE task_id = ? AND archived_at IS NULL ORDER BY created_at ASC',
       )
       .all(taskId)
 
@@ -336,6 +381,7 @@ export class SessionStore {
                   ) AS recency
              FROM messages m
              JOIN sessions s ON s.id = m.session_id
+            WHERE s.archived_at IS NULL
          ),
          chosen AS (
            SELECT agent_id, session_id FROM latest WHERE recency = 1
@@ -471,6 +517,7 @@ function toSession(row: SessionRow): Session {
     taskId: row.task_id,
     lastNudgedAt: row.last_nudged_at,
     workspaceRoot: row.workspace_root,
+    archivedAt: row.archived_at,
   }
 }
 

@@ -442,4 +442,14 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX ix_plans_session        ON plans (session_id, created_at);
   CREATE INDEX ix_plan_comments_plan   ON plan_comments (plan_id, created_at);
   `,
+
+  // 20 — a session can be archived: put away out of every list and the
+  // sidebar, but kept with its transcript, plans and spend, and restorable.
+  // NULL means active, which is every session that predates this column.
+  //
+  // The timestamp rather than a boolean, following projects (migration 7): it
+  // orders the archived list by when each was put away.
+  `
+  ALTER TABLE sessions ADD COLUMN archived_at INTEGER;
+  `,
 ]
