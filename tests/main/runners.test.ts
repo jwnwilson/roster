@@ -608,6 +608,7 @@ describe('in-process tool allowlists', () => {
         listAgents: () => [],
         openSession: () => ({ sessionId: 's', label: 'l', started: true }),
         closeSession: async () => false,
+        renameSession: () => null,
         requestUserDecision: async () => ({ approved: false, answers: {} }),
       },
       'me',

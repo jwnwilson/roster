@@ -984,6 +984,16 @@ export function reduceSessionEvent(
 
     case 'session-deleted':
       return forgetSession(state, event.sessionId)
+
+    case 'session-renamed':
+      return {
+        sessions: Object.fromEntries(
+          Object.entries(state.sessions).map(([agentId, list]) => [
+            agentId,
+            list.map((candidate) => (candidate.id === event.session.id ? event.session : candidate)),
+          ]),
+        ),
+      }
   }
 }
 

@@ -98,6 +98,8 @@ export type SessionEvent =
   /** What the agent is doing right now, for the streaming indicator. */
   | { type: 'activity'; sessionId: string; text: string }
   | { type: 'session-deleted'; sessionId: string; agentId: string }
+  /** The session as it now stands, after an agent gave it a name. */
+  | { type: 'session-renamed'; session: Session }
 
 /**
  * Streamed prose arrives token by token. Writing and broadcasting each one
@@ -351,6 +353,17 @@ export class SessionManager {
 
     this.emit({ type: 'session-deleted', sessionId, agentId: removed.agentId })
     return true
+  }
+
+  /**
+   * An agent naming its own session. Returns the stored name, or null when
+   * normalisation left nothing to store. Broadcast so every window's tab
+   * picks the name up without waiting for a reload.
+   */
+  private renameSession(sessionId: string, name: string): string | null {
+    const renamed = this.sessions.setName(sessionId, name)
+    this.emit({ type: 'session-renamed', session: renamed })
+    return renamed.name ?? null
   }
 
   /* ---- running a turn --------------------------------------------------- */
@@ -1117,6 +1130,7 @@ export class SessionManager {
       },
       closeSession: (childSessionId) => this.closeChildSession(session.id, childSessionId),
       requestUserDecision: (questions) => this.requestUserDecision(session.id, questions),
+      renameSession: (name) => this.renameSession(session.id, name),
     }
 
     // The board is opt-in per agent, like any other MCP server. An agent that

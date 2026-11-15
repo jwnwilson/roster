@@ -587,3 +587,21 @@ describe('reduceSessionEvent — a session being deleted', () => {
     expect(next.sessions).toEqual({})
   })
 })
+
+describe('reduceSessionEvent — a session renamed by its own agent', () => {
+  test('replaces the named session in place, leaving its siblings alone', () => {
+    useRoster.setState({
+      sessions: {
+        debugging: [aSession({ id: 's1', title: 'New session' }), aSession({ id: 's2', title: 'Kept' })],
+      },
+    })
+
+    const renamed = aSession({ id: 's1', title: 'New session', name: 'Pool leak on 504' })
+    const next = reduceSessionEvent(useRoster.getState(), { type: 'session-renamed', session: renamed })
+
+    expect(next.sessions?.debugging?.map((s) => [s.id, s.name])).toEqual([
+      ['s1', 'Pool leak on 504'],
+      ['s2', null],
+    ])
+  })
+})
