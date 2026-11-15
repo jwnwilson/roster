@@ -54,7 +54,7 @@ describe('images in Markdown', () => {
     expect(screen.getByText('[image not available: broken]')).toBeInTheDocument()
   })
 
-  test('every image is shown at the same size, half the window height at most', () => {
+  test('every image is shown at the same size, a little over a third of the window height', () => {
     installRosterApi()
     render(
       <Markdown>{'![tall](data:image/png;base64,AAAA)\n\n![wide](data:image/png;base64,BBBB)'}</Markdown>,
@@ -62,7 +62,7 @@ describe('images in Markdown', () => {
 
     const frames = screen.getAllByRole('button', { name: /^Enlarge / })
     expect(frames).toHaveLength(2)
-    for (const frame of frames) expect(frame.className).toContain('h-[50vh]')
+    for (const frame of frames) expect(frame.className).toContain('h-[37.5vh]')
   })
 
   test('clicking an image opens it magnified in a dialog', () => {

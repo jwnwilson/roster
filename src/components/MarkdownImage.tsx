@@ -14,7 +14,7 @@ interface MarkdownImageProps {
  * Embedded images show directly. A local path is read through the main
  * process first, since the renderer cannot load it. Remote images are not
  * fetched (the CSP forbids it), so they appear as a link the user can open.
- * Every image takes the same frame, half the window's height at most, so a
+ * Every image takes the same frame, 37.5% of the window's height, so a
  * long screenshot does not push the conversation off screen. Clicking it opens
  * the image magnified in a dialog, for the detail the frame cannot show.
  * Anything that will not show falls back to a line of text, never a broken
@@ -65,7 +65,7 @@ export function MarkdownImage({ src, alt }: MarkdownImageProps) {
         type="button"
         aria-label={`Enlarge ${label}`}
         onClick={() => setEnlarged(true)}
-        className="block h-[50vh] w-full cursor-zoom-in overflow-hidden rounded-chip border border-line bg-well p-0"
+        className="block h-[37.5vh] w-full cursor-zoom-in overflow-hidden rounded-chip border border-line bg-well p-0"
         data-hoverable
       >
         <img
