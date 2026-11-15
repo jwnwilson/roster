@@ -82,15 +82,3 @@ export function resolveModel<M extends PiModelLike>(
   return available.find((model) => model.id === wanted)
 }
 
-/**
- * Rewrites a model named for a retired runner into Pi's `provider/id`.
- *
- * Used when migrating agents: Claude ids go to Anthropic and Codex ids to
- * OpenAI's Codex provider. Anything already qualified, or blank, is kept.
- */
-export function migrateModelName(runner: string, model: string): string {
-  if (model === '' || model.includes('/')) return model
-  if (runner === 'claude') return `anthropic/${model}`
-  if (runner === 'codex') return `openai-codex/${model}`
-  return model
-}

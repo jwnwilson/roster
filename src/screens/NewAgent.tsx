@@ -4,6 +4,7 @@ import type { ModelInfo } from '@shared/types'
 import {
   ChipField,
   DefaultProjectField,
+  HarnessModelPicker,
   ModelPicker,
   NameField,
   ProviderPicker,
@@ -120,7 +121,11 @@ export function NewAgent() {
 
         <ProviderPicker runners={runners} value={newRunner} onChange={setNewRunner} />
 
-        <ModelPicker models={models} value={newModel} onChange={setNewModel} onModelsChanged={setModels} />
+        {newRunner === 'pi' ? (
+          <ModelPicker models={models} value={newModel} onChange={setNewModel} onModelsChanged={setModels} />
+        ) : (
+          <HarnessModelPicker models={models} value={newModel} onChange={setNewModel} />
+        )}
 
         <WorkingDirectory
           value={cwd ?? UNSET_WORKING_DIRECTORY}

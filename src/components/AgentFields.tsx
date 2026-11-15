@@ -45,11 +45,16 @@ interface ProviderPickerProps {
   onChange: (runnerId: string) => void
 }
 
+/** The name each harness goes by in the picker. */
+const HARNESS_NAMES: Record<string, string> = {
+  pi: 'Pi',
+  claude: 'Claude Code',
+  codex: 'Codex',
+}
+
 /**
- * Three cards named by provider, per the approved variant B: the runner is
- * inferred rather than named. A provider whose CLI is unusable is still
- * selectable — the agent then shows `error`, which is where the reason is
- * surfaced.
+ * One card per harness. A harness whose CLI is unusable is still selectable:
+ * the agent then shows `error`, which is where the reason is surfaced.
  */
 export function ProviderPicker({ runners, value, onChange }: ProviderPickerProps) {
   return (
@@ -71,7 +76,7 @@ export function ProviderPicker({ runners, value, onChange }: ProviderPickerProps
               <span
                 className={`text-lg font-semibold ${on ? 'text-ink' : 'text-muted'}`}
               >
-                {runner.provider}
+                {HARNESS_NAMES[runner.id] ?? runner.id}
               </span>
               <span className="truncate font-mono text-sm text-dim">
                 {describeAuth(runner)}
@@ -90,6 +95,12 @@ function describeAuth(runner: RunnerStatus): string {
   if (runner.auth === 'subscription') return 'subscription'
   if (runner.auth === 'api-key') return 'api key'
   return 'not signed in'
+}
+
+interface HarnessModelPickerProps {
+  models: ModelInfo[]
+  value: string
+  onChange: (modelId: string) => void
 }
 
 interface ModelPickerProps {
@@ -170,6 +181,46 @@ function matchesProvider(option: ProviderOption, query: string): boolean {
 
 /** The provider Roster refreshes the account's model list for as soon as it is picked. */
 const AUTO_CHECK_PROVIDER = 'anthropic'
+
+/**
+ * The model list for a harness other than Pi. Claude Code and Codex name
+ * their models without a provider, so there is nothing to group by.
+ */
+export function HarnessModelPicker({ models, value, onChange }: HarnessModelPickerProps) {
+  if (models.length === 0) {
+    return (
+      <Field label="Model">
+        <p className="m-0 text-md text-dim">No models available.</p>
+      </Field>
+    )
+  }
+  const chosen = models.some((model) => model.id === value)
+  return (
+    <Field label="Model">
+      <div className="relative">
+        <select
+          aria-label="Model"
+          value={chosen ? value : ''}
+          onChange={(event) => onChange(event.target.value)}
+          className={`${SELECT_CLASS} font-mono`}
+          data-hoverable
+        >
+          {chosen ? null : (
+            <option value="" disabled>
+              Choose a model
+            </option>
+          )}
+          {models.map((model) => (
+            <option key={model.id} value={model.id}>
+              {model.price !== '' ? `${model.id} · ${model.price}` : model.id}
+            </option>
+          ))}
+        </select>
+        <Chevron />
+      </div>
+    </Field>
+  )
+}
 
 export function ModelPicker({ models, value, onChange, onModelsChanged }: ModelPickerProps) {
   const providers = providerOptions(models)
