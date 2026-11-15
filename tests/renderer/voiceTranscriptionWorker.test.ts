@@ -47,4 +47,6 @@ test('runs local WASM inference with overlapping chunks for the entire 60-second
   self.dispatchEvent(new MessageEvent('message', { data: { type: 'transcribe', jobId: 'you', audio } }))
   await vi.waitFor(() => expect(post).toHaveBeenCalledWith({ type: 'result', jobId: 'you', text: ' you ' }))
   post.mockRestore()
-})
+  // Builds and scans a full minute of audio sample by sample: about 1s on a
+  // laptop, but past the 5s default on the CI runner.
+}, 30_000)
