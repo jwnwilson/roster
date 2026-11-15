@@ -93,6 +93,16 @@ export function worktreesDir(): string {
   return join(rosterHome(), 'worktrees')
 }
 
+/**
+ * Where customised copies of Roster live, one folder per copy, keyed on id.
+ *
+ * Kept under the official home so a copy's files are easy to find, but each
+ * copy's data is in its own `home/` beneath that folder, never this one.
+ */
+export function customisationsDir(): string {
+  return join(rosterHome(), 'customisations')
+}
+
 export function mcpConfigPath(): string {
   return join(rosterHome(), 'mcp.json')
 }

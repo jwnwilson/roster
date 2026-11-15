@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   CHANNELS,
   type AgentPatch,
+  type NewCustomisationInput,
   type PtySize,
   type RosterApi,
   type SessionEventPayload,
@@ -9,7 +10,7 @@ import {
   type ProjectNotesPayload,
   type TaskEventPayload,
 } from '../../shared/ipc'
-import type { Agent, UpdateState } from '../../shared/types'
+import type { Agent, Customisation, UpdateState } from '../../shared/types'
 import type { PermissionKind } from '../../shared/permissions'
 
 /** Subscribes to a broadcast channel and returns its unsubscribe. */
@@ -154,6 +155,14 @@ const api: RosterApi = {
       reorder: (projectId, orderedIds) =>
         ipcRenderer.invoke(CHANNELS.projectsReposReorder, projectId, orderedIds),
     },
+  },
+
+  customisations: {
+    list: () => ipcRenderer.invoke(CHANNELS.customisationsList),
+    create: (input: NewCustomisationInput) => ipcRenderer.invoke(CHANNELS.customisationsCreate, input),
+    retry: (id: string) => ipcRenderer.invoke(CHANNELS.customisationsRetry, id),
+    onChanged: (listener) =>
+      subscribe<Customisation[]>(CHANNELS.customisationsChanged, listener),
   },
 
   tasks: {

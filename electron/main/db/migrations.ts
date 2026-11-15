@@ -442,4 +442,27 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX ix_plans_session        ON plans (session_id, created_at);
   CREATE INDEX ix_plan_comments_plan   ON plan_comments (plan_id, created_at);
   `,
+
+  // 20 — customised copies of Roster. One row per copy: its checkout, the
+  // fork it publishes to (if any), the main commit it started from, and the
+  // ROSTER_HOME and dev port that keep it apart from the official app.
+  //
+  // acknowledged_at is NOT NULL on purpose. The row exists only once the user
+  // has accepted the warning, so nothing can be provisioned without consent.
+  `
+  CREATE TABLE customisations (
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    path            TEXT NOT NULL,
+    fork_remote     TEXT,
+    base_sha        TEXT,
+    roster_home     TEXT NOT NULL,
+    dev_port        INTEGER NOT NULL,
+    status          TEXT NOT NULL
+      CHECK (status IN ('provisioning', 'ready', 'failed')),
+    last_error      TEXT,
+    acknowledged_at INTEGER NOT NULL,
+    created_at      INTEGER NOT NULL
+  );
+  `,
 ]

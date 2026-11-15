@@ -2,6 +2,10 @@ import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { parseDevPort } from './shared/devPort'
+
+/** A customised copy sets ROSTER_DEV_PORT to run beside the official app. */
+const devPort = parseDevPort(process.env['ROSTER_DEV_PORT'])
 
 export default defineConfig({
   main: {
@@ -40,6 +44,10 @@ export default defineConfig({
      * was holding. Build output and coverage churn for the same no reason.
      */
     server: {
+      // strictPort: a copy that cannot have its port fails loudly rather than
+      // quietly moving to another one the rest of Roster does not know about.
+      port: devPort,
+      strictPort: true,
       watch: {
         ignored: [
           '**/.claude/**',

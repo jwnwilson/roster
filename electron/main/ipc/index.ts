@@ -7,6 +7,7 @@ import {
   CHANNELS,
   type AgentPatch,
   type NewAgentInput,
+  type NewCustomisationInput,
   type NewProjectInput,
   type NewProjectRepoInput,
   type NewTaskInput,
@@ -69,7 +70,10 @@ import { SkillStore } from '../store/skills'
 import { ProjectNotesStore } from '../store/projectNotes'
 import { UsageStore } from '../store/usage'
 import { Updater, shouldCheckForUpdatesOnLaunch } from '../update/updater'
-import { databasePath, mcpConfigPath } from '../store/paths'
+import { customisationsDir, databasePath, mcpConfigPath } from '../store/paths'
+import { CustomisationStore } from '../store/customisations'
+import { CustomiseService } from '../customise/service'
+import { pickDevPort, probePort } from '../customise/ports'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
 import { dismissSetup, markPermissionsReviewed, prepareFirstRun } from '../store/firstRun'
@@ -93,6 +97,10 @@ let sessionStore: SessionStore | null = null
 let usageStore: UsageStore | null = null
 let projectStore: ProjectStore | null = null
 let projectRepoStore: ProjectRepoStore | null = null
+let customiseService: CustomiseService | null = null
+
+/** The Roster repository a customised copy is cloned from. Overridable for tests and forks. */
+const ROSTER_SOURCE_URL = process.env['ROSTER_SOURCE_REPO'] ?? 'https://github.com/jwnwilson/roster.git'
 let taskStore: TaskStore | null = null
 let manager: SessionManager | null = null
 let nudges: SessionNudges | null = null
@@ -220,6 +228,11 @@ function broadcastRepos(projectId: string): ProjectRepo[] {
   return repos
 }
 
+function requireCustomise(): CustomiseService {
+  if (!customiseService) throw new Error('customised copies are not initialised')
+  return customiseService
+}
+
 function requireNotionSettings(): NotionSettingsStore {
   if (!notionSettings) throw new Error('notion settings are not initialised')
   return notionSettings
@@ -304,6 +317,17 @@ export async function initStores(): Promise<void> {
   seedBoardIfEmpty(projectStore, taskStore, agentStore.findAll())
 
   planStore = new PlanStore(db)
+
+  const customisations = new CustomisationStore(db)
+  // A provision that was running when Roster last quit cannot finish now.
+  customisations.recoverInterrupted()
+  customiseService = new CustomiseService({
+    store: customisations,
+    root: customisationsDir(),
+    sourceUrl: ROSTER_SOURCE_URL,
+    pickPort: (taken) => pickDevPort(taken, probePort),
+    onChanged: (copies) => broadcast(CHANNELS.customisationsChanged, copies),
+  })
 
   manager = new SessionManager(
     agentStore,
@@ -391,6 +415,7 @@ export async function initStores(): Promise<void> {
     arch: process.arch,
     downloadDir: app.getPath('downloads'),
     fetch: globalThis.fetch,
+    disabled: process.env['ROSTER_CUSTOMISED'] === '1',
     ...(releaseUrl ? { releaseUrl } : {}),
   })
   updater.subscribe((state) => broadcast(CHANNELS.updateStatus, state))
@@ -406,7 +431,7 @@ export async function initStores(): Promise<void> {
  * local packaged development launched through Launch Services.
  */
 export function checkForUpdatesOnLaunch(): void {
-  if (!shouldCheckForUpdatesOnLaunch(app.isPackaged, process.env['ROSTER_UPDATE_CHECK'])) return
+  if (!shouldCheckForUpdatesOnLaunch(app.isPackaged, process.env['ROSTER_UPDATE_CHECK'], process.env['ROSTER_CUSTOMISED'])) return
   void updater?.check({ silent: true })
 }
 
@@ -804,6 +829,12 @@ export function registerIpc(): void {
     if (!isPermissionKind(kind)) throw new Error('Unknown permission.')
     return permissions.openSettings(kind)
   })
+
+  ipcMain.handle(CHANNELS.customisationsList, () => requireCustomise().list())
+  ipcMain.handle(CHANNELS.customisationsCreate, (_e, input: NewCustomisationInput) =>
+    requireCustomise().create(input),
+  )
+  ipcMain.handle(CHANNELS.customisationsRetry, (_e, id: string) => requireCustomise().retry(id))
 
   ipcMain.handle(CHANNELS.updateVersion, () => app.getVersion())
   ipcMain.handle(CHANNELS.updateCheck, () => requireUpdater().check())

@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar'
 import { TitleBar } from './components/TitleBar'
 import { AgentDetail } from './screens/AgentDetail'
 import { AgentsGrid } from './screens/AgentsGrid'
+import { Customise } from './screens/Customise'
 import { McpServers } from './screens/McpServers'
 import { NewAgent } from './screens/NewAgent'
 import { Skills } from './screens/Skills'
@@ -21,6 +22,7 @@ export function App() {
   const setAppVersion = useRoster((s) => s.setAppVersion)
   const setProjects = useRoster((s) => s.setProjects)
   const setSetup = useRoster((s) => s.setSetup)
+  const setCustomisations = useRoster((s) => s.setCustomisations)
   const setTasks = useRoster((s) => s.setTasks)
   const applyTaskEvent = useRoster((s) => s.applyTaskEvent)
   const applyPlanEvent = useRoster((s) => s.applyPlanEvent)
@@ -43,6 +45,7 @@ export function App() {
         tasks,
         appVersion,
         setup,
+        customisations,
       ] = await Promise.all([
         window.roster.agents.list(),
         window.roster.runners.list(),
@@ -55,6 +58,7 @@ export function App() {
         window.roster.tasks.list(),
         window.roster.update.version(),
         window.roster.setup.state(),
+        window.roster.customisations.list(),
       ])
       if (cancelled) return
       hydrate({ agents, runners, skills, mcpServers })
@@ -63,6 +67,7 @@ export function App() {
       setSpend(spend)
       setProjects(projects)
       setTasks(tasks)
+      setCustomisations(customisations)
       setAppVersion(appVersion)
       // Last, so the first-run card only ever appears over a roster that has
       // already been hydrated and can name its own agents.
@@ -72,6 +77,7 @@ export function App() {
     void load()
     // agent.toml can change outside Roster; reflect it without a restart.
     const stopAgents = window.roster.agents.onChanged(setAgents)
+    const stopCustomisations = window.roster.customisations.onChanged(setCustomisations)
     // Live turn events: streamed text, tool calls, approvals, usage.
     const stopSessions = window.roster.sessions.onEvent((event) => {
       applySessionEvent(event)
@@ -107,6 +113,7 @@ export function App() {
     return () => {
       cancelled = true
       stopAgents()
+      stopCustomisations()
       stopSessions()
       stopTasks()
       stopPlans()
@@ -115,6 +122,7 @@ export function App() {
   }, [
     hydrate,
     setAgents,
+    setCustomisations,
     applySessionEvent,
     applyPlanEvent,
     setTranscripts,
@@ -164,6 +172,8 @@ function Screen({ screen }: ScreenProps) {
       return <Tasks />
     case 'spend':
       return <Spend />
+    case 'customise':
+      return <Customise />
   }
 }
 

@@ -30,6 +30,12 @@ export interface UpdaterOptions {
   fetch: typeof globalThis.fetch
   /** Overridable so tests need not reach GitHub. */
   releaseUrl?: string
+  /**
+   * A customised copy never takes an upstream release: the check answers
+   * "current" without asking GitHub, so the manual button cannot offer one
+   * either.
+   */
+  disabled?: boolean
 }
 
 export interface CheckOptions {
@@ -67,6 +73,11 @@ export class Updater {
 
   /** Look for a release newer than the running version. */
   async check({ silent = false }: CheckOptions = {}): Promise<void> {
+    if (this.options.disabled) {
+      this.pending = null
+      this.emit({ status: 'current' })
+      return
+    }
     this.emit({ status: 'checking' })
 
     try {
@@ -170,8 +181,19 @@ function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-/** Local app bundles opt out; unpackaged development can opt in for testing. */
-export function shouldCheckForUpdatesOnLaunch(isPackaged: boolean, setting: string | undefined): boolean {
+/**
+ * Local app bundles opt out; unpackaged development can opt in for testing.
+ *
+ * `customised` is ROSTER_CUSTOMISED. The official app never sets it, so its
+ * answer is unchanged; a copy made in Customise sets it and never updates
+ * itself from an upstream release.
+ */
+export function shouldCheckForUpdatesOnLaunch(
+  isPackaged: boolean,
+  setting: string | undefined,
+  customised?: string,
+): boolean {
+  if (customised === '1') return false
   if (setting === '0') return false
   return isPackaged || setting === '1'
 }
