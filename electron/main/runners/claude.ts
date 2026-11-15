@@ -24,13 +24,19 @@ export function shouldAutoApprove(
   toolName: string,
   input: Record<string, unknown>,
   autoApprove: boolean,
+  allowShell = false,
 ): boolean {
-  if (!autoApprove) return false
   if (toolName === EXIT_PLAN_MODE) return false
   // Judged by the field being present, not by parsing it: a malformed
   // question must not slip through as an ordinary call and be answered blank.
-  return !('questions' in input) && toolName !== 'AskUserQuestion'
+  if ('questions' in input || toolName === 'AskUserQuestion') return false
+  if (autoApprove) return true
+  // Shell on its own: every other tool still asks.
+  return allowShell && toolName === SHELL_TOOL
 }
+
+/** The Claude Code tool that runs shell commands. */
+export const SHELL_TOOL = 'Bash'
 
 /**
  * Prices, input/output per million tokens, and the list to offer when the
@@ -165,7 +171,7 @@ export class ClaudeRunner implements Runner {
         model: options.model,
         abortController: toController(options.signal),
         canUseTool: (toolName, input) =>
-          shouldAutoApprove(toolName, input, options.autoApprove === true)
+          shouldAutoApprove(toolName, input, options.autoApprove === true, options.allowShell === true)
             ? Promise.resolve({ behavior: 'allow' as const, updatedInput: input })
             : this.requestApproval(toolName, input),
         // Roster owns permissions, not the user's global Claude Code config,

@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/shallow'
 import type { ModelInfo } from '@shared/types'
 import {
   AutoApproveField,
+  ShellField,
   ChipField,
   DefaultProjectField,
   HarnessModelPicker,
@@ -54,6 +55,7 @@ export function NewAgent() {
   const [cwd, setCwd] = useState<string | null>(null)
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null)
   const [autoApprove, setAutoApprove] = useState(false)
+  const [allowShell, setAllowShell] = useState(false)
   // Every configured server starts on, and each can be switched off before the
   // agent is created. Skills are reset to all-on each time the form opens, so
   // picks left over from an earlier form do not carry over.
@@ -106,6 +108,7 @@ export function NewAgent() {
         // writer omits the key rather than writing an empty one.
         defaultProjectId,
         autoApprove,
+        allowShell,
         // Omitted means the default workspace, which the main process fills in.
         ...(cwd !== null ? { cwd } : {}),
       })
@@ -159,6 +162,13 @@ export function NewAgent() {
           on={autoApprove}
           onToggle={() => setAutoApprove((on) => !on)}
           supported={newRunner === 'claude'}
+        />
+
+        <ShellField
+          on={allowShell}
+          onToggle={() => setAllowShell((on) => !on)}
+          supported={newRunner === 'claude'}
+          autoApproveOn={autoApprove}
         />
 
         <ChipField

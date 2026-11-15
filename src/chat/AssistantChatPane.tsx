@@ -11,7 +11,7 @@ import { toThreadMessage, type RosterHeader } from './convert'
 import { Composer, StreamingRow } from './Composer'
 import { HandoffBody, SpawnBody, TextBody, ToolBody, MessageHeader } from './messages'
 import { QuestionCard } from './QuestionCard'
-import { PermissionsCard } from '@/components/PermissionsCard'
+import { PermissionsCard, type ShellRow } from '@/components/PermissionsCard'
 
 /**
  * How a transcript row reaches the question card.
@@ -30,6 +30,8 @@ interface AssistantChatPaneProps {
   queuedCount: number
   streamingText: string
   skillsLine: string
+  /** The session's agent's shell setting, shown on the first-session card. */
+  shell?: ShellRow
   /** What the agent is waiting to be told, when it asked rather than acted. */
   questions?: Question[]
   onAnswer: (answers: Record<string, string>) => void
@@ -56,6 +58,7 @@ export function AssistantChatPane({
   queuedCount,
   streamingText,
   skillsLine,
+  shell,
   questions,
   onAnswer,
   onSkipQuestions,
@@ -126,7 +129,7 @@ export function AssistantChatPane({
           ) : null}
         </ThreadPrimitive.Viewport>
 
-        <PermissionsCard />
+        <PermissionsCard {...(shell ? { shell } : {})} />
 
         <Composer
           sessionId={sessionId}

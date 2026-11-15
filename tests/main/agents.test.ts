@@ -777,6 +777,20 @@ describe('AgentStore — auto approve', () => {
     expect(created.autoApprove).toBe(false)
   })
 
+  test('defaults allowShell to false and writes it back to agent.toml', async () => {
+    await writeAgent('debug', VALID)
+    const store = new AgentStore(statusMap(READY))
+    await store.load()
+    expect((await store.findById('debug'))?.allowShell).toBe(false)
+
+    const updated = await store.update('debug', { allowShell: true })
+
+    expect(updated.allowShell).toBe(true)
+    expect(await readFile(join(home, 'agents', 'debug', 'agent.toml'), 'utf8')).toContain(
+      'allow_shell = true',
+    )
+  })
+
   test('writes autoApprove back to agent.toml', async () => {
     await writeAgent('debug', VALID)
     const store = new AgentStore(statusMap(READY))

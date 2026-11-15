@@ -528,6 +528,7 @@ export class SessionManager {
         // Never on a planning turn: that one is research only, and an agent
         // that may run tools unasked could write its way past the plan.
         ...(agent.autoApprove && options.planMode !== true ? { autoApprove: true } : {}),
+        ...(agent.allowShell && options.planMode !== true ? { allowShell: true } : {}),
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
         ...(builtinTools ? { builtinTools } : {}),
         onApproval: (event) => this.raiseApproval(sessionId, run, event),

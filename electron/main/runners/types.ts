@@ -130,6 +130,11 @@ export interface StartOptions {
    * `auto_approve`; a runner that has no approval gate ignores it.
    */
   autoApprove?: boolean
+  /**
+   * Run shell commands without the approval banner, and nothing else. Set
+   * from the agent's `allow_shell`; ignored when `autoApprove` is on.
+   */
+  allowShell?: boolean
   /** Resume the CLI's own session rather than starting fresh. */
   resumeFrom?: string
   /** Resume, but branch into a new session — the handoff primitive. */

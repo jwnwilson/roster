@@ -689,4 +689,24 @@ describe('shouldAutoApprove', () => {
   test('keeps asking for plan review, even when auto approve is on', () => {
     expect(shouldAutoApprove('ExitPlanMode', { plan: '# Plan' }, true)).toBe(false)
   })
+
+  test('allows shell commands without asking when only allow shell is on', () => {
+    expect(shouldAutoApprove('Bash', bash, false, true)).toBe(true)
+  })
+
+  test('keeps asking for other tools when only allow shell is on', () => {
+    expect(shouldAutoApprove('Write', { file_path: 'a.ts' }, false, true)).toBe(false)
+    expect(shouldAutoApprove('Edit', { file_path: 'a.ts' }, false, true)).toBe(false)
+    expect(shouldAutoApprove('mcp__github__create_issue', {}, false, true)).toBe(false)
+  })
+
+  test('allow shell still keeps asking the user a question', () => {
+    const asked = { questions: [{ question: 'Which branch?', options: [] }] }
+    expect(shouldAutoApprove('Bash', asked, false, true)).toBe(false)
+  })
+
+  test('auto approve and allow shell together allow everything but questions and plans', () => {
+    expect(shouldAutoApprove('Write', { file_path: 'a.ts' }, true, true)).toBe(true)
+    expect(shouldAutoApprove('ExitPlanMode', { plan: '# Plan' }, true, true)).toBe(false)
+  })
 })

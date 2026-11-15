@@ -19,6 +19,20 @@ const WORDS: Record<PermissionStatus, string> = {
 }
 
 /**
+ * The Roster-owned shell gate for the session's agent. It is not a macOS
+ * permission, so it is not in PERMISSION_KINDS and nothing is granted in
+ * System Settings: the row only reports the agent's setting and opens its
+ * editor.
+ */
+export interface ShellRow {
+  agentName: string
+  runner: string
+  allowShell: boolean
+  autoApprove: boolean
+  onEdit: () => void
+}
+
+/**
  * Shown once, above the first session's composer, so the permissions a
  * session needs are asked for before it runs rather than discovered when it
  * fails. Each row says what the permission is for, and offers to allow it or
@@ -27,7 +41,7 @@ const WORDS: Record<PermissionStatus, string> = {
  * It goes away for good on Done, or as soon as Screen Recording is allowed,
  * since that is the one a session cannot do without.
  */
-export function PermissionsCard() {
+export function PermissionsCard({ shell }: { shell?: ShellRow }) {
   const setup = useRoster((s) => s.setup)
   const pending = setup !== null && !setup.permissionsReviewed
   const [report, setReport] = useState<PermissionReport | null>(null)
@@ -146,6 +160,8 @@ export function PermissionsCard() {
         })}
       </ul>
 
+      {shell ? <ShellCommandsRow shell={shell} /> : null}
+
       {report !== null && report.screen !== 'granted' ? (
         <p className="m-0 text-md text-muted">
           Restart Roster after granting Screen Recording before a session can use it.
@@ -159,5 +175,35 @@ export function PermissionsCard() {
         </button>
       </div>
     </section>
+  )
+}
+
+function ShellCommandsRow({ shell }: { shell: ShellRow }) {
+  const allowed = shell.autoApprove || shell.allowShell
+  const isClaude = shell.runner === 'claude'
+  return (
+    <div className="flex items-start justify-between gap-[12px] border-t border-line pt-[10px]">
+      <div className="flex min-w-0 flex-col gap-[2px]">
+        <span className="text-md font-semibold text-ink">Shell commands</span>
+        <span className="text-md leading-[1.5] text-muted">
+          {isClaude
+            ? `Lets ${shell.agentName} run shell commands without the approval banner. Other tools still ask.`
+            : 'Codex runs shell commands inside its own sandbox, so this setting does not apply.'}
+        </span>
+      </div>
+      {isClaude ? (
+        <div className="flex flex-none items-center gap-[8px]">
+          <span className="text-md text-dim-2">{allowed ? 'Allowed' : 'Asks first'}</span>
+          <button
+            type="button"
+            aria-label={`Change shell commands for ${shell.agentName}`}
+            onClick={shell.onEdit}
+            className="cursor-pointer rounded-chip border border-line-input bg-transparent px-[11px] py-[5px] font-ui text-md text-muted hover:border-line-hover"
+          >
+            Change
+          </button>
+        </div>
+      ) : null}
+    </div>
   )
 }

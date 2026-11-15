@@ -67,6 +67,8 @@ export interface Draft {
   defaultProjectId: string | null
   /** Run tools without the approval banner. */
   autoApprove: boolean
+  /** Run shell commands without the approval banner. */
+  allowShell: boolean
 }
 
 export interface RosterState {
@@ -496,6 +498,7 @@ export const useRoster = create<RosterState>((set, get) => ({
         cwdLabel: agent.cwdLabel,
         defaultProjectId: agent.defaultProjectId ?? null,
         autoApprove: agent.autoApprove === true,
+        allowShell: agent.allowShell === true,
       },
     })
   },
