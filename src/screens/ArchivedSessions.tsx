@@ -20,11 +20,27 @@ export function ArchivedSessions() {
 
   useEffect(() => {
     let cancelled = false
-    void window.roster.sessions.listArchived().then((loaded) => {
-      if (!cancelled) setArchived(loaded)
+    const load = () =>
+      void window.roster.sessions.listArchived().then((loaded) => {
+        if (!cancelled) setArchived(loaded)
+      })
+    load()
+
+    // An agent can archive, or a person elsewhere can restore, while this
+    // view is open. Re-read rather than patch: the list is short, and the
+    // server's order is the one that counts.
+    const stop = window.roster.sessions.onEvent((event) => {
+      if (
+        event.type === 'session-archived' ||
+        event.type === 'session-restored' ||
+        event.type === 'session-deleted'
+      ) {
+        load()
+      }
     })
     return () => {
       cancelled = true
+      stop()
     }
   }, [])
 

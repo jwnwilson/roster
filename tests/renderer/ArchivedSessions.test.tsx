@@ -123,3 +123,28 @@ describe('the sidebar entry for archived sessions', () => {
     expect(useRoster.getState().screen).toBe('archived')
   })
 })
+
+describe('ArchivedSessions staying current', () => {
+  test('an agent archiving a session while this view is open adds it without a reload', async () => {
+    let emit: ((event: { type: string; sessionId: string; agentId: string }) => void) | undefined
+    const listArchived = vi
+      .fn()
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([archived({ id: 's7', title: 'Put away by an agent' })])
+    installRosterApi({
+      sessions: {
+        listArchived,
+        onEvent: vi.fn((handler) => {
+          emit = handler
+          return () => {}
+        }),
+      },
+    })
+    render(<ArchivedSessions />)
+    expect(await screen.findByText('Nothing is archived.')).toBeInTheDocument()
+
+    emit?.({ type: 'session-archived', sessionId: 's7', agentId: 'debugging' })
+
+    expect(await screen.findByRole('listitem', { name: /Put away by an agent/ })).toBeInTheDocument()
+  })
+})
