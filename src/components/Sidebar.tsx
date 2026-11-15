@@ -39,6 +39,9 @@ const NAV: NavItem[] = [
   { key: 'mcp', label: 'MCP servers' },
   { key: 'tasks', label: 'Tasks' },
   { key: 'spend', label: 'Spend', dot: 'var(--color-amber)' },
+  // Put-away sessions. Not a screen of the roster, but a place to look for one
+  // that was taken out of its agent's list.
+  { key: 'archived', label: 'Archived' },
 ]
 
 export function Sidebar() {

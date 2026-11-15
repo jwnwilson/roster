@@ -82,7 +82,8 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const editOpen = useRoster((s) => s.editOpen)
   const openPlanId = useRoster((s) => s.openPlanId)
   const status = useRoster((s) => agentStatus(s, agent))
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const streamingSessions = useRoster((s) => s.streaming)
+  const [sessionError, setSessionError] = useState<string | null>(null)
 
   // Sessions come from SQLite, not from the agent config, so they load per
   // agent rather than at startup.
@@ -157,24 +158,25 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   }
 
   /**
-   * Deletes a session, transcript and all.
+   * Puts a session away. No confirmation: nothing is lost, and it can be
+   * restored from the archived view.
    *
-   * The confirmation lives in the main process, as it does for a task or a
-   * skill, so a dismissal comes back as false rather than as a rejection and
-   * nothing here should move. Spend and the grid's preview lines both counted
-   * this session, so both are re-read once it has gone.
+   * Refused by the main process while a turn is running; the tab is disabled
+   * then, so that refusal only comes back if the turn started in the gap.
+   * Spend and the grid's preview lines both counted this session's history,
+   * so they are re-read once it has gone from the list.
    */
-  async function deleteSession(sessionId: string): Promise<void> {
-    setDeleteError(null)
+  async function archiveSession(sessionId: string): Promise<void> {
+    setSessionError(null)
 
     try {
-      const deleted = await window.roster.sessions.remove(sessionId)
-      if (!deleted) return
+      await window.roster.sessions.archive(sessionId)
 
       // The same event the broadcast will carry, applied now so the tab strip
-      // stops showing a session that is gone. Applying it twice is safe.
+      // stops showing a session that is no longer listed. Applying it twice
+      // is safe.
       useRoster.setState((state) =>
-        reduceSessionEvent(state, { type: 'session-deleted', sessionId, agentId: agent.id }),
+        reduceSessionEvent(state, { type: 'session-archived', sessionId, agentId: agent.id }),
       )
 
       const [spend, transcripts] = await Promise.all([
@@ -184,7 +186,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
       useRoster.getState().setSpend(spend)
       useRoster.getState().setTranscripts(transcripts)
     } catch (cause) {
-      setDeleteError(messageFor(cause))
+      setSessionError(messageFor(cause))
     }
   }
 
@@ -224,15 +226,16 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
         activeId={activeId ?? null}
         onSelect={(id) => selectSession(agent.id, id)}
         onNew={() => void newSession()}
-        onDelete={(id) => void deleteSession(id)}
+        onArchive={(id) => void archiveSession(id)}
+        streaming={streamingSessions}
       />
 
-      {deleteError === null ? null : (
+      {sessionError === null ? null : (
         <p
           role="alert"
           className="m-0 flex-none border-b border-line bg-sunken px-[18px] py-[6px] text-md text-error"
         >
-          {deleteError}
+          {sessionError}
         </p>
       )}
 
@@ -293,10 +296,12 @@ interface SessionTabsProps {
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
-  onDelete: (id: string) => void
+  onArchive: (id: string) => void
+  /** Which sessions have a turn in flight, which cannot be archived yet. */
+  streaming: Record<string, boolean>
 }
 
-function SessionTabs({ sessions, activeId, onSelect, onNew, onDelete }: SessionTabsProps) {
+function SessionTabs({ sessions, activeId, onSelect, onNew, onArchive, streaming }: SessionTabsProps) {
   return (
     <div className="flex flex-none items-stretch gap-[4px] overflow-x-auto border-b border-line bg-sunken px-[12px] py-[6px]">
       {sessions.map((session) => (
@@ -305,7 +310,8 @@ function SessionTabs({ sessions, activeId, onSelect, onNew, onDelete }: SessionT
           session={session}
           active={session.id === activeId}
           onSelect={() => onSelect(session.id)}
-          onDelete={() => onDelete(session.id)}
+          onArchive={() => onArchive(session.id)}
+          running={streaming[session.id] === true}
         />
       ))}
 
@@ -325,19 +331,21 @@ interface SessionTabProps {
   session: Session
   active: boolean
   onSelect: () => void
-  onDelete: () => void
+  onArchive: () => void
+  running: boolean
 }
 
 /**
- * One tab, and the only place a session can be destroyed from.
+ * One tab. Its archive control is a sibling of the tab rather than a child of
+ * it — a button inside a button is not valid, and a click on it must not also
+ * select the tab it sits in. It stays out of the way until the tab is hovered
+ * or something in it has focus, so the strip does not read as a row of close
+ * buttons.
  *
- * The delete control is a sibling of the tab rather than a child of it —
- * a button inside a button is not valid, and a click on it must not also
- * select the tab it sits in. It stays out of the way until the tab is
- * hovered or something in it has focus, so the strip does not read as a row
- * of close buttons.
+ * Archiving is not a way to destroy anything, so the control is an archive
+ * and not a delete; permanent deletion is only in the archived view.
  */
-function SessionTab({ session, active, onSelect, onDelete }: SessionTabProps) {
+function SessionTab({ session, active, onSelect, onArchive, running }: SessionTabProps) {
   const needsAttention = sessionNeedsAttention(session.status)
 
   return (
@@ -376,10 +384,11 @@ function SessionTab({ session, active, onSelect, onDelete }: SessionTabProps) {
 
       <button
         type="button"
-        aria-label={`Delete session ${sessionLabel(session)}`}
-        title="Delete session"
-        onClick={onDelete}
-        className="cursor-pointer rounded-full border-0 bg-transparent px-[5px] py-0 font-ui text-md leading-none text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-error"
+        aria-label={`Archive session ${sessionLabel(session)}`}
+        title={running ? 'Stop it first' : 'Archive session'}
+        disabled={running}
+        onClick={onArchive}
+        className="cursor-pointer rounded-full border-0 bg-transparent px-[5px] py-0 font-ui text-md leading-none text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-ink-3 disabled:cursor-not-allowed disabled:opacity-40"
         data-hoverable
       >
         ×
