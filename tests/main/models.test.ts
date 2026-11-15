@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { contextFraction, contextLabel, contextWindowFor } from '@shared/models'
+import { contextFraction, contextLabel, contextWindowFor, splitModel } from '@shared/models'
 
 describe('contextWindowFor', () => {
   test('knows the models Roster ships with', () => {
@@ -63,5 +63,25 @@ describe('contextLabel', () => {
 
   test('a full window reads as 100%', () => {
     expect(contextLabel(1)).toBe('100%')
+  })
+})
+
+describe('splitModel', () => {
+  test('separates a Pi provider from the model id', () => {
+    expect(splitModel('anthropic/claude-sonnet-4-5')).toEqual({
+      provider: 'anthropic',
+      model: 'claude-sonnet-4-5',
+    })
+  })
+
+  test('keeps everything after the first slash as the model', () => {
+    expect(splitModel('openrouter/anthropic/claude-x')).toEqual({
+      provider: 'openrouter',
+      model: 'anthropic/claude-x',
+    })
+  })
+
+  test('reports no provider for a bare id', () => {
+    expect(splitModel('claude-opus-5')).toEqual({ provider: null, model: 'claude-opus-5' })
   })
 })
