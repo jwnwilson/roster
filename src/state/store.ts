@@ -892,6 +892,15 @@ export async function dismissSetup(): Promise<string | null> {
   }
 }
 
+/**
+ * Re-reads the setup state and runner status after a sign-in, so the welcome
+ * card and the agents' "not signed in" states change without a restart.
+ */
+export async function refreshSignInState(): Promise<void> {
+  const [setup, runners] = await Promise.all([window.roster.setup.state(), window.roster.runners.list()])
+  useRoster.setState({ setup, runners })
+}
+
 export function selectCurrentAgent(state: RosterState): Agent | null {
   return state.agents.find((a) => a.id === state.agentId) ?? null
 }
