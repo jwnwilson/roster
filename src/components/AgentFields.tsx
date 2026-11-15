@@ -78,9 +78,11 @@ export function ProviderPicker({ runners, value, onChange }: ProviderPickerProps
               >
                 {HARNESS_NAMES[runner.id] ?? runner.id}
               </span>
-              <span className="truncate font-mono text-sm text-dim">
-                {describeAuth(runner)}
-              </span>
+              {describeAuth(runner) === null ? null : (
+                <span className="truncate font-mono text-sm text-dim">
+                  {describeAuth(runner)}
+                </span>
+              )}
             </button>
           )
         })}
@@ -89,10 +91,13 @@ export function ProviderPicker({ runners, value, onChange }: ProviderPickerProps
   )
 }
 
-/** With CLI runners there is no key to mask, so this reports usability. */
-function describeAuth(runner: RunnerStatus): string {
+/**
+ * What a harness card says under its name. A usable harness says nothing:
+ * "subscription" is how it is paid for, not whether it works.
+ */
+function describeAuth(runner: RunnerStatus): string | null {
   if (!runner.installed) return 'not installed'
-  if (runner.auth === 'subscription') return 'subscription'
+  if (runner.auth === 'subscription') return null
   if (runner.auth === 'api-key') return 'api key'
   return 'not signed in'
 }

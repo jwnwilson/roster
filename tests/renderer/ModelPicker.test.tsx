@@ -219,6 +219,11 @@ describe('ProviderPicker — the harness cards', () => {
     expect(screen.getByRole('button', { name: /Codex/ })).toHaveTextContent('not installed')
   })
 
+  test('a ready harness shows no caption, rather than a plan name', () => {
+    render(<ProviderPicker runners={RUNNERS} value="pi" onChange={() => {}} />)
+    expect(screen.getByRole('button', { name: /Claude Code/ })).not.toHaveTextContent('subscription')
+  })
+
   test('picking a harness reports its id', () => {
     const onChange = vi.fn()
     render(<ProviderPicker runners={RUNNERS} value="pi" onChange={onChange} />)
