@@ -1,9 +1,10 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { AgentsGrid } from '@/screens/AgentsGrid'
 import { useRoster } from '@/state/store'
 import { anAgent, aProject, aSession } from './factories'
+import { installRosterApi } from './rosterApi'
 
 const INITIAL = useRoster.getState()
 
@@ -604,5 +605,66 @@ describe('AgentsGrid — status bar', () => {
     render(<AgentsGrid />)
 
     expect(screen.getByText('roster 0 tok · $0.00')).toBeInTheDocument()
+  })
+})
+
+describe('AgentsGrid — transcript follows the project filter', () => {
+  beforeEach(() => {
+    useRoster.setState({
+      projects: [
+        aProject({ id: 'p1', name: 'API reliability' }),
+        aProject({ id: 'p2', name: 'Q3 planning' }),
+      ],
+      agents: [anAgent({ id: 'debugging', name: 'Debugging Agent' })],
+      sessions: {
+        debugging: [
+          aSession({ id: 'd1', agentId: 'debugging', title: 'Pool leak', projectId: 'p1' }),
+          aSession({ id: 'd2', agentId: 'debugging', title: 'Roadmap split', projectId: 'p2' }),
+        ],
+      },
+    })
+  })
+
+  test("the card body shows the picked project's session, not the agent's latest", async () => {
+    const user = userEvent.setup()
+    const recentByAgent = vi.fn(async (projectId?: string) => ({
+      debugging: [
+        {
+          who: 'Debugging Agent',
+          role: 'agent' as const,
+          text: projectId === 'p1' ? 'pool line' : 'roadmap line',
+        },
+      ],
+    }))
+    installRosterApi({ sessions: { recentByAgent } })
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+
+    expect(await screen.findByText('pool line')).toBeInTheDocument()
+    expect(screen.queryByText('roadmap line')).not.toBeInTheDocument()
+    expect(recentByAgent).toHaveBeenLastCalledWith('p1')
+  })
+
+  test('going back to all projects reads the unscoped transcript again', async () => {
+    const user = userEvent.setup()
+    const recentByAgent = vi.fn(async (projectId?: string) => ({
+      debugging: [
+        {
+          who: 'Debugging Agent',
+          role: 'agent' as const,
+          text: projectId === 'p1' ? 'pool line' : 'all line',
+        },
+      ],
+    }))
+    installRosterApi({ sessions: { recentByAgent } })
+    render(<AgentsGrid />)
+
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
+    expect(await screen.findByText('pool line')).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Filter by project'), 'all')
+
+    expect(await screen.findByText('all line')).toBeInTheDocument()
+    expect(recentByAgent).toHaveBeenLastCalledWith(undefined)
   })
 })

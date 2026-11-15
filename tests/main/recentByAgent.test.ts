@@ -235,3 +235,36 @@ describe('listAll', () => {
     })
   })
 })
+
+describe('recentByAgent — scoped to a project', () => {
+  test('a project scope reads only that project\'s newest session', () => {
+    const pool = store.create({ agentId: 'debug', title: 'pool', origin: 'you', projectId: 'p1' })
+    const roadmap = store.create({ agentId: 'debug', title: 'road', origin: 'you', projectId: 'p2' })
+    appendAt(pool.id, 1_000, text(pool.id, 'pool-line'))
+    appendAt(roadmap.id, 2_000, text(roadmap.id, 'roadmap-line'))
+
+    // Unscoped, the agent's newest session wins even though it is in p2.
+    expect(store.recentByAgent()['debug']?.map((l) => l.text)).toEqual(['roadmap-line'])
+    expect(store.recentByAgent(4, 'p1')['debug']?.map((l) => l.text)).toEqual(['pool-line'])
+    expect(store.recentByAgent(4, 'p2')['debug']?.map((l) => l.text)).toEqual(['roadmap-line'])
+  })
+
+  test('an agent with no messages under the scoped project has no lines', () => {
+    const pool = store.create({ agentId: 'debug', title: 'pool', origin: 'you', projectId: 'p1' })
+    appendAt(pool.id, 1_000, text(pool.id, 'pool-line'))
+
+    expect(store.recentByAgent(4, 'p3')['debug']).toBeUndefined()
+  })
+
+  test('never shows sessions filed under an archived project', () => {
+    db.prepare(
+      "INSERT INTO projects (id, name, color, created_at, archived_at) VALUES ('old', 'Old', '#000', 0, 500)",
+    ).run()
+    const archived = store.create({ agentId: 'debug', title: 'old', origin: 'you', projectId: 'old' })
+    const live = store.create({ agentId: 'debug', title: 'live', origin: 'you', projectId: 'p1' })
+    appendAt(archived.id, 3_000, text(archived.id, 'archived-line'))
+    appendAt(live.id, 1_000, text(live.id, 'live-line'))
+
+    expect(store.recentByAgent()['debug']?.map((l) => l.text)).toEqual(['live-line'])
+  })
+})

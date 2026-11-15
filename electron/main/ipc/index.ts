@@ -446,7 +446,9 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.sessionsListByAgent, (_e, agentId: string) =>
     requireSessions().listByAgent(agentId),
   )
-  ipcMain.handle(CHANNELS.sessionsRecentByAgent, () => requireSessions().recentByAgent())
+  ipcMain.handle(CHANNELS.sessionsRecentByAgent, (_e, projectId?: string) =>
+    requireSessions().recentByAgent(undefined, projectId),
+  )
   ipcMain.handle(CHANNELS.sessionsListAll, () => requireSessions().listAll())
   ipcMain.handle(
     CHANNELS.sessionsCreate,

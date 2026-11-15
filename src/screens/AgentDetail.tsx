@@ -20,6 +20,7 @@ import {
   agentStatus,
   NO_SESSIONS,
   reduceSessionEvent,
+  reloadTranscripts,
   projectOptionLabel,
   projectPickerProjects,
   selectCurrentAgent,
@@ -176,12 +177,11 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
         reduceSessionEvent(state, { type: 'session-deleted', sessionId, agentId: agent.id }),
       )
 
-      const [spend, transcripts] = await Promise.all([
+      const [spend] = await Promise.all([
         window.roster.sessions.spendSummary(),
-        window.roster.sessions.recentByAgent(),
+        reloadTranscripts(),
       ])
       useRoster.getState().setSpend(spend)
-      useRoster.getState().setTranscripts(transcripts)
     } catch (cause) {
       setDeleteError(messageFor(cause))
     }
@@ -835,6 +835,8 @@ function SessionProject({ sessionId }: { sessionId: string }) {
     const updated = await window.roster.sessions.setProject(sessionId, projectId)
 
     replaceSession(updated)
+    // A session filed out of the picked project must leave the card's body too.
+    void reloadTranscripts()
   }
 
   return (

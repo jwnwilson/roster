@@ -323,19 +323,31 @@ export class SessionStore {
    * message — not the one most recently created, and not the one the user
    * last clicked.
    *
+   * The card shows only what the grid lets through: sessions under an
+   * archived project are never candidates, and `projectId` narrows the
+   * choice to one project so a card under a project filter does not show
+   * another project's work. Left out, the agent's newest visible session wins.
+   *
    * One query for the whole roster: a card per agent would otherwise mean a
    * query per agent on every grid render.
    */
-  recentByAgent(limitPerAgent = 4): Record<string, TranscriptLine[]> {
+  recentByAgent(limitPerAgent = 4, projectId?: string): Record<string, TranscriptLine[]> {
     const rows = this.db
-      .prepare<[], RecentRow>(
-        `WITH latest AS (
-           SELECT s.agent_id, m.session_id,
+      .prepare<[string | null, string | null], RecentRow>(
+        `WITH visible AS (
+           SELECT s.id, s.agent_id
+             FROM sessions s
+             LEFT JOIN projects p ON p.id = s.project_id
+            WHERE p.archived_at IS NULL
+              AND (? IS NULL OR s.project_id = ?)
+         ),
+         latest AS (
+           SELECT v.agent_id, m.session_id,
                   ROW_NUMBER() OVER (
-                    PARTITION BY s.agent_id ORDER BY m.created_at DESC, m.rowid DESC
+                    PARTITION BY v.agent_id ORDER BY m.created_at DESC, m.rowid DESC
                   ) AS recency
              FROM messages m
-             JOIN sessions s ON s.id = m.session_id
+             JOIN visible v ON v.id = m.session_id
          ),
          chosen AS (
            SELECT agent_id, session_id FROM latest WHERE recency = 1
@@ -345,7 +357,7 @@ export class SessionStore {
            JOIN messages m ON m.session_id = c.session_id
           ORDER BY c.agent_id, m.created_at DESC, m.rowid DESC`,
       )
-      .all()
+      .all(projectId ?? null, projectId ?? null)
 
     const byAgent: Record<string, TranscriptLine[]> = {}
 

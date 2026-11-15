@@ -45,6 +45,25 @@ export const ALL_PROJECTS = 'all'
 /** The backlog priority filter's "no filter" value. */
 export const ALL_PRIORITIES = 'all'
 
+let transcriptReads = 0
+
+/**
+ * Re-reads the grid cards' transcripts for the project filter as it stands.
+ *
+ * Every refresh goes through here, so the scope cannot be dropped by one call
+ * site: a card under a project shows that project's work, and an unscoped
+ * re-read would quietly put another project's lines back. A read that
+ * finishes after a newer one has started is discarded rather than applied.
+ */
+export async function reloadTranscripts(): Promise<void> {
+  const read = ++transcriptReads
+  const { projectFilter } = useRoster.getState()
+  const transcripts = await window.roster.sessions.recentByAgent(
+    projectFilter === ALL_PROJECTS ? undefined : projectFilter,
+  )
+  if (read === transcriptReads) useRoster.getState().setTranscripts(transcripts)
+}
+
 /** The Workflow view's task filter's "no filter" value. */
 export const ALL_TASKS = 'all'
 
@@ -457,7 +476,10 @@ export const useRoster = create<RosterState>((set, get) => ({
     }),
   setTaskQuery: (taskQuery) => set({ taskQuery }),
   setTaskTab: (taskTab) => set({ taskTab }),
-  setProjectFilter: (projectFilter) => set({ projectFilter }),
+  setProjectFilter: (projectFilter) => {
+    set({ projectFilter })
+    void reloadTranscripts()
+  },
 
   // Every task opens on Comments: History is a record you go looking for,
   // not the first thing you want to read.

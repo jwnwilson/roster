@@ -8,7 +8,7 @@ import { NewAgent } from './screens/NewAgent'
 import { Skills } from './screens/Skills'
 import { Spend } from './screens/Spend'
 import { Tasks } from './screens/Tasks'
-import { useRoster } from './state/store'
+import { reloadTranscripts, useRoster } from './state/store'
 
 export function App() {
   const hydrate = useRoster((s) => s.hydrate)
@@ -82,7 +82,7 @@ export function App() {
       }
       // A finished turn changes what the grid cards should show.
       if (event.type === 'streaming' && !event.active) {
-        void window.roster.sessions.recentByAgent().then(setTranscripts)
+        void reloadTranscripts()
         void window.roster.sessions.listAll().then(setAllSessions)
       }
     })
@@ -90,6 +90,9 @@ export function App() {
     // Board changes, including ones an agent made partway through a turn.
     const stopTasks = window.roster.tasks.onEvent((event) => {
       applyTaskEvent(event)
+      // An archived project takes its sessions off the cards, and the reducer
+      // may have just let go of a project filter: either way, re-read.
+      if (event.type === 'projects') void reloadTranscripts()
       // A mention just opened a session, and the roster's own list is only
       // otherwise refreshed when a turn finishes — so without this the new
       // session is missing from the sidebar for as long as the agent takes

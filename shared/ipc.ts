@@ -62,8 +62,12 @@ export interface RosterApi {
     listByAgent(agentId: string): Promise<Session[]>
     /** Every session grouped by agent, for the grid's chip rows. */
     listAll(): Promise<Record<string, Session[]>>
-    /** Last few lines of each agent's most recent session, for the grid cards. */
-    recentByAgent(): Promise<Record<string, TranscriptLine[]>>
+    /**
+     * Last few lines of each agent's most recent session, for the grid cards.
+     * `projectId` narrows the choice to that project; omitted, every visible
+     * project is in play. Sessions under an archived project never qualify.
+     */
+    recentByAgent(projectId?: string): Promise<Record<string, TranscriptLine[]>>
     /**
      * Opens a session. `projectId` files it explicitly — omitted, the agent's
      * own default project decides, and null means none either way.

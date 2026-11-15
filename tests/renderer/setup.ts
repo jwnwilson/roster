@@ -1,10 +1,20 @@
 import '@testing-library/jest-dom/vitest'
 import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterEach, beforeEach } from 'vitest'
+import { installRosterApi } from './rosterApi'
 
 // Vitest does not enable RTL's automatic cleanup unless `globals` is on, and
 // without it each render leaks into the next test's DOM.
 afterEach(cleanup)
+
+// Every renderer test gets a bridge to call. Changing a filter re-reads the
+// grid's transcripts through it, and a test that did not stub one would
+// otherwise fail on the read rather than on what it is checking. A test that
+// needs particular answers installs its own in its own beforeEach, which runs
+// after this one.
+beforeEach(() => {
+  installRosterApi()
+})
 
 // jsdom implements neither of these, and assistant-ui's viewport uses both.
 // A no-op is enough: layout is not what these tests assert on.
