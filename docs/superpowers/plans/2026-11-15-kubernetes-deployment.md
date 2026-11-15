@@ -20,9 +20,11 @@ questions are listed at the end.
 
 | Question | Decision | Consequence for this plan |
 |---|---|---|
-| Exposure | **Public internet** | Real TLS via cert-manager + Let's Encrypt, public DNS, rate limiting, and the in-app identity check (Phase 4.3) is mandatory, not optional |
+| Exposure | **Public internet, cluster directly reachable** | Ports 80/443 forwarded to k3s's Traefik; real TLS via cert-manager + Let's Encrypt, rate limiting, and the in-app identity check (Phase 4.3) is mandatory, not optional. No tunnel needed |
+| Domain | **`roster.jwnwilson.co.uk`** | App, Auth0 callback and cookie scope all live under this name; previews optionally under `*.preview.roster.jwnwilson.co.uk` |
 | Identity | **Google sign-in through the existing Auth0 tenant** | A new Auth0 application for Roster with the Google social connection; oauth2-proxy uses Auth0 as its OIDC issuer; Roster verifies Auth0-issued JWTs |
-| Cluster | **Raspberry Pi nodes with node-local persistent storage** | arm64-only image built on native arm64 runners; pod pinned to the node holding its volume; tight resource budgets |
+| Cluster | **k3s on 64-bit Raspberry Pi nodes (8 GB and 16 GB), node-local storage** | arm64-only image built on native arm64 runners; Roster pinned to a 16 GB node, backing services allowed on 8 GB nodes; Traefik (bundled with k3s) is the ingress |
+| Storage | **SD card** | The weakest part of the deployment. Plan is written to work on SD, with write-reduction and continuous off-node backup; a USB SSD on the Roster node is strongly recommended (see §3b) |
 | Users | **Single user** | One allowlisted Google account; no multi-user data model work |
 | Backing services | **Probably needed** | Project services move earlier (Phase 5a now includes them) and are budgeted against Pi resources |
 
@@ -125,11 +127,11 @@ PR: `feat: run roster as a headless web server`
      which is slow and flaky for native module compilation.
 2. `deploy/helm/roster`:
    - StatefulSet, `replicas: 1`, PVC mounted at `/data`, `ROSTER_HOME=/data/roster`;
-   - `nodeSelector: kubernetes.io/arch: arm64`; the PVC is node-local, so the pod is
-     bound to that node by the volume's node affinity — the chart documents this and
-     does not try to reschedule elsewhere;
-   - the volume should be SSD/NVMe-backed, not an SD card: SQLite, git and
-     `node_modules` churn will wear SD cards out quickly;
+   - `nodeSelector: kubernetes.io/arch: arm64` plus a `roster.dev/role=roster` node
+     label applied to one 16 GB Pi; the PVC (k3s `local-path`) is node-local, so the
+     pod stays bound to that node — the chart documents this and does not try to
+     reschedule elsewhere;
+   - storage follows §3b (SD-card mitigations, SSD recommended);
    - Pi-sized resource defaults (see §3a) rather than desktop-sized ones;
    - Secrets for agent credentials, a GitHub token (fine-grained PAT or GitHub App) for
      push/PR, and `ROSTER_SECRET_KEY` — compatible with External Secrets / Sealed Secrets;
@@ -146,17 +148,21 @@ PR: `feat: container image and helm chart`
 
 Roster is publicly reachable, so every layer below is required. Outermost first:
 
-1. **Reachability.** A public hostname (e.g. `roster.<domain>`) on the cluster's ingress
-   controller (Traefik if the cluster is k3s, otherwise ingress-nginx) with a
-   cert-manager Let's Encrypt certificate, HSTS, and per-IP rate limiting. If the Pis sit
-   behind home NAT, a Cloudflare Tunnel avoids opening router ports and adds a WAF in
-   front at no cost; the rest of this phase is unchanged either way.
+1. **Reachability.** `roster.jwnwilson.co.uk` resolves to the cluster's public IP
+   (dynamic DNS updater if the ISP address changes), with 80/443 forwarded to k3s's
+   Traefik. cert-manager issues the certificate from Let's Encrypt — HTTP-01 for the
+   main hostname; DNS-01 only if wildcard preview hostnames are wanted (wildcards
+   cannot use HTTP-01). Traefik middlewares: HTTPS redirect, HSTS, per-IP
+   `rateLimit`, and `forwardAuth` to oauth2-proxy on every route. Nothing else on the
+   cluster is exposed by this chart.
 2. **Identity — Auth0 with Google.**
    - Create a **separate** Auth0 application (*Regular Web Application*) for Roster in
      the existing tenant, so its callback URLs, session lifetime and consent never
      interfere with the other app. Enable only the Google social connection on it.
-   - Create an Auth0 API with audience `https://roster.<domain>/api` so issued access
-     tokens are scoped to Roster.
+   - Allowed callback URL `https://roster.jwnwilson.co.uk/oauth2/callback`; allowed
+     logout URL `https://roster.jwnwilson.co.uk/`.
+   - Create an Auth0 API with audience `https://roster.jwnwilson.co.uk/api` so issued
+     access tokens are scoped to Roster.
    - Add an Auth0 post-login Action that denies any login whose verified email is not
      the owner's — the allowlist is enforced at the IdP, before a token exists.
    - Require MFA in Auth0 for this application (or rely on Google 2-step, enforced by
@@ -164,8 +170,11 @@ Roster is publicly reachable, so every layer below is required. Outermost first:
    - oauth2-proxy runs with `--provider=oidc`, `--oidc-issuer-url=https://<tenant>.auth0.com/`,
      `--email-domain=*` plus `--authenticated-emails-file` containing the one address
      (a second allowlist, independent of Auth0), short cookie lifetime with refresh,
-     `--cookie-secure`, `--cookie-samesite=strict`. The ingress uses it as
-     forwardAuth / `auth-url` for every route.
+     `--cookie-secure`, `--cookie-samesite=lax` (strict breaks the OAuth redirect
+     back from Auth0; CSRF on the RPC socket is covered by the Origin check),
+     `--cookie-domain=.roster.jwnwilson.co.uk` so preview subdomains share the session,
+     `--whitelist-domain=.roster.jwnwilson.co.uk`. Traefik's `forwardAuth` middleware
+     points at it for every route.
 3. **Defence in depth inside Roster.** `roster-server` verifies the forwarded Auth0
    access token against the tenant's JWKS — issuer, the Roster audience, expiry, and
    the allowlisted `sub` — on every HTTP request and WebSocket upgrade, and re-checks
@@ -208,8 +217,9 @@ cert-manager issuer and ingress; an Auth0 setup checklist in `deploy/README.md`)
 **For the user**
 1. **Preview proxy.** Roster detects ports a session's processes listen on and offers
    *Open preview*. Path routing (`/preview/<session>/<port>/`) works out of the box;
-   subdomain routing (`<session>-<port>.preview.<domain>`, wildcard DNS + cert) is
-   offered for apps that assume they live at `/`. Same authentication as everything else.
+   subdomain routing (`<session>-<port>.preview.roster.jwnwilson.co.uk`, wildcard DNS +
+   DNS-01 cert) is offered for apps that assume they live at `/`. Same authentication
+   as everything else.
 2. **Live browser panel.** A *Browser* tab in the session streams the agent's headless
    Chrome via CDP `Page.startScreencast` over the authenticated WebSocket, and forwards
    mouse and keyboard input — watch the agent, or take over. No X server or VNC.
@@ -224,20 +234,40 @@ signing in through the same IdP with a loopback or device-code flow.
 
 ### 3a. Raspberry Pi resource budget
 
-A Pi 5 has 4–8 GB RAM and four cores, shared with everything else on the node. Defaults
-the chart ships with, all overridable:
+Roster runs on a 16 GB Pi; backing services may schedule onto the 8 GB nodes. Four
+cores per node, shared with everything else running there. Defaults the chart ships
+with, all overridable:
 
-| Component | Request | Limit | Notes |
-|---|---|---|---|
-| roster-server + agent processes | 512 Mi / 0.5 CPU | 2 Gi / 2 CPU | agent CLIs are mostly network-bound |
-| headless Chromium sidecar | 256 Mi / 0.25 CPU | 1 Gi / 1 CPU | started lazily, one shared browser, a context per session |
-| project dev servers (in pod) | — | counted in roster-server's limit | `npm install`/builds are the real spike |
-| each backing service | 128 Mi | 512 Mi | scaled to zero when idle |
+| Component | Node | Request | Limit | Notes |
+|---|---|---|---|---|
+| roster-server + agent processes + dev servers | 16 GB | 1 Gi / 1 CPU | 6 Gi / 3 CPU | `npm install`/builds are the real spike |
+| headless Chromium sidecar | 16 GB | 256 Mi / 0.25 CPU | 2 Gi / 1 CPU | started lazily, one shared browser, a context per session |
+| in-memory scratch (`emptyDir: Memory`) | 16 GB | — | 2 Gi | `/tmp`, npm/pip caches — keeps churn off the SD card (§3b) |
+| each backing service | any | 128 Mi | 512 Mi | scaled to zero when idle |
 
-Roster also caps concurrent agent turns (default 2) on this deployment, so a burst of
+Roster also caps concurrent agent turns (default 3) on this deployment, so a burst of
 handoffs cannot push the node into OOM. Voice transcription (local model) is disabled by
 default on the server: it is the heaviest single feature and gains nothing over the
 browser's own input.
+
+### 3b. Storage on SD cards
+
+SD cards wear out under small random writes and corrupt on power loss — exactly the
+pattern of SQLite, git and `node_modules`. The plan works on SD, but:
+
+- **Strongly recommended:** a USB 3 SSD on the Roster node, exposed as the `local-path`
+  directory. It removes most of the risks in this section for very little cost.
+- **If staying on SD:**
+  - use a high-endurance card; mount with `noatime`;
+  - SQLite in WAL mode with `synchronous=NORMAL`;
+  - caches and `/tmp` on a memory-backed `emptyDir` (§3a), not the card;
+  - workspaces are treated as disposable: agents push branches early and often, so a
+    lost card loses at most uncommitted work, and Roster can re-clone;
+  - **continuous off-node backup** of `/data/roster` with Litestream for the SQLite
+    database (to S3-compatible storage such as Cloudflare R2 or Backblaze B2) plus a
+    nightly restic snapshot of agent configs, skills and plans;
+  - a documented restore procedure onto another Pi, tested once as part of Phase 3.
+- Backing services' data (5a′) is development data and is not backed up by default.
 
 ## 4. Risks
 
@@ -246,20 +276,22 @@ browser's own input.
 | Linux paths untested | Container smoke test in Phase 2 CI: start server, open a session, run a pty |
 | Single replica → brief outage on redeploy | Acceptable for single-user; `Recreate` semantics, graceful shutdown cancels turns cleanly |
 | Node-local volume → node failure takes Roster down | Accepted for single-user; nightly Litestream/restic backup of `/data/roster` off the node so it can be restored onto another Pi |
-| SD card wear / corruption | Volume on SSD/NVMe; SQLite in WAL mode; backups above |
+| SD card wear / corruption | §3b: SSD recommended; otherwise write reduction, memory-backed caches, Litestream + restic off-node, tested restore |
+| Home IP changes | Dynamic DNS updater for `roster.jwnwilson.co.uk` |
 | Pi memory pressure (builds + Chromium + services) | §3a limits, concurrent-turn cap, lazy browser, idle services scaled to zero |
-| Public exposure of an RCE-capable API | Auth0 Action allowlist + oauth2-proxy allowlist + in-app JWT check; rate limiting; optional Cloudflare WAF |
+| Public exposure of an RCE-capable API | Auth0 Action allowlist + oauth2-proxy allowlist + in-app JWT check; Traefik rate limiting; only Roster's routes exposed |
 | Long-lived agent/GitHub tokens in the pod | k8s Secrets, rotation, scoped tokens; never mounted into 5b sandboxes |
 | Pty/RPC surface is RCE if exposed | Three independent layers in Phase 4; NetworkPolicy; server verifies identity itself |
 | `ipc/index.ts` is coverage-excluded today | Logic moves to the core, which is covered at the normal thresholds |
 
 ## 5. Open questions
 
-1. Are the Pis running a **64-bit** OS (`uname -m` → `aarch64`)? A 32-bit (`armv7l`)
-   OS is a blocker: the agent CLIs and Playwright's Chromium do not ship 32-bit ARM builds.
-2. Which distribution — k3s (Traefik ingress built in) or something else? Is
-   cert-manager installed?
-3. Pi model and RAM per node, and is the persistent storage SSD/NVMe or SD card?
-4. Is the cluster directly reachable from the internet, or behind home NAT (in which
-   case Cloudflare Tunnel is the recommended entry point)?
-5. Which domain should Roster and (optionally) the wildcard preview hostnames live on?
+1. Confirm the distribution is **k3s** (answered as "k3m"; the plan assumes k3s and its
+   bundled Traefik).
+2. Is cert-manager already installed? If not, the chart's README covers installing it.
+3. Who hosts DNS for `jwnwilson.co.uk`? Only needed for wildcard preview hostnames
+   (DNS-01 requires a provider API token); path-based previews need nothing.
+4. Is the public IP static, or is a dynamic DNS updater needed?
+5. SSD for the Roster node — adopt the recommendation, or stay on SD with §3b's
+   mitigations?
+6. Where should off-node backups go (R2, B2, S3, a NAS)?
