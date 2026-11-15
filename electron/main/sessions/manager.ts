@@ -1140,7 +1140,7 @@ export class SessionManager {
     // may reach is decided by the session rather than by an argument it could
     // pass. Reporting a pull request is opt-in too: without it a plan still
     // gets built, Roster simply never learns where the work landed.
-    const tasks = this.taskToolsFor(agent)
+    const tasks = this.taskToolsFor(agent, session)
     const plans = this.planToolsFor(agent, session, planMode)
     const memory = this.memoryToolsFor(agent, session)
 
@@ -1258,7 +1258,7 @@ export class SessionManager {
    * enabled the built-in "tasks" server — that is the control over which
    * agents may change the board.
    */
-  private taskToolsFor(agent: Agent): TaskTools | undefined {
+  private taskToolsFor(agent: Agent, session: Session): TaskTools | undefined {
     const board = this.board
     if (!board) return undefined
     if (!agent.mcpServers.includes(TASKS_SERVER)) return undefined
@@ -1273,6 +1273,7 @@ export class SessionManager {
       projectName: (projectId) => projects.findById(projectId)?.name ?? null,
       isArchivedProject: (projectId) => projects.findById(projectId)?.archivedAt != null,
       agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
+      sessionProjectId: session.projectId ?? null,
       create: (input) =>
         tasks.create({
           title: input.title,

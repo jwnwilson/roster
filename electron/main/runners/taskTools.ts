@@ -26,6 +26,13 @@ export interface TaskTools {
   isArchivedProject(projectId: string): boolean
   /** Resolves an agent id to its display name. */
   agentName(agentId: string): string | null
+  /**
+   * The project the calling session is filed under, or null for none.
+   *
+   * create_task files under this when the agent does not name a project, so
+   * work found mid-session lands on the same board the session is working on.
+   */
+  sessionProjectId: string | null
   create(input: {
     title: string
     description: string
@@ -193,7 +200,13 @@ export function buildTaskTools(tasks: TaskTools, currentAgentId: string, tool: T
       title: z.string().describe('One line, in the imperative.'),
       description: z.string().optional().describe('Markdown. What needs doing, and why.'),
       priority: z.enum(TASK_PRIORITIES).optional(),
-      project_id: z.string().nullable().optional(),
+      project_id: z
+        .string()
+        .nullable()
+        .optional()
+        .describe(
+          "Which project to file it under. Left out, it goes under the project this session is working on; null files it under none.",
+        ),
     },
     async (args: {
       title: string
@@ -201,7 +214,9 @@ export function buildTaskTools(tasks: TaskTools, currentAgentId: string, tool: T
       priority?: TaskPriority
       project_id?: string | null
     }) => {
-      const projectId = args.project_id ?? null
+      // Omitted means "where I am working", not "nowhere". An explicit null
+      // still means none.
+      const projectId = args.project_id !== undefined ? args.project_id : sessionProjectFor(tasks)
       if (projectId !== null && tasks.isArchivedProject(projectId)) {
         // Silently filing it there would create a task nobody ever sees.
         const name = tasks.projectName(projectId) ?? projectId
@@ -220,6 +235,21 @@ export function buildTaskTools(tasks: TaskTools, currentAgentId: string, tool: T
   )
 
   return [listTasks, readTask, updateTask, commentOnTask, createTask]
+}
+
+/**
+ * The session's own project, if it can still be filed under.
+ *
+ * A project can be deleted or archived while a session still names it. An
+ * agent that never asked for that project must not be refused, so these fall
+ * back to none instead of surfacing as an error.
+ */
+function sessionProjectFor(tasks: TaskTools): string | null {
+  const id = tasks.sessionProjectId
+  if (id === null) return null
+  if (tasks.projectName(id) === null) return null
+  if (tasks.isArchivedProject(id)) return null
+  return id
 }
 
 /** One board line: enough to choose from, short enough to list fifty of. */
