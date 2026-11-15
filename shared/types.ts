@@ -43,7 +43,21 @@ export interface ModelInfo {
   id: string
   /** Rendered right-aligned in the model list, e.g. "$3 / $15". */
   price: string
+  /**
+   * False when the model's provider is not signed in yet. Such a model can
+   * still be chosen: the agent asks to sign in the first time it runs.
+   * Absent means signed in.
+   */
+  signedIn?: boolean
+  /** The provider's display name, for grouping, e.g. "OpenAI". */
+  provider?: string
 }
+
+/**
+ * Providers whose models are listed even before they are signed in, so the
+ * common choices are one click away. Any other model is found by searching.
+ */
+export const FEATURED_PROVIDERS = ['anthropic', 'openai-codex', 'openai', 'xai', 'google'] as const
 
 /* -------------------------------------------------------------------------
  * Agents — configuration lives in <cwd>/agent.toml.

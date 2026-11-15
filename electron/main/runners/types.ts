@@ -118,6 +118,8 @@ export interface StartOptions {
    * serves every session, and a handoff runs two at once.
    */
   onApproval?: (event: Extract<RunnerEvent, { kind: 'approval' }>) => void
+  /** An approval raised this turn that no longer needs an answer. */
+  onApprovalWithdrawn?: (approvalId: string) => void
   /**
    * Research and propose, do not act. The runner refuses edits for the whole
    * turn and the agent presents a plan instead, which arrives as an approval.

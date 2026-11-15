@@ -26,15 +26,36 @@ function trim(value: number): string {
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)))
 }
 
-export function toModelInfo(models: readonly PiModelLike[]): ModelInfo[] {
-  return models.map((model) => ({ id: modelKey(model), price: priceLabel(model) }))
+/**
+ * Every model, signed-in providers first, each saying whether it can run now.
+ *
+ * `signedIn` names the providers with credentials; omitted, every model is
+ * treated as signed in. `providerName` gives the display name for grouping.
+ */
+export function toModelInfo(
+  models: readonly PiModelLike[],
+  signedIn?: ReadonlySet<string>,
+  providerName: (provider: string) => string | undefined = () => undefined,
+): ModelInfo[] {
+  const info = models.map((model): ModelInfo => {
+    const name = providerName(model.provider)
+    return {
+      id: modelKey(model),
+      price: priceLabel(model),
+      ...(signedIn === undefined || signedIn.has(model.provider) ? {} : { signedIn: false }),
+      ...(name !== undefined ? { provider: name } : {}),
+    }
+  })
+  // Stable: within each half the catalogue's own order is kept.
+  return [...info.filter((m) => m.signedIn !== false), ...info.filter((m) => m.signedIn === false)]
 }
 
 /**
  * The model an agent names, among the ones Pi can actually use.
  *
- * Accepts `provider/id` — what Roster writes — and also a bare id, which is
- * what agents written for the Claude or Codex runners carry. A blank name
+ * Accepts `provider/id` — what Roster writes, matched exactly — and also a
+ * bare id, which is what agents written for the Claude or Codex runners
+ * carry and which matches that id under any provider. A blank name
  * means "whatever Pi would pick": the preferred default when it is usable,
  * else the first usable model.
  */
@@ -55,9 +76,10 @@ export function resolveModel<M extends PiModelLike>(
   const exact = available.find((model) => modelKey(model) === wanted)
   if (exact) return exact
 
-  const slash = wanted.indexOf('/')
-  const bare = slash === -1 ? wanted : wanted.slice(slash + 1)
-  return available.find((model) => model.id === bare)
+  // A qualified name means that provider: matching the bare id elsewhere
+  // would quietly run `openai-codex/gpt-6-sol` on OpenAI's API instead.
+  if (wanted.includes('/')) return undefined
+  return available.find((model) => model.id === wanted)
 }
 
 /**

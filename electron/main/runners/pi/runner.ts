@@ -12,6 +12,13 @@ import type { BuiltinToolDefinition } from '../toolDefinitions'
 import type { ApprovalDecision, Runner, RunnerEvent, StartOptions } from '../types'
 import { resolveModel, toModelInfo } from './models'
 import { createPiNormalizer, resultText, totalsFrom } from './normalize'
+import {
+  askToSignIn,
+  loginInteraction,
+  signInMethods,
+  type ProviderAuthInfo,
+  type SignInApproval,
+} from './signIn'
 
 /**
  * Backs every agent with Pi, in process, through its SDK.
@@ -49,6 +56,14 @@ export function piSessionsDir(): string {
 
 export class PiRunner implements Runner {
   readonly id = 'pi'
+
+  /**
+   * Opens a sign-in page in the user's browser. Electron's shell by default;
+   * replaced in tests.
+   */
+  openUrl: (url: string) => void = (url) => {
+    void import('electron').then(({ shell }) => shell.openExternal(url)).catch(() => {})
+  }
 
   private pending = new Map<string, PendingApproval>()
   private sdk: Promise<PiSdk> | null = null
@@ -103,10 +118,17 @@ export class PiRunner implements Runner {
     }
   }
 
+  /**
+   * Every model Pi knows, signed-in providers first. A model whose provider
+   * is not signed in is still offered: choosing it is how you sign in, since
+   * the agent asks to the first time it runs on it.
+   */
   async models(): Promise<ModelInfo[]> {
     try {
       const runtime = await this.runtime()
-      return toModelInfo(await runtime.getAvailable())
+      const available = await runtime.getAvailable()
+      const signedIn = new Set(available.map((model) => model.provider))
+      return toModelInfo(runtime.getModels(), signedIn, (id) => runtime.getProvider(id)?.name)
     } catch {
       return []
     }
@@ -114,7 +136,7 @@ export class PiRunner implements Runner {
 
   /** The `provider/id` Pi would choose with nothing named, or '' when none is usable. */
   async defaultModel(): Promise<string> {
-    const models = await this.models()
+    const models = (await this.models()).filter((model) => model.signedIn !== false)
     const sdk = await this.load()
     const settings = sdk.SettingsManager.create(process.cwd(), sdk.getAgentDir())
     const preferred = `${settings.getDefaultProvider() ?? ''}/${settings.getDefaultModel() ?? ''}`
@@ -130,13 +152,35 @@ export class PiRunner implements Runner {
 
     const sdk = await this.load()
     const runtime = await sdk.ModelRuntime.create()
-    const available = await runtime.getAvailable()
+    let available = await runtime.getAvailable()
     const agentDir = sdk.getAgentDir()
     const settings = sdk.SettingsManager.create(options.cwd, agentDir)
-    const model = resolveModel(options.model, available, {
-      provider: settings.getDefaultProvider(),
-      model: settings.getDefaultModel(),
-    })
+    const preferred = { provider: settings.getDefaultProvider(), model: settings.getDefaultModel() }
+
+    // This turn's approvals, so ending it answers only its own — several
+    // sessions can be waiting on the one runner at once.
+    const owned = new Set<string>()
+
+    let model = resolveModel(options.model, available, preferred)
+
+    // Named, known to Pi, but its provider is not signed in: ask to sign in
+    // rather than fail. Only for a model the agent actually names.
+    const unsigned =
+      model === undefined && options.model.trim() !== ''
+        ? resolveModel(options.model, runtime.getModels())
+        : undefined
+    if (unsigned) {
+      const outcome = await this.signIn(runtime, unsigned.provider, owned, options)
+      if (outcome !== true) {
+        this.failApprovals(owned, 'The run ended')
+        // Stopped by the user is not a failure; say nothing.
+        if (!options.signal.aborted) yield { kind: 'error', message: outcome }
+        yield { kind: 'done', runnerSessionId: options.resumeFrom ?? '' }
+        return
+      }
+      available = await runtime.getAvailable()
+      model = resolveModel(options.model, available, preferred)
+    }
 
     if (!model) {
       yield {
@@ -149,10 +193,6 @@ export class PiRunner implements Runner {
       yield { kind: 'done', runnerSessionId: options.resumeFrom ?? '' }
       return
     }
-
-    // This turn's approvals, so ending it answers only its own — several
-    // sessions can be waiting on the one runner at once.
-    const owned = new Set<string>()
 
     const builtinTools = options.builtinTools ?? []
     const rosterToolNames = new Set(builtinTools.map((tool) => tool.name))
@@ -244,8 +284,14 @@ export class PiRunner implements Runner {
 
     const queue = new EventQueue<RunnerEvent>()
     const normalizer = createPiNormalizer(totalsFrom(session.messages))
+    // Set when the provider rejects the credential, so the turn can offer a
+    // fresh sign-in rather than fail the same way on every message after.
+    let rejected = false
     const unsubscribe = session.subscribe((event) => {
-      for (const out of normalizer.handle(event)) queue.push(out)
+      for (const out of normalizer.handle(event)) {
+        if (out.kind === 'error' && isAuthFailure(out.message)) rejected = true
+        queue.push(out)
+      }
     })
 
     const onAbort = (): void => {
@@ -263,12 +309,28 @@ export class PiRunner implements Runner {
       const sessionFile = session.sessionFile ?? ''
       if (sessionFile !== '') queue.push({ kind: 'session', runnerSessionId: sessionFile })
 
-      const turn = session
-        .prompt(prompt)
-        .catch((cause: unknown) => {
-          if (!options.signal.aborted) queue.push({ kind: 'error', message: describe(cause) })
-        })
-        .finally(() => queue.close())
+      const attempt = async (text: string): Promise<void> => {
+        rejected = false
+        try {
+          await session.prompt(text)
+        } catch (cause) {
+          if (options.signal.aborted) return
+          const message = describe(cause)
+          if (isAuthFailure(message)) rejected = true
+          queue.push({ kind: 'error', message })
+        }
+      }
+
+      const turn = (async () => {
+        await attempt(prompt)
+        // Once per turn: a provider that rejects a credential it was just
+        // given is not going to be fixed by asking a third time.
+        if (rejected && !options.signal.aborted) {
+          const outcome = await this.signIn(runtime, model.provider, owned, options, { again: true })
+          if (outcome === true) await attempt(prompt)
+          else if (!options.signal.aborted) queue.push({ kind: 'error', message: outcome })
+        }
+      })().finally(() => queue.close())
 
       for await (const event of queue) yield event
       await turn
@@ -295,22 +357,118 @@ export class PiRunner implements Runner {
     owned: Set<string>,
     raise: StartOptions['onApproval'],
   ): Promise<ApprovalDecision> {
+    const questions = parseQuestions(input['questions'])
+    return this.ask(
+      {
+        toolName,
+        command: describeCommand(toolName, input),
+        ...(questions !== null ? { questions } : {}),
+      },
+      owned,
+      raise,
+    )
+  }
+
+  /**
+   * Raises one approval and waits for the answer.
+   *
+   * `withdraw` is for an approval that stops mattering before anyone answers
+   * — a pasted-code prompt the browser callback beat: it is denied here and
+   * taken off the banner, so nobody is left being asked a dead question.
+   */
+  private ask(
+    approval: SignInApproval,
+    owned: Set<string>,
+    raise: StartOptions['onApproval'],
+    withdraw?: { signal?: AbortSignal; onWithdrawn?: (id: string) => void },
+  ): Promise<ApprovalDecision> {
     // Nobody to ask means nobody can say yes.
     if (!raise) return Promise.resolve({ approved: false, reason: 'No one is available to approve this' })
     const id = randomUUID()
     owned.add(id)
-    const questions = parseQuestions(input['questions'])
 
     return new Promise((resolve) => {
       this.pending.set(id, { resolve })
-      raise({
-        kind: 'approval',
-        id,
-        toolName,
-        command: describeCommand(toolName, input),
-        ...(questions !== null ? { questions } : {}),
-      })
+      raise({ kind: 'approval', id, ...approval })
+
+      const signal = withdraw?.signal
+      if (!signal) return
+      const onAbort = (): void => {
+        if (!this.pending.has(id)) return
+        this.respondToApproval(id, { approved: false, reason: 'No longer needed' })
+        owned.delete(id)
+        withdraw.onWithdrawn?.(id)
+      }
+      if (signal.aborted) onAbort()
+      else signal.addEventListener('abort', onAbort, { once: true })
     })
+  }
+
+  /**
+   * Signs a provider in from inside a turn, asking first.
+   *
+   * Resolves true once signed in, or to the reason it did not happen.
+   */
+  private async signIn(
+    runtime: Awaited<ReturnType<PiSdk['ModelRuntime']['create']>>,
+    providerId: string,
+    owned: Set<string>,
+    options: StartOptions,
+    retry: { again?: boolean } = {},
+  ): Promise<true | string> {
+    const provider = runtime.getProvider(providerId)
+    if (!provider) return `Pi does not know the provider "${providerId}"`
+
+    const info: ProviderAuthInfo = {
+      id: provider.id,
+      name: provider.name,
+      ...(provider.auth.oauth ? { oauth: provider.auth.oauth.name } : {}),
+      ...(provider.auth.apiKey?.login ? { apiKey: provider.auth.apiKey.name } : {}),
+    }
+    if (signInMethods(info).length === 0) {
+      return `${provider.name} has no sign-in Roster can run — configure it for Pi (see \`pi auth login ${provider.id}\`)`
+    }
+
+    const ask = (approval: SignInApproval, signal?: AbortSignal) =>
+      this.ask(approval, owned, options.onApproval, {
+        ...(signal ? { signal } : {}),
+        ...(options.onApprovalWithdrawn ? { onWithdrawn: options.onApprovalWithdrawn } : {}),
+      })
+
+    const method = await askToSignIn(info, ask, retry.again === true)
+    if (method === null) return `${provider.name} is not signed in, so this model cannot run`
+
+    // Shown, not awaited: a device code is something to read, and the login
+    // finishing is what retires it.
+    const shown = new Set<string>()
+    const interaction = loginInteraction({
+      signal: options.signal,
+      openUrl: (url) => this.openUrl(url),
+      ask,
+      tell: (approval) => {
+        void this.ask(approval, shown, options.onApproval)
+      },
+    })
+
+    try {
+      const sdk = await this.load()
+      const settings = sdk.SettingsManager.create(options.cwd, sdk.getAgentDir())
+      // Exactly the options the `pi auth login` CLI passes, and no more.
+      // OpenAI registers a client per ChatGPT sign-in from the agent name it
+      // is given; Pi's default is the one that flow is known to work with.
+      // The device id is Pi's own stored one, so Roster and the CLI read as
+      // one install.
+      await runtime.login(provider.id, method === 'oauth' ? 'oauth' : 'api_key', interaction, {
+        getDeviceId: () => settings.getOrCreateDeviceId(),
+      })
+      return true
+    } catch (cause) {
+      return options.signal.aborted
+        ? 'The run was stopped'
+        : `Could not sign in to ${provider.name}: ${describe(cause)}`
+    } finally {
+      this.failApprovals(shown, 'Signed in')
+    }
   }
 
   private failApprovals(ids: Set<string>, reason: string): void {
@@ -387,6 +545,17 @@ export class EventQueue<T> implements AsyncIterable<T> {
       },
     }
   }
+}
+
+/**
+ * Whether a failure means the provider rejected the credential — a wrong or
+ * revoked key, an expired login — as opposed to anything signing in again
+ * would not fix (credits, rate limits, outages).
+ */
+export function isAuthFailure(message: string): boolean {
+  return /\b401\b|unauthori[sz]ed|invalid[ _]api[ _]key|incorrect api key|invalid x-api-key|authentication (failed|error)|token (has )?expired|not signed in/i.test(
+    message,
+  )
 }
 
 function toRecord(value: unknown): Record<string, unknown> {

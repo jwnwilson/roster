@@ -1,5 +1,6 @@
 import { MAX_AGENT_NAME_LENGTH } from '@shared/agentName'
-import type { ModelInfo, Project, RunnerStatus } from '@shared/types'
+import { useState } from 'react'
+import { FEATURED_PROVIDERS, type ModelInfo, type Project, type RunnerStatus } from '@shared/types'
 import { projectOptionLabel } from '@/state/store'
 import { Field, Select, ToggleChip } from './primitives'
 
@@ -97,15 +98,56 @@ interface ModelPickerProps {
   onChange: (modelId: string) => void
 }
 
+/** How many matches a search shows; Pi knows well over a thousand models. */
+const SEARCH_LIMIT = 60
+
+/**
+ * The models worth listing before anything is typed: everything signed in,
+ * the featured providers whether or not they are, and whatever is selected.
+ */
+export function visibleModels(models: ModelInfo[], value: string, query: string): ModelInfo[] {
+  const needle = query.trim().toLowerCase()
+  if (needle !== '') {
+    return models
+      .filter((model) =>
+        `${model.id} ${model.provider ?? ''}`.toLowerCase().includes(needle),
+      )
+      .slice(0, SEARCH_LIMIT)
+  }
+  const featured = new Set<string>(FEATURED_PROVIDERS)
+  return models.filter(
+    (model) =>
+      model.signedIn !== false ||
+      featured.has(model.id.split('/')[0] ?? '') ||
+      model.id === value,
+  )
+}
+
 export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
+  const [query, setQuery] = useState('')
+  const shown = visibleModels(models, value, query)
+
   return (
     <Field label="Model">
       <div className="flex flex-col gap-[6px]">
+        {models.length > 0 ? (
+          <input
+            type="search"
+            aria-label="Search models"
+            placeholder="Search every model Pi knows, e.g. gpt, grok, gemini"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="rounded-field border border-line-card bg-card px-[12px] py-[8px] text-md text-ink outline-none focus:border-accent"
+          />
+        ) : null}
         {models.length === 0 ? (
           <p className="m-0 text-md text-dim">No models available for this provider.</p>
+        ) : shown.length === 0 ? (
+          <p className="m-0 text-md text-dim">No model matches “{query}”.</p>
         ) : (
-          models.map((model) => {
+          shown.map((model) => {
             const on = model.id === value
+            const unsigned = model.signedIn === false
             return (
               <button
                 key={model.id}
@@ -113,6 +155,7 @@ export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
                 role="radio"
                 aria-checked={on}
                 onClick={() => onChange(model.id)}
+                title={unsigned ? 'Not signed in — the agent will ask to sign in when it first runs' : undefined}
                 className={`flex cursor-pointer items-center gap-[10px] rounded-field border px-[12px] py-[9px] ${
                   on ? 'border-accent bg-accent-surface' : 'border-line-card bg-card'
                 } hover:border-line-hover-strong`}
@@ -130,7 +173,12 @@ export function ModelPicker({ models, value, onChange }: ModelPickerProps) {
                     style={{ background: on ? 'var(--color-accent)' : 'transparent' }}
                   />
                 </span>
-                <span className="font-mono text-lg text-ink-2">{model.id}</span>
+                <span className={`font-mono text-lg ${unsigned ? 'text-dim' : 'text-ink-2'}`}>{model.id}</span>
+                {unsigned ? (
+                  <span className="rounded-full border border-line-card px-[7px] py-[1px] text-xs text-dim">
+                    sign in
+                  </span>
+                ) : null}
                 <span className="ml-auto font-mono text-sm text-dim-2">{model.price}</span>
               </button>
             )

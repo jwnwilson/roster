@@ -145,7 +145,8 @@ describe('Pi models', () => {
   test('resolves qualified ids, bare ids and blanks', () => {
     expect(resolveModel('xai/grok-4.7', models)?.id).toBe('grok-4.7')
     expect(resolveModel('claude-sonnet-5', models)?.provider).toBe('anthropic')
-    expect(resolveModel('legacy/gpt-5.5', models)?.provider).toBe('openai-codex')
+    expect(resolveModel('legacy/gpt-5.5', models)).toBeUndefined()
+    expect(resolveModel('gpt-5.5', models)?.provider).toBe('openai-codex')
     expect(resolveModel('', models, { provider: 'xai', model: 'grok-4.7' })?.id).toBe('grok-4.7')
     expect(resolveModel('', models)?.id).toBe('claude-sonnet-5')
     expect(resolveModel('nope', models)).toBeUndefined()
