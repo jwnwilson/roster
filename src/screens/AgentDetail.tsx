@@ -416,7 +416,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
   return (
     <div className="flex flex-none items-center gap-[12px] border-b border-amber-line bg-amber-surface px-[18px] py-[10px]">
       <span aria-hidden className="h-[6px] w-[6px] flex-none rounded-full bg-amber" />
-      <p className="m-0 truncate text-lg text-amber-text">
+      <p className="m-0 min-w-0 flex-1 truncate text-lg text-amber-text">
         {isPlan ? (
           <>
             Waiting on you — agent has a plan: <span className="font-mono">{approval.command}</span>
@@ -428,12 +428,12 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
           </>
         )}
       </p>
-      <div className="ml-auto flex gap-[7px]">
+      <div className="flex flex-none items-center gap-[8px]">
         {planId === undefined ? null : (
           <button
             type="button"
             onClick={() => openPlan(planId)}
-            className="cursor-pointer rounded-chip border border-amber-line bg-transparent px-[11px] py-[4px] font-ui text-md text-amber-text hover:border-amber"
+            className="min-w-[104px] cursor-pointer whitespace-nowrap rounded-chip border border-amber-line bg-transparent px-[16px] py-[6px] font-ui text-lg text-amber-text hover:border-amber"
             data-hoverable
           >
             Review plan
@@ -442,7 +442,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
         <button
           type="button"
           onClick={() => respond(false)}
-          className="cursor-pointer rounded-chip border border-line-hover-strong bg-transparent px-[11px] py-[4px] font-ui text-md text-ink-4 hover:border-[#55596a]"
+          className="min-w-[104px] cursor-pointer whitespace-nowrap rounded-chip border border-line-hover-strong bg-transparent px-[16px] py-[6px] font-ui text-lg text-ink-4 hover:border-[#55596a]"
           data-hoverable
         >
           {isPlan ? 'Keep planning' : 'Deny'}
@@ -452,7 +452,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
             type="button"
             onClick={allowForSession}
             title={`Approve, and don't ask again about ${approval.toolName} in this session`}
-            className="cursor-pointer rounded-chip border border-amber-line bg-transparent px-[11px] py-[4px] font-ui text-md text-amber-text hover:border-amber"
+            className="cursor-pointer whitespace-nowrap rounded-chip border border-amber-line bg-transparent px-[16px] py-[6px] font-ui text-lg text-amber-text hover:border-amber"
             data-hoverable
           >
             Allow {approval.toolName} for session
@@ -461,7 +461,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
         <button
           type="button"
           onClick={() => respond(true)}
-          className="cursor-pointer rounded-chip border-0 bg-amber px-[11px] py-[4px] font-ui text-md font-semibold text-amber-ink hover:bg-amber-hover"
+          className="min-w-[104px] cursor-pointer whitespace-nowrap rounded-chip border-0 bg-amber px-[16px] py-[6px] font-ui text-lg font-semibold text-amber-ink hover:bg-amber-hover"
           data-hoverable
         >
           {isPlan ? 'Start work' : 'Approve'}
