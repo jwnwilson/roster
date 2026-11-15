@@ -681,8 +681,8 @@ describe('NewAgent', () => {
   test('renders the provider cards with their auth state', async () => {
     render(<NewAgent />)
 
-    expect(screen.getByRole('button', { name: /Anthropic/ })).toHaveTextContent('subscription')
-    expect(screen.getByRole('button', { name: /OpenAI/ })).toHaveTextContent('not signed in')
+    expect(screen.getByRole('button', { name: /Claude Code/ })).not.toHaveTextContent('subscription')
+    expect(screen.getByRole('button', { name: /Codex/ })).toHaveTextContent('not signed in')
   })
 
   test('lists the models for the chosen provider with prices', async () => {

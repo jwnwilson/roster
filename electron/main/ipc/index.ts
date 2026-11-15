@@ -28,8 +28,7 @@ import type {
 import type { NotionStatusMap } from '../../../shared/notion'
 import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
-import { getRunner, piRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
-import { migrateAgentsToPi } from '../store/migratePi'
+import { allRunners, getRunner, piRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { BROWSER_MCP_SERVERS } from '../../../shared/mcp'
 
 /** Adds servers to every agent's `mcp_servers`, keeping what each already has. */
@@ -40,9 +39,10 @@ async function grantServers(agents: AgentStore, names: readonly string[]): Promi
   }
 }
 
-/** The runners Roster offers, which is Pi alone. */
+/** Every harness Roster offers, detected once so the picker and agent status agree. */
 async function detectRunners(): Promise<Map<string, RunnerStatus>> {
-  return new Map([['pi', await piRunner().detect()]])
+  const detected = await Promise.all(allRunners().map(async (runner) => [runner.id, await runner.detect()] as const))
+  return new Map(detected)
 }
 import { SessionManager } from '../sessions/manager'
 import { SessionNudges } from '../sessions/nudges'
@@ -252,20 +252,18 @@ export async function initStores(): Promise<void> {
 
   // Detect first: an agent's status depends on whether its runner is usable,
   // and first-run seeding will only point agents at a CLI that is installed.
-  // Roster is a UI over Pi: Pi is the one runner, and every agent uses it.
   runners = await detectRunners()
   await agentStore.load()
-  const migrated = await migrateAgentsToPi(agentStore)
-  if (migrated.length > 0) {
-    process.stdout.write(`[pi] moved ${migrated.length} agent(s) onto Pi\n`)
-  }
   voiceSelection = selectVoiceEngine()
   voiceModels = new VoiceModelStore(join(app.getPath('userData'), 'voice-models'))
   registerVoiceModelProtocol(voiceModels)
   voiceModels.onProgress((progress) => broadcast(CHANNELS.voiceModelProgress, progress))
 
   // Seeds the starter roster, once ever, on a genuinely fresh install.
-  setup = await prepareFirstRun(agentStore, runners, { pi: await piRunner().defaultModel() })
+  // Starter agents go on Pi, which works out of the box; the other harnesses
+  // are a choice the user makes per agent.
+  const piOnly = new Map([...runners].filter(([id]) => id === 'pi'))
+  setup = await prepareFirstRun(agentStore, piOnly, { pi: await piRunner().defaultModel() })
   await skillStore.load()
   await mcpStore.load()
   // Every install gets a browser, not only fresh ones. The first time they

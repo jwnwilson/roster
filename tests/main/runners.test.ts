@@ -437,16 +437,21 @@ describe('ClaudeRunner', () => {
 })
 
 describe('registry', () => {
-  test('runs every agent on Pi, whatever its agent.toml names', () => {
+  test('resolves each agent to the harness it names', () => {
     expect(getRunner('pi')?.id).toBe('pi')
-    expect(getRunner('claude')).toBe(getRunner('pi'))
-    expect(getRunner('codex')).toBe(getRunner('pi'))
-    expect(getRunner('ghost')).toBe(getRunner('pi'))
+    expect(getRunner('claude')?.id).toBe('claude')
+    expect(getRunner('codex')?.id).toBe('codex')
   })
 
-  test('recognises only Pi as builtin', () => {
+  test('resolves an unknown harness to nothing rather than a silent fallback', () => {
+    expect(getRunner('ghost')).toBeNull()
+  })
+
+  test('recognises the three offered harnesses as builtin', () => {
     expect(isBuiltinRunner('pi')).toBe(true)
-    expect(isBuiltinRunner('claude')).toBe(false)
+    expect(isBuiltinRunner('claude')).toBe(true)
+    expect(isBuiltinRunner('codex')).toBe(true)
+    expect(isBuiltinRunner('my-cli')).toBe(false)
   })
 
   test('registers no custom runners', () => {
@@ -466,8 +471,8 @@ describe('registry', () => {
         status: 'idle',
       },
     ])
-    expect(getRunner('my-cli')?.id).toBe('pi')
-    expect(allRunners()).toHaveLength(1)
+    expect(getRunner('my-cli')).toBeNull()
+    expect(allRunners().map((runner) => runner.id)).toEqual(['pi', 'claude', 'codex'])
   })
 })
 

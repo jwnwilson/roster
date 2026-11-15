@@ -4,6 +4,7 @@ import { useShallow } from "zustand/shallow";
 import {
   ChipField,
   DefaultProjectField,
+  HarnessModelPicker,
   ModelPicker,
   NameField,
   ProviderPicker,
@@ -139,12 +140,20 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           onChange={(runner) => patchDraft({ runner, model: "" })}
         />
 
-        <ModelPicker
-          models={models}
-          value={draft.model}
-          onChange={(model) => patchDraft({ model })}
-          onModelsChanged={setModels}
-        />
+        {draft.runner === "pi" ? (
+          <ModelPicker
+            models={models}
+            value={draft.model}
+            onChange={(model) => patchDraft({ model })}
+            onModelsChanged={setModels}
+          />
+        ) : (
+          <HarnessModelPicker
+            models={models}
+            value={draft.model}
+            onChange={(model) => patchDraft({ model })}
+          />
+        )}
 
         <WorkingDirectory
           value={draft.cwdLabel}

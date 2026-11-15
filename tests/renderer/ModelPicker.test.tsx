@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
-import { ModelPicker, modelsFor, providerOptions } from '@/components/AgentFields'
+import { HarnessModelPicker, ModelPicker, ProviderPicker, modelsFor, providerOptions } from '@/components/AgentFields'
+import type { RunnerStatus } from '@shared/types'
 import type { ModelInfo } from '@shared/types'
 import { installRosterApi } from './rosterApi'
 
@@ -201,5 +202,59 @@ describe('ModelPicker — what the account can use', () => {
     fireEvent.focus(input)
     fireEvent.mouseDown(screen.getByRole('option', { name: /OpenAI Codex/ }))
     expect(window.roster.runners.checkModels).not.toHaveBeenCalled()
+  })
+})
+
+describe('ProviderPicker — the harness cards', () => {
+  const RUNNERS: RunnerStatus[] = [
+    { id: 'pi', provider: 'Pi · anthropic', installed: true, ready: true, auth: 'subscription' },
+    { id: 'claude', provider: 'Anthropic', installed: true, ready: true, auth: 'subscription' },
+    { id: 'codex', provider: 'OpenAI', installed: false, ready: false, auth: 'none' },
+  ]
+
+  test('names each harness as itself, not by the provider it reaches', () => {
+    render(<ProviderPicker runners={RUNNERS} value="pi" onChange={() => {}} />)
+    expect(screen.getByRole('button', { name: /Pi/ })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: /Claude Code/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /Codex/ })).toHaveTextContent('not installed')
+  })
+
+  test('a ready harness shows no caption, rather than a plan name', () => {
+    render(<ProviderPicker runners={RUNNERS} value="pi" onChange={() => {}} />)
+    expect(screen.getByRole('button', { name: /Claude Code/ })).not.toHaveTextContent('subscription')
+  })
+
+  test('picking a harness reports its id', () => {
+    const onChange = vi.fn()
+    render(<ProviderPicker runners={RUNNERS} value="pi" onChange={onChange} />)
+    fireEvent.click(screen.getByRole('button', { name: /Claude Code/ }))
+    expect(onChange).toHaveBeenCalledWith('claude')
+  })
+})
+
+describe('HarnessModelPicker', () => {
+  const CLAUDE: ModelInfo[] = [
+    { id: 'claude-opus-5', price: '$5 / $25' },
+    { id: 'claude-sonnet-5', price: '' },
+  ]
+
+  test('lists the harness models flat, with their prices, and no provider grouping', () => {
+    render(<HarnessModelPicker models={CLAUDE} value="claude-opus-5" onChange={() => {}} />)
+    expect(screen.queryByLabelText('Provider')).toBeNull()
+    expect(screen.getByLabelText('Model')).toHaveValue('claude-opus-5')
+    expect(screen.getByRole('option', { name: 'claude-opus-5 · $5 / $25' })).toBeTruthy()
+  })
+
+  test('choosing a model reports its id', () => {
+    const onChange = vi.fn()
+    render(<HarnessModelPicker models={CLAUDE} value="claude-opus-5" onChange={onChange} />)
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'claude-sonnet-5' } })
+    expect(onChange).toHaveBeenCalledWith('claude-sonnet-5')
+  })
+
+  test('asks for a model when the agent has none that the harness knows', () => {
+    render(<HarnessModelPicker models={CLAUDE} value="gpt-5.5" onChange={() => {}} />)
+    expect(screen.getByLabelText('Model')).toHaveValue('')
+    expect(screen.getByRole('option', { name: 'Choose a model' })).toBeTruthy()
   })
 })

@@ -9,9 +9,8 @@ import {
   resultText,
   totalsFrom,
 } from '@main/runners/pi/normalize'
-import { migrateModelName, modelKey, priceLabel, resolveModel, toModelInfo } from '@main/runners/pi/models'
+import { modelKey, priceLabel, resolveModel, toModelInfo } from '@main/runners/pi/models'
 import { EventQueue, PiRunner, toPiTool } from '@main/runners/pi/runner'
-import { migrateAgentsToPi } from '@main/store/migratePi'
 import type { BuiltinToolDefinition } from '@main/runners/toolDefinitions'
 import { contextWindowFor } from '@shared/models'
 
@@ -152,34 +151,9 @@ describe('Pi models', () => {
     expect(resolveModel('nope', models)).toBeUndefined()
   })
 
-  test('migrates retired runner model names to Pi providers', () => {
-    expect(migrateModelName('claude', 'claude-opus-5')).toBe('anthropic/claude-opus-5')
-    expect(migrateModelName('codex', 'gpt-5.5')).toBe('openai-codex/gpt-5.5')
-    expect(migrateModelName('my-cli', 'm')).toBe('m')
-    expect(migrateModelName('claude', '')).toBe('')
-    expect(migrateModelName('claude', 'anthropic/x')).toBe('anthropic/x')
-  })
-
   test('finds a context window for a qualified model', () => {
     expect(contextWindowFor('anthropic/claude-sonnet-5')).toBe(1_000_000)
     expect(contextWindowFor('claude-sonnet-5')).toBe(1_000_000)
-  })
-})
-
-describe('migrateAgentsToPi', () => {
-  test('moves every non-Pi agent onto Pi, keeping its model', async () => {
-    const agents = [
-      { id: 'a', runner: 'claude', model: 'claude-opus-5' },
-      { id: 'b', runner: 'pi', model: 'xai/grok-4.7' },
-      { id: 'c', runner: 'codex', model: 'gpt-5.5' },
-    ] as Agent[]
-    const update = vi.fn(async (id: string) => agents.find((a) => a.id === id)!)
-
-    const changed = await migrateAgentsToPi({ findAll: () => agents, update })
-
-    expect(changed).toEqual(['a', 'c'])
-    expect(update).toHaveBeenCalledWith('a', { runner: 'pi', model: 'anthropic/claude-opus-5' })
-    expect(update).toHaveBeenCalledWith('c', { runner: 'pi', model: 'openai-codex/gpt-5.5' })
   })
 })
 
