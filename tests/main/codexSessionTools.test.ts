@@ -303,6 +303,7 @@ describe('which of Roster’s tools a Codex agent gets', () => {
       'close_session',
       'list_agents',
       'open_session',
+      'rename_session',
       'request_user_decision',
       'test_local_desktop',
     ])

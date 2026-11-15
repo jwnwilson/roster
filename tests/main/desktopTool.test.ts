@@ -3,7 +3,7 @@ import { buildRosterTools } from '../../electron/main/runners/handoffTool'
 import { defineTool } from '../../electron/main/runners/toolDefinitions'
 
 function tool(testLocalDesktop?: () => Promise<{ expected: string; observed: string; screenshot: string }>) {
-  return buildRosterTools({ listAgents: () => [], openSession: vi.fn(), closeSession: vi.fn(), requestUserDecision: vi.fn(), testLocalDesktop }, 'agent', defineTool).find(t => t.name === 'test_local_desktop')!
+  return buildRosterTools({ listAgents: () => [], openSession: vi.fn(), closeSession: vi.fn(), renameSession: () => null, requestUserDecision: vi.fn(), testLocalDesktop }, 'agent', defineTool).find(t => t.name === 'test_local_desktop')!
 }
 it('returns verified text and the disposable window image from the confirmed action', async () => {
   const run = vi.fn().mockResolvedValue({ expected: 'abc', observed: 'abc', screenshot: 'data:image/png;base64,aGVsbG8=' })

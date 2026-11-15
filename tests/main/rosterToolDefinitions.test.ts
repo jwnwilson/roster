@@ -32,6 +32,7 @@ function fullSet(): BuiltinToolSet {
       openSession: () => ({ sessionId: 's', label: 'l', started: true }),
       closeSession: async () => false,
       requestUserDecision: async () => ({ approved: false, answers: {} }),
+      renameSession: (name) => name,
     },
     tasks: {
       list: () => [],
@@ -161,6 +162,33 @@ describe('the wire form a separate CLI receives', () => {
 })
 
 describe('the handlers behind those definitions', () => {
+  test('rename_session names the caller\'s own session and reports the stored name', async () => {
+    const renameSession = vi.fn((name: string) => name)
+    const defined = builtinToolDefinitions(
+      { roster: { ...fullSet().roster, renameSession } },
+      AGENT.id,
+    )
+
+    const tool = defined.find((entry) => entry.name === 'rename_session')
+    const result = await tool?.handler({ name: 'Pool leak on 504' } as never, undefined)
+
+    expect(renameSession).toHaveBeenCalledWith('Pool leak on 504')
+    expect(JSON.stringify(result)).toContain('Named this session')
+    expect(JSON.stringify(result)).not.toContain('"isError":true')
+  })
+
+  test('rename_session refuses a name that normalises to nothing', async () => {
+    const defined = builtinToolDefinitions(
+      { roster: { ...fullSet().roster, renameSession: () => null } },
+      AGENT.id,
+    )
+
+    const tool = defined.find((entry) => entry.name === 'rename_session')
+    const result = await tool?.handler({ name: '   ' } as never, undefined)
+
+    expect(JSON.stringify(result)).toContain('"isError":true')
+  })
+
   test('are the same ones the Claude path builds', async () => {
     const openSession = vi.fn(() => ({ sessionId: 's1', label: 'Review · Fix', started: true }))
     const defined = builtinToolDefinitions(
@@ -169,6 +197,7 @@ describe('the handlers behind those definitions', () => {
           listAgents: () => [AGENT],
           openSession,
           closeSession: async () => false,
+          renameSession: () => null,
           requestUserDecision: async () => ({ approved: false, answers: {} }),
         },
       },
@@ -200,6 +229,7 @@ describe('the handlers behind those definitions', () => {
           listAgents: () => [AGENT],
           openSession: () => ({ sessionId: 's', label: 'l', started: true }),
           closeSession: async () => false,
+          renameSession: () => null,
           requestUserDecision,
         },
       },
@@ -248,6 +278,7 @@ describe('handing work to another agent', () => {
             overrides.openSession ??
             (() => ({ sessionId: 's', label: 'Me · Fix', started: true })),
           closeSession: overrides.closeSession ?? (async () => false),
+          renameSession: () => null,
           requestUserDecision:
             overrides.requestUserDecision ?? (async () => ({ approved: false, answers: {} })),
         },
@@ -288,6 +319,7 @@ describe('handing work to another agent', () => {
           listAgents: () => [AGENT],
           openSession: () => ({ sessionId: 's', label: 'l', started: true }),
           closeSession: async () => false,
+          renameSession: () => null,
           requestUserDecision: async () => ({ approved: false, answers: {} }),
         },
       },

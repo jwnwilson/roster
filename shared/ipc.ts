@@ -446,6 +446,7 @@ export type SessionEventPayload =
   | { type: 'queued'; sessionId: string; count: number }
   | { type: 'activity'; sessionId: string; text: string }
   | { type: 'session-deleted'; sessionId: string; agentId: string }
+  | { type: 'session-renamed'; session: Session }
 
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
