@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { Sidebar } from '@/components/Sidebar'
 import { AgentsGrid } from '@/screens/AgentsGrid'
 import { useRoster } from '@/state/store'
 import { anAgent, aProject, aSession } from './factories'
@@ -474,6 +475,9 @@ describe('AgentsGrid — spend', () => {
 })
 
 describe('AgentsGrid — project filter', () => {
+  // The rail lists agents too, so the grid's own rows are read from the grid.
+  const grid = () => within(screen.getByTestId('grid'))
+
   const PROJECTS = [
     aProject({ id: 'p1', name: 'API reliability' }),
     aProject({ id: 'p2', name: 'Q3 planning' }),
@@ -499,7 +503,7 @@ describe('AgentsGrid — project filter', () => {
   })
 
   test('offers every project plus an all-projects option', () => {
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
     const select = screen.getByLabelText('Filter by project')
     expect(within(select).getByText('All projects')).toBeInTheDocument()
@@ -508,32 +512,32 @@ describe('AgentsGrid — project filter', () => {
   })
 
   test('shows every agent until a project is picked', () => {
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
-    expect(screen.getByText('Debugging Agent')).toBeInTheDocument()
-    expect(screen.getByText('Estimation Agent')).toBeInTheDocument()
+    expect(grid().getByText('Debugging Agent')).toBeInTheDocument()
+    expect(grid().getByText('Estimation Agent')).toBeInTheDocument()
   })
 
   test('hides an agent with no session in the chosen project', async () => {
     const user = userEvent.setup()
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
 
-    expect(screen.getByText('Debugging Agent')).toBeInTheDocument()
-    expect(screen.queryByText('Estimation Agent')).not.toBeInTheDocument()
+    expect(grid().getByText('Debugging Agent')).toBeInTheDocument()
+    expect(grid().queryByText('Estimation Agent')).not.toBeInTheDocument()
   })
 
   test('narrows the chips on a card it keeps, not just the cards', async () => {
     const user = userEvent.setup()
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
 
     // A card that survives the filter but still lists every session would
     // be lying about what it is showing.
-    expect(screen.getByText('Pool leak')).toBeInTheDocument()
-    expect(screen.queryByText('Roadmap split')).not.toBeInTheDocument()
+    expect(grid().getByText('Pool leak')).toBeInTheDocument()
+    expect(grid().queryByText('Roadmap split')).not.toBeInTheDocument()
   })
 
   test('hides an agent whose sessions have no project at all', async () => {
@@ -543,41 +547,41 @@ describe('AgentsGrid — project filter', () => {
         debugging: [aSession({ id: 'd1', agentId: 'debugging', projectId: null })],
       },
     })
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
 
-    expect(screen.queryByText('Debugging Agent')).not.toBeInTheDocument()
+    expect(grid().queryByText('Debugging Agent')).not.toBeInTheDocument()
   })
 
   test('switches the summary to a match count while filtering by project', async () => {
     const user = userEvent.setup()
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
 
-    expect(screen.getByText('1 of 2 match')).toBeInTheDocument()
+    expect(grid().getByText('1 of 2 match')).toBeInTheDocument()
   })
 
   test('combines with the text filter rather than replacing it', async () => {
     const user = userEvent.setup()
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p2')
     await user.type(screen.getByLabelText('Filter agents'), 'estimation')
 
-    expect(screen.getByText('Estimation Agent')).toBeInTheDocument()
-    expect(screen.queryByText('Debugging Agent')).not.toBeInTheDocument()
+    expect(grid().getByText('Estimation Agent')).toBeInTheDocument()
+    expect(grid().queryByText('Debugging Agent')).not.toBeInTheDocument()
   })
 
   test('says nothing matched rather than offering to create an agent', async () => {
     const user = userEvent.setup()
     useRoster.setState({ sessions: {} })
-    render(<AgentsGrid />)
+    render(<><Sidebar /><div data-testid="grid"><AgentsGrid /></div></>)
 
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
 
-    expect(screen.getByText('No agents match that filter.')).toBeInTheDocument()
+    expect(grid().getByText('No agents match that filter.')).toBeInTheDocument()
   })
 })
 
