@@ -20,11 +20,13 @@ questions are listed at the end.
 
 | Question | Decision | Consequence for this plan |
 |---|---|---|
-| Exposure | **Public internet, cluster directly reachable** | Ports 80/443 forwarded to k3s's Traefik; real TLS via cert-manager + Let's Encrypt, rate limiting, and the in-app identity check (Phase 4.3) is mandatory, not optional. No tunnel needed |
-| Domain | **`roster.jwnwilson.co.uk`** | App, Auth0 callback and cookie scope all live under this name; previews optionally under `*.preview.roster.jwnwilson.co.uk` |
+| Exposure | **Public internet; cluster access already in place** (dynamic DNS updater, port forwarding to k3s's Traefik) | Real TLS, rate limiting, and the in-app identity check (Phase 4.3) are mandatory, not optional. No tunnel needed |
+| Domain | **`roster.jwnwilson.co.uk`, DNS in AWS Route 53, managed by Terraform in a separate repo** | Roster's records are added in that Terraform, not by the chart; previews optionally under `*.preview.roster.jwnwilson.co.uk` |
+| TLS | **cert-manager already installed** | The chart ships only `Certificate`/`Issuer` resources, never cert-manager itself |
+| Backups | **AWS S3** | Litestream + restic to an S3 bucket created in the same Terraform (§3c) |
 | Identity | **Google sign-in through the existing Auth0 tenant** | A new Auth0 application for Roster with the Google social connection; oauth2-proxy uses Auth0 as its OIDC issuer; Roster verifies Auth0-issued JWTs |
-| Cluster | **k3s on 64-bit Raspberry Pi nodes (8 GB and 16 GB), node-local storage** | arm64-only image built on native arm64 runners; Roster pinned to a 16 GB node, backing services allowed on 8 GB nodes; Traefik (bundled with k3s) is the ingress |
-| Storage | **SD card** | The weakest part of the deployment. Plan is written to work on SD, with write-reduction and continuous off-node backup; a USB SSD on the Roster node is strongly recommended (see §3b) |
+| Cluster | **k3s (confirmed) on 64-bit Raspberry Pi nodes (8 GB and 16 GB), node-local storage** | arm64-only image built on native arm64 runners; Roster pinned to a 16 GB node, backing services allowed on 8 GB nodes; Traefik (bundled with k3s) is the ingress |
+| Storage | **SD card (staying)** | The weakest part of the deployment. The plan is designed for SD: write reduction, memory-backed caches, and continuous off-node backup to S3 (§3b) |
 | Users | **Single user** | One allowlisted Google account; no multi-user data model work |
 | Backing services | **Probably needed** | Project services move earlier (Phase 5a now includes them) and are budgeted against Pi resources |
 
@@ -131,7 +133,8 @@ PR: `feat: run roster as a headless web server`
      label applied to one 16 GB Pi; the PVC (k3s `local-path`) is node-local, so the
      pod stays bound to that node — the chart documents this and does not try to
      reschedule elsewhere;
-   - storage follows §3b (SD-card mitigations, SSD recommended);
+   - storage follows §3b (designed for SD cards);
+   - backup sidecars and their S3 credentials follow §3c;
    - Pi-sized resource defaults (see §3a) rather than desktop-sized ones;
    - Secrets for agent credentials, a GitHub token (fine-grained PAT or GitHub App) for
      push/PR, and `ROSTER_SECRET_KEY` — compatible with External Secrets / Sealed Secrets;
@@ -148,11 +151,24 @@ PR: `feat: container image and helm chart`
 
 Roster is publicly reachable, so every layer below is required. Outermost first:
 
-1. **Reachability.** `roster.jwnwilson.co.uk` resolves to the cluster's public IP
-   (dynamic DNS updater if the ISP address changes), with 80/443 forwarded to k3s's
-   Traefik. cert-manager issues the certificate from Let's Encrypt — HTTP-01 for the
-   main hostname; DNS-01 only if wildcard preview hostnames are wanted (wildcards
-   cannot use HTTP-01). Traefik middlewares: HTTPS redirect, HSTS, per-IP
+1. **Reachability.** Public access to the cluster already exists (dynamic DNS updater,
+   80/443 forwarded to Traefik). The separate Terraform repo adds a Route 53 `CNAME`
+   `roster.jwnwilson.co.uk` → the existing dynamic-DNS hostname, and — if wildcard
+   previews are wanted — `*.preview.roster.jwnwilson.co.uk` likewise. The existing
+   cert-manager issues certificates from Let's Encrypt:
+   - HTTP-01 for `roster.jwnwilson.co.uk` — works with no AWS access at all;
+   - DNS-01 via cert-manager's Route 53 solver, only for the wildcard preview
+     certificate (wildcards cannot use HTTP-01). k3s has no IRSA, so this uses a
+     dedicated IAM user (Terraform-managed) whose policy allows
+     `route53:ChangeResourceRecordSets` on the one hosted zone, restricted with
+     `route53:ChangeResourceRecordSetsNormalizedRecordNames` to
+     `_acme-challenge.preview.roster.jwnwilson.co.uk`, plus `route53:GetChange` and
+     `ListHostedZonesByName`. Its keys live in a k8s Secret in the cert-manager
+     namespace. If an issuer for Route 53 already exists in the cluster, reuse it.
+
+   The chart ships a `deploy/terraform/` reference module (DNS records, the DNS-01 IAM
+   user, the backup bucket and its IAM user from §3c) to copy into the existing
+   Terraform repo; Roster never applies Terraform itself. Traefik middlewares: HTTPS redirect, HSTS, per-IP
    `rateLimit`, and `forwardAuth` to oauth2-proxy on every route. Nothing else on the
    cluster is exposed by this chart.
 2. **Identity — Auth0 with Google.**
@@ -253,21 +269,41 @@ browser's own input.
 ### 3b. Storage on SD cards
 
 SD cards wear out under small random writes and corrupt on power loss — exactly the
-pattern of SQLite, git and `node_modules`. The plan works on SD, but:
+pattern of SQLite, git and `node_modules`. The cluster stays on SD, so the deployment
+assumes **the card will eventually fail** and makes that a restore, not a loss:
 
-- **Strongly recommended:** a USB 3 SSD on the Roster node, exposed as the `local-path`
-  directory. It removes most of the risks in this section for very little cost.
-- **If staying on SD:**
-  - use a high-endurance card; mount with `noatime`;
-  - SQLite in WAL mode with `synchronous=NORMAL`;
-  - caches and `/tmp` on a memory-backed `emptyDir` (§3a), not the card;
-  - workspaces are treated as disposable: agents push branches early and often, so a
-    lost card loses at most uncommitted work, and Roster can re-clone;
-  - **continuous off-node backup** of `/data/roster` with Litestream for the SQLite
-    database (to S3-compatible storage such as Cloudflare R2 or Backblaze B2) plus a
-    nightly restic snapshot of agent configs, skills and plans;
-  - a documented restore procedure onto another Pi, tested once as part of Phase 3.
+- use a high-endurance card on the Roster node; mount with `noatime`;
+- SQLite in WAL mode with `synchronous=NORMAL`;
+- caches, `/tmp` and build output on a memory-backed `emptyDir` (§3a), not the card;
+- workspaces are treated as disposable: agents push branches early and often, so a
+  lost card loses at most uncommitted work, and Roster can re-clone;
+- Roster state is continuously backed up to S3 (§3c);
+- a documented restore procedure onto another Pi, tested once as part of Phase 3.
 - Backing services' data (5a′) is development data and is not backed up by default.
+
+A USB SSD on the Roster node remains an optional later upgrade; nothing in the chart
+changes if one is added.
+
+### 3c. Backups to S3
+
+- **Bucket** (Terraform, separate repo): e.g. `jwnwilson-roster-backups`, in the region
+  the rest of the AWS estate uses; versioning on, SSE-S3 (or SSE-KMS) encryption, block
+  all public access, lifecycle rule expiring non-current versions after 30 days.
+- **Credentials:** k3s has no IRSA, so a dedicated IAM user with access only to
+  `s3://jwnwilson-roster-backups/roster/*` (`GetObject`, `PutObject`, `DeleteObject`,
+  `ListBucket` with a prefix condition). Keys in a k8s Secret in the Roster namespace,
+  rotated on a schedule. IAM Roles Anywhere is an option later to remove long-lived keys.
+- **What runs:**
+  - Litestream sidecar replicating `roster.db` continuously to `roster/litestream/`
+    (seconds of data loss at most);
+  - a nightly restic CronJob snapshotting the rest of `/data/roster` — `agent.toml`s,
+    skills, plans, MCP config — to `roster/restic/`, keeping 7 daily and 4 weekly;
+  - workspaces and agent CLI credentials are **not** backed up: the former live in
+    GitHub, the latter are re-created from their k8s Secrets.
+- **Restore:** an init container runs `litestream restore -if-replica-exists` and
+  `restic restore latest` when `/data/roster` is empty, so rescheduling Roster onto a
+  fresh Pi brings it back automatically.
+- **Egress:** the NetworkPolicy allows the S3 regional endpoint.
 
 ## 4. Risks
 
@@ -275,9 +311,9 @@ pattern of SQLite, git and `node_modules`. The plan works on SD, but:
 |---|---|
 | Linux paths untested | Container smoke test in Phase 2 CI: start server, open a session, run a pty |
 | Single replica → brief outage on redeploy | Acceptable for single-user; `Recreate` semantics, graceful shutdown cancels turns cleanly |
-| Node-local volume → node failure takes Roster down | Accepted for single-user; nightly Litestream/restic backup of `/data/roster` off the node so it can be restored onto another Pi |
-| SD card wear / corruption | §3b: SSD recommended; otherwise write reduction, memory-backed caches, Litestream + restic off-node, tested restore |
-| Home IP changes | Dynamic DNS updater for `roster.jwnwilson.co.uk` |
+| Node-local volume → node failure takes Roster down | Accepted for single-user; S3 backups (§3c) and automatic restore onto another Pi |
+| SD card wear / corruption | §3b: write reduction, memory-backed caches, continuous S3 backup, tested restore |
+| Long-lived AWS keys in the cluster (no IRSA on k3s) | Two single-purpose IAM users scoped to one zone record / one bucket prefix; rotation; Roles Anywhere later |
 | Pi memory pressure (builds + Chromium + services) | §3a limits, concurrent-turn cap, lazy browser, idle services scaled to zero |
 | Public exposure of an RCE-capable API | Auth0 Action allowlist + oauth2-proxy allowlist + in-app JWT check; Traefik rate limiting; only Roster's routes exposed |
 | Long-lived agent/GitHub tokens in the pod | k8s Secrets, rotation, scoped tokens; never mounted into 5b sandboxes |
@@ -286,12 +322,9 @@ pattern of SQLite, git and `node_modules`. The plan works on SD, but:
 
 ## 5. Open questions
 
-1. Confirm the distribution is **k3s** (answered as "k3m"; the plan assumes k3s and its
-   bundled Traefik).
-2. Is cert-manager already installed? If not, the chart's README covers installing it.
-3. Who hosts DNS for `jwnwilson.co.uk`? Only needed for wildcard preview hostnames
-   (DNS-01 requires a provider API token); path-based previews need nothing.
-4. Is the public IP static, or is a dynamic DNS updater needed?
-5. SSD for the Roster node — adopt the recommendation, or stay on SD with §3b's
-   mitigations?
-6. Where should off-node backups go (R2, B2, S3, a NAS)?
+All deployment questions are answered. Two minor choices can be made during Phase 3/6
+without blocking earlier phases:
+
+1. Wildcard preview subdomains, or path-based previews only? Path-based needs no AWS
+   access; wildcard needs the DNS-01 IAM user in Phase 4, step 1.
+2. Is there already a Route 53 `ClusterIssuer` in the cluster to reuse?
