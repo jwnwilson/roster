@@ -72,12 +72,18 @@ import { Updater, shouldCheckForUpdatesOnLaunch } from '../update/updater'
 import { databasePath, mcpConfigPath } from '../store/paths'
 import { seedIfEmpty } from '../store/seed'
 import { seedBoardIfEmpty } from '../store/seedBoard'
-import { dismissSetup, prepareFirstRun } from '../store/firstRun'
+import { dismissSetup, markPermissionsReviewed, prepareFirstRun } from '../store/firstRun'
+import { systemPermissionsFor } from '../permissions/electronDeps'
+import { isPermissionKind } from '../../../shared/permissions'
 import { selectVoiceEngine, type VoiceEngineSelection } from '../voice/engine'
 import { VoiceModelStore } from '../voice/modelStore'
 import { registerVoiceModelProtocol } from '../voice/modelProtocol'
 
 const desktop = new DesktopDiagnostics()
+const permissions = systemPermissionsFor({
+  check: () => desktop.check(),
+  requestAccessibility: () => desktop.requestAccessibility(),
+})
 const desktopTest = new DesktopPrototype(() => new LocalDesktopTestWindow(), (nonce) => desktop.typeTest(nonce))
 let desktopConfirmationPending = false
 
@@ -107,6 +113,7 @@ let voiceModels: VoiceModelStore | null = null
  * finished never flashes a setup card at an established user.
  */
 let setup: SetupState = {
+  permissionsReviewed: true,
   pending: false,
   startingAgentId: null,
   seededAgentIds: [],
@@ -781,6 +788,21 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.setupDismiss, async () => {
     setup = await dismissSetup()
     return setup
+  })
+  ipcMain.handle(CHANNELS.setupReviewPermissions, async () => {
+    setup = await markPermissionsReviewed(agentStore)
+    return setup
+  })
+  ipcMain.handle(CHANNELS.permissionsStatus, () => permissions.status())
+  // The renderer is untrusted input, so a kind is checked here as well as in
+  // the service: nothing but the three named permissions can be asked for.
+  ipcMain.handle(CHANNELS.permissionsRequest, (_e, kind: unknown) => {
+    if (!isPermissionKind(kind)) throw new Error('Unknown permission.')
+    return permissions.request(kind)
+  })
+  ipcMain.handle(CHANNELS.permissionsOpenSettings, (_e, kind: unknown) => {
+    if (!isPermissionKind(kind)) throw new Error('Unknown permission.')
+    return permissions.openSettings(kind)
   })
 
   ipcMain.handle(CHANNELS.updateVersion, () => app.getVersion())

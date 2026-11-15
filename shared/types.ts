@@ -613,4 +613,9 @@ export interface SetupState {
   seededAgentIds: string[]
   /** No CLI Roster can drive was installed, so nothing was seeded. */
   noRunner: boolean
+  /**
+   * The permissions card has been dealt with, so it stays away. False on a
+   * fresh or upgraded install until the first session has shown it.
+   */
+  permissionsReviewed: boolean
 }

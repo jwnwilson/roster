@@ -11,6 +11,7 @@ import { toThreadMessage, type RosterHeader } from './convert'
 import { Composer, StreamingRow } from './Composer'
 import { HandoffBody, SpawnBody, TextBody, ToolBody, MessageHeader } from './messages'
 import { QuestionCard } from './QuestionCard'
+import { PermissionsCard } from '@/components/PermissionsCard'
 
 /**
  * How a transcript row reaches the question card.
@@ -124,6 +125,8 @@ export function AssistantChatPane({
             </div>
           ) : null}
         </ThreadPrimitive.Viewport>
+
+        <PermissionsCard />
 
         <Composer
           sessionId={sessionId}
