@@ -1,3 +1,4 @@
+import { BROWSER_MCP_SERVERS } from '@shared/mcp'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -755,6 +756,41 @@ describe('NewAgent', () => {
         expect.objectContaining({ mcpServers: ['filesystem'] }),
       ),
     )
+  })
+
+  test('a new agent starts with the browser servers on, so it can check its own work', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ mcpServers: BROWSER_MCP_SERVERS.map((server) => anMcpServer({ name: server.name })) })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcpServers: expect.arrayContaining(BROWSER_MCP_SERVERS.map((server) => server.name)),
+        }),
+      ),
+    )
+  })
+
+  test('a browser server can still be switched off for a new agent', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ mcpServers: BROWSER_MCP_SERVERS.map((server) => anMcpServer({ name: server.name })) })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: new RegExp(BROWSER_MCP_SERVERS[0]!.name) }))
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() => {
+      const [input] = vi.mocked(window.roster.agents.create).mock.calls[0]!
+      expect(input.mcpServers).not.toContain(BROWSER_MCP_SERVERS[0]!.name)
+      expect(input.mcpServers).toContain(BROWSER_MCP_SERVERS[1]!.name)
+    })
   })
 
   test('offers the default project, so a new agent can be filed on creation', async () => {

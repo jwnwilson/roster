@@ -13,6 +13,7 @@ import {
 } from '@/components/AgentFields'
 import { projectPickerProjects, useRoster } from '@/state/store'
 import { messageFor } from '@/lib/errors'
+import { BROWSER_MCP_SERVERS } from '@shared/mcp'
 
 /**
  * Shown in place of a path when the user has not picked one.
@@ -51,7 +52,14 @@ export function NewAgent() {
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState<string | null>(null)
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null)
-  const [mcp, setMcp] = useState<Record<string, boolean>>({})
+  // The browser servers that are configured start on: a new agent that cannot
+  // open a page cannot check its own work, and that is what most agents here are for.
+  const [mcp, setMcp] = useState<Record<string, boolean>>(() => {
+    const browsers = new Set<string>(BROWSER_MCP_SERVERS.map((server) => server.name))
+    return Object.fromEntries(
+      mcpServers.filter((server) => browsers.has(server.name)).map((server) => [server.name, true]),
+    )
+  })
   const [models, setModels] = useState<ModelInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
