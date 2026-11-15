@@ -499,6 +499,9 @@ export function registerIpc(): void {
     requireManager().setArchived(sessionId, false),
   )
   ipcMain.handle(CHANNELS.sessionsListArchived, () => requireSessions().listArchived())
+  ipcMain.handle(CHANNELS.sessionsSearch, (_e, query: string, options?: { includeArchived?: boolean }) =>
+    requireSessions().search(query, options ?? {}),
+  )
 
   ipcMain.handle(CHANNELS.sessionsDelete, async (e, sessionId: string) => {
     const session = requireSessions().findById(sessionId)

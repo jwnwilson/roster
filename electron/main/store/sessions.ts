@@ -1,10 +1,13 @@
 import { randomUUID } from 'node:crypto'
 import { normalizeSessionName } from '../../../shared/sessions'
 import type { Db } from '../db'
+import { MATCH_CLOSE_SQL, MATCH_OPEN_SQL } from '../../../shared/search'
+import { sessionLabel } from '../../../shared/sessions'
 import type {
   Message,
   Session,
   SessionOrigin,
+  SessionSearchHit,
   Status,
   TaskSessionLink,
   TranscriptLine,
@@ -420,6 +423,59 @@ export class SessionStore {
       .run(JSON.stringify(rest), id)
   }
 
+  /**
+   * Sessions whose transcript contains every word typed, most recently
+   * matched first. One hit per session: the snippet is its newest matching
+   * line, and `matches` counts them all.
+   *
+   * The query is plain text. Each word is quoted, so punctuation and FTS
+   * operators are only ever words; the last one is a prefix, so a search
+   * finds a word that is still being typed.
+   */
+  search(query: string, options: { includeArchived?: boolean } = {}): SessionSearchHit[] {
+    const match = toMatchExpression(query)
+    if (match === null) return []
+
+    const rows = this.db
+      .prepare<[string, number, number], SearchRow>(
+        `WITH hits AS (
+           SELECT rowid AS rid,
+                  session_id,
+                  snippet(message_search, 0, ${MATCH_OPEN_SQL}, ${MATCH_CLOSE_SQL}, '…', 12) AS snippet
+             FROM message_search
+            WHERE message_search MATCH ?
+         ),
+         ranked AS (
+           SELECT h.session_id, h.snippet, m.created_at, m.rowid AS rid,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY h.session_id ORDER BY m.created_at DESC, m.rowid DESC
+                  ) AS recency,
+                  COUNT(*) OVER (PARTITION BY h.session_id) AS matches
+             FROM hits h
+             JOIN messages m ON m.rowid = h.rid
+         )
+         SELECT r.session_id, s.agent_id, s.name AS session_name, s.title AS session_title,
+                r.snippet, r.matches, r.created_at, s.archived_at IS NOT NULL AS archived
+           FROM ranked r
+           JOIN sessions s ON s.id = r.session_id
+          WHERE r.recency = 1
+            AND (? = 1 OR s.archived_at IS NULL)
+          ORDER BY r.created_at DESC, r.rid DESC
+          LIMIT ?`,
+      )
+      .all(match, options.includeArchived === true ? 1 : 0, SEARCH_LIMIT)
+
+    return rows.map((row) => ({
+      sessionId: row.session_id,
+      agentId: row.agent_id,
+      label: sessionLabel({ name: row.session_name, title: row.session_title }),
+      snippet: row.snippet,
+      matches: row.matches,
+      lastMatchAt: row.created_at,
+      archived: row.archived === 1,
+    }))
+  }
+
   messages(sessionId: string): Message[] {
     const rows = this.db
       .prepare<[string], MessageRow>(
@@ -429,6 +485,36 @@ export class SessionStore {
 
     return rows.map(toMessage)
   }
+}
+
+/** Enough for a sidebar group; the search box narrows it rather than paging. */
+const SEARCH_LIMIT = 50
+
+interface SearchRow {
+  session_id: string
+  agent_id: string
+  session_name: string | null
+  session_title: string
+  snippet: string
+  matches: number
+  created_at: number
+  archived: number
+}
+
+/**
+ * Turns typed text into an FTS5 expression that treats every character as
+ * data. Null when there is nothing to search for.
+ */
+export function toMatchExpression(query: string): string | null {
+  const words = query.trim().split(/\s+/).filter((word) => word !== '')
+  if (words.length === 0) return null
+
+  return words
+    .map((word, index) => {
+      const quoted = `"${word.replace(/"/g, '""')}"`
+      return index === words.length - 1 ? `${quoted}*` : quoted
+    })
+    .join(' ')
 }
 
 interface RecentRow {
