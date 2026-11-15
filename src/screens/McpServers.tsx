@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { Agent, McpServer, RegistryEntry } from '@shared/types'
 import { ScreenHeader, SectionLabel, Segmented } from '@/components/primitives'
 import { ServerGlyph } from '@/components/ServerGlyph'
-import { NOTION_MCP_COMMAND } from '@shared/mcp'
+import { BROWSER_MCP_SERVERS, NOTION_MCP_COMMAND } from '@shared/mcp'
 import { useRoster, type McpTab } from '@/state/store'
 import { McpServerModal, type McpServerDraft } from './McpServerModal'
 
@@ -26,10 +26,17 @@ const REGISTRY: RegistryEntry[] = [
   { category: 'Data', name: 'bigquery', description: 'Run scoped queries against BigQuery datasets.', author: 'community' },
   { category: 'Workspace', name: 'linear', description: 'Read and update issues, cycles, and project status.', author: 'linear' },
   { category: 'Workspace', name: 'slack', description: 'Search channels and post messages as a bot user.', author: 'community' },
+  ...BROWSER_MCP_SERVERS.map((server) => ({
+    category: 'Browser',
+    name: server.name,
+    description: server.description,
+    author: server.name === 'playwright' ? 'microsoft' : 'google',
+    command: server.command,
+  })),
   { category: 'Workspace', name: 'notion', description: 'Read and update a Notion workspace. Your browser will ask you to sign in on first use.', author: 'notion', command: NOTION_MCP_COMMAND },
 ]
 
-const CATEGORIES = ['Code & repos', 'Data', 'Workspace']
+const CATEGORIES = ['Code & repos', 'Data', 'Browser', 'Workspace']
 
 export function McpServers() {
   const tab = useRoster((s) => s.mcpTab)

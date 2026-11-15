@@ -58,6 +58,25 @@ export class McpStore {
   }
 
   /**
+   * Adds any of these servers that mcp.json does not have yet, leaving the
+   * ones it has exactly as the user configured them. How an existing install
+   * gains servers that a new one is seeded with. Returns the names it added.
+   */
+  async ensure(servers: readonly { name: string; command: string }[]): Promise<string[]> {
+    const missing = servers.filter(
+      (wanted) => !this.servers.some((server) => server.name === wanted.name),
+    )
+    if (missing.length === 0) return []
+
+    this.servers = [
+      ...this.servers,
+      ...missing.map(({ name, command }) => ({ name, command, env: {} })),
+    ]
+    await this.persist()
+    return missing.map((server) => server.name)
+  }
+
+  /**
    * Replaces a server's launch settings. Unknown names are rejected rather
    * than quietly created, so a rename cannot strand an agent's `mcp_servers`
    * pointing at nothing.

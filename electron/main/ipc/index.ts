@@ -30,6 +30,15 @@ import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
 import { getRunner, piRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
 import { migrateAgentsToPi } from '../store/migratePi'
+import { BROWSER_MCP_SERVERS } from '../../../shared/mcp'
+
+/** Adds servers to every agent's `mcp_servers`, keeping what each already has. */
+async function grantServers(agents: AgentStore, names: readonly string[]): Promise<void> {
+  for (const agent of agents.findAll()) {
+    const missing = names.filter((name) => !agent.mcpServers.includes(name))
+    if (missing.length > 0) await agents.update(agent.id, { mcpServers: [...agent.mcpServers, ...missing] })
+  }
+}
 
 /** The runners Roster offers, which is Pi alone. */
 async function detectRunners(): Promise<Map<string, RunnerStatus>> {
@@ -259,6 +268,11 @@ export async function initStores(): Promise<void> {
   setup = await prepareFirstRun(agentStore, runners, { pi: await piRunner().defaultModel() })
   await skillStore.load()
   await mcpStore.load()
+  // Every install gets a browser, not only fresh ones. The first time they
+  // appear, every agent is given them — after that, which agents keep a
+  // browser is the user's call and is never touched again.
+  const browsers = await mcpStore.ensure(BROWSER_MCP_SERVERS)
+  if (browsers.length > 0) await grantServers(agentStore, browsers)
   await projectNotesStore.load()
 
   // Bring your own CLI: agents naming a custom command get a runner.

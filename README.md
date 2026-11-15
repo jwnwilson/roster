@@ -10,6 +10,12 @@ the loop, the model calls, tools and context; Roster is the UI over it: the rost
 approvals, handoffs, the task board, plans, skills, MCP servers and spend. See
 ADR 0017.
 
+**Agents get a browser.** Every install has two MCP servers, `playwright` and
+`chrome-devtools`, which drive a headless Google Chrome with a throwaway profile.
+They are given to every agent the first time they appear and can then be toggled
+per agent on the MCP screen. Their tools run without asking for approval — a
+browser check is dozens of clicks. Google Chrome must be installed.
+
 **Sign in once with Pi:** run `pi`, then `/login`. Roster reads Pi's
 `~/.pi/agent/auth.json`; agents written for the old Claude/Codex runners are moved
 onto Pi automatically, keeping their model.

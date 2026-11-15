@@ -76,3 +76,39 @@ export const NOTION_SERVER = 'notion'
  * and the entry carries this instead.
  */
 export const NOTION_MCP_COMMAND = 'Roster managed — connect Notion with OAuth'
+
+/**
+ * Browser servers every install has, so any agent can be given a browser.
+ *
+ * Both drive the installed Google Chrome. Playwright gives page actions and
+ * accessibility snapshots; Chrome DevTools adds console, network and
+ * performance inspection. Both run headless with a throwaway profile, so an
+ * agent never sees your cookies or logged-in sessions.
+ */
+export const PLAYWRIGHT_SERVER = 'playwright'
+export const CHROME_DEVTOOLS_SERVER = 'chrome-devtools'
+
+export const BROWSER_MCP_SERVERS: readonly { name: string; command: string; description: string }[] = [
+  {
+    name: PLAYWRIGHT_SERVER,
+    command: 'npx -y @playwright/mcp@latest --headless --isolated',
+    description: 'Drive headless Chrome: open pages, click, type, read the page and take screenshots.',
+  },
+  {
+    name: CHROME_DEVTOOLS_SERVER,
+    command: 'npx -y chrome-devtools-mcp@latest --headless --isolated',
+    description: 'Drive headless Chrome with DevTools: console, network requests, performance traces.',
+  },
+]
+
+/**
+ * Whether a tool belongs to one of the browser servers, by its Pi tool name.
+ *
+ * Pi names MCP tools `mcp__<server>__<tool>` with the server name made safe
+ * for a tool name — `chrome-devtools` arrives as `chrome_devtools`.
+ */
+export function isBrowserMcpTool(toolName: string): boolean {
+  return BROWSER_MCP_SERVERS.some((server) =>
+    toolName.startsWith(`mcp__${server.name.replace(/[^A-Za-z0-9_]/g, '_')}__`),
+  )
+}

@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { z } from 'zod'
 import type { ModelInfo, RunnerStatus } from '../../../../shared/types'
+import { isBrowserMcpTool } from '../../../../shared/mcp'
 import { planInstruction } from '../../sessions/planPrompt'
 import { rosterHome } from '../../store/paths'
 import { describeCommand } from '../claude'
@@ -188,7 +189,16 @@ export class PiRunner implements Runner {
       extensionFactories: [
         (pi) => {
           pi.on('tool_call', async (event) => {
-            if (UNGATED_BUILTINS.has(event.toolName) || rosterToolNames.has(event.toolName)) return undefined
+            if (
+              UNGATED_BUILTINS.has(event.toolName) ||
+              rosterToolNames.has(event.toolName) ||
+              // A browser check is dozens of clicks; asking for each would
+              // make one unusable. The browser is headless with a throwaway
+              // profile, and the agent only has it if it was given it.
+              isBrowserMcpTool(event.toolName)
+            ) {
+              return undefined
+            }
             if (options.signal.aborted) return { block: true, reason: 'The run was stopped' }
             const decision = await this.requestApproval(
               event.toolName,
