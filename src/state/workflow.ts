@@ -148,6 +148,30 @@ export function flowOfSession(
   return { ids, taskId: carrying[0]?.taskId ?? null }
 }
 
+/**
+ * Which sessions are working on each task, handed-off ones included.
+ *
+ * The task side of `flowOfSession`: a mention opens a session that carries the
+ * task, and the work then moves on by handoff to sessions that carry nothing.
+ * Each task-carrying session therefore claims its whole chain. Keys are task
+ * ids; a task with no session never appears, so a missing key means "nobody".
+ */
+export function sessionsByTask(
+  sessions: readonly Session[],
+  edges: readonly FlowEdge[],
+): Map<string, Set<string>> {
+  const byTask = new Map<string, Set<string>>()
+
+  for (const session of sessions) {
+    if (!session.taskId) continue
+    const members = byTask.get(session.taskId) ?? new Set<string>()
+    for (const id of componentOf([session.id], edges)) members.add(id)
+    byTask.set(session.taskId, members)
+  }
+
+  return byTask
+}
+
 /** Everything joined to a seed by any chain of handoffs, in either direction. */
 function componentOf(seeds: readonly string[], edges: readonly FlowEdge[]): Set<string> {
   const neighbours = new Map<string, string[]>()

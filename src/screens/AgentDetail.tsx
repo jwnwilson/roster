@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { EXIT_PLAN_MODE } from '@shared/plans'
@@ -13,6 +13,7 @@ import { SessionName } from './SessionName'
 import { SessionWorkflowLink } from './SessionWorkflowLink'
 import { PlanModal } from './PlanModal'
 import { messageFor } from '@/lib/errors'
+import { flowEdges, sessionsByTask } from '@/state/workflow'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
 import { ESTIMATE_EXPLANATION, formatUsageCost } from '@/state/format'
@@ -552,7 +553,7 @@ function ConfigRail({ agent }: { agent: Agent }) {
         )}
       </section>
 
-      <SessionTask />
+      <SessionTasks />
       {/* Under the task, because it is the same question widened: not what
           this session answers but who else is answering it. */}
       <SessionWorkflowLink />
@@ -562,61 +563,69 @@ function ConfigRail({ agent }: { agent: Agent }) {
 }
 
 /**
- * The task this session was opened to answer.
+ * Every task this session is working on, in the rail beside the transcript.
  *
- * The mirror of the Sessions row on a task's own rail: from there you reach
- * the transcript, from here you get back to the work. Absent for a session
- * nobody opened from a task — and absent again once that task is deleted,
- * since the column carrying this is set to null rather than cascading, so a
- * transcript outlives the task but stops claiming to belong to it.
+ * A session a mention opened carries its task; the sessions it handed the
+ * work to carry none, so the task is found by walking the handoff chain — the
+ * same walk the Workflow canvas and the task's own sessions make, so all three
+ * agree. A chain can serve more than one task, and each is listed.
+ *
+ * The task's title comes from the board when it has been read; the key comes
+ * off the session chain, so the link survives a board not yet loaded.
  *
  * Above the Session card deliberately: what the session is about reads
- * before what it has cost.
+ * before what it has cost. Absent for a session no task has ever touched.
  */
-function SessionTask() {
+function SessionTasks() {
   const agentId = useRoster((s) => s.agentId)
   const activeId = useRoster((s) => (agentId ? s.sess[agentId] : undefined))
-  const taskId = useRoster(
-    (s) =>
-      (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
-        (session) => session.id === activeId,
-      )?.taskId ?? null,
-  )
-  // The key comes off the session, so the link works whether or not the
-  // board has been read; only the title is the part that can be missing.
-  const task = useRoster((s) => s.tasks.find((candidate) => candidate.id === taskId) ?? null)
+  // Every session, not this agent's: the chain runs across agents.
+  const sessions = useRoster(useShallow((s) => Object.values(s.sessions).flat()))
+  const tasks = useRoster(useShallow((s) => s.tasks))
   const go = useRoster((s) => s.go)
   const openTask = useRoster((s) => s.openTask)
 
-  if (taskId === null) return null
+  const linkedIds = useMemo(() => {
+    if (activeId === undefined) return []
+    const byTask = sessionsByTask(sessions, flowEdges(sessions))
+    return [...byTask].filter(([, members]) => members.has(activeId)).map(([taskId]) => taskId)
+  }, [sessions, activeId])
+
+  if (linkedIds.length === 0) return null
 
   return (
     <section className="flex flex-col gap-[9px]">
-      <SectionLabel>Task</SectionLabel>
-      <button
-        type="button"
-        aria-label={`Open ${taskId}`}
-        // The task first, so the board is already showing it when the screen
-        // changes rather than for one frame showing no modal at all.
-        onClick={() => {
-          openTask(taskId)
-          go('tasks')
-        }}
-        className="flex cursor-pointer flex-col gap-[5px] rounded-field border border-line bg-card p-[11px] text-left hover:border-line-hover-strong"
-        data-hoverable
-      >
-        <div className="flex items-center gap-[7px]">
-          <span
-            aria-hidden
-            className="h-[6px] w-[6px] flex-none rounded-full"
-            style={{
-              background: task ? taskStatusColor(task.status) : 'var(--color-muted-2)',
+      <SectionLabel>Tasks</SectionLabel>
+      {linkedIds.map((taskId) => {
+        const task = tasks.find((candidate) => candidate.id === taskId) ?? null
+        return (
+          <button
+            key={taskId}
+            type="button"
+            aria-label={`Open ${taskId}`}
+            // The task first, so the board is already showing it when the screen
+            // changes rather than for one frame showing no modal at all.
+            onClick={() => {
+              openTask(taskId)
+              go('tasks')
             }}
-          />
-          <span className="font-mono text-base text-dim">{taskId}</span>
-        </div>
-        {task ? <span className="text-md leading-[1.45] text-ink-2">{task.title}</span> : null}
-      </button>
+            className="flex cursor-pointer flex-col gap-[5px] rounded-field border border-line bg-card p-[11px] text-left hover:border-line-hover-strong"
+            data-hoverable
+          >
+            <div className="flex items-center gap-[7px]">
+              <span
+                aria-hidden
+                className="h-[6px] w-[6px] flex-none rounded-full"
+                style={{
+                  background: task ? taskStatusColor(task.status) : 'var(--color-muted-2)',
+                }}
+              />
+              <span className="font-mono text-base text-dim">{taskId}</span>
+            </div>
+            {task ? <span className="text-md leading-[1.45] text-ink-2">{task.title}</span> : null}
+          </button>
+        )
+      })}
     </section>
   )
 }

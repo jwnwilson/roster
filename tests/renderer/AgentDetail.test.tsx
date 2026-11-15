@@ -886,6 +886,57 @@ describe('AgentDetail — the task a session answers', () => {
   })
 })
 
+describe('AgentDetail — every task the session is working on', () => {
+  const ROS_1 = aTask({ id: 'ROS-1', title: 'Fix connection pool leak on 504' })
+  const ROS_2 = aTask({ id: 'ROS-2', title: 'Review the migration plan' })
+
+  test('lists the task of a session handed the work by a mention-opened session', async () => {
+    // The handed-off session carries no task of its own; its chain does.
+    withSessions([
+      aSession({
+        id: 'session-2',
+        origin: 'agent',
+        spawnedFrom: { agentId: 'debugging', sessionId: 'session-1', label: 'Debugging Agent' },
+      }),
+      aSession({ id: 'session-1', taskId: 'ROS-1' }),
+    ])
+    useRoster.setState({ tasks: [ROS_1, ROS_2] })
+    render(<AgentDetail />)
+
+    const link = await screen.findByRole('button', { name: 'Open ROS-1' })
+    expect(within(link).getByText('Fix connection pool leak on 504')).toBeInTheDocument()
+  })
+
+  test('lists every task on the chain, and no task from another chain', async () => {
+    withSessions([
+      aSession({
+        id: 'session-2',
+        origin: 'agent',
+        spawnedFrom: { agentId: 'debugging', sessionId: 'session-1', label: 'Debugging Agent' },
+      }),
+      aSession({ id: 'session-1', taskId: 'ROS-1' }),
+      aSession({ id: 'session-9', taskId: 'ROS-2' }),
+    ])
+    useRoster.setState({ tasks: [ROS_1, ROS_2] })
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: 'Open ROS-1' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open ROS-2' })).not.toBeInTheDocument()
+  })
+
+  test('opens a listed task on the board', async () => {
+    withSessions([aSession({ id: 'session-1', taskId: 'ROS-1' })])
+    useRoster.setState({ tasks: [ROS_1] })
+    const user = userEvent.setup()
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open ROS-1' }))
+
+    expect(useRoster.getState().screen).toBe('tasks')
+    expect(useRoster.getState().openTaskId).toBe('ROS-1')
+  })
+})
+
 describe('AgentDetail — the flow a session belongs to', () => {
   const TASK = aTask({ id: 'ROS-1', title: 'Fix connection pool leak', projectId: 'proj-a' })
 

@@ -9,6 +9,7 @@ import {
   flowEdges,
   flowOfSession,
   layoutFlow,
+  sessionsByTask,
   visibleFlowIds,
 } from '@/state/workflow'
 import { ALL_PROJECTS } from '@/state/store'
@@ -252,5 +253,50 @@ describe('flowOfSession', () => {
     ]
 
     expect(flowOfSession(crossed, flowEdges(crossed), 'second').taskId).toBe('ROS-101')
+  })
+})
+
+describe('sessionsByTask', () => {
+  test('lists every session working on a task, including the ones it handed to', () => {
+    // Arrange: a mention opens the root; the work moves on by handoff.
+    const sessions = [
+      aSession({ id: 'root', taskId: 'ROS-101' }),
+      child('kid', 'root'),
+      child('grandkid', 'kid'),
+      aSession({ id: 'unrelated' }),
+    ]
+
+    // Act
+    const byTask = sessionsByTask(sessions, flowEdges(sessions))
+
+    // Assert
+    expect([...(byTask.get('ROS-101') ?? [])].sort()).toEqual(['grandkid', 'kid', 'root'])
+    expect(byTask.has('unrelated')).toBe(false)
+  })
+
+  test('finds a handed-off session that carries no task of its own', () => {
+    const sessions = [aSession({ id: 'root', taskId: 'ROS-101' }), child('kid', 'root')]
+
+    const byTask = sessionsByTask(sessions, flowEdges(sessions))
+
+    expect(byTask.get('ROS-101')?.has('kid')).toBe(true)
+  })
+
+  test('keeps tasks apart', () => {
+    const sessions = [
+      aSession({ id: 'a', taskId: 'ROS-1' }),
+      aSession({ id: 'b', taskId: 'ROS-2' }),
+    ]
+
+    const byTask = sessionsByTask(sessions, flowEdges(sessions))
+
+    expect([...(byTask.get('ROS-1') ?? [])]).toEqual(['a'])
+    expect([...(byTask.get('ROS-2') ?? [])]).toEqual(['b'])
+  })
+
+  test('is empty when no session is linked to a task', () => {
+    const sessions = [aSession({ id: 'a' })]
+
+    expect(sessionsByTask(sessions, flowEdges(sessions)).size).toBe(0)
   })
 })
