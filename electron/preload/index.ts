@@ -67,6 +67,7 @@ const api: RosterApi = {
     archive: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsArchive, sessionId),
     restore: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsRestore, sessionId),
     listArchived: () => ipcRenderer.invoke(CHANNELS.sessionsListArchived),
+    search: (query, options) => ipcRenderer.invoke(CHANNELS.sessionsSearch, query, options),
     setProject: (sessionId, projectId) =>
       ipcRenderer.invoke(CHANNELS.sessionsSetProject, sessionId, projectId),
     setName: (sessionId, name) => ipcRenderer.invoke(CHANNELS.sessionsSetName, sessionId, name),

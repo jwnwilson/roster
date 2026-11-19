@@ -452,4 +452,52 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE sessions ADD COLUMN archived_at INTEGER;
   `,
+
+  // 21 — transcript search. An FTS5 index over the words people and agents
+  // exchanged, kept in step with `messages` by triggers so no caller has to
+  // remember it. Only text and handed-off briefs are indexed: a tool call's
+  // arguments are deferred, and they are the noisiest part of a transcript.
+  //
+  // Keyed on the messages rowid, so an index row is found and removed in
+  // O(log n) rather than by scanning on every cascade delete. That rowid is
+  // stable here because nothing vacuums the database; a rebuild that renumbered
+  // it would need this index rebuilt too.
+  //
+  // The text is pulled from the JSON payload in SQL, which is where every
+  // text-bearing kind keeps it under `text`. The backfill indexes what already
+  // exists, so an upgraded install searches its history from the first launch.
+  `
+  CREATE VIRTUAL TABLE message_search USING fts5(
+    text,
+    session_id UNINDEXED,
+    tokenize = 'unicode61'
+  );
+
+  INSERT INTO message_search (rowid, text, session_id)
+    SELECT rowid, COALESCE(json_extract(payload, '$.text'), ''), session_id
+      FROM messages
+     WHERE kind IN ('text', 'spawn');
+
+  CREATE TRIGGER messages_search_insert AFTER INSERT ON messages
+    WHEN new.kind IN ('text', 'spawn')
+  BEGIN
+    INSERT INTO message_search (rowid, text, session_id)
+      VALUES (new.rowid, COALESCE(json_extract(new.payload, '$.text'), ''), new.session_id);
+  END;
+
+  -- Streamed prose is rewritten in place as it grows, so the index follows
+  -- the payload rather than the insert.
+  CREATE TRIGGER messages_search_update AFTER UPDATE OF payload ON messages
+    WHEN new.kind IN ('text', 'spawn')
+  BEGIN
+    DELETE FROM message_search WHERE rowid = old.rowid;
+    INSERT INTO message_search (rowid, text, session_id)
+      VALUES (new.rowid, COALESCE(json_extract(new.payload, '$.text'), ''), new.session_id);
+  END;
+
+  CREATE TRIGGER messages_search_delete AFTER DELETE ON messages
+  BEGIN
+    DELETE FROM message_search WHERE rowid = old.rowid;
+  END;
+  `,
 ]

@@ -20,6 +20,7 @@ import type {
   TaskComment,
   TaskSessionLink,
   TranscriptLine,
+  SessionSearchHit,
   SpendSummary,
   UpdateState,
   Usage,
@@ -106,6 +107,11 @@ export interface RosterApi {
     restore(sessionId: string): Promise<Session>
     /** Every archived session, most recently archived first. */
     listArchived(): Promise<Session[]>
+    /**
+     * Sessions whose transcript holds every word typed. Archived ones only
+     * when asked. Runs in main, so the renderer debounces the calls.
+     */
+    search(query: string, options?: { includeArchived?: boolean }): Promise<SessionSearchHit[]>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
     /**
@@ -509,6 +515,7 @@ export const CHANNELS = {
   sessionsArchive: 'sessions:archive',
   sessionsRestore: 'sessions:restore',
   sessionsListArchived: 'sessions:listArchived',
+  sessionsSearch: 'sessions:search',
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsAllowForSession: 'sessions:allowForSession',

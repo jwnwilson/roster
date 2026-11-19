@@ -49,6 +49,11 @@ describe('migrations', () => {
     expect(columns).toContain('archived_at')
   })
 
+  test('transcript text is indexed for search, in step with the messages it comes from', () => {
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE name = 'message_search'").all() as { name: string }[])
+    expect(tables).toHaveLength(1)
+  })
+
   test('refuses a database written by a newer build', () => {
     // The loop only runs forward, so a database ahead of this build used to
     // pass straight through it: every migration skipped, no error, and the
@@ -1024,6 +1029,51 @@ describe('migration 19 — a plan can be closed', () => {
 
     expect(() => migrate(old)).not.toThrow()
     expect(version(old)).toBe(MIGRATIONS.length)
+    old.close()
+  })
+})
+
+describe('migration 21 — transcript search', () => {
+  /** A database stopped at version 20, with a transcript already in it. */
+  function atVersion20() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < 20; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma('user_version = 20')
+    old.prepare(
+      "INSERT INTO sessions (id, agent_id, title, origin, status, created_at) VALUES ('s1', 'a', 'T', 'you', 'done', 1)",
+    ).run()
+    const insert = old.prepare(
+      'INSERT INTO messages (id, session_id, kind, payload, created_at) VALUES (?, ?, ?, ?, ?)',
+    )
+    insert.run('m1', 's1', 'text', JSON.stringify({ role: 'user', text: 'kettle descale question' }), 1)
+    insert.run('m2', 's1', 'spawn', JSON.stringify({ text: 'brief about kettles' }), 2)
+    insert.run('m3', 's1', 'tool', JSON.stringify({ tool: 'bash', args: 'kettle' }), 3)
+    return old
+  }
+
+  test('indexes the text and briefs that already exist, but not tool calls', () => {
+    const old = atVersion20()
+
+    migrate(old as never)
+
+    const indexed = (old.prepare('SELECT session_id, text FROM message_search').all() as { text: string }[]).map(
+      (row) => row.text,
+    )
+    expect(indexed.sort()).toEqual(['brief about kettles', 'kettle descale question'])
+    old.close()
+  })
+
+  test('keeps the index in step with a message written after the upgrade', () => {
+    const old = atVersion20()
+    migrate(old as never)
+
+    old.prepare(
+      "INSERT INTO messages (id, session_id, kind, payload, created_at) VALUES ('m9', 's1', 'text', ?, 9)",
+    ).run(JSON.stringify({ role: 'assistant', text: 'fresh lighthouse answer' }))
+
+    const found = old.prepare("SELECT COUNT(*) AS n FROM message_search WHERE message_search MATCH 'lighthouse'").get() as { n: number }
+    expect(found.n).toBe(1)
     old.close()
   })
 })

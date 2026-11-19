@@ -310,6 +310,24 @@ export interface AgentUsage {
 export const NO_PROJECT = 'none'
 
 /** Every rollup the Spend screen needs, in one round trip. */
+/**
+ * One session that matched a transcript search. The snippet is the most
+ * recent matching line, with the matched words marked as shared/search.ts
+ * describes.
+ */
+export interface SessionSearchHit {
+  sessionId: string
+  agentId: string
+  /** What the session is called, as sessionLabel reads it. */
+  label: string
+  snippet: string
+  /** How many messages in the session matched. */
+  matches: number
+  /** When the most recent matching message was written. */
+  lastMatchAt: number
+  archived: boolean
+}
+
 export interface SpendSummary {
   byAgent: Record<string, AgentUsage>
   /** Keyed by project id, or NO_PROJECT. */

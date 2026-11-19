@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import {
   agentStatus,
@@ -13,6 +14,7 @@ import { sessionLabel } from '@shared/sessions'
 import { formatUsageCost } from '@/state/format'
 import { selectRosterTotals } from '@/state/spend'
 import { ProjectFilter } from './ProjectFilter'
+import { TranscriptMatches } from './TranscriptMatches'
 import { UpdateRow } from './UpdateRow'
 import { ChevronIcon } from './icons'
 import { StatusDot } from './primitives'
@@ -58,6 +60,9 @@ export function Sidebar() {
   const agents = useRoster(useShallow(selectSidebarAgents))
   const totals = useRoster(useShallow(selectRosterTotals))
   const appVersion = useRoster((s) => s.appVersion)
+  // Off by default: an archived session is put away, so a search does not
+  // reach into it unless you ask.
+  const [includeArchived, setIncludeArchived] = useState(false)
 
   const counts: Record<string, string> = {
     grid: String(rosterSize),
@@ -124,9 +129,21 @@ export function Sidebar() {
           onChange={(e) => setQuery(e.target.value)}
           className="w-full rounded-chip border border-line bg-card px-[9px] py-[6px] font-ui text-md text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
         />
+        {query.trim() === '' ? null : (
+          <label className="flex cursor-pointer items-center gap-[6px] px-[2px] text-sm text-dim">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(e) => setIncludeArchived(e.target.checked)}
+              className="m-0"
+            />
+            Include archived
+          </label>
+        )}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-[1px] overflow-y-auto px-[8px] pb-[8px]">
+        <TranscriptMatches query={query} includeArchived={includeArchived} />
         {agents.map((agent) => (
           <SidebarAgentRow key={agent.id} agent={agent} />
         ))}
