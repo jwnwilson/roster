@@ -31,15 +31,12 @@ const { openDatabase } = await import('@main/db')
 const { SessionStore } = await import('@main/store/sessions')
 const { UsageStore } = await import('@main/store/usage')
 const { SessionManager, MAX_HANDOFF_DEPTH } = await import('@main/sessions/manager')
-const { removeSession } = await import('@main/sessions/remove')
 
 let home: string
 let manager: InstanceType<typeof SessionManager>
 let sessions: InstanceType<typeof SessionStore>
 let usage: InstanceType<typeof UsageStore>
 let events: unknown[]
-let removeChildSession: ReturnType<typeof vi.fn<(sessionId: string) => Promise<Session | null>>>
-let closeChildTerminal: ReturnType<typeof vi.fn<(sessionId: string) => void>>
 
 const AGENTS: Agent[] = [
   {
@@ -95,19 +92,6 @@ beforeEach(async () => {
   sessions = new SessionStore(db)
   usage = new UsageStore(db)
   events = []
-  closeChildTerminal = vi.fn<(sessionId: string) => void>()
-  removeChildSession = vi.fn((sessionId: string) =>
-    removeSession(
-      {
-        sessions,
-        plans: { listBySession: () => [] },
-        stopTurn: (id) => manager.stop(id),
-        closeTerminal: closeChildTerminal,
-      },
-      sessionId,
-    ),
-  )
-
   const agentStore = {
     findAll: () => AGENTS,
     findById: (id: string) => AGENTS.find((a) => a.id === id) ?? null,
@@ -124,7 +108,6 @@ beforeEach(async () => {
     undefined,
     undefined,
     undefined,
-    { removeSession: removeChildSession },
   )
   manager.subscribe((event) => events.push(event))
   runnerStub.run.mockReset()
@@ -1004,8 +987,8 @@ describe('SessionManager.handOff', () => {
   })
 })
 
-describe('SessionManager.closeChildSession', () => {
-  test('removes only a direct child through the supplied safe lifecycle', async () => {
+describe('SessionManager archiving', () => {
+  test('archives only a direct child, and says so to the event stream', () => {
     const parent = manager.create('debugging', 'Parent')
     const child = sessions.create({
       agentId: 'review',
@@ -1014,17 +997,12 @@ describe('SessionManager.closeChildSession', () => {
       from: { agentId: 'debugging', sessionId: parent.id, label: 'Parent' },
     })
 
-    await expect(manager.closeChildSession(parent.id, child.id)).resolves.toBe(true)
-    expect(removeChildSession).toHaveBeenCalledWith(child.id)
-    expect(sessions.findById(child.id)).toBeNull()
-    expect(events).toContainEqual({
-      type: 'session-deleted',
-      sessionId: child.id,
-      agentId: child.agentId,
-    })
+    expect(manager.archiveChildSession(parent.id, child.id)).toBe(true)
+    expect(sessions.findById(child.id)?.archivedAt).toEqual(expect.any(Number))
+    expect(events).toContainEqual({ type: 'session-archived', sessionId: child.id, agentId: child.agentId })
   })
 
-  test('rejects self, ancestor, sibling, unrelated, user-created, and unknown sessions', async () => {
+  test('rejects self, ancestor, sibling, unrelated, user-created, unknown and already-archived sessions', () => {
     const parent = manager.create('debugging', 'Parent')
     const child = sessions.create({
       agentId: 'review', title: 'Child', origin: 'agent',
@@ -1037,14 +1015,15 @@ describe('SessionManager.closeChildSession', () => {
     const unrelated = manager.create('review', 'Unrelated')
 
     for (const target of [child.id, parent.id, sibling.id, unrelated.id, 'missing']) {
-      await expect(manager.closeChildSession(child.id, target)).resolves.toBe(false)
+      expect(manager.archiveChildSession(child.id, target)).toBe(false)
     }
 
-    expect(removeChildSession).not.toHaveBeenCalled()
-    for (const session of [parent, child, sibling, unrelated]) expect(sessions.findById(session.id)).not.toBeNull()
+    for (const session of [parent, child, sibling, unrelated]) {
+      expect(sessions.findById(session.id)?.archivedAt).toBeNull()
+    }
   })
 
-  test('stops an active child before closing its terminal and deleting it', async () => {
+  test('refuses a child with a turn in flight, and leaves it running', async () => {
     runnerStub.run.mockImplementation(
       async function* (_prompt: string, options: { signal: AbortSignal }) {
         await new Promise<void>((resolve) => options.signal.addEventListener('abort', () => resolve()))
@@ -1058,11 +1037,38 @@ describe('SessionManager.closeChildSession', () => {
     const turn = manager.send(child.id, 'Work')
     await vi.waitFor(() => expect(manager.isStreaming(child.id)).toBe(true))
 
-    await expect(manager.closeChildSession(parent.id, child.id)).resolves.toBe(true)
-    await turn
+    expect(() => manager.archiveChildSession(parent.id, child.id)).toThrow('Stop it first')
+    expect(sessions.findById(child.id)?.archivedAt).toBeNull()
 
-    expect(closeChildTerminal).toHaveBeenCalledWith(child.id)
-    expect(sessions.findById(child.id)).toBeNull()
+    await manager.stop(child.id)
+    await turn
+  })
+
+  test('a person can archive a session, but not while it is running', async () => {
+    runnerStub.run.mockImplementation(
+      async function* (_prompt: string, options: { signal: AbortSignal }) {
+        await new Promise<void>((resolve) => options.signal.addEventListener('abort', () => resolve()))
+      },
+    )
+    const session = manager.create('debugging', 'Busy')
+    const turn = manager.send(session.id, 'Work')
+    await vi.waitFor(() => expect(manager.isStreaming(session.id)).toBe(true))
+
+    expect(() => manager.setArchived(session.id, true)).toThrow('Stop it first')
+
+    await manager.stop(session.id)
+    await turn
+    expect(manager.setArchived(session.id, true).archivedAt).toEqual(expect.any(Number))
+  })
+
+  test('restoring an archived session emits it back, whole', () => {
+    const session = manager.create('debugging', 'Put away')
+    manager.setArchived(session.id, true)
+
+    const restored = manager.setArchived(session.id, false)
+
+    expect(restored.archivedAt).toBeNull()
+    expect(events).toContainEqual({ type: 'session-restored', session: restored })
   })
 })
 

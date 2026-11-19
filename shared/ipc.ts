@@ -96,6 +96,16 @@ export interface RosterApi {
      * rejecting.
      */
     remove(sessionId: string): Promise<boolean>
+    /**
+     * Puts a session away. It leaves its agent's list, the sidebar and the
+     * grid, but its transcript, plans, spend and task link all stay. Refused
+     * with "Stop it first" while a turn is running.
+     */
+    archive(sessionId: string): Promise<Session>
+    /** Brings an archived session back into its agent's list. */
+    restore(sessionId: string): Promise<Session>
+    /** Every archived session, most recently archived first. */
+    listArchived(): Promise<Session[]>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
     /**
@@ -461,6 +471,8 @@ export type SessionEventPayload =
   | { type: 'queued'; sessionId: string; count: number }
   | { type: 'activity'; sessionId: string; text: string }
   | { type: 'session-deleted'; sessionId: string; agentId: string }
+  | { type: 'session-archived'; sessionId: string; agentId: string }
+  | { type: 'session-restored'; session: Session }
   | { type: 'session-renamed'; session: Session }
 
 /** Channel names, kept in one place so main and preload cannot drift. */
@@ -494,6 +506,9 @@ export const CHANNELS = {
   sessionsSend: 'sessions:send',
   sessionsCancel: 'sessions:cancel',
   sessionsDelete: 'sessions:delete',
+  sessionsArchive: 'sessions:archive',
+  sessionsRestore: 'sessions:restore',
+  sessionsListArchived: 'sessions:listArchived',
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsAllowForSession: 'sessions:allowForSession',

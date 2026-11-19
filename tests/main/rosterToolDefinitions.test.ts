@@ -76,11 +76,11 @@ describe('the built-in tool definitions', () => {
     )
   })
 
-  test('defines destructive child-session closure for both runners', () => {
+  test('archives rather than deletes, so child-session closure is not destructive for either runner', () => {
     const wire = toWireTools(builtinToolDefinitions(fullSet(), AGENT.id))
 
     expect(wire.find((tool) => tool.name === 'close_session')?.annotations).toMatchObject({
-      destructiveHint: true,
+      destructiveHint: false,
       openWorldHint: false,
     })
   })

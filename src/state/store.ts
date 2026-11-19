@@ -31,7 +31,7 @@ import { BOARD_STATUSES } from '@shared/types'
 import { messageFor } from '@/lib/errors'
 import { readFlag, writeFlag } from '@/lib/uiPreference'
 
-export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend'
+export type Screen = 'grid' | 'agent' | 'skills' | 'mcp' | 'new' | 'tasks' | 'spend' | 'archived'
 export type PaneMode = 'chat' | 'terminal'
 export type McpTab = 'installed' | 'registry' | 'desktop'
 export type TaskTab = 'comments' | 'history'
@@ -988,6 +988,16 @@ export function reduceSessionEvent(
     case 'session-deleted':
       return forgetSession(state, event.sessionId)
 
+    // Put away: gone from the lists exactly as a deleted one is, but kept on
+    // the server, so it is read again from the archived view if wanted.
+    case 'session-archived':
+      return forgetSession(state, event.sessionId)
+
+    case 'session-restored':
+      return {
+        sessions: withRestoredSession(state.sessions, event.session),
+      }
+
     case 'session-renamed':
       return {
         sessions: Object.fromEntries(
@@ -1045,6 +1055,19 @@ function forgetSession(state: RosterState, sessionId: string): Partial<RosterSta
 }
 
 /** The per-agent lists with one session gone, leaving untouched lists alone. */
+/**
+ * Lists a restored session back under its agent, in creation order, replacing
+ * any copy already there so a repeated event cannot double it.
+ */
+function withRestoredSession(
+  sessions: Record<string, Session[]>,
+  session: Session,
+): Record<string, Session[]> {
+  const others = (sessions[session.agentId] ?? []).filter((candidate) => candidate.id !== session.id)
+  const list = [...others, session].sort((a, b) => a.createdAt - b.createdAt)
+  return { ...sessions, [session.agentId]: list }
+}
+
 function withoutSession(
   sessions: Record<string, Session[]>,
   sessionId: string,

@@ -44,6 +44,11 @@ describe('migrations', () => {
     expect(columns).toContain('last_nudged_at')
   })
 
+  test('sessions persist when they were archived, NULL while active', () => {
+    const columns = (db.pragma('table_info(sessions)') as { name: string }[]).map((c) => c.name)
+    expect(columns).toContain('archived_at')
+  })
+
   test('refuses a database written by a newer build', () => {
     // The loop only runs forward, so a database ahead of this build used to
     // pass straight through it: every migration skipped, no error, and the

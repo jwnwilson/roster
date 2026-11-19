@@ -100,6 +100,10 @@ export class TaskMentions {
   private async ask(task: Task, agent: Agent, comment: string): Promise<void> {
     try {
       const existing = this.sessions.findByTask(task.id, agent.id)
+      // An archived session is the same conversation, still on this task: a
+      // mention continues it, so it comes back out rather than a second one
+      // being opened beside it.
+      if (existing?.archivedAt) this.sessions.setArchived(existing.id, false)
       const session = existing ?? this.open(task, agent)
 
       // What the session held before this turn, so the reply is this turn's

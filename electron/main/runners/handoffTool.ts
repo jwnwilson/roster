@@ -24,7 +24,7 @@ export interface RosterTools {
     label: string
     started: boolean
   }
-  /** Permanently closes a direct child of this bound session. */
+  /** Archives a direct child of this bound session; see close_session. */
   closeSession(sessionId: string): Promise<boolean>
   /**
    * Pauses the turn until the person answers in Roster. The answers are keyed
@@ -63,7 +63,9 @@ export const OPEN_SESSION_SCHEMA = {
 }
 
 export const CLOSE_SESSION_SCHEMA = {
-  session_id: z.string().describe('The id of the direct child session to permanently close.'),
+  session_id: z
+    .string()
+    .describe('The id of a direct child session to archive. It can be restored later.'),
 }
 
 export const RENAME_SESSION_SCHEMA = {
@@ -191,16 +193,38 @@ export function buildRosterTools(
 
   const closeSession = tool(
     'close_session',
-    'Permanently close one direct child session that you opened. This cannot be undone.',
+    'Archive one direct child session that you opened. Archiving puts it away out of the roster ' +
+      'but keeps its transcript, plans and spend, and a later mention on its task brings it back. ' +
+      'Nothing is deleted; only a person can permanently delete a session.',
     CLOSE_SESSION_SCHEMA,
     async (args: { session_id: string }) => {
-      if (!(await tools.closeSession(args.session_id))) {
+      let archived: boolean
+      try {
+        archived = await tools.closeSession(args.session_id)
+      } catch (cause) {
+        // A child with a turn in flight: archiving waits for it to stop.
+        const reason = cause instanceof Error ? cause.message : String(cause)
+        return { content: [{ type: 'text' as const, text: `Not archived: ${reason}.` }], isError: true }
+      }
+      if (!archived) {
         return {
-          content: [{ type: 'text' as const, text: 'That session is not a direct child of this session.' }],
+          content: [
+            {
+              type: 'text' as const,
+              text: 'That session is not an active direct child of this session: it is not one you opened, or it is already archived.',
+            },
+          ],
           isError: true,
         }
       }
-      return { content: [{ type: 'text' as const, text: 'Closed the child session permanently.' }] }
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: 'Archived the child session. Its transcript is kept, and it can be restored.',
+          },
+        ],
+      }
     },
   )
 

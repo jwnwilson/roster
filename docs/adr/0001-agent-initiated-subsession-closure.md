@@ -4,6 +4,9 @@
 
 Accepted — 2026-09-06
 
+Removal semantics superseded by [ADR 0002](0002-archive-sessions-instead-of-deleting.md):
+`close_session` now archives rather than deletes.
+
 ## Context
 
 Agents can open sessions on other agents through Roster's built-in MCP server.

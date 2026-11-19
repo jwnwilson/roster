@@ -180,6 +180,70 @@ describe('AgentDetail — sessions', () => {
   })
 })
 
+describe('AgentDetail — archiving a session', () => {
+  test('offers Archive on each tab, not Delete', async () => {
+    withSessions([aSession({ id: 's1', title: 'First' })])
+    render(<AgentDetail />)
+
+    expect(await screen.findByRole('button', { name: 'Archive session First' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Delete session/ })).not.toBeInTheDocument()
+  })
+
+  test('archives straight away, with no confirmation, and drops the tab', async () => {
+    const archive = vi.fn().mockResolvedValue(aSession({ id: 's1', archivedAt: 1 }))
+    installRosterApi({ sessions: { archive, listByAgent: vi.fn().mockResolvedValue([aSession({ id: 's1' }), aSession({ id: 's2', title: 'Kept' })]) } })
+    useRoster.setState({ sessions: { debugging: [aSession({ id: 's1', title: 'First' }), aSession({ id: 's2', title: 'Kept' })] }, sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Archive session First' }))
+
+    await waitFor(() => expect(archive).toHaveBeenCalledWith('s1'))
+    await waitFor(() =>
+      expect(useRoster.getState().sessions['debugging']?.map((session) => session.id)).toEqual(['s2']),
+    )
+  })
+
+  test('falls back to another session when the open one is archived', async () => {
+    const user = userEvent.setup()
+    withSessions([aSession({ id: 's1', title: 'First' }), aSession({ id: 's2', title: 'Second' })])
+    installRosterApi({
+      sessions: {
+        archive: vi.fn().mockResolvedValue(aSession({ id: 's1', archivedAt: 1 })),
+        listByAgent: vi.fn().mockResolvedValue([aSession({ id: 's1', title: 'First' }), aSession({ id: 's2', title: 'Second' })]),
+      },
+    })
+    useRoster.setState({ sess: { debugging: 's1' } })
+    render(<AgentDetail />)
+
+    await user.click(await screen.findByRole('button', { name: 'Archive session First' }))
+
+    await waitFor(() => expect(useRoster.getState().sess['debugging']).toBe('s2'))
+  })
+
+  test('is disabled with a reason while a turn is running', async () => {
+    withSessions([aSession({ id: 's1', title: 'Busy' })])
+    useRoster.setState({ streaming: { s1: true } })
+    render(<AgentDetail />)
+
+    const button = await screen.findByRole('button', { name: 'Archive session Busy' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('title', 'Stop it first')
+  })
+
+  test('says why when the archive is refused', async () => {
+    const archive = vi.fn().mockRejectedValue(new Error('Stop it first'))
+    withSessions([aSession({ id: 's1', title: 'Racing' })])
+    installRosterApi({ sessions: { archive, listByAgent: vi.fn().mockResolvedValue([aSession({ id: 's1', title: 'Racing' })]) } })
+    render(<AgentDetail />)
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'Archive session Racing' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Stop it first')
+  })
+})
+
 describe('AgentDetail — approval banner', () => {
   const APPROVAL = {
     id: 'a1',
@@ -1193,100 +1257,3 @@ describe('AgentDetail — naming a session', () => {
   })
 })
 
-describe('AgentDetail — deleting a session', () => {
-  function twoSessions(): void {
-    withSessions([aSession({ id: 's1', title: 'First' }), aSession({ id: 's2', title: 'Second' })])
-    useRoster.setState({ sess: { debugging: 's1' } })
-  }
-
-  test('offers a delete control on every session tab', async () => {
-    twoSessions()
-    render(<AgentDetail />)
-
-    expect(await screen.findByRole('button', { name: 'Delete session First' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Delete session Second' })).toBeInTheDocument()
-  })
-
-  test('asks the main process to delete it, and drops the tab when it does', async () => {
-    const user = userEvent.setup()
-    twoSessions()
-    const remove = vi.fn().mockResolvedValue(true)
-    installRosterApi({
-      sessions: {
-        listByAgent: vi.fn().mockResolvedValue([
-          aSession({ id: 's1', title: 'First' }),
-          aSession({ id: 's2', title: 'Second' }),
-        ]),
-        remove,
-      },
-    })
-    render(<AgentDetail />)
-
-    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
-
-    expect(remove).toHaveBeenCalledWith('s1')
-    await waitFor(() =>
-      expect(useRoster.getState().sessions['debugging']?.map((s) => s.id)).toEqual(['s2']),
-    )
-  })
-
-  test('falls back to another session when the open one goes', async () => {
-    const user = userEvent.setup()
-    twoSessions()
-    installRosterApi({
-      sessions: {
-        listByAgent: vi.fn().mockResolvedValue([
-          aSession({ id: 's1', title: 'First' }),
-          aSession({ id: 's2', title: 'Second' }),
-        ]),
-        remove: vi.fn().mockResolvedValue(true),
-      },
-    })
-    render(<AgentDetail />)
-
-    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
-
-    await waitFor(() => expect(useRoster.getState().sess['debugging']).toBe('s2'))
-  })
-
-  test('keeps the session when the confirmation was dismissed', async () => {
-    const user = userEvent.setup()
-    twoSessions()
-    installRosterApi({
-      sessions: {
-        listByAgent: vi.fn().mockResolvedValue([
-          aSession({ id: 's1', title: 'First' }),
-          aSession({ id: 's2', title: 'Second' }),
-        ]),
-        // The dialog lives in the main process; dismissing it resolves false.
-        remove: vi.fn().mockResolvedValue(false),
-      },
-    })
-    render(<AgentDetail />)
-
-    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
-
-    await waitFor(() => expect(useRoster.getState().sessions['debugging']).toHaveLength(2))
-    expect(useRoster.getState().sess['debugging']).toBe('s1')
-  })
-
-  test('says why when the delete failed', async () => {
-    const user = userEvent.setup()
-    twoSessions()
-    installRosterApi({
-      sessions: {
-        listByAgent: vi.fn().mockResolvedValue([
-          aSession({ id: 's1', title: 'First' }),
-          aSession({ id: 's2', title: 'Second' }),
-        ]),
-        remove: vi.fn().mockRejectedValue(new Error('database is locked')),
-      },
-    })
-    render(<AgentDetail />)
-
-    await user.click(await screen.findByRole('button', { name: 'Delete session First' }))
-
-    expect(await screen.findByText(/database is locked/)).toBeInTheDocument()
-    expect(useRoster.getState().sessions['debugging']).toHaveLength(2)
-  })
-})

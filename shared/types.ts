@@ -146,6 +146,12 @@ export interface Session {
   /** The last time Roster automatically asked this task session to check in. */
   lastNudgedAt?: number | null
   /**
+   * When this session was put away, or null while it is active. An archived
+   * session keeps its transcript, plans and spend, and is listed only in the
+   * archived view until it is restored.
+   */
+  archivedAt?: number | null
+  /**
    * The directory this session's turns run in, fixed when the first one
    * started. Null until then, and for every session that predates it.
    *

@@ -170,8 +170,8 @@ function requireSessions(): SessionStore {
   return sessionStore
 }
 
-/** Delete through the one lifecycle both people and agents use. */
-async function deleteSession(sessionId: string, notify = true): Promise<Session | null> {
+/** Permanent removal, reached only from the archived view. */
+async function deleteSession(sessionId: string): Promise<Session | null> {
   const removed = await removeSession(
     {
       sessions: requireSessions(),
@@ -181,7 +181,7 @@ async function deleteSession(sessionId: string, notify = true): Promise<Session 
     },
     sessionId,
   )
-  if (removed && notify) {
+  if (removed) {
     broadcast(CHANNELS.sessionsEvent, {
       type: 'session-deleted',
       sessionId,
@@ -314,7 +314,6 @@ export async function initStores(): Promise<void> {
     { tasks: taskStore, projects: projectStore, repos: projectRepoStore },
     planStore,
     projectNotesStore,
-    { removeSession: (sessionId) => deleteSession(sessionId, false) },
     notionMcp,
   )
   manager.testLocalDesktop = async (agentName) => {
@@ -490,19 +489,32 @@ export function registerIpc(): void {
     requireManager().cancel(sessionId),
   )
 
+  // Archive is the way to put a session away. Permanent deletion is the
+  // archived view's job, so it refuses a session that is still active: a
+  // session has to be archived, and so not running, before it can go.
+  ipcMain.handle(CHANNELS.sessionsArchive, (_e, sessionId: string) =>
+    requireManager().setArchived(sessionId, true),
+  )
+  ipcMain.handle(CHANNELS.sessionsRestore, (_e, sessionId: string) =>
+    requireManager().setArchived(sessionId, false),
+  )
+  ipcMain.handle(CHANNELS.sessionsListArchived, () => requireSessions().listArchived())
+
   ipcMain.handle(CHANNELS.sessionsDelete, async (e, sessionId: string) => {
     const session = requireSessions().findById(sessionId)
     if (!session) return false
+    if (session.archivedAt === null || session.archivedAt === undefined) {
+      throw new Error('Archive the session before deleting it.')
+    }
 
-    // A transcript is the record of turns that cost real money, and there is
-    // no archive to fall back on the way a project has — so this asks first,
-    // as deleting a task or a skill does.
+    // A transcript is the record of turns that cost real money, so deleting
+    // it asks first, as deleting a task or a skill does.
     const confirmed = await confirmDelete(
       e,
-      // What the user calls it, which is what the tab they clicked says.
+      // What the user calls it, which is what the row they clicked says.
       sessionLabel(session),
-      'Its transcript, its plans and its spend go with it. A turn in flight is ' +
-        'stopped first. This cannot be undone.',
+      'Its transcript, its plans and its spend are deleted with it. This ' +
+        'permanently removes the session and cannot be undone.',
     )
     if (!confirmed) return false
 

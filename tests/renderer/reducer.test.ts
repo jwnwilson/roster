@@ -605,3 +605,57 @@ describe('reduceSessionEvent — a session renamed by its own agent', () => {
     ])
   })
 })
+
+describe('reduceSessionEvent — archiving and restoring', () => {
+  test('an archived session leaves its agent list, as a deleted one does', () => {
+    useRoster.setState({
+      sessions: {
+        debugging: [aSession({ id: 's1' }), aSession({ id: 's2', title: 'Kept' })],
+      },
+      messages: { s1: [] },
+    })
+
+    const next = reduceSessionEvent(state(), { type: 'session-archived', sessionId: 's1', agentId: 'debugging' })
+    useRoster.setState(next)
+
+    expect(state().sessions['debugging']?.map((session) => session.id)).toEqual(['s2'])
+    expect(state().messages['s1']).toBeUndefined()
+  })
+
+  test('a restored session returns to its agent list in creation order', () => {
+    useRoster.setState({
+      sessions: {
+        debugging: [aSession({ id: 's2', createdAt: 2 }), aSession({ id: 's4', createdAt: 4 })],
+      },
+    })
+    const restored = aSession({ id: 's3', createdAt: 3, archivedAt: null })
+
+    useRoster.setState(reduceSessionEvent(state(), { type: 'session-restored', session: restored }))
+
+    expect(state().sessions['debugging']?.map((session) => session.id)).toEqual(['s2', 's3', 's4'])
+  })
+
+  test('restoring a session already listed replaces it rather than doubling it', () => {
+    useRoster.setState({ sessions: { debugging: [aSession({ id: 's1', name: 'Old' })] } })
+
+    useRoster.setState(
+      reduceSessionEvent(state(), {
+        type: 'session-restored',
+        session: aSession({ id: 's1', name: 'New' }),
+      }),
+    )
+
+    expect(state().sessions['debugging']).toHaveLength(1)
+    expect(state().sessions['debugging']?.[0]?.name).toBe('New')
+  })
+
+  test('restoring into an agent the window has not loaded yet starts its list', () => {
+    useRoster.setState({ sessions: {} })
+
+    useRoster.setState(
+      reduceSessionEvent(state(), { type: 'session-restored', session: aSession({ id: 's9', agentId: 'review' }) }),
+    )
+
+    expect(state().sessions['review']?.map((session) => session.id)).toEqual(['s9'])
+  })
+})
