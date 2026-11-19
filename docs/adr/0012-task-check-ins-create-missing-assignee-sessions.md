@@ -4,6 +4,9 @@
 
 Accepted — 2026-10-17
 
+Partly superseded by [ADR 0018](0018-task-check-ins-cover-review.md): the
+exclusion of in-review tasks no longer applies.
+
 ## Context
 
 The liveness monitor only finds tasks through existing sessions. An assigned
