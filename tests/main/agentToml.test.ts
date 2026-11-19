@@ -185,3 +185,24 @@ describe('auto_approve', () => {
     expect(parseAgentToml('debug', text).autoApprove).toBe(true)
   })
 })
+
+describe('allow_shell', () => {
+  test('defaults to false when agent.toml does not mention it', () => {
+    expect(parseAgentToml('debug', VALID).allowShell).toBe(false)
+  })
+
+  test('reads allow_shell = true', () => {
+    expect(parseAgentToml('debug', `${VALID}allow_shell = true\n`).allowShell).toBe(true)
+  })
+
+  test('rejects an allow_shell that is not a boolean', () => {
+    expect(() => parseAgentToml('debug', `${VALID}allow_shell = "yes"\n`)).toThrow(/allow_shell/)
+  })
+
+  test('writes allow_shell back so the setting survives a rewrite', () => {
+    const cfg = parseAgentToml('debug', VALID)
+    const text = serializeAgentToml({ ...cfg, allowShell: true })
+    expect(text).toContain('allow_shell = true')
+    expect(parseAgentToml('debug', text).allowShell).toBe(true)
+  })
+})

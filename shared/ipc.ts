@@ -421,6 +421,8 @@ export interface AgentPatch {
   hidden?: boolean
   /** Run tools without the approval banner. */
   autoApprove?: boolean
+  /** Run shell commands without the approval banner. */
+  allowShell?: boolean
   /** Null clears the default; omitted leaves it as it is. */
   defaultProjectId?: string | null
 }
@@ -439,6 +441,8 @@ export interface NewAgentInput {
   mcpServers?: string[]
   /** Run tools without the approval banner. Omitted means off. */
   autoApprove?: boolean
+  /** Run shell commands without the approval banner. Omitted means off. */
+  allowShell?: boolean
   /** The project this agent's sessions are filed under. Null for none. */
   defaultProjectId?: string | null
 }

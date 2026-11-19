@@ -59,6 +59,7 @@ export function AgentDetail() {
 }
 
 function AgentDetailBody({ agent }: { agent: Agent }) {
+  const openEdit = useRoster((s) => s.openEdit)
   const go = useRoster((s) => s.go)
   const mode = useRoster((s) => s.mode)
   const planMode = useRoster((s) => s.planMode)
@@ -256,6 +257,13 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               queuedCount={queuedCount}
               streamingText={activity ?? `${agent.name} is working…`}
               skillsLine={`skills: ${agent.skills.join(', ') || 'none'}`}
+              shell={{
+                agentName: agent.name,
+                runner: agent.runner,
+                allowShell: agent.allowShell === true,
+                autoApprove: agent.autoApprove === true,
+                onEdit: openEdit,
+              }}
               {...(asking !== null && questioning?.sessionId === active.id
                 ? { questions: asking }
                 : {})}

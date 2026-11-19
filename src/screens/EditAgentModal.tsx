@@ -3,6 +3,7 @@ import type { Agent, ModelInfo } from "@shared/types";
 import { useShallow } from "zustand/shallow";
 import {
   AutoApproveField,
+  ShellField,
   ChipField,
   DefaultProjectField,
   HarnessModelPicker,
@@ -81,6 +82,7 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
         cwd: draft.cwd,
         defaultProjectId: draft.defaultProjectId,
         autoApprove: draft.autoApprove,
+        allowShell: draft.allowShell,
       });
       // Re-read rather than patching locally, so the UI reflects the file.
       setAgents(await window.roster.agents.list());
@@ -173,6 +175,13 @@ export function EditAgentModal({ agent }: EditAgentModalProps) {
           on={draft.autoApprove}
           onToggle={() => patchDraft({ autoApprove: !draft.autoApprove })}
           supported={runnerId === "claude"}
+        />
+
+        <ShellField
+          on={draft.allowShell}
+          onToggle={() => patchDraft({ allowShell: !draft.allowShell })}
+          supported={runnerId === "claude"}
+          autoApproveOn={draft.autoApprove}
         />
 
         <ChipField

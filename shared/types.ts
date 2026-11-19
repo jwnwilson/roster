@@ -90,6 +90,11 @@ export interface Agent {
    */
   autoApprove?: boolean
   /**
+   * Run shell commands without the approval banner, and nothing else. Other
+   * tools still ask unless auto approve is on.
+   */
+  allowShell?: boolean
+  /**
    * The project a new session on this agent is filed under when the caller
    * names none. Null when the agent has no default, and ignored at session
    * time if it names a project that has since been archived or deleted.

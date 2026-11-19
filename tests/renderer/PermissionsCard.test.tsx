@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { PermissionReport } from '@shared/permissions'
 import type { SetupState } from '@shared/types'
-import { PermissionsCard } from '@/components/PermissionsCard'
+import { PermissionsCard, type ShellRow } from '@/components/PermissionsCard'
 import { useRoster } from '@/state/store'
 import { installRosterApi } from './rosterApi'
 
@@ -100,4 +100,64 @@ describe('PermissionsCard', () => {
     await waitFor(() => expect(api.setup.reviewPermissions).toHaveBeenCalledOnce())
     await waitFor(() => expect(container).toBeEmptyDOMElement())
   })
+
+  describe('shell commands row', () => {
+    function mountWithShell(shell: Partial<ShellRow>) {
+      const onEdit = vi.fn()
+      const view = render(<PermissionsCard shell={{ agentName: 'Tech Lead', runner: 'claude', allowShell: false, autoApprove: false, onEdit, ...shell }} />)
+      return { ...view, onEdit }
+    }
+
+    beforeEach(() => {
+      installRosterApi({
+        permissions: {
+          status: vi.fn().mockResolvedValue(NOT_YET),
+          request: vi.fn().mockResolvedValue(NOT_YET),
+          openSettings: vi.fn().mockResolvedValue(undefined),
+        },
+        setup: { reviewPermissions: vi.fn().mockResolvedValue(aSetupState({ permissionsReviewed: true })) },
+      })
+      useRoster.setState({ setup: aSetupState() })
+    })
+
+    test('says shell commands ask first by default', async () => {
+      mountWithShell({})
+      expect(await screen.findByText('Shell commands')).toBeInTheDocument()
+      expect(screen.getByText('Asks first')).toBeInTheDocument()
+    })
+
+    test('says shell commands are allowed when the agent allows shell', async () => {
+      mountWithShell({ allowShell: true })
+      expect(await screen.findByText('Allowed')).toBeInTheDocument()
+    })
+
+    test('says shell commands are allowed when the agent runs every tool without asking', async () => {
+      mountWithShell({ autoApprove: true })
+      expect(await screen.findByText('Allowed')).toBeInTheDocument()
+    })
+
+    test('names the agent whose setting this is', async () => {
+      mountWithShell({})
+      expect(await screen.findByText(/tech lead/i)).toBeInTheDocument()
+    })
+
+    test('opens the agent editor from the row', async () => {
+      const { onEdit } = mountWithShell({})
+      await userEvent.click(await screen.findByRole('button', { name: 'Change shell commands for Tech Lead' }))
+      expect(onEdit).toHaveBeenCalledOnce()
+    })
+
+    test('says Codex sandboxes its own shell, so the setting does not apply', async () => {
+      mountWithShell({ runner: 'codex' })
+      expect(await screen.findByText(/codex runs shell commands inside its own sandbox/i)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /change shell commands/i })).toBeNull()
+    })
+
+    test('is not shown once the permissions have been reviewed', () => {
+      useRoster.setState({ setup: aSetupState({ permissionsReviewed: true }) })
+      render(<PermissionsCard shell={{ agentName: 'Tech Lead', runner: 'claude', allowShell: false, autoApprove: false, onEdit: vi.fn() }} />)
+      expect(screen.queryByText('Shell commands')).toBeNull()
+    })
+  })
 })
+

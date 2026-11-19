@@ -532,6 +532,49 @@ export function AutoApproveField({ on, onToggle, supported }: AutoApproveFieldPr
   )
 }
 
+interface ShellFieldProps {
+  on: boolean
+  onToggle: () => void
+  supported: boolean
+  /** Run tools without asking is on, which already covers shell commands. */
+  autoApproveOn: boolean
+}
+
+/**
+ * Lets Bash run without the banner while every other tool still asks. Off
+ * for Codex, whose own sandbox bounds its shell, and redundant when every
+ * tool already runs without asking.
+ */
+export function ShellField({ on, onToggle, supported, autoApproveOn }: ShellFieldProps) {
+  if (!supported) {
+    return (
+      <Field label="Shell commands">
+        <p className="m-0 text-md text-dim">
+          Codex runs shell commands inside its own sandbox, so this does not apply.
+        </p>
+      </Field>
+    )
+  }
+  return (
+    <Field label="Shell commands">
+      <div className="flex flex-col gap-[8px]">
+        <div className="flex">
+          <ToggleChip
+            label="Run shell commands without asking"
+            on={on || autoApproveOn}
+            onToggle={autoApproveOn ? () => {} : onToggle}
+          />
+        </div>
+        <p className="m-0 text-md text-dim">
+          {autoApproveOn
+            ? 'Already on: "Run tools without asking" covers shell commands.'
+            : 'Only shell commands run without the banner. File edits and other tools still ask.'}
+        </p>
+      </div>
+    </Field>
+  )
+}
+
 interface DefaultProjectFieldProps {
   /** What the picker offers. An archived project the agent already names belongs here. */
   projects: Project[]
