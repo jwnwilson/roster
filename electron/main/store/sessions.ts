@@ -269,7 +269,7 @@ export class SessionStore {
   }
 
   /**
-   * Sessions whose assigned, in-progress task needs a periodic check-in.
+   * Sessions whose assigned active task needs a periodic check-in.
    *
    * This is deliberately a join rather than a caller-side filter: candidate
    * selection and cooldown are one durable query, so a restart cannot turn a
@@ -281,7 +281,7 @@ export class SessionStore {
         `SELECT s.*
            FROM sessions s
            JOIN tasks t ON t.id = s.task_id
-          WHERE t.status = 'in_progress'
+          WHERE t.status IN ('in_progress', 'in_review')
             AND t.assignee_id = s.agent_id
             AND s.archived_at IS NULL
             AND (s.last_nudged_at IS NULL OR s.last_nudged_at <= ?)`,

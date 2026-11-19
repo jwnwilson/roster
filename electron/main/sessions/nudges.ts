@@ -9,6 +9,9 @@ export const NUDGE_PERIOD_MS = 5 * 60 * 1_000
 export const NUDGE_PROMPT =
   'Roster check-in: this task is still assigned to you and In Progress. Continue the work if useful; otherwise leave a concise blocker or next-step comment and update the task status to reflect its current state.'
 
+export const REVIEW_NUDGE_PROMPT =
+  'Roster check-in: this task is still assigned to you and In Review. Check review progress and continue useful work if appropriate; otherwise leave a concise blocker or next-step comment and update the task status to reflect its current state. Do not approve or merge: review gates remain in force.'
+
 export interface NudgeRunner {
   isStreaming(sessionId: string): boolean
   enqueue(sessionId: string, prompt: string, options?: { author?: string }): void
@@ -21,7 +24,7 @@ interface TaskRecovery {
 }
 
 /**
- * Periodically brings an assigned, in-progress task back to its agent.
+ * Periodically brings an assigned, active task back to its agent.
  *
  * This is intentionally not a daemon: it runs only while Roster is open and
  * only starts a normal queued turn. The agent, rather than the timer, remains
@@ -55,7 +58,7 @@ export class SessionNudges {
     const at = this.now()
     if (this.recovery) {
       for (const task of this.recovery.tasks.findAll()) {
-        if (task.status !== 'in_progress' || !task.assigneeId) continue
+        if ((task.status !== 'in_progress' && task.status !== 'in_review') || !task.assigneeId) continue
         if (!this.recovery.agentExists(task.assigneeId)) continue
         if (this.sessions.findByTask(task.id, task.assigneeId)) continue
         const session = this.sessions.create({
@@ -77,9 +80,10 @@ export class SessionNudges {
       if (this.recovery && !this.recovery.agentExists(session.agentId)) continue
       if (this.runner.isStreaming(session.id)) continue
       const task = session.taskId ? this.recovery?.tasks.findById(session.taskId) : null
+      const instruction = task?.status === 'in_review' ? REVIEW_NUDGE_PROMPT : NUDGE_PROMPT
       const prompt = task && this.recovery
-        ? briefFor(task, this.recovery.tasks.comments(task.id), NUDGE_PROMPT, 'check-in')
-        : NUDGE_PROMPT
+        ? briefFor(task, this.recovery.tasks.comments(task.id), instruction, 'check-in')
+        : instruction
       this.sessions.markNudged(session.id, at)
       this.runner.enqueue(session.id, prompt, { author: 'Roster' })
     }
