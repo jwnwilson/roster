@@ -306,3 +306,41 @@ describe('Tasks — archived projects', () => {
     expect(screen.getByText('Shipped work')).toBeInTheDocument()
   })
 })
+
+describe('Tasks — archived work', () => {
+  beforeEach(() => {
+    useRoster.setState({
+      tasks: [...TASKS, aTask({ id: 'ROS-5', title: 'Shelved work', status: 'archived' })],
+      showArchivedTasks: false,
+    })
+  })
+
+  test('the Archived column is not on the board until the checkbox is ticked', async () => {
+    const user = userEvent.setup()
+    render(<Tasks />)
+
+    expect(screen.queryByRole('region', { name: 'Archived' })).toBeNull()
+    expect(screen.queryByText('Shelved work')).toBeNull()
+
+    await user.click(screen.getByRole('checkbox', { name: /show archived/i }))
+
+    expect(column('Archived')).toHaveTextContent('Shelved work')
+    expect(useRoster.getState().showArchivedTasks).toBe(true)
+  })
+
+  test('the Archived column can be unticked away again', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ showArchivedTasks: true })
+    render(<Tasks />)
+
+    await user.click(screen.getByRole('checkbox', { name: /show archived/i }))
+
+    expect(screen.queryByRole('region', { name: 'Archived' })).toBeNull()
+  })
+
+  test('the screen is titled Manage projects', () => {
+    render(<Tasks />)
+
+    expect(screen.getByRole('heading', { name: 'Manage projects' })).toBeInTheDocument()
+  })
+})

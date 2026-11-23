@@ -16,6 +16,7 @@ export const DEFAULT_STATUS_MAP: NotionStatusMap = {
   in_progress: 'In progress',
   in_review: 'In progress',
   done: 'Done',
+  archived: 'Archived',
 }
 
 /**
@@ -25,7 +26,7 @@ export const DEFAULT_STATUS_MAP: NotionStatusMap = {
  * arrives on the board rather than in a backlog nobody is looking at. Backlog
  * is only reached by a name given to it alone.
  */
-const READ_ORDER: readonly TaskStatus[] = [...BOARD_STATUSES, 'backlog']
+const READ_ORDER: readonly TaskStatus[] = [...BOARD_STATUSES, 'backlog', 'archived']
 
 interface Row {
   status_map: string

@@ -74,11 +74,11 @@ describe('Sidebar', () => {
     expect(spend).toHaveTextContent('$1.91')
   })
 
-  test('Tasks is a real screen, counting what is on the board', () => {
+  test('Manage projects is a real screen, counting what is on the board', () => {
     useRoster.setState({ tasks: [aTask({ id: 'ROS-1' }), aTask({ id: 'ROS-2' })] })
     render(<Sidebar />)
 
-    const tasks = screen.getByRole('button', { name: /Tasks/ })
+    const tasks = screen.getByRole('button', { name: /Manage projects/ })
     expect(tasks).not.toBeDisabled()
     expect(tasks).toHaveTextContent('2')
   })
@@ -87,7 +87,7 @@ describe('Sidebar', () => {
     const user = userEvent.setup()
     render(<Sidebar />)
 
-    await user.click(screen.getByRole('button', { name: /Tasks/ }))
+    await user.click(screen.getByRole('button', { name: /Manage projects/ }))
 
     expect(useRoster.getState().screen).toBe('tasks')
   })

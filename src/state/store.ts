@@ -13,7 +13,6 @@ import type {
   Skill,
   SpendSummary,
   Status,
-  BoardStatus,
   PlanComment,
   PlanDocument,
   Task,
@@ -27,7 +26,7 @@ import type {
 import type { PlanEventPayload, SessionEventPayload, TaskEventPayload } from '@shared/ipc'
 import { sessionLabel } from '@shared/sessions'
 import { rollUpAgentStatus } from '@shared/status'
-import { BOARD_STATUSES } from '@shared/types'
+import { ARCHIVED_STATUS, BOARD_STATUSES, type ColumnStatus } from '@shared/types'
 import { messageFor } from '@/lib/errors'
 import { readFlag, writeFlag } from '@/lib/uiPreference'
 
@@ -50,6 +49,8 @@ export const ALL_TASKS = 'all'
 
 /** Where the plan modal's width preference is remembered. */
 export const PLAN_EXPANDED_KEY = 'roster.plan.expanded'
+/** Whether archived tasks are shown on the board and in the backlog. */
+export const SHOW_ARCHIVED_TASKS_KEY = 'roster.tasks.showArchived'
 
 /** Staged edits from the Edit modal, committed to the agent only on Save. */
 export interface Draft {
@@ -192,6 +193,8 @@ export interface RosterState {
    * opening plans at all.
    */
   planExpanded: boolean
+  /** Off by default: archived work is put away until someone asks for it. */
+  showArchivedTasks: boolean
   taskQuery: string
   taskTab: TaskTab
   /* ---- Backlog ------------------------------------------------------ */
@@ -281,6 +284,7 @@ export interface RosterState {
   openPlan(planId: string): void
   closePlan(): void
   setPlanExpanded(expanded: boolean): void
+  setShowArchivedTasks(show: boolean): void
   applyPlanEvent(event: PlanEventPayload): void
   setProjectsOpen(open: boolean): void
   /** The status decides what the modal creates: a board task, or a backlog one. */
@@ -349,6 +353,7 @@ export const useRoster = create<RosterState>((set, get) => ({
   openTaskId: null,
   openPlanId: null,
   planExpanded: readFlag(PLAN_EXPANDED_KEY, false),
+  showArchivedTasks: readFlag(SHOW_ARCHIVED_TASKS_KEY, false),
   taskQuery: '',
   taskTab: 'comments',
   backlogQuery: '',
@@ -473,6 +478,10 @@ export const useRoster = create<RosterState>((set, get) => ({
   setPlanExpanded: (planExpanded) => {
     writeFlag(PLAN_EXPANDED_KEY, planExpanded)
     set({ planExpanded })
+  },
+  setShowArchivedTasks: (showArchivedTasks) => {
+    writeFlag(SHOW_ARCHIVED_TASKS_KEY, showArchivedTasks)
+    set({ showArchivedTasks })
   },
   applyPlanEvent: (event) => set((s) => reducePlanEvent(s, event)),
   setProjectsOpen: (projectsOpen) => set({ projectsOpen }),
@@ -698,7 +707,17 @@ export function withTask(tasks: Task[], task: Task): Task[] {
  */
 export function selectVisibleTasks(state: RosterState): Task[] {
   const archived = archivedProjectIds(state)
-  return state.tasks.filter((task) => !isHidden(task.projectId, archived))
+  return state.tasks.filter(
+    (task) => !isHidden(task.projectId, archived) && isShownArchived(task, state),
+  )
+}
+
+/**
+ * An archived task is shown only when "show archived" is ticked. Every other
+ * status is always shown: this is a filter on one status, not on the list.
+ */
+function isShownArchived(task: Task, state: Pick<RosterState, 'showArchivedTasks'>): boolean {
+  return task.status !== ARCHIVED_STATUS || state.showArchivedTasks
 }
 
 /** Tasks left by the board's text filter and its project filter. */
@@ -710,6 +729,7 @@ export function selectFilteredTasks(state: RosterState): Task[] {
   return state.tasks.filter((task) => {
     // Backlog work is off the board by definition; it has its own view.
     if (task.status === 'backlog') return false
+    if (!isShownArchived(task, state)) return false
     // An archived project takes its work with it. Nothing is deleted, so
     // restoring the project puts every one of these cards back.
     if (isHidden(task.projectId, archived)) return false
@@ -727,14 +747,15 @@ export function selectFilteredTasks(state: RosterState): Task[] {
  * filter — is dropped rather than indexed, since indexing would throw and
  * take the whole board down with it.
  */
-export function columnsFor(tasks: readonly Task[]): Record<BoardStatus, Task[]> {
-  const columns: Record<BoardStatus, Task[]> = {
+export function columnsFor(tasks: readonly Task[]): Record<ColumnStatus, Task[]> {
+  const columns: Record<ColumnStatus, Task[]> = {
     todo: [],
     in_progress: [],
     in_review: [],
     done: [],
+    archived: [],
   }
-  for (const task of tasks) columns[task.status as BoardStatus]?.push(task)
+  for (const task of tasks) columns[task.status as ColumnStatus]?.push(task)
   return columns
 }
 
@@ -753,7 +774,11 @@ export function selectBacklogTasks(state: RosterState): Task[] {
   const archived = archivedProjectIds(state)
 
   return state.tasks.filter((task) => {
-    if (task.status !== 'backlog') return false
+    // Archived work joins the backlog list only when asked for, so it can be
+    // found and restored from either view.
+    if (task.status !== 'backlog' && !(task.status === ARCHIVED_STATUS && state.showArchivedTasks)) {
+      return false
+    }
     if (isHidden(task.projectId, archived)) return false
     if (project !== ALL_PROJECTS && task.projectId !== project) return false
     if (priority !== ALL_PRIORITIES && task.priority !== priority) return false
@@ -839,16 +864,18 @@ export function projectOptionLabel(project: Project): string {
 }
 
 /** What a drop landed on: a column, or the column of the card under it. */
-export function columnOf(overId: string | number, tasks: readonly Task[]): BoardStatus | null {
+export function columnOf(overId: string | number, tasks: readonly Task[]): ColumnStatus | null {
   const id = String(overId)
-  if ((BOARD_STATUSES as readonly string[]).includes(id)) return id as BoardStatus
+  if (isColumn(id)) return id
 
   const status = tasks.find((task) => task.id === id)?.status
   // Only a column is a drop target. Backlog is not one, so a card can never
   // be dropped out of the board and into it.
-  return status !== undefined && (BOARD_STATUSES as readonly string[]).includes(status)
-    ? (status as BoardStatus)
-    : null
+  return status !== undefined && isColumn(status) ? status : null
+}
+
+function isColumn(id: string): id is ColumnStatus {
+  return (BOARD_STATUSES as readonly string[]).includes(id) || id === ARCHIVED_STATUS
 }
 
 function withTaskStatus(tasks: readonly Task[], taskId: string, status: TaskStatus): Task[] {
@@ -863,7 +890,7 @@ function withTaskStatus(tasks: readonly Task[], taskId: string, status: TaskStat
  * and silently stays moved after a failed write is a lie. Resolves an error
  * message, or null when it worked.
  */
-export async function moveTask(taskId: string, status: BoardStatus): Promise<string | null> {
+export async function moveTask(taskId: string, status: ColumnStatus): Promise<string | null> {
   const previous = useRoster.getState().tasks.find((task) => task.id === taskId)
   if (!previous || previous.status === status) return null
 

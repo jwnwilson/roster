@@ -151,7 +151,7 @@ describe('choosing a backlog task', () => {
 
     // The handoff gives the backlog no drag path; this select is the only
     // way a task gets onto the board.
-    expect(options).toEqual(['Backlog', 'To Do', 'In Progress', 'In Review', 'Done'])
+    expect(options).toEqual(['Backlog', 'To Do', 'In Progress', 'In Review', 'Done', 'Archived'])
   })
 })
 

@@ -1027,3 +1027,65 @@ describe('migration 19 — a plan can be closed', () => {
     old.close()
   })
 })
+
+describe('migration 21 — a task can be archived', () => {
+  /** A database stopped at version 20, with a task that has a thread and a linked session. */
+  function atVersion20() {
+    const old = new Database(':memory:')
+    old.pragma('foreign_keys = ON')
+    for (let i = 0; i < 20; i += 1) old.exec(MIGRATIONS[i] as string)
+    old.pragma('user_version = 20')
+    old.prepare(
+      "INSERT INTO projects (id, name, color, description, created_at) VALUES ('p1', 'API', '#7c5cff', '', 0)",
+    ).run()
+    old.prepare(
+      "INSERT INTO tasks (id, title, description, status, priority, assignee_id, project_id, labels, created_at, updated_at, notion_page_id)" +
+        " VALUES ('ROS-1', 'Fix pool leak', 'body', 'in_review', 'high', 'debugging', 'p1', '[]', 11, 22, 'page-1')",
+    ).run()
+    old.prepare(
+      "INSERT INTO task_comments (id, task_id, author, tone, text, is_system, created_at)" +
+        " VALUES ('c1', 'ROS-1', 'You', 'you', 'a note', 0, 0), ('c2', 'ROS-1', 'You', 'you', 'You moved this', 1, 1)",
+    ).run()
+    old.prepare(
+      "INSERT INTO sessions (id, agent_id, title, origin, status, created_at, task_id)" +
+        " VALUES ('s1', 'debugging', 'work', 'you', 'idle', 0, 'ROS-1')",
+    ).run()
+    return old
+  }
+
+  test('a task can be archived, which version 20 refused', () => {
+    const old = atVersion20()
+    expect(() =>
+      old.prepare("UPDATE tasks SET status = 'archived' WHERE id = 'ROS-1'").run(),
+    ).toThrow()
+
+    migrate(old)
+
+    expect(() =>
+      old.prepare("UPDATE tasks SET status = 'archived' WHERE id = 'ROS-1'").run(),
+    ).not.toThrow()
+    old.close()
+  })
+
+  test('keeps every comment, the Notion link, and the session attached to the task', () => {
+    // The rebuild that widens the CHECK drops tasks, which would cascade into
+    // task_comments and null out sessions.task_id. Each must survive it.
+    const old = atVersion20()
+
+    migrate(old)
+
+    expect(
+      old.prepare('SELECT id, text FROM task_comments ORDER BY created_at').all(),
+    ).toEqual([
+      { id: 'c1', text: 'a note' },
+      { id: 'c2', text: 'You moved this' },
+    ])
+    expect(old.prepare('SELECT notion_page_id FROM tasks WHERE id = ?').get('ROS-1')).toEqual({
+      notion_page_id: 'page-1',
+    })
+    expect(old.prepare('SELECT task_id FROM sessions WHERE id = ?').get('s1')).toEqual({
+      task_id: 'ROS-1',
+    })
+    old.close()
+  })
+})
