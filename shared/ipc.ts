@@ -11,9 +11,14 @@ import type {
   PlanDocument,
   Project,
   ProjectRepo,
+  ProviderSummary,
   RunnerStatus,
   Session,
   SetupState,
+  SignInAnswer,
+  SignInEvent,
+  SignInMethod,
+  SignInResult,
   Skill,
   Status,
   Task,
@@ -48,6 +53,20 @@ export interface RosterApi {
     minimize(): void
     maximize(): void
     close(): void
+  }
+  signIn: {
+    /** Every provider Roster can sign in to, and whether each is signed in. */
+    providers(): Promise<ProviderSummary[]>
+    /**
+     * Signs a provider in, asking questions through `onEvent` as Pi's login
+     * needs them. Resolves once the sign-in has finished either way.
+     */
+    start(providerId: string, method: SignInMethod): Promise<SignInResult>
+    /** Stops the sign-in in progress, if there is one. */
+    cancel(): Promise<void>
+    /** Answers a prompt the sign-in raised. */
+    answer(promptId: string, answer: SignInAnswer): Promise<void>
+    onEvent(listener: (event: SignInEvent) => void): () => void
   }
   runners: {
     list(): Promise<RunnerStatus[]>
@@ -488,6 +507,11 @@ export const CHANNELS = {
   windowMaximize: 'window:maximize',
   windowClose: 'window:close',
 
+  signInProviders: 'signIn:providers',
+  signInStart: 'signIn:start',
+  signInCancel: 'signIn:cancel',
+  signInAnswer: 'signIn:answer',
+  signInEvent: 'signIn:event',
   filesReadImage: 'files:readImage',
 
   runnersList: 'runners:list',

@@ -23,6 +23,8 @@ import type {
   RunnerStatus,
   Session,
   SetupState,
+  SignInAnswer,
+  SignInMethod,
   SpendSummary,
 } from '../../../shared/types'
 import type { NotionStatusMap } from '../../../shared/notion'
@@ -30,6 +32,7 @@ import { openDatabase, type Db } from '../db'
 import { PtyManager } from '../pty/manager'
 import { readChatImage } from '../images/readChatImage'
 import { allRunners, getRunner, piRunner, registerCustomRunners, warmUpRunners } from '../runners/registry'
+import { PiSignInFlow } from '../runners/pi/signInFlow'
 import { BROWSER_MCP_SERVERS } from '../../../shared/mcp'
 
 /** Adds servers to every agent's `mcp_servers`, keeping what each already has. */
@@ -138,6 +141,33 @@ const YOU = { name: 'You', tone: 'you' } as const
 const EMPTY_SPEND: SpendSummary = { byAgent: {}, byProject: {} }
 
 const agentStore = new AgentStore(() => runners)
+
+/** Signing a provider in from the welcome card, outside any conversation. */
+const signIn = new PiSignInFlow({
+  login: (providerId, method, interaction, signal) =>
+    piRunner().login(providerId, method, interaction, signal),
+  openUrl: (url) => void shell.openExternal(url),
+  emit: (event) => broadcast(CHANNELS.signInEvent, event),
+  afterSignIn: async () => {
+    // Pi is re-read now, so the agents' "not signed in" states clear at once.
+    const before = runners.get('pi')?.ready
+    runners = await detectRunners()
+    if (runners.get('pi')?.ready !== before) await agentStore.reload()
+  },
+})
+
+/**
+ * The first-run state as the window should see it. Engine and sign-in are
+ * read live, because a sign-in can happen long after the marker was written.
+ */
+function withLiveSetup(state: SetupState): SetupState {
+  const pi = runners.get('pi')
+  return {
+    ...state,
+    noRunner: state.noRunner || pi?.installed === false,
+    needsSignIn: pi?.installed === true && !pi.ready,
+  }
+}
 const skillStore = new SkillStore()
 const projectNotesStore = new ProjectNotesStore()
 const mcpStore = new McpStore()
@@ -426,7 +456,7 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.runnersList, async () => {
     const before = runners.get('pi')?.ready
     runners = await detectRunners()
-    if (runners.get('pi')?.ready !== before) await agentStore.load()
+    if (runners.get('pi')?.ready !== before) await agentStore.reload()
     return [...runners.values()]
   })
   ipcMain.handle(CHANNELS.runnersCheckModels, (_e, _runnerId: string, providerId: string) =>
@@ -796,10 +826,26 @@ export function registerIpc(): void {
   )
   ipcMain.handle(CHANNELS.plansApprove, (_e, planId: string) => requirePlanFlow().approve(planId))
 
-  ipcMain.handle(CHANNELS.setupState, () => setup)
+  ipcMain.handle(CHANNELS.setupState, () => withLiveSetup(setup))
   ipcMain.handle(CHANNELS.setupDismiss, async () => {
     setup = await dismissSetup()
-    return setup
+    return withLiveSetup(setup)
+  })
+
+  ipcMain.handle(CHANNELS.signInProviders, () => piRunner().providers())
+  ipcMain.handle(CHANNELS.signInStart, (_e, providerId: unknown, method: unknown) => {
+    if (typeof providerId !== 'string' || providerId === '') {
+      return { ok: false, message: 'Choose a model provider to sign in to.' }
+    }
+    if (method !== 'oauth' && method !== 'api_key') {
+      return { ok: false, message: 'Choose how to sign in.' }
+    }
+    return signIn.start(providerId, method as SignInMethod)
+  })
+  ipcMain.handle(CHANNELS.signInCancel, () => signIn.cancel())
+  ipcMain.handle(CHANNELS.signInAnswer, (_e, promptId: unknown, answer: SignInAnswer) => {
+    if (typeof promptId !== 'string') return
+    signIn.answer(promptId, answer)
   })
   ipcMain.handle(CHANNELS.setupReviewPermissions, async () => {
     setup = await markPermissionsReviewed(agentStore)

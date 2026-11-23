@@ -44,6 +44,13 @@ describe('parseAgentToml', () => {
     expect(() => parseAgentToml('x', bad)).toThrow(/model/)
   })
 
+  test('accepts a blank model, which means the runner picks its default', () => {
+    // First-run seeding writes `model = ""` when no provider is signed in yet.
+    // The row must still load, or the starter roster is broken on relaunch.
+    const cfg = parseAgentToml('tech-lead', 'name = "Tech Lead"\nrunner = "pi"\nmodel = ""\ncwd = "/tmp"\n')
+    expect(cfg.model).toBe('')
+  })
+
   test('rejects malformed TOML with the agent id in the message', () => {
     expect(() => parseAgentToml('debug', 'name = = "A"')).toThrow(/debug/)
   })

@@ -67,6 +67,19 @@ function requireString(agentId: string, table: Record<string, unknown>, key: str
   return value
 }
 
+/**
+ * A key that must be present but may be blank. Used for `model`, where a blank
+ * value is a real choice: the runner's own default. A missing key is still an
+ * error, so a hand-edited file that lost the line is caught.
+ */
+function requiredPresentString(agentId: string, table: Record<string, unknown>, key: string): string {
+  const value = table[key]
+  if (typeof value !== 'string') {
+    throw new AgentConfigError(agentId, `missing required string field "${key}"`)
+  }
+  return value
+}
+
 function optionalStringList(
   agentId: string,
   table: Record<string, unknown>,
@@ -148,7 +161,8 @@ export function parseAgentToml(agentId: string, source: string): AgentConfig {
     id: agentId,
     name: requireString(agentId, table, 'name'),
     runner,
-    model: requireString(agentId, table, 'model'),
+    // Blank is allowed: it means "whatever the runner picks" (Pi's default).
+    model: requiredPresentString(agentId, table, 'model'),
     cwd: expandHome(requireString(agentId, table, 'cwd')),
     systemPrompt: typeof table['system_prompt'] === 'string' ? table['system_prompt'] : '',
     skills: optionalStringList(agentId, table, 'skills'),

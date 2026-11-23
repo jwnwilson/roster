@@ -9,7 +9,7 @@ import {
   type ProjectNotesPayload,
   type TaskEventPayload,
 } from '../../shared/ipc'
-import type { Agent, UpdateState } from '../../shared/types'
+import type { Agent, SignInEvent, UpdateState } from '../../shared/types'
 import type { PermissionKind } from '../../shared/permissions'
 
 /** Subscribes to a broadcast channel and returns its unsubscribe. */
@@ -31,6 +31,13 @@ const api: RosterApi = {
     close: () => ipcRenderer.send(CHANNELS.windowClose),
   },
 
+  signIn: {
+    providers: () => ipcRenderer.invoke(CHANNELS.signInProviders),
+    start: (providerId, method) => ipcRenderer.invoke(CHANNELS.signInStart, providerId, method),
+    cancel: () => ipcRenderer.invoke(CHANNELS.signInCancel),
+    answer: (promptId, answer) => ipcRenderer.invoke(CHANNELS.signInAnswer, promptId, answer),
+    onEvent: (listener: (event: SignInEvent) => void) => subscribe(CHANNELS.signInEvent, listener),
+  },
   files: {
     readImage: (path) => ipcRenderer.invoke(CHANNELS.filesReadImage, path),
   },

@@ -263,6 +263,24 @@ describe('AgentStore.watch', () => {
     store.dispose()
   })
 
+  test('reload re-reads agents and tells watchers, so a sign-in clears their error at once', async () => {
+    await writeAgent('debug', VALID)
+    let runner: RunnerStatus = LOGGED_OUT
+    const store = new AgentStore(() => new Map([[READY.id, runner]]))
+    await store.load()
+    expect(store.findAll()[0]?.status).toBe('error')
+
+    const seen: string[] = []
+    const sub = store.watch((agents) => seen.push(agents[0]?.status ?? 'none'))
+
+    runner = READY
+    await store.reload()
+
+    expect(store.findAll()[0]?.status).toBe('idle')
+    expect(seen.at(-1)).toBe('idle')
+    sub.dispose()
+  })
+
   test('picks up an agent added while running', async () => {
     const store = new AgentStore(statusMap(READY))
     await store.load()

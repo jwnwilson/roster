@@ -10,6 +10,13 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
   const api: RosterApi = {
     desktop: { check: vi.fn(), requestAccessibility: vi.fn(), test: vi.fn() },
     window: { minimize: vi.fn(), maximize: vi.fn(), close: vi.fn() },
+    signIn: {
+      providers: vi.fn().mockResolvedValue([]),
+      start: vi.fn().mockResolvedValue({ ok: true }),
+      cancel: vi.fn().mockResolvedValue(undefined),
+      answer: vi.fn().mockResolvedValue(undefined),
+      onEvent: vi.fn().mockReturnValue(() => {}),
+    },
     files: { readImage: vi.fn().mockResolvedValue(null) },
     runners: {
       list: vi.fn().mockResolvedValue([]),

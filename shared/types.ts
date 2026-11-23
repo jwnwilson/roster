@@ -640,8 +640,62 @@ export interface SetupState {
   /** No CLI Roster can drive was installed, so nothing was seeded. */
   noRunner: boolean
   /**
+   * The engine runs but no model provider is signed in. Derived live, not
+   * stored: it is true until a sign-in succeeds, whatever the marker says.
+   * Absent means false.
+   */
+  needsSignIn?: boolean
+  /**
    * The permissions card has been dealt with, so it stays away. False on a
    * fresh or upgraded install until the first session has shown it.
    */
   permissionsReviewed: boolean
+}
+
+/* -------------------------------------------------------------------------
+ * Provider sign-in — signing a model provider in from the welcome card or
+ * the provider list, outside any conversation.
+ * ---------------------------------------------------------------------- */
+
+export type SignInMethod = 'oauth' | 'api_key'
+
+export interface SignInMethodInfo {
+  method: SignInMethod
+  label: string
+  description: string
+}
+
+/** A model provider Pi knows, with whether this machine is signed in to it. */
+export interface ProviderSummary {
+  id: string
+  name: string
+  signedIn: boolean
+  /** Signed in with an account subscription rather than an API key. */
+  subscription: boolean
+  /** The ways in, account sign-in first. Providers with none are not listed. */
+  methods: SignInMethodInfo[]
+}
+
+/** One question the sign-in flow asks, answered through `signIn.answer`. */
+export interface SignInPrompt {
+  id: string
+  /** The question, with the options that answer it. */
+  question: Question
+  /** True for a password or API key: typed, but never shown back. */
+  secret: boolean
+}
+
+/** What a sign-in in progress tells the window while it runs. */
+export type SignInEvent =
+  | { type: 'prompt'; prompt: SignInPrompt }
+  | { type: 'notice'; text: string }
+  | { type: 'prompt-closed'; id: string }
+
+/** How a sign-in ended. The message says what to do next when it failed. */
+export type SignInResult = { ok: true } | { ok: false; message: string }
+
+/** The answer to a prompt: approved with `answers`, or refused. */
+export interface SignInAnswer {
+  approved: boolean
+  answers?: Record<string, string>
 }
