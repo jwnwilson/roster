@@ -48,3 +48,22 @@ function extensionOf(path: string): string {
   const dot = path.lastIndexOf('.')
   return dot === -1 ? '' : path.slice(dot + 1).toLowerCase()
 }
+
+/** Largest image, in decoded bytes, a chat message may show. */
+export const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
+
+/**
+ * An image a tool returned, as a data URL the chat can show, or null when it
+ * may not be shown: an unsupported type, a missing or malformed payload, or
+ * one over the size cap. Both runners use this, so a tool result is held to
+ * the same rules as an image an agent writes into its text.
+ */
+export function embeddedImageUrl(mimeType: unknown, base64: unknown): string | null {
+  if (typeof mimeType !== 'string' || typeof base64 !== 'string') return null
+  const type = mimeType.toLowerCase()
+  if (!EMBEDDABLE_DATA_TYPES.has(type)) return null
+  if (base64 === '' || !/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) return null
+  const decodedBytes = Math.floor((base64.length * 3) / 4)
+  if (decodedBytes > MAX_CHAT_IMAGE_BYTES) return null
+  return `data:${type};base64,${base64}`
+}

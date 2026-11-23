@@ -1,3 +1,4 @@
+import { embeddedImageUrl } from '../../../shared/images'
 import { summariseQuestions } from './questions'
 import type { RunnerEvent } from './types'
 
@@ -106,11 +107,13 @@ function fromUser(message: Record<string, unknown>): RunnerEvent[] {
     const id = asString(block['tool_use_id'])
     if (id === null) continue
 
+    const images = resultImages(block['content'])
     events.push({
       kind: 'result',
       id,
       output: flattenResultContent(block['content']),
       isError: block['is_error'] === true,
+      ...(images.length > 0 ? { images } : {}),
     })
   }
 
@@ -222,6 +225,18 @@ function stringify(input: unknown): string {
   } catch {
     return ''
   }
+}
+
+/** Pictures in a tool_result the chat can show, as data URLs. */
+function resultImages(content: unknown): string[] {
+  if (!Array.isArray(content)) return []
+  return content.flatMap((block) => {
+    if (!isRecord(block) || block['type'] !== 'image') return []
+    const source = block['source']
+    if (!isRecord(source) || source['type'] !== 'base64') return []
+    const url = embeddedImageUrl(source['media_type'], source['data'])
+    return url === null ? [] : [url]
+  })
 }
 
 /** tool_result content is either a string or an array of content blocks. */

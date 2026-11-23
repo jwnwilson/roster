@@ -157,6 +157,34 @@ describe('normalizeClaudeMessage — tool results', () => {
     ])
   })
 
+  test('keeps an image a tool returned, and leaves it out of the text', () => {
+    const message = {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            tool_use_id: 'toolu_img',
+            type: 'tool_result',
+            content: [
+              { type: 'text', text: 'captured' },
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' } },
+            ],
+          },
+        ],
+      },
+    }
+    expect(normalizeClaudeMessage(message)).toEqual([
+      {
+        kind: 'result',
+        id: 'toolu_img',
+        output: 'captured',
+        isError: false,
+        images: ['data:image/png;base64,iVBORw0KGgo='],
+      },
+    ])
+  })
+
   test('ignores an ordinary user message with no tool result', () => {
     const message = { type: 'user', message: { content: [{ type: 'text', text: 'hi' }] } }
     expect(normalizeClaudeMessage(message)).toEqual([])

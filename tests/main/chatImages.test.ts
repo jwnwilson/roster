@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { readChatImage, MAX_CHAT_IMAGE_BYTES } from '@main/images/readChatImage'
-import { classifyImageSource } from '@shared/images'
+import { classifyImageSource, embeddedImageUrl } from '@shared/images'
 
 describe('classifyImageSource', () => {
   test('embedded raster images are used directly', () => {
@@ -87,5 +87,28 @@ describe('readChatImage', () => {
     await writeFile(path, Buffer.alloc(MAX_CHAT_IMAGE_BYTES + 1))
 
     expect(await readChatImage(path)).toBeNull()
+  })
+})
+
+describe('embeddedImageUrl', () => {
+  test('a supported raster image becomes a data URL', () => {
+    expect(embeddedImageUrl('image/png', 'iVBORw0KGgo=')).toBe('data:image/png;base64,iVBORw0KGgo=')
+    expect(embeddedImageUrl('IMAGE/JPEG', '/9j/')).toBe('data:image/jpeg;base64,/9j/')
+  })
+
+  test('SVG, other types, and missing payloads are refused', () => {
+    expect(embeddedImageUrl('image/svg+xml', 'PHN2Zz4=')).toBeNull()
+    expect(embeddedImageUrl('text/html', 'PGI+')).toBeNull()
+    expect(embeddedImageUrl('image/png', '')).toBeNull()
+    expect(embeddedImageUrl(undefined, 'iVBORw0KGgo=')).toBeNull()
+  })
+
+  test('a payload that is not plain base64 is refused, so it cannot break out of src', () => {
+    expect(embeddedImageUrl('image/png', 'AAAA"><script>')).toBeNull()
+  })
+
+  test('an image over the size cap is refused', () => {
+    const big = 'A'.repeat(Math.ceil((MAX_CHAT_IMAGE_BYTES * 4) / 3) + 8)
+    expect(embeddedImageUrl('image/png', big)).toBeNull()
   })
 })

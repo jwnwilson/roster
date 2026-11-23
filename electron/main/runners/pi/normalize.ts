@@ -1,4 +1,5 @@
 import type { RunnerEvent } from '../types'
+import { embeddedImageUrl } from '../../../../shared/images'
 
 /**
  * Translates Pi's session events into Roster's runner vocabulary.
@@ -104,7 +105,16 @@ export function createPiNormalizer(initial: UsageTotals = EMPTY_TOTALS): PiNorma
         case 'tool_execution_end': {
           const id = asString(event['toolCallId'])
           if (id === '' || silenced.delete(id)) return []
-          return [{ kind: 'result', id, output: resultText(event['result']), isError: event['isError'] === true }]
+          const images = resultImages(event['result'])
+          return [
+            {
+              kind: 'result',
+              id,
+              output: resultText(event['result']),
+              isError: event['isError'] === true,
+              ...(images.length > 0 ? { images } : {}),
+            },
+          ]
         }
 
         case 'message_end': {
@@ -143,7 +153,10 @@ export function describeArgs(name: string, input: Record<string, unknown>): stri
   return json.length > 120 ? `${json.slice(0, 117)}...` : json || name
 }
 
-/** A tool result's text content, joined. Images and the like are named, not inlined. */
+/**
+ * A tool result's text content, joined. An image the chat can show is left to
+ * resultImages; anything else that is not text is named.
+ */
 export function resultText(result: unknown): string {
   if (!isRecord(result)) return typeof result === 'string' ? result : ''
   const content = result['content']
@@ -152,10 +165,21 @@ export function resultText(result: unknown): string {
     .map((part) => {
       if (!isRecord(part)) return ''
       if (part['type'] === 'text' && typeof part['text'] === 'string') return part['text']
+      if (part['type'] === 'image' && embeddedImageUrl(part['mimeType'], part['data']) !== null) return ''
       return `[${String(part['type'] ?? 'content')}]`
     })
     .filter((text) => text !== '')
     .join('\n')
+}
+
+/** Pictures in a tool result the chat can show, as data URLs. */
+export function resultImages(result: unknown): string[] {
+  if (!isRecord(result) || !Array.isArray(result['content'])) return []
+  return result['content'].flatMap((part) => {
+    if (!isRecord(part) || part['type'] !== 'image') return []
+    const url = embeddedImageUrl(part['mimeType'], part['data'])
+    return url === null ? [] : [url]
+  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

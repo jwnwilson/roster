@@ -194,6 +194,16 @@ describe('ToolBody', () => {
   })
 })
 
+describe('ToolBody images', () => {
+  test('a picture a tool returned shows on the row, without expanding it', () => {
+    const shot = 'data:image/png;base64,iVBORw0KGgo='
+    render(<ToolBody id="t1" tool="run_command" args="capture" output="" isError={false} images={[shot]} />)
+
+    expect(screen.getByRole('img', { name: 'run_command output 1' })).toHaveAttribute('src', shot)
+    expect(screen.queryByText('…')).not.toBeInTheDocument()
+  })
+})
+
 describe('SpawnBody', () => {
   test('shows why the session was opened', () => {
     render(<SpawnBody message={SPAWN} />)
