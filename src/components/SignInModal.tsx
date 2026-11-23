@@ -25,7 +25,8 @@ type Stage = { kind: 'pick' } | { kind: 'running'; providerName: string } | { ki
  */
 export function SignInModal({ providers, initial, onClose, onSignedIn }: SignInModalProps) {
   const [stage, setStage] = useState<Stage>(initial ? { kind: 'running', providerName: '' } : { kind: 'pick' })
-  const [providerId, setProviderId] = useState(initial?.providerId ?? providers[0]?.id ?? '')
+  const [providerId, setProviderId] = useState(initial?.providerId ?? groupProviders(providers)[0]?.items[0]?.id ?? '')
+  const [query, setQuery] = useState('')
   const [method, setMethod] = useState<SignInMethod | null>(initial?.method ?? null)
   const [prompt, setPrompt] = useState<SignInPrompt | null>(null)
   const [notices, setNotices] = useState<string[]>([])
@@ -90,43 +91,92 @@ export function SignInModal({ providers, initial, onClose, onSignedIn }: SignInM
   )
 
   if (stage.kind === 'pick') {
+    const visible = filterProviders(providers, query)
+    const groups = groupProviders(visible)
+
+    // Moves the selection onto a match when the search hides the one chosen,
+    // so Continue (and Enter) always act on a provider the user can see.
+    function search(next: string): void {
+      setQuery(next)
+      const shown = filterProviders(providers, next)
+      if (shown.length > 0 && !shown.some((p) => p.id === providerId)) {
+        setProviderId(shown[0]!.id)
+        setMethod(null)
+      }
+    }
+
     return (
-      <Modal label="Sign in to a model provider" onClose={onClose} header={header} footer={
+      <Modal label="Sign in to a model provider" onClose={onClose} maxWidth={560} header={header} footer={
         <>
           <GhostButton onClick={onClose}>Cancel</GhostButton>
           <PrimaryButton onClick={() => chosen && chooseWay(chosen)}>Continue</PrimaryButton>
         </>
       }>
-        <p className="m-0 text-md text-muted">
-          Account sign-ins open your browser. An API key is typed here, and Pi keeps it.
-        </p>
-        <div role="radiogroup" aria-label="Model provider" className="flex flex-col gap-[6px]">
-          {providers.map((p) => (
-            <Choice
-              key={p.id}
-              selected={p.id === providerId}
-              onSelect={() => {
-                setProviderId(p.id)
-                setMethod(null)
-              }}
-              title={p.name}
-              detail={p.signedIn ? 'Signed in' : p.methods.map((m) => m.label).join(' · ')}
+        <form
+          className="flex flex-col gap-[12px] px-[18px] py-[14px]"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (chosen && visible.some((p) => p.id === chosen.id)) chooseWay(chosen)
+          }}
+        >
+          <p className="m-0 text-md text-muted">
+            Account sign-ins open your browser. An API key is typed here, and Pi keeps it.
+          </p>
+          <div className="flex items-center gap-[10px]">
+            <input
+              type="search"
+              aria-label="Search model providers"
+              placeholder="Search providers"
+              value={query}
+              onChange={(e) => search(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-chip border border-line-input bg-card px-[10px] py-[5px] text-md text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
             />
-          ))}
-        </div>
-        {chosen && chosen.methods.length > 1 && (
-          <div role="radiogroup" aria-label="How to sign in" className="flex flex-col gap-[6px]">
-            {chosen.methods.map((m) => (
-              <Choice
-                key={m.method}
-                selected={(method ?? chosen.methods[0]!.method) === m.method}
-                onSelect={() => setMethod(m.method)}
-                title={m.label}
-                detail={m.description}
-              />
-            ))}
+            <span aria-live="polite" className="flex-none whitespace-nowrap text-sm text-dim">
+              {query.trim() === '' ? `${providers.length} providers` : `${visible.length} of ${providers.length} providers`}
+            </span>
           </div>
-        )}
+
+          <div className="flex max-h-[360px] flex-col gap-[14px] overflow-y-auto pr-[4px]">
+            {groups.map((group) => (
+              <section key={group.title} className="flex flex-col gap-[6px]">
+                <h3 className="m-0 text-xs font-semibold uppercase tracking-[0.06em] text-dim">{group.title}</h3>
+                <div role="radiogroup" aria-label={group.title} className="grid grid-cols-2 gap-[6px]">
+                  {group.items.map((p) => (
+                    <Choice
+                      key={p.id}
+                      selected={p.id === providerId}
+                      onSelect={() => {
+                        setProviderId(p.id)
+                        setMethod(null)
+                      }}
+                      title={p.name}
+                      detail={providerHint(p)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+            {visible.length === 0 ? (
+              <p className="m-0 text-md text-muted">No provider matches “{query.trim()}”.</p>
+            ) : null}
+          </div>
+
+          {chosen && visible.some((p) => p.id === chosen.id) && chosen.methods.length > 1 && (
+            <div role="radiogroup" aria-label="How to sign in" className="flex flex-col gap-[6px]">
+              {chosen.methods.map((m) => (
+                <Choice
+                  key={m.method}
+                  selected={(method ?? chosen.methods[0]!.method) === m.method}
+                  onSelect={() => setMethod(m.method)}
+                  title={m.label}
+                  detail={m.description}
+                />
+              ))}
+            </div>
+          )}
+        </form>
       </Modal>
     )
   }
@@ -222,6 +272,41 @@ function PromptBody({ prompt, onAnswer }: { prompt: SignInPrompt; onAnswer: (app
       </div>
     </div>
   )
+}
+
+interface ProviderGroup {
+  title: string
+  items: ProviderSummary[]
+}
+
+/**
+ * Signed-in providers first, then account sign-ins, then API keys. Each group
+ * sorted by name; empty groups are dropped, so a search leaves only the
+ * headings it needs.
+ */
+function groupProviders(list: readonly ProviderSummary[]): ProviderGroup[] {
+  const byName = (a: ProviderSummary, b: ProviderSummary) => a.name.localeCompare(b.name)
+  const signed = list.filter((p) => p.signedIn).sort(byName)
+  const account = list.filter((p) => !p.signedIn && p.methods.some((m) => m.method === 'oauth')).sort(byName)
+  const key = list.filter((p) => !p.signedIn && !p.methods.some((m) => m.method === 'oauth')).sort(byName)
+  return [
+    { title: 'Signed in', items: signed },
+    { title: 'Account sign-in', items: account },
+    { title: 'API key', items: key },
+  ].filter((group) => group.items.length > 0)
+}
+
+/** Case-insensitive match on the provider's name or id. */
+function filterProviders(list: readonly ProviderSummary[], query: string): ProviderSummary[] {
+  const needle = query.trim().toLowerCase()
+  if (needle === '') return [...list]
+  return list.filter((p) => p.name.toLowerCase().includes(needle) || p.id.toLowerCase().includes(needle))
+}
+
+/** A short line for the tile: signed in, or the ways in. */
+function providerHint(p: ProviderSummary): string {
+  if (p.signedIn) return 'Signed in'
+  return p.methods.map((m) => (m.method === 'oauth' ? 'Account' : 'API key')).join(' · ')
 }
 
 function Choice({

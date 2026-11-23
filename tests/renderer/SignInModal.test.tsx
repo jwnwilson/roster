@@ -46,6 +46,89 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
+const COPILOT: ProviderSummary = {
+  id: 'github-copilot',
+  name: 'GitHub Copilot',
+  signedIn: true,
+  subscription: true,
+  methods: [{ method: 'oauth', label: 'Sign in with account', description: 'GitHub Copilot' }],
+}
+
+const CODEX: ProviderSummary = {
+  id: 'openai-codex',
+  name: 'OpenAI Codex',
+  signedIn: false,
+  subscription: false,
+  methods: [{ method: 'oauth', label: 'Sign in with account', description: 'ChatGPT' }],
+}
+
+const GROQ: ProviderSummary = {
+  id: 'groq',
+  name: 'Groq',
+  signedIn: false,
+  subscription: false,
+  methods: [{ method: 'api_key', label: 'Enter an API key', description: 'Groq API key' }],
+}
+
+const MANY = [GROQ, OPENAI, CODEX, ANTHROPIC, COPILOT]
+
+describe('SignInModal provider list', () => {
+  test('groups signed-in providers first, then account sign-ins, then API keys', () => {
+    wire()
+    render(<SignInModal providers={MANY} onClose={() => {}} onSignedIn={() => {}} />)
+
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
+    expect(headings).toEqual(['Signed in', 'Account sign-in', 'API key'])
+    const radios = screen.getAllByRole('radio').map((r) => r.getAttribute('aria-label'))
+    expect(radios).toEqual(['GitHub Copilot', 'Anthropic', 'OpenAI Codex', 'Groq', 'OpenAI'])
+  })
+
+  test('search filters the list as you type, ignoring case, by name or id', async () => {
+    wire()
+    render(<SignInModal providers={MANY} onClose={() => {}} onSignedIn={() => {}} />)
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search model providers' }), 'OPENAI')
+
+    expect(screen.getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['OpenAI Codex', 'OpenAI'])
+    expect(screen.getByText('2 of 5 providers')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Signed in' })).not.toBeInTheDocument()
+
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Search model providers' }))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search model providers' }), 'codex')
+    expect(screen.getAllByRole('radio').map((r) => r.getAttribute('aria-label'))).toEqual(['OpenAI Codex'])
+  })
+
+  test('says so when nothing matches', async () => {
+    wire()
+    render(<SignInModal providers={MANY} onClose={() => {}} onSignedIn={() => {}} />)
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search model providers' }), 'zzz')
+
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
+    expect(screen.getByText('No provider matches “zzz”.')).toBeInTheDocument()
+  })
+
+  test('a selection the search hides moves to the first match, so Continue signs in to something visible', async () => {
+    const { api } = wire()
+    render(<SignInModal providers={MANY} onClose={() => {}} onSignedIn={() => {}} />)
+
+    await userEvent.click(screen.getByRole('radio', { name: 'Anthropic' }))
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search model providers' }), 'groq')
+    await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+
+    await waitFor(() => expect(api.signIn.start).toHaveBeenCalledWith('groq', 'api_key'))
+  })
+
+  test('Enter in the search continues with the provider shown', async () => {
+    const { api } = wire()
+    render(<SignInModal providers={MANY} onClose={() => {}} onSignedIn={() => {}} />)
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search model providers' }), 'groq{Enter}')
+
+    await waitFor(() => expect(api.signIn.start).toHaveBeenCalledWith('groq', 'api_key'))
+  })
+})
+
 describe('SignInModal', () => {
   test('lists providers, and starts the chosen one with the chosen way in', async () => {
     const { api } = wire()
