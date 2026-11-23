@@ -56,7 +56,8 @@ export function toThreadMessage(message: Message): ThreadMessageLike {
             argsText: message.args,
             // A tool still running has no result yet; assistant-ui shows it
             // as pending rather than as an empty result.
-            ...(message.output === ''
+            // A picture alone is a result too, so the row is not left pending.
+            ...(message.output === '' && (message.images ?? []).length === 0
               ? {}
               : { result: message.output, isError: message.isError }),
           },
@@ -67,6 +68,7 @@ export function toThreadMessage(message: Message): ThreadMessageLike {
           custom: {
             header: headerFor(message),
             durationMs: message.durationMs,
+            images: message.images,
             input: message.input,
             planId: message.planId,
             asksQuestions: carriesQuestions(message.input),

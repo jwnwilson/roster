@@ -6,6 +6,7 @@ import {
   createPiNormalizer,
   describeArgs,
   EMPTY_TOTALS,
+  resultImages,
   resultText,
   totalsFrom,
 } from '@main/runners/pi/normalize'
@@ -114,6 +115,23 @@ describe('Pi normalizer', () => {
     expect(describeArgs('list_agents', {})).toBe('')
     expect(describeArgs('x', { a: 1 })).toBe('{"a":1}')
     expect(describeArgs('x', { a: 'y'.repeat(200) }).endsWith('...')).toBe(true)
+  })
+
+  test('resultImages keeps the images the chat can show', () => {
+    const result = {
+      content: [
+        { type: 'text', text: 'captured' },
+        { type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgo=' },
+        { type: 'image', mimeType: 'image/svg+xml', data: 'PHN2Zz4=' },
+      ],
+    }
+    expect(resultImages(result)).toEqual(['data:image/png;base64,iVBORw0KGgo='])
+  })
+
+  test('an image shown as a picture is not also named as text', () => {
+    const result = { content: [{ type: 'image', mimeType: 'image/png', data: 'iVBORw0KGgo=' }] }
+    expect(resultText(result)).toBe('')
+    expect(resultText({ content: [{ type: 'image', mimeType: 'image/svg+xml', data: 'PHN2Zz4=' }] })).toBe('[image]')
   })
 
   test('resultText joins text and names other content', () => {

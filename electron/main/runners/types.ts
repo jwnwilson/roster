@@ -16,7 +16,14 @@ export type RunnerEvent =
    */
   | { kind: 'tool'; id: string; name: string; args: string; input?: string }
   /** That tool finished. */
-  | { kind: 'result'; id: string; output: string; isError: boolean }
+  | {
+      kind: 'result'
+      id: string
+      output: string
+      isError: boolean
+      /** Pictures the tool returned, as data URLs. Absent when there are none. */
+      images?: string[]
+    }
   /**
    * The CLI is blocked waiting for the user to allow or deny an action —
    * or, when `questions` is present, to answer rather than allow.

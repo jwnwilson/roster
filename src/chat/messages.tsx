@@ -2,6 +2,7 @@ import type { HandoffLink, HandoffMessage, SessionRef, SpawnMessage } from '@sha
 import { statusColor } from '@shared/status'
 import { useRoster } from '@/state/store'
 import { Markdown } from '@/components/Markdown'
+import { MarkdownImage } from '@/components/MarkdownImage'
 
 /* -------------------------------------------------------------------------
  * Message renderers.
@@ -70,6 +71,11 @@ interface ToolBodyProps {
    * button that does nothing.
    */
   onShowQuestion?: () => void
+  /**
+   * Pictures the tool returned. They show on the row itself, not only when it
+   * is expanded, because a screenshot is the result the user came to see.
+   */
+  images?: string[]
 }
 
 export function ToolBody({
@@ -82,11 +88,12 @@ export function ToolBody({
   durationMs,
   planId,
   onShowQuestion,
+  images = [],
 }: ToolBodyProps) {
   const open = useRoster((s) => s.openTools[id] ?? false)
   const toggleTool = useRoster((s) => s.toggleTool)
   const openPlan = useRoster((s) => s.openPlan)
-  const running = output === '' && !isError
+  const running = output === '' && !isError && images.length === 0
 
   return (
     <div
@@ -108,6 +115,13 @@ export function ToolBody({
           {running ? '…' : formatDuration(durationMs)}
         </span>
       </button>
+      {images.length === 0 ? null : (
+        <div className="flex flex-col gap-[8px] border-t border-line px-[11px] py-[8px]">
+          {images.map((src, index) => (
+            <MarkdownImage key={index} src={src} alt={`${tool} output ${index + 1}`} />
+          ))}
+        </div>
+      )}
       {onShowQuestion === undefined ? null : (
         <div className="border-t border-line px-[11px] py-[7px]">
           <button
@@ -143,7 +157,9 @@ export function ToolBody({
           <ToolSectionLabel className={input === undefined ? '' : 'mt-[10px]'}>
             Output
           </ToolSectionLabel>
-          <ToolPre>{output === '' ? 'no output' : output}</ToolPre>
+          {output === '' && images.length > 0 ? null : (
+            <ToolPre>{output === '' ? 'no output' : output}</ToolPre>
+          )}
         </div>
       ) : null}
     </div>

@@ -1,9 +1,9 @@
 import { readFile, stat } from 'node:fs/promises'
 import { isAbsolute, extname } from 'node:path'
-import { IMAGE_MIME_BY_EXTENSION } from '../../../shared/images'
+import { IMAGE_MIME_BY_EXTENSION, MAX_CHAT_IMAGE_BYTES } from '../../../shared/images'
 
 /** Largest local image a chat message may show. Larger files are refused. */
-export const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024
+export { MAX_CHAT_IMAGE_BYTES }
 
 /**
  * Reads an image an agent pointed at, as a data URL the renderer can show.

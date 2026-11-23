@@ -813,6 +813,7 @@ export class SessionManager {
         const updated: Message = {
           ...message,
           output: event.output,
+          ...(event.images !== undefined && event.images.length > 0 ? { images: event.images } : {}),
           isError: event.isError,
           ...(startedAt !== undefined ? { durationMs: Date.now() - startedAt } : {}),
         }

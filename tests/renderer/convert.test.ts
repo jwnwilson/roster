@@ -87,6 +87,17 @@ describe('toThreadMessage — tool call', () => {
     expect(part).not.toHaveProperty('result')
   })
 
+  test('a tool that returned only an image is done, and carries the image', () => {
+    const shot = 'data:image/png;base64,iVBORw0KGgo='
+    const message = { ...TOOL, output: '', images: [shot] } as Message
+    const [part] = firstPart(toThreadMessage(message))
+
+    // The image is the result, so the row is not left looking pending.
+    expect(part).toHaveProperty('result', '')
+    const meta = toThreadMessage(message).metadata?.custom as { images?: string[] }
+    expect(meta.images).toEqual([shot])
+  })
+
   test('carries the duration through metadata, which parts cannot hold', () => {
     const meta = toThreadMessage(TOOL).metadata?.custom as { durationMs?: number }
     expect(meta.durationMs).toBe(8_400)

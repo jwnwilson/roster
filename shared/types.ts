@@ -203,6 +203,11 @@ export interface ToolMessage extends BaseMessage {
    */
   input?: string
   output: string
+  /**
+   * Pictures the tool returned, as data URLs the chat can show. Stored with
+   * the message, so they survive a reload. Absent when there are none.
+   */
+  images?: string[]
   isError: boolean
   /** Milliseconds; formatted as "1.2s" at render time. */
   durationMs?: number

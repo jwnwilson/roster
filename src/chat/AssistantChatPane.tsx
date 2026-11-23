@@ -162,6 +162,9 @@ function RosterMessage() {
   const planId = useAuiState(
     (s) => (s.message.metadata?.custom as { planId?: string } | undefined)?.planId,
   )
+  const images = useAuiState(
+    (s) => (s.message.metadata?.custom as { images?: string[] } | undefined)?.images,
+  )
   const asksQuestions = useAuiState(
     (s) => (s.message.metadata?.custom as { asksQuestions?: boolean } | undefined)?.asksQuestions,
   )
@@ -188,6 +191,7 @@ function RosterMessage() {
                   {...(toolInput !== undefined ? { input: toolInput } : {})}
                   {...(durationMs !== undefined ? { durationMs } : {})}
                   {...(planId !== undefined ? { planId } : {})}
+                  {...(images !== undefined ? { images } : {})}
                   {...(asksQuestions === true && showQuestion !== null
                     ? { onShowQuestion: showQuestion }
                     : {})}
