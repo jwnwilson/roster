@@ -152,7 +152,7 @@ const signIn = new PiSignInFlow({
     // Pi is re-read now, so the agents' "not signed in" states clear at once.
     const before = runners.get('pi')?.ready
     runners = await detectRunners()
-    if (runners.get('pi')?.ready !== before) await agentStore.load()
+    if (runners.get('pi')?.ready !== before) await agentStore.reload()
   },
 })
 
@@ -456,7 +456,7 @@ export function registerIpc(): void {
   ipcMain.handle(CHANNELS.runnersList, async () => {
     const before = runners.get('pi')?.ready
     runners = await detectRunners()
-    if (runners.get('pi')?.ready !== before) await agentStore.load()
+    if (runners.get('pi')?.ready !== before) await agentStore.reload()
     return [...runners.values()]
   })
   ipcMain.handle(CHANNELS.runnersCheckModels, (_e, _runnerId: string, providerId: string) =>

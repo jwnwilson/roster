@@ -242,6 +242,17 @@ export class AgentStore {
     return this.toAgent(next)
   }
 
+  /**
+   * Re-reads every agent and tells watchers. For changes Roster makes itself,
+   * such as a sign-in, which changes what the agents' runners report, and
+   * which no file write would otherwise announce.
+   */
+  async reload(): Promise<void> {
+    await this.load()
+    const agents = this.findAll()
+    for (const listener of this.listeners) listener(agents)
+  }
+
   /** Emits whenever any agent.toml changes, including edits made outside Roster. */
   watch(onChange: (agents: Agent[]) => void): Disposable {
     this.listeners.add(onChange)

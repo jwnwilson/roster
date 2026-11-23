@@ -56,6 +56,25 @@ afterEach(async () => {
   await rm(home, { recursive: true, force: true })
 })
 
+describe('first run with no provider signed in', () => {
+  test('the seeded starter roster loads on the next launch, not in error', async () => {
+    // No provider, so no default model is known and the seeded rows get model "".
+    const first = storeWith(PI_LOGGED_OUT)
+    await prepareFirstRun(first, runnerMap(PI_LOGGED_OUT), {})
+
+    // Relaunch after the user has signed in, which is when the bug showed.
+    const relaunched = storeWith(PI_READY)
+    await relaunched.load()
+
+    const agents = relaunched.findAll()
+    expect(agents.map((agent) => agent.name).sort()).toEqual(['Implementer', 'Reviewer', 'Tech Lead'])
+    for (const agent of agents) {
+      expect(agent.status).not.toBe('error')
+      expect(agent.model).toBe('')
+    }
+  })
+})
+
 describe('defaultAgentsFor', () => {
   test('leads with the Tech Lead, so the recommendation is the first agent', () => {
     const [first] = defaultAgentsFor(runnerMap(PI_READY), MODELS)
