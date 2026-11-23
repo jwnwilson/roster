@@ -21,6 +21,7 @@ const STATUS_STYLES: Record<TaskStatus, TaskStatusStyle> = {
   in_progress: { cssVar: 'var(--color-in-progress)', label: 'In Progress' },
   in_review: { cssVar: 'var(--color-in-review)', label: 'In Review' },
   done: { cssVar: 'var(--color-done)', label: 'Done' },
+  archived: { cssVar: 'var(--color-archived)', label: 'Archived' },
 }
 
 const PRIORITY_STYLES: Record<TaskPriority, TaskStatusStyle> = {

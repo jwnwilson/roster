@@ -85,6 +85,8 @@
   --color-in-progress: var(--color-accent);
   --color-in-review: var(--color-amber);
   /* "done" is --color-done, already defined above */
+  /* archived is put away, so it takes the disabled grey and not a colour */
+  --color-archived: var(--color-off);
 
   /* the Projects modal's swatch picker */
   --color-project-0: var(--color-accent);

@@ -1,3 +1,4 @@
+import { BROWSER_MCP_SERVERS } from '@shared/mcp'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
@@ -73,11 +74,11 @@ describe('Sidebar', () => {
     expect(spend).toHaveTextContent('$1.91')
   })
 
-  test('Tasks is a real screen, counting what is on the board', () => {
+  test('Manage projects is a real screen, counting what is on the board', () => {
     useRoster.setState({ tasks: [aTask({ id: 'ROS-1' }), aTask({ id: 'ROS-2' })] })
     render(<Sidebar />)
 
-    const tasks = screen.getByRole('button', { name: /Tasks/ })
+    const tasks = screen.getByRole('button', { name: /Manage projects/ })
     expect(tasks).not.toBeDisabled()
     expect(tasks).toHaveTextContent('2')
   })
@@ -86,7 +87,7 @@ describe('Sidebar', () => {
     const user = userEvent.setup()
     render(<Sidebar />)
 
-    await user.click(screen.getByRole('button', { name: /Tasks/ }))
+    await user.click(screen.getByRole('button', { name: /Manage projects/ }))
 
     expect(useRoster.getState().screen).toBe('tasks')
   })
@@ -448,11 +449,11 @@ describe('the project filter', () => {
 
   test('is one filter, so choosing on the board holds on the grid', async () => {
     const user = userEvent.setup()
-    const board = render(<Tasks />)
+    const board = render(<><Sidebar /><Tasks /></>)
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
     board.unmount()
 
-    render(<AgentsGrid />)
+    render(<><Sidebar /><AgentsGrid /></>)
 
     // The two screens kept separate state once; picking a project on one left
     // the other showing everything.
@@ -461,23 +462,23 @@ describe('the project filter', () => {
 
   test('and choosing on the grid holds on the board', async () => {
     const user = userEvent.setup()
-    const grid = render(<AgentsGrid />)
+    const grid = render(<><Sidebar /><AgentsGrid /></>)
     await user.selectOptions(screen.getByLabelText('Filter by project'), 'p1')
     grid.unmount()
 
-    render(<Tasks />)
+    render(<><Sidebar /><Tasks /></>)
 
     expect(screen.getByLabelText('Filter by project')).toHaveValue('p1')
   })
 
   test('offers the same options on both screens', () => {
-    const board = render(<Tasks />)
+    const board = render(<><Sidebar /><Tasks /></>)
     const onBoard = Array.from(
       screen.getByLabelText('Filter by project').querySelectorAll('option'),
     ).map((option) => option.textContent)
     board.unmount()
 
-    render(<AgentsGrid />)
+    render(<><Sidebar /><AgentsGrid /></>)
     const onGrid = Array.from(
       screen.getByLabelText('Filter by project').querySelectorAll('option'),
     ).map((option) => option.textContent)
@@ -716,12 +717,44 @@ describe('NewAgent', () => {
     await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
-    await user.click(screen.getByRole('button', { name: /repro-harness/ }))
     await user.click(screen.getByRole('button', { name: 'Create agent' }))
 
     await waitFor(() => expect(useRoster.getState().screen).toBe('grid'))
     expect(window.roster.agents.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'Architect Agent', skills: ['repro-harness'] }),
+    )
+  })
+
+  test('a new agent starts with every skill on', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ skills: [aSkill({ name: 'repro-harness' }), aSkill({ name: 'stack-triage' })] })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ skills: ['repro-harness', 'stack-triage'] }),
+      ),
+    )
+  })
+
+  test('a skill switched off before the agent is created stays off', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ skills: [aSkill({ name: 'repro-harness' }), aSkill({ name: 'stack-triage' })] })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: /stack-triage/ }))
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({ skills: ['repro-harness'] }),
+      ),
     )
   })
 
@@ -740,14 +773,16 @@ describe('NewAgent', () => {
     )
   })
 
-  test('offers the MCP servers, so a new agent does not need a second pass', async () => {
+  test('a new agent starts with every MCP server on, not just the browser ones', async () => {
     const user = userEvent.setup()
-    useRoster.setState({ mcpServers: [anMcpServer({ name: 'filesystem' })] })
+    useRoster.setState({
+      mcpServers: [anMcpServer({ name: 'filesystem' }), anMcpServer({ name: 'github' })],
+    })
     render(<NewAgent />)
     await screen.findByRole('option', { name: /^claude-opus-5/ })
 
     await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
-    await user.click(screen.getByRole('button', { name: /filesystem/ }))
+    await user.click(screen.getByRole('button', { name: /github/ }))
     await user.click(screen.getByRole('button', { name: 'Create agent' }))
 
     await waitFor(() =>
@@ -755,6 +790,41 @@ describe('NewAgent', () => {
         expect.objectContaining({ mcpServers: ['filesystem'] }),
       ),
     )
+  })
+
+  test('a new agent starts with the browser servers on, so it can check its own work', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ mcpServers: BROWSER_MCP_SERVERS.map((server) => anMcpServer({ name: server.name })) })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() =>
+      expect(window.roster.agents.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcpServers: expect.arrayContaining(BROWSER_MCP_SERVERS.map((server) => server.name)),
+        }),
+      ),
+    )
+  })
+
+  test('a browser server can still be switched off for a new agent', async () => {
+    const user = userEvent.setup()
+    useRoster.setState({ mcpServers: BROWSER_MCP_SERVERS.map((server) => anMcpServer({ name: server.name })) })
+    render(<NewAgent />)
+    await screen.findByRole('option', { name: /^claude-opus-5/ })
+
+    await user.type(screen.getByLabelText('Agent name'), 'Architect Agent')
+    await user.click(screen.getByRole('button', { name: new RegExp(BROWSER_MCP_SERVERS[0]!.name) }))
+    await user.click(screen.getByRole('button', { name: 'Create agent' }))
+
+    await waitFor(() => {
+      const [input] = vi.mocked(window.roster.agents.create).mock.calls[0]!
+      expect(input.mcpServers).not.toContain(BROWSER_MCP_SERVERS[0]!.name)
+      expect(input.mcpServers).toContain(BROWSER_MCP_SERVERS[1]!.name)
+    })
   })
 
   test('offers the default project, so a new agent can be filed on creation', async () => {
@@ -774,9 +844,9 @@ describe('NewAgent', () => {
     )
   })
 
-  test('leaves both out of the payload when neither was chosen', async () => {
+  test('leaves both out of the payload when there are none to give', async () => {
     const user = userEvent.setup()
-    useRoster.setState({ projects: [aProject()], mcpServers: [anMcpServer()] })
+    useRoster.setState({ projects: [aProject()], mcpServers: [], skills: [] })
     render(<NewAgent />)
     await screen.findByRole('option', { name: /^claude-opus-5/ })
 

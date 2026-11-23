@@ -125,6 +125,16 @@ export interface StartOptions {
    * turn and the agent presents a plan instead, which arrives as an approval.
    */
   planMode?: boolean
+  /**
+   * Run tools without the approval banner. Set from the agent's
+   * `auto_approve`; a runner that has no approval gate ignores it.
+   */
+  autoApprove?: boolean
+  /**
+   * Run shell commands without the approval banner, and nothing else. Set
+   * from the agent's `allow_shell`; ignored when `autoApprove` is on.
+   */
+  allowShell?: boolean
   /** Resume the CLI's own session rather than starting fresh. */
   resumeFrom?: string
   /** Resume, but branch into a new session — the handoff primitive. */

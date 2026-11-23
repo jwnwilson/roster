@@ -37,8 +37,11 @@ const NAV: NavItem[] = [
   { key: 'grid', label: 'Agents' },
   { key: 'skills', label: 'Skills' },
   { key: 'mcp', label: 'MCP servers' },
-  { key: 'tasks', label: 'Tasks' },
+  { key: 'tasks', label: 'Manage projects' },
   { key: 'spend', label: 'Spend', dot: 'var(--color-amber)' },
+  // Put-away sessions. Not a screen of the roster, but a place to look for one
+  // that was taken out of its agent's list.
+  { key: 'archived', label: 'Archived' },
 ]
 
 export function Sidebar() {
@@ -66,7 +69,14 @@ export function Sidebar() {
 
   return (
     <nav className="flex w-sidebar min-h-0 flex-none flex-col border-r border-line bg-rail">
-      <div className="flex flex-col gap-[1px] px-[8px] py-[12px]">
+      {/* The one project filter for the whole app. It sits first, above the
+          navigation, so it is in view on every screen and every screen reads
+          the same value — see ProjectFilter. */}
+      <div className="flex flex-col px-[8px] pt-[12px] pb-[4px]">
+        <ProjectFilter compact />
+      </div>
+
+      <div className="flex flex-col gap-[1px] px-[8px] py-[8px]">
         {NAV.map((item) => {
           const active = screen === item.key
           return (
@@ -114,10 +124,6 @@ export function Sidebar() {
           onChange={(e) => setQuery(e.target.value)}
           className="w-full rounded-chip border border-line bg-card px-[9px] py-[6px] font-ui text-md text-ink outline-none placeholder:text-faint focus:border-accent-line focus:bg-accent-surface-2"
         />
-        {/* The shared control over the shared key, so picking a project here
-            narrows the board and the grid too. That is this filter's whole
-            design — see ProjectFilter. */}
-        <ProjectFilter compact />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-[1px] overflow-y-auto px-[8px] pb-[8px]">

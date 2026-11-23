@@ -442,4 +442,81 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX ix_plans_session        ON plans (session_id, created_at);
   CREATE INDEX ix_plan_comments_plan   ON plan_comments (plan_id, created_at);
   `,
+
+  // 20 — a session can be archived: put away out of every list and the
+  // sidebar, but kept with its transcript, plans and spend, and restorable.
+  // NULL means active, which is every session that predates this column.
+  //
+  // The timestamp rather than a boolean, following projects (migration 7): it
+  // orders the archived list by when each was put away.
+  `
+  ALTER TABLE sessions ADD COLUMN archived_at INTEGER;
+  `,
+  // 21 — a task can be archived: put away off the board and out of the
+  // backlog, kept with its thread, its session and its Notion link, and
+  // restorable by moving it back to a column.
+  //
+  // SQLite cannot widen a CHECK, so tasks is rebuilt. Migration 5 did that by
+  // renaming tasks aside, which is not safe now: sessions.task_id (migration
+  // 10) references tasks, and a rename rewrites that reference to tasks_old,
+  // so dropping the scrap table would null every session's link. Instead the
+  // links are parked, the child rows are moved out of the way, tasks is
+  // rebuilt under its own name, and everything is put back.
+  `
+  CREATE TEMP TABLE keep_comments AS
+    SELECT id, task_id, author, tone, text, is_system, created_at FROM task_comments;
+  CREATE TEMP TABLE keep_session_links AS
+    SELECT id, task_id FROM sessions WHERE task_id IS NOT NULL;
+  UPDATE sessions SET task_id = NULL WHERE task_id IS NOT NULL;
+
+  DROP TABLE task_comments;
+
+  CREATE TABLE tasks_next (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status      TEXT NOT NULL
+      CHECK (status IN ('backlog', 'todo', 'in_progress', 'in_review', 'done', 'archived')),
+    priority    TEXT NOT NULL CHECK (priority IN ('urgent', 'high', 'medium', 'low')),
+    assignee_id TEXT,
+    project_id  TEXT REFERENCES projects (id) ON DELETE SET NULL,
+    labels      TEXT NOT NULL DEFAULT '[]',
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL,
+    notion_page_id TEXT
+  );
+
+  INSERT INTO tasks_next
+    SELECT id, title, description, status, priority, assignee_id, project_id, labels,
+           created_at, updated_at, notion_page_id
+      FROM tasks;
+
+  DROP TABLE tasks;
+  ALTER TABLE tasks_next RENAME TO tasks;
+
+  CREATE TABLE task_comments (
+    id         TEXT PRIMARY KEY,
+    task_id    TEXT NOT NULL REFERENCES tasks (id) ON DELETE CASCADE,
+    author     TEXT NOT NULL,
+    tone       TEXT NOT NULL CHECK (tone IN ('you', 'agent')),
+    text       TEXT NOT NULL,
+    is_system  INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+
+  INSERT INTO task_comments SELECT * FROM keep_comments;
+
+  UPDATE sessions SET task_id = (
+    SELECT l.task_id FROM keep_session_links l WHERE l.id = sessions.id
+  ) WHERE id IN (SELECT id FROM keep_session_links);
+
+  DROP TABLE keep_session_links;
+  DROP TABLE keep_comments;
+
+  CREATE INDEX ix_tasks_status       ON tasks (status, updated_at);
+  CREATE INDEX ix_tasks_project      ON tasks (project_id);
+  CREATE UNIQUE INDEX ix_tasks_notion ON tasks (notion_page_id)
+    WHERE notion_page_id IS NOT NULL;
+  CREATE INDEX ix_task_comments_task ON task_comments (task_id, created_at);
+  `,
 ]

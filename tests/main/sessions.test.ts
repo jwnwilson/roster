@@ -292,4 +292,14 @@ describe('SessionStore — sessions attached to a task', () => {
     expect(store.livenessCandidates(99)).toEqual([])
     expect(store.livenessCandidates(100).map((session) => session.id)).toEqual([eligible.id])
   })
+
+  test('selects assigned in-review task sessions beyond their cooldown', () => {
+    task('ROS-4')
+    const eligible = store.create({ agentId: 'review', title: 'review', origin: 'you', taskId: 'ROS-4' })
+    db.prepare("UPDATE tasks SET status = 'in_review', assignee_id = 'review' WHERE id = 'ROS-4'").run()
+    store.markNudged(eligible.id, 100)
+
+    expect(store.livenessCandidates(99)).toEqual([])
+    expect(store.livenessCandidates(100).map((session) => session.id)).toEqual([eligible.id])
+  })
 })

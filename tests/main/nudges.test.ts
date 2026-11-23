@@ -114,7 +114,27 @@ describe('SessionNudges', () => {
     expect(enqueue).not.toHaveBeenCalled()
   })
 
-  test.each(['todo', 'backlog', 'in_review', 'done'] as const)('does not create sessions for %s tasks', (status) => {
+  test('creates a missing review assignee session with a review-safe check-in prompt', () => {
+    const task = tasks.create({ title: 'Review the release', status: 'in_review', assigneeId: 'review' })
+    new SessionNudges(sessions, { isStreaming: streaming, enqueue }, Date.now, NUDGE_PERIOD_MS, {
+      tasks, agentExists: () => true, onAttached: vi.fn(),
+    }).tick()
+
+    const session = sessions.findByTask(task.id, 'review')
+    expect(session).not.toBeNull()
+    expect(enqueue).toHaveBeenCalledWith(
+      session!.id,
+      expect.stringContaining('In Review'),
+      { author: 'Roster' },
+    )
+    expect(enqueue).toHaveBeenCalledWith(
+      session!.id,
+      expect.stringContaining('Do not approve or merge'),
+      { author: 'Roster' },
+    )
+  })
+
+  test.each(['todo', 'backlog', 'done'] as const)('does not create sessions for %s tasks', (status) => {
     const task = tasks.create({ title: 'Not active', status, assigneeId: 'debugging' })
     new SessionNudges(sessions, { isStreaming: streaming, enqueue }, Date.now, NUDGE_PERIOD_MS, {
       tasks, agentExists: () => true, onAttached: vi.fn(),
@@ -153,6 +173,20 @@ describe('SessionNudges', () => {
     expect(sessions.findById(session.id)?.lastNudgedAt).toBe(now)
   })
 
+  test('asks an inactive assignee to check review progress without approving or merging', () => {
+    const now = 10_000_000
+    const task = tasks.create({ title: 'Review check', status: 'in_review', assigneeId: 'review' })
+    const session = sessions.create({ agentId: 'review', title: task.title, origin: 'you', taskId: task.id })
+
+    new SessionNudges(sessions, { isStreaming: streaming, enqueue }, () => now, NUDGE_PERIOD_MS, {
+      tasks, agentExists: () => true, onAttached: vi.fn(),
+    }).tick()
+
+    expect(enqueue).toHaveBeenCalledWith(session.id, expect.stringContaining('In Review'), { author: 'Roster' })
+    expect(enqueue).toHaveBeenCalledWith(session.id, expect.stringContaining('Do not approve or merge'), { author: 'Roster' })
+    expect(sessions.findById(session.id)?.lastNudgedAt).toBe(now)
+  })
+
   test('does not interrupt an active turn and leaves it eligible for a later check', () => {
     const now = 10_000_000
     const { session } = eligibleSession()
@@ -165,12 +199,19 @@ describe('SessionNudges', () => {
     expect(sessions.findById(session.id)?.lastNudgedAt).toBeNull()
   })
 
-  test.each<[string, { status?: 'todo'; assigneeId?: string }]>([
-    ['a task that is not in progress', { status: 'todo' as const }],
+  test.each<[string, { status?: 'todo' | 'done'; assigneeId?: string }]>([
+    ['a task that leaves an active status', { status: 'todo' as const }],
+    ['a review task that leaves an active status', { status: 'done' as const }],
     ['a task assigned to another agent', { assigneeId: 'review' }],
   ])('does not nudge %s', (_label, changes) => {
     const now = 10_000_000
-    const { task } = eligibleSession()
+    const { task } = changes.status === 'done'
+      ? (() => {
+          const reviewTask = tasks.create({ title: 'Review check', status: 'in_review', assigneeId: 'debugging' })
+          sessions.create({ agentId: 'debugging', title: reviewTask.title, origin: 'you', taskId: reviewTask.id })
+          return { task: reviewTask }
+        })()
+      : eligibleSession()
     if (changes.status) tasks.apply(task.id, { field: 'status', value: changes.status }, { name: 'You', tone: 'you' })
     if (changes.assigneeId) tasks.apply(task.id, { field: 'assignee', value: changes.assigneeId }, { name: 'You', tone: 'you' })
 

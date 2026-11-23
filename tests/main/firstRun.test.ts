@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import type { RunnerStatus } from '@shared/types'
 import { AgentStore } from '@main/store/agents'
 import { defaultAgentsFor, TECH_LEAD } from '@main/store/defaultAgents'
-import { dismissSetup, prepareFirstRun } from '@main/store/firstRun'
+import { dismissSetup, markPermissionsReviewed, prepareFirstRun } from '@main/store/firstRun'
 import { readSetupRecord } from '@main/store/setupState'
 import { setupStatePath } from '@main/store/paths'
 
@@ -262,5 +262,45 @@ describe('dismissSetup', () => {
 
     expect(state.seededAgentIds).toContain('tech-lead')
     expect(state.pending).toBe(false)
+  })
+})
+
+describe('permissions review', () => {
+  test('a fresh install has not reviewed permissions yet', async () => {
+    const state = await prepareFirstRun(storeWith(PI_READY), runnerMap(PI_READY), MODELS)
+
+    expect(state.permissionsReviewed).toBe(false)
+  })
+
+  test('an established roster that predates the marker still reviews them on its first session', async () => {
+    // Upgrading users have never seen the permissions step, so it must not be
+    // skipped just because their roster already exists.
+    const agents = storeWith(PI_READY)
+    await agents.create({
+      name: 'Existing', runner: 'pi', model: 'm', systemPrompt: '', skills: [], cwd: home,
+    })
+
+    const state = await prepareFirstRun(agents, runnerMap(PI_READY), MODELS)
+
+    expect(state.permissionsReviewed).toBe(false)
+  })
+
+  test('marking them reviewed is kept, so the card does not come back', async () => {
+    await prepareFirstRun(storeWith(PI_READY), runnerMap(PI_READY), MODELS)
+    await markPermissionsReviewed(storeWith(PI_READY))
+
+    const later = await prepareFirstRun(storeWith(PI_READY), runnerMap(PI_READY), MODELS)
+
+    expect(later.permissionsReviewed).toBe(true)
+    expect((await readSetupRecord())?.permissionsReviewedAt).not.toBeNull()
+  })
+
+  test('a corrupt marker counts as reviewed, so a broken file never shows the card forever', async () => {
+    await mkdir(home, { recursive: true })
+    await writeFile(setupStatePath(), '{not json', 'utf8')
+
+    const state = await prepareFirstRun(storeWith(PI_READY), runnerMap(PI_READY), MODELS)
+
+    expect(state.permissionsReviewed).toBe(true)
   })
 })

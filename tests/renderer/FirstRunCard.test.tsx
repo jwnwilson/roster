@@ -18,6 +18,7 @@ function aSetupState(overrides: Partial<SetupState> = {}): SetupState {
     startingAgentId: 'tech-lead',
     seededAgentIds: ['tech-lead', 'reviewer'],
     noRunner: false,
+    permissionsReviewed: true,
     ...overrides,
   }
 }

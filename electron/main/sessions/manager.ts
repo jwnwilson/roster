@@ -98,6 +98,12 @@ export type SessionEvent =
   /** What the agent is doing right now, for the streaming indicator. */
   | { type: 'activity'; sessionId: string; text: string }
   | { type: 'session-deleted'; sessionId: string; agentId: string }
+  /** Put away: out of its agent's list until it is restored. */
+  | { type: 'session-archived'; sessionId: string; agentId: string }
+  /** Brought back: the session as it now stands, ready to list again. */
+  | { type: 'session-restored'; session: Session }
+  /** The session as it now stands, after an agent gave it a name. */
+  | { type: 'session-renamed'; session: Session }
 
 /**
  * Streamed prose arrives token by token. Writing and broadcasting each one
@@ -115,6 +121,9 @@ const FLUSH_INTERVAL_MS = 60
  * a runner ignoring its abort signal cannot wedge a delete for good.
  */
 const STOP_TIMEOUT_MS = 10_000
+
+/** What archiving says when a turn is still writing to the session. */
+export const STOP_FIRST = 'Stop it first'
 
 /** Unref'd, so a stop that is still waiting can never hold the process open. */
 function afterStopTimeout(): Promise<void> {
@@ -210,8 +219,6 @@ export class SessionManager {
      * carries only the board, and no agent is offered the memory tools.
      */
     private readonly notes?: ProjectNotesStore,
-    /** The app-owned removal lifecycle, supplied where PTYs and plans live. */
-    private readonly sessionRemoval?: { removeSession: (sessionId: string) => Promise<Session | null> },
     /** Shared hosted-Notion client, delivered to runners through a local proxy. */
     private readonly notion?: ProxiedMcpTools,
   ) {}
@@ -341,16 +348,56 @@ export class SessionManager {
     return this.active.has(sessionId)
   }
 
-  /** Permanently close only a session that the live caller directly spawned. */
-  async closeChildSession(callerSessionId: string, sessionId: string): Promise<boolean> {
+  /**
+   * Puts away, or brings back, a session a person chose to archive.
+   *
+   * Archiving is refused while a turn is in flight: the transcript is still
+   * being written, and a session that vanishes mid-turn leaves the user
+   * wondering where its answer went. Restoring is always allowed.
+   */
+  setArchived(sessionId: string, archived: boolean): Session {
+    if (archived && this.active.has(sessionId)) throw new Error(STOP_FIRST)
+    return this.applyArchive(sessionId, archived)
+  }
+
+  /**
+   * Archives a session an agent opened, for the agent that opened it.
+   *
+   * Scoped to direct children: an agent cannot put away its own session, an
+   * ancestor, a sibling, or anything it did not open. A child that is already
+   * archived is not "open" to it either, so it reads as not found.
+   *
+   * Throws STOP_FIRST for a child with a turn in flight, which the tool
+   * reports back to the agent as an error.
+   */
+  archiveChildSession(callerSessionId: string, sessionId: string): boolean {
     const child = this.sessions.findById(sessionId)
-    if (child?.spawnedFrom?.sessionId !== callerSessionId) return false
+    if (!child || child.spawnedFrom?.sessionId !== callerSessionId) return false
+    if (child.archivedAt !== null && child.archivedAt !== undefined) return false
 
-    const removed = await this.sessionRemoval?.removeSession(sessionId)
-    if (!removed) return false
-
-    this.emit({ type: 'session-deleted', sessionId, agentId: removed.agentId })
+    this.setArchived(sessionId, true)
     return true
+  }
+
+  private applyArchive(sessionId: string, archived: boolean): Session {
+    const session = this.sessions.setArchived(sessionId, archived)
+    this.emit(
+      archived
+        ? { type: 'session-archived', sessionId, agentId: session.agentId }
+        : { type: 'session-restored', session },
+    )
+    return session
+  }
+
+  /**
+   * An agent naming its own session. Returns the stored name, or null when
+   * normalisation left nothing to store. Broadcast so every window's tab
+   * picks the name up without waiting for a reload.
+   */
+  private renameSession(sessionId: string, name: string): string | null {
+    const renamed = this.sessions.setName(sessionId, name)
+    this.emit({ type: 'session-renamed', session: renamed })
+    return renamed.name ?? null
   }
 
   /* ---- running a turn --------------------------------------------------- */
@@ -512,6 +559,10 @@ export class SessionManager {
         mcpServers,
         signal: run.abort.signal,
         ...(options.planMode === true ? { planMode: true } : {}),
+        // Never on a planning turn: that one is research only, and an agent
+        // that may run tools unasked could write its way past the plan.
+        ...(agent.autoApprove && options.planMode !== true ? { autoApprove: true } : {}),
+        ...(agent.allowShell && options.planMode !== true ? { allowShell: true } : {}),
         ...(inProcessMcpServers ? { inProcessMcpServers } : {}),
         ...(builtinTools ? { builtinTools } : {}),
         onApproval: (event) => this.raiseApproval(sessionId, run, event),
@@ -1115,8 +1166,9 @@ export class SessionManager {
         })
         return { sessionId: result.session.id, label: result.label, started: result.started }
       },
-      closeSession: (childSessionId) => this.closeChildSession(session.id, childSessionId),
+      closeSession: async (childSessionId) => this.archiveChildSession(session.id, childSessionId),
       requestUserDecision: (questions) => this.requestUserDecision(session.id, questions),
+      renameSession: (name) => this.renameSession(session.id, name),
     }
 
     // The board is opt-in per agent, like any other MCP server. An agent that
@@ -1126,7 +1178,7 @@ export class SessionManager {
     // may reach is decided by the session rather than by an argument it could
     // pass. Reporting a pull request is opt-in too: without it a plan still
     // gets built, Roster simply never learns where the work landed.
-    const tasks = this.taskToolsFor(agent)
+    const tasks = this.taskToolsFor(agent, session)
     const plans = this.planToolsFor(agent, session, planMode)
     const memory = this.memoryToolsFor(agent, session)
 
@@ -1244,7 +1296,7 @@ export class SessionManager {
    * enabled the built-in "tasks" server — that is the control over which
    * agents may change the board.
    */
-  private taskToolsFor(agent: Agent): TaskTools | undefined {
+  private taskToolsFor(agent: Agent, session: Session): TaskTools | undefined {
     const board = this.board
     if (!board) return undefined
     if (!agent.mcpServers.includes(TASKS_SERVER)) return undefined
@@ -1259,6 +1311,7 @@ export class SessionManager {
       projectName: (projectId) => projects.findById(projectId)?.name ?? null,
       isArchivedProject: (projectId) => projects.findById(projectId)?.archivedAt != null,
       agentName: (agentId) => this.agents.findById(agentId)?.name ?? null,
+      sessionProjectId: session.projectId ?? null,
       create: (input) =>
         tasks.create({
           title: input.title,

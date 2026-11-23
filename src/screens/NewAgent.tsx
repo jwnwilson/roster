@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { ModelInfo } from '@shared/types'
 import {
+  AutoApproveField,
+  ShellField,
   ChipField,
   DefaultProjectField,
   HarnessModelPicker,
@@ -36,6 +38,7 @@ export function NewAgent() {
   const skills = useRoster((s) => s.skills)
   const picked = useRoster((s) => s.picked)
   const togglePicked = useRoster((s) => s.togglePicked)
+  const pickAll = useRoster((s) => s.pickAll)
   const newRunner = useRoster((s) => s.newRunner)
   const setNewRunner = useRoster((s) => s.setNewRunner)
   const newModel = useRoster((s) => s.newModel)
@@ -51,7 +54,20 @@ export function NewAgent() {
   const [name, setName] = useState('')
   const [cwd, setCwd] = useState<string | null>(null)
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null)
-  const [mcp, setMcp] = useState<Record<string, boolean>>({})
+  const [autoApprove, setAutoApprove] = useState(false)
+  const [allowShell, setAllowShell] = useState(false)
+  // Every configured server starts on, and each can be switched off before the
+  // agent is created. Skills are reset to all-on each time the form opens, so
+  // picks left over from an earlier form do not carry over.
+  const [mcp, setMcp] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(mcpServers.map((server) => [server.name, true])),
+  )
+
+  useEffect(() => {
+    pickAll(skills.map((skill) => skill.name))
+    // Once, on open: a skill list that reloads mid-form must not undo the user's picks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [models, setModels] = useState<ModelInfo[]>([])
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -91,6 +107,8 @@ export function NewAgent() {
         // Sent even when null: "no default" is an answer, and the agent.toml
         // writer omits the key rather than writing an empty one.
         defaultProjectId,
+        autoApprove,
+        allowShell,
         // Omitted means the default workspace, which the main process fills in.
         ...(cwd !== null ? { cwd } : {}),
       })
@@ -138,6 +156,19 @@ export function NewAgent() {
           projects={projectOptions}
           value={defaultProjectId}
           onChange={setDefaultProjectId}
+        />
+
+        <AutoApproveField
+          on={autoApprove}
+          onToggle={() => setAutoApprove((on) => !on)}
+          supported={newRunner === 'claude'}
+        />
+
+        <ShellField
+          on={allowShell}
+          onToggle={() => setAllowShell((on) => !on)}
+          supported={newRunner === 'claude'}
+          autoApproveOn={autoApprove}
         />
 
         <ChipField

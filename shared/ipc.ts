@@ -1,4 +1,5 @@
 import type { DesktopReport, DesktopTestResult } from './desktop'
+import type { PermissionKind, PermissionReport } from './permissions'
 import type {
   Agent,
   Approval,
@@ -36,6 +37,13 @@ import type { VoiceModelProgress, VoiceModelStatus, VoiceStatus } from './voice'
  * main process through these calls — no node, no fs, no child processes.
  */
 export interface RosterApi {
+  files: {
+    /**
+     * An image on disk, as a data URL, for a chat message that points at it.
+     * Resolves null when the path is not an image Roster will show.
+     */
+    readImage(path: string): Promise<string | null>
+  }
   desktop: {
     check(): Promise<DesktopReport>
     requestAccessibility(): Promise<void>
@@ -107,6 +115,16 @@ export interface RosterApi {
      * rejecting.
      */
     remove(sessionId: string): Promise<boolean>
+    /**
+     * Puts a session away. It leaves its agent's list, the sidebar and the
+     * grid, but its transcript, plans, spend and task link all stay. Refused
+     * with "Stop it first" while a turn is running.
+     */
+    archive(sessionId: string): Promise<Session>
+    /** Brings an archived session back into its agent's list. */
+    restore(sessionId: string): Promise<Session>
+    /** Every archived session, most recently archived first. */
+    listArchived(): Promise<Session[]>
     /** Files the session under a project, or under none. */
     setProject(sessionId: string, projectId: string | null): Promise<Session>
     /**
@@ -285,6 +303,16 @@ export interface RosterApi {
     state(): Promise<SetupState>
     /** Puts the card away for good. Resolves the state it leaves behind. */
     dismiss(): Promise<SetupState>
+    /** Records that the permissions card was dealt with in a session. */
+    reviewPermissions(): Promise<SetupState>
+  }
+  permissions: {
+    /** What macOS says about each permission Roster and its sessions use. */
+    status(): Promise<PermissionReport>
+    /** Asks for one permission where macOS allows asking, then reports again. */
+    request(kind: PermissionKind): Promise<PermissionReport>
+    /** Opens the System Settings pane for one permission. */
+    openSettings(kind: PermissionKind): Promise<void>
   }
   update: {
     /** Look for a newer release; the result arrives on onStatus. */
@@ -410,6 +438,10 @@ export interface AgentPatch {
   mcpServers?: string[]
   cwd?: string
   hidden?: boolean
+  /** Run tools without the approval banner. */
+  autoApprove?: boolean
+  /** Run shell commands without the approval banner. */
+  allowShell?: boolean
   /** Null clears the default; omitted leaves it as it is. */
   defaultProjectId?: string | null
 }
@@ -426,6 +458,10 @@ export interface NewAgentInput {
    */
   cwd?: string
   mcpServers?: string[]
+  /** Run tools without the approval banner. Omitted means off. */
+  autoApprove?: boolean
+  /** Run shell commands without the approval banner. Omitted means off. */
+  allowShell?: boolean
   /** The project this agent's sessions are filed under. Null for none. */
   defaultProjectId?: string | null
 }
@@ -458,6 +494,9 @@ export type SessionEventPayload =
   | { type: 'queued'; sessionId: string; count: number }
   | { type: 'activity'; sessionId: string; text: string }
   | { type: 'session-deleted'; sessionId: string; agentId: string }
+  | { type: 'session-archived'; sessionId: string; agentId: string }
+  | { type: 'session-restored'; session: Session }
+  | { type: 'session-renamed'; session: Session }
 
 /** Channel names, kept in one place so main and preload cannot drift. */
 export const CHANNELS = {
@@ -473,6 +512,7 @@ export const CHANNELS = {
   signInCancel: 'signIn:cancel',
   signInAnswer: 'signIn:answer',
   signInEvent: 'signIn:event',
+  filesReadImage: 'files:readImage',
 
   runnersList: 'runners:list',
   runnersModels: 'runners:models',
@@ -494,6 +534,9 @@ export const CHANNELS = {
   sessionsSend: 'sessions:send',
   sessionsCancel: 'sessions:cancel',
   sessionsDelete: 'sessions:delete',
+  sessionsArchive: 'sessions:archive',
+  sessionsRestore: 'sessions:restore',
+  sessionsListArchived: 'sessions:listArchived',
   sessionsRespondToApproval: 'sessions:respondToApproval',
   sessionsPendingApprovals: 'sessions:pendingApprovals',
   sessionsAllowForSession: 'sessions:allowForSession',
@@ -570,6 +613,10 @@ export const CHANNELS = {
 
   setupState: 'setup:state',
   setupDismiss: 'setup:dismiss',
+  setupReviewPermissions: 'setup:review-permissions',
+  permissionsStatus: 'permissions:status',
+  permissionsRequest: 'permissions:request',
+  permissionsOpenSettings: 'permissions:open-settings',
 
   updateCheck: 'update:check',
   updateDownload: 'update:download',

@@ -19,6 +19,12 @@ export interface SetupRecord {
   startingAgentId: string | null
   /** When the user put the setup card away, or null while it still shows. */
   dismissedAt: number | null
+  /**
+   * When the permissions card was reviewed in a session, or null while it
+   * still has to be. Separate from dismissedAt, since upgrading users have
+   * never seen it and must still see it on their first session.
+   */
+  permissionsReviewedAt: number | null
 }
 
 export const SETUP_VERSION = 1
@@ -60,6 +66,8 @@ export function parseSetupRecord(raw: string): SetupRecord {
     seededAgentIds: stringListOr(fields['seededAgentIds']),
     startingAgentId: typeof fields['startingAgentId'] === 'string' ? fields['startingAgentId'] : null,
     dismissedAt: typeof fields['dismissedAt'] === 'number' ? fields['dismissedAt'] : null,
+    permissionsReviewedAt:
+      typeof fields['permissionsReviewedAt'] === 'number' ? fields['permissionsReviewedAt'] : null,
   }
 }
 
@@ -83,6 +91,8 @@ function emptyRecord(): SetupRecord {
     seededAgentIds: [],
     startingAgentId: null,
     dismissedAt: 0,
+    // Treated as reviewed: a broken marker must not show a card on every session.
+    permissionsReviewedAt: 0,
   }
 }
 

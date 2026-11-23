@@ -1,5 +1,10 @@
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { MarkdownImage } from './MarkdownImage'
+import { ImageCarousel } from './ImageCarousel'
+import { imagesOnly, rehypeJoinImageRuns } from './imageRuns'
+
+const EMBEDDED_RASTER_IMAGE = /^data:image\/(png|jpe?g|gif|webp);/i
 
 interface MarkdownProps {
   children: string
@@ -17,6 +22,13 @@ export function Markdown({ children }: MarkdownProps) {
     <div className="flex flex-col gap-[10px] text-2xl leading-[1.62] text-ink-2">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeJoinImageRuns]}
+        // The default transform strips data: URLs, which is what an image
+        // embedded in a message is. Only raster image data is let through;
+        // every other URL keeps the default treatment.
+        urlTransform={(url, key) =>
+          key === 'src' && EMBEDDED_RASTER_IMAGE.test(url) ? url : defaultUrlTransform(url)
+        }
         components={{
           h1: ({ children: body }) => (
             <h1 className="m-0 mt-[6px] text-3xl font-semibold text-ink">{body}</h1>
@@ -27,7 +39,12 @@ export function Markdown({ children }: MarkdownProps) {
           h3: ({ children: body }) => (
             <h3 className="m-0 mt-[4px] text-xl font-semibold text-ink">{body}</h3>
           ),
-          p: ({ children: body }) => <p className="m-0">{body}</p>,
+          p: ({ children: body, node }) => {
+            // Two or more images and nothing else is a carousel, not a stack.
+            const images = imagesOnly(node)
+            if (images !== null && images.length >= 2) return <ImageCarousel images={images} />
+            return <p className="m-0">{body}</p>
+          },
           ul: ({ children: body }) => (
             <ul className="m-0 flex list-disc flex-col gap-[4px] pl-[20px]">{body}</ul>
           ),
@@ -65,6 +82,7 @@ export function Markdown({ children }: MarkdownProps) {
               {body}
             </pre>
           ),
+          img: ({ src, alt }) => <MarkdownImage src={src} alt={alt} />,
           hr: () => <hr className="m-0 border-0 border-t border-line" />,
           table: ({ children: body }) => (
             <div className="overflow-x-auto">

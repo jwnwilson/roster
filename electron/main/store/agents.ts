@@ -27,6 +27,10 @@ export interface NewAgentInput {
   mcpServers?: string[]
   /** Sessions opened on this agent are filed here unless the caller says otherwise. */
   defaultProjectId?: string | null
+  /** Run tools without the approval banner. Omitted means off. */
+  autoApprove?: boolean
+  /** Run shell commands without the approval banner. Omitted means off. */
+  allowShell?: boolean
 }
 
 /** Agent ids double as directory names, so they must be filesystem-safe. */
@@ -170,6 +174,8 @@ export class AgentStore {
       skills: input.skills,
       mcpServers: input.mcpServers ?? [],
       hidden: false,
+      autoApprove: input.autoApprove === true,
+      allowShell: input.allowShell === true,
       defaultProjectId: input.defaultProjectId ?? null,
     }
 
@@ -218,6 +224,8 @@ export class AgentStore {
       ...(patch.mcpServers !== undefined ? { mcpServers: patch.mcpServers } : {}),
       ...(patch.cwd !== undefined ? { cwd: patch.cwd } : {}),
       ...(patch.hidden !== undefined ? { hidden: patch.hidden } : {}),
+      ...(patch.autoApprove !== undefined ? { autoApprove: patch.autoApprove } : {}),
+      ...(patch.allowShell !== undefined ? { allowShell: patch.allowShell } : {}),
       // Null is a value here, not an omission: it is how the default is cleared.
       ...(patch.defaultProjectId !== undefined
         ? { defaultProjectId: patch.defaultProjectId }
@@ -290,6 +298,8 @@ export class AgentStore {
       skills: config.skills,
       mcpServers: config.mcpServers,
       hidden: config.hidden,
+      autoApprove: config.autoApprove,
+      allowShell: config.allowShell,
       defaultProjectId: config.defaultProjectId,
       ...(config.custom ? { custom: config.custom } : {}),
       status: unusable ? 'error' : 'idle',
@@ -349,6 +359,8 @@ function brokenAgent(id: string, detail: string): Agent {
     mcpServers: [],
     // Never hidden: the error is the entire reason to show this row.
     hidden: false,
+    autoApprove: false,
+    allowShell: false,
     defaultProjectId: null,
     status: 'error',
     statusDetail: detail,

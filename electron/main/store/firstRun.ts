@@ -38,15 +38,16 @@ export async function prepareFirstRun(
       seededAgentIds: [],
       startingAgentId: null,
       dismissedAt: now,
+      permissionsReviewedAt: null,
     })
-    return { pending: false, startingAgentId: null, seededAgentIds: [], noRunner: false }
+    return { pending: false, startingAgentId: null, seededAgentIds: [], noRunner: false, permissionsReviewed: false }
   }
 
   const defaults = defaultAgentsFor(runners, defaultModels)
   if (defaults.length === 0) {
     // Deliberately no marker: installing a CLI and reopening Roster should
     // still get the starter roster. The card explains what is missing.
-    return { pending: true, startingAgentId: null, seededAgentIds: [], noRunner: true }
+    return { pending: true, startingAgentId: null, seededAgentIds: [], noRunner: true, permissionsReviewed: false }
   }
 
   // Claimed before anything is created, so a failure halfway through leaves a
@@ -57,6 +58,7 @@ export async function prepareFirstRun(
     seededAgentIds: [],
     startingAgentId: null,
     dismissedAt: null,
+    permissionsReviewedAt: null,
   }
   await writeSetupRecord(claim)
 
@@ -70,7 +72,7 @@ export async function prepareFirstRun(
   const startingAgentId = seeded[0] ?? null
   await writeSetupRecord({ ...claim, seededAgentIds: seeded, startingAgentId })
 
-  return { pending: true, startingAgentId, seededAgentIds: seeded, noRunner: false }
+  return { pending: true, startingAgentId, seededAgentIds: seeded, noRunner: false, permissionsReviewed: false }
 }
 
 /** Puts the setup card away for good. Idempotent, and safe with no marker. */
@@ -86,6 +88,7 @@ export async function dismissSetup(): Promise<SetupState> {
         seededAgentIds: [],
         startingAgentId: null,
         dismissedAt: now,
+        permissionsReviewedAt: null,
       }
 
   await writeSetupRecord(next)
@@ -95,7 +98,23 @@ export async function dismissSetup(): Promise<SetupState> {
     startingAgentId: next.startingAgentId,
     seededAgentIds: next.seededAgentIds,
     noRunner: false,
+    permissionsReviewed: next.permissionsReviewedAt !== null,
   }
+}
+
+/**
+ * Records that the permissions card has been dealt with, so it does not come
+ * back. With no marker there is nothing to record against, and no session can
+ * show the card in that state, so nothing is written.
+ */
+export async function markPermissionsReviewed(agents: AgentStore): Promise<SetupState> {
+  const record = await readSetupRecord()
+  if (!record) {
+    return { pending: true, startingAgentId: null, seededAgentIds: [], noRunner: true, permissionsReviewed: false }
+  }
+  const next: SetupRecord = { ...record, permissionsReviewedAt: record.permissionsReviewedAt ?? Date.now() }
+  await writeSetupRecord(next)
+  return stateFrom(next, agents)
 }
 
 /**
@@ -113,5 +132,6 @@ function stateFrom(record: SetupRecord, agents: AgentStore): SetupState {
     startingAgentId: starting,
     seededAgentIds: record.seededAgentIds,
     noRunner: false,
+    permissionsReviewed: record.permissionsReviewedAt !== null,
   }
 }

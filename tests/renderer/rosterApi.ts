@@ -17,6 +17,7 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       answer: vi.fn().mockResolvedValue(undefined),
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
+    files: { readImage: vi.fn().mockResolvedValue(null) },
     runners: {
       list: vi.fn().mockResolvedValue([]),
       models: vi.fn().mockResolvedValue([]),
@@ -33,6 +34,9 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       listByAgent: vi.fn().mockResolvedValue([]),
       recentByAgent: vi.fn().mockResolvedValue({}),
       listAll: vi.fn().mockResolvedValue({}),
+      listArchived: vi.fn().mockResolvedValue([]),
+      archive: vi.fn().mockResolvedValue(null),
+      restore: vi.fn().mockResolvedValue(null),
       create: vi.fn().mockResolvedValue(null),
       messages: vi.fn().mockResolvedValue([]),
       usage: vi.fn().mockResolvedValue(null),
@@ -134,18 +138,32 @@ export function installRosterApi(overrides: DeepPartial<RosterApi> = {}): Roster
       approve: vi.fn().mockResolvedValue(undefined),
       onEvent: vi.fn().mockReturnValue(() => {}),
     },
+    permissions: {
+      status: vi.fn().mockResolvedValue({ screen: 'granted', accessibility: 'granted', microphone: 'granted' }),
+      request: vi.fn().mockResolvedValue({ screen: 'granted', accessibility: 'granted', microphone: 'granted' }),
+      openSettings: vi.fn().mockResolvedValue(undefined),
+    },
     setup: {
       state: vi.fn().mockResolvedValue({
         pending: false,
         startingAgentId: null,
         seededAgentIds: [],
         noRunner: false,
+        permissionsReviewed: true,
+      }),
+      reviewPermissions: vi.fn().mockResolvedValue({
+        pending: false,
+        startingAgentId: null,
+        seededAgentIds: [],
+        noRunner: false,
+        permissionsReviewed: true,
       }),
       dismiss: vi.fn().mockResolvedValue({
         pending: false,
         startingAgentId: null,
         seededAgentIds: [],
         noRunner: false,
+        permissionsReviewed: true,
       }),
     },
     update: {

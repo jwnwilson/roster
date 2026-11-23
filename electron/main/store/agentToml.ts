@@ -29,6 +29,16 @@ export interface AgentConfig {
   /** Kept off the sidebar and the agent grid. Everything else still sees it. */
   hidden: boolean
   /**
+   * Run tools without the approval banner. Off unless the file says so, and
+   * questions to the user and plan review still ask, whatever this is set to.
+   */
+  autoApprove: boolean
+  /**
+   * Run shell commands without the approval banner, and nothing else. Off
+   * unless the file says so.
+   */
+  allowShell: boolean
+  /**
    * The project new sessions on this agent are filed under, unless the caller
    * names one. Null when the agent has no default.
    */
@@ -144,6 +154,8 @@ export function parseAgentToml(agentId: string, source: string): AgentConfig {
     skills: optionalStringList(agentId, table, 'skills'),
     mcpServers: optionalStringList(agentId, table, 'mcp_servers'),
     hidden: optionalBoolean(agentId, table, 'hidden'),
+    autoApprove: optionalBoolean(agentId, table, 'auto_approve'),
+    allowShell: optionalBoolean(agentId, table, 'allow_shell'),
     defaultProjectId: optionalString(agentId, table, 'default_project'),
   }
 
@@ -161,6 +173,8 @@ export function serializeAgentToml(config: AgentConfig): string {
     skills: config.skills,
     mcp_servers: config.mcpServers,
     hidden: config.hidden,
+    auto_approve: config.autoApprove,
+    allow_shell: config.allowShell,
   }
   // Omitted rather than written empty, so a file with no default says nothing
   // about one — which is also what clearing it has to leave behind.

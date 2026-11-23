@@ -361,7 +361,27 @@ describe('edit draft', () => {
       cwd: '/Users/test/work/api',
       cwdLabel: '~/work/api',
       defaultProjectId: null,
+      autoApprove: false,
+      allowShell: false,
     })
+  })
+
+  test('snapshots the auto approve setting into the draft', () => {
+    useRoster.setState({
+      agents: useRoster.getState().agents.map((a) => ({ ...a, autoApprove: true })),
+    })
+    useRoster.getState().openEdit()
+
+    expect(useRoster.getState().draft?.autoApprove).toBe(true)
+  })
+
+  test('snapshots the allow shell setting into the draft', () => {
+    useRoster.setState({
+      agents: useRoster.getState().agents.map((a) => ({ ...a, allowShell: true })),
+    })
+    useRoster.getState().openEdit()
+
+    expect(useRoster.getState().draft?.allowShell).toBe(true)
   })
 
   test('renaming in the draft does not touch the agent until it is saved', () => {

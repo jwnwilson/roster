@@ -145,8 +145,10 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      # Unsigned on purpose: there is no Developer ID. CSC_IDENTITY_AUTO_DISCOVERY
-      # off stops electron-builder hunting for a certificate and failing.
+      # Ad-hoc signed, not Developer ID: there is no certificate. CSC_IDENTITY_
+      # AUTO_DISCOVERY off stops electron-builder hunting for one and failing.
+      # build/afterPack.cjs seals the bundle with `codesign --sign -`, so a
+      # downloaded copy is "unidentified developer", not "damaged".
       - name: Package and attach ${{ matrix.arch }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

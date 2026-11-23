@@ -7,6 +7,7 @@ import { McpServers } from './screens/McpServers'
 import { NewAgent } from './screens/NewAgent'
 import { Skills } from './screens/Skills'
 import { Spend } from './screens/Spend'
+import { ArchivedSessions } from './screens/ArchivedSessions'
 import { Tasks } from './screens/Tasks'
 import { useRoster } from './state/store'
 
@@ -164,6 +165,8 @@ function Screen({ screen }: ScreenProps) {
       return <Tasks />
     case 'spend':
       return <Spend />
+    case 'archived':
+      return <ArchivedSessions />
   }
 }
 

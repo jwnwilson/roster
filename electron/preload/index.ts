@@ -10,6 +10,7 @@ import {
   type TaskEventPayload,
 } from '../../shared/ipc'
 import type { Agent, SignInEvent, UpdateState } from '../../shared/types'
+import type { PermissionKind } from '../../shared/permissions'
 
 /** Subscribes to a broadcast channel and returns its unsubscribe. */
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -36,6 +37,9 @@ const api: RosterApi = {
     cancel: () => ipcRenderer.invoke(CHANNELS.signInCancel),
     answer: (promptId, answer) => ipcRenderer.invoke(CHANNELS.signInAnswer, promptId, answer),
     onEvent: (listener: (event: SignInEvent) => void) => subscribe(CHANNELS.signInEvent, listener),
+  },
+  files: {
+    readImage: (path) => ipcRenderer.invoke(CHANNELS.filesReadImage, path),
   },
 
   runners: {
@@ -67,6 +71,9 @@ const api: RosterApi = {
       ipcRenderer.invoke(CHANNELS.sessionsSend, sessionId, prompt, options),
     cancel: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsCancel, sessionId),
     remove: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsDelete, sessionId),
+    archive: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsArchive, sessionId),
+    restore: (sessionId) => ipcRenderer.invoke(CHANNELS.sessionsRestore, sessionId),
+    listArchived: () => ipcRenderer.invoke(CHANNELS.sessionsListArchived),
     setProject: (sessionId, projectId) =>
       ipcRenderer.invoke(CHANNELS.sessionsSetProject, sessionId, projectId),
     setName: (sessionId, name) => ipcRenderer.invoke(CHANNELS.sessionsSetName, sessionId, name),
@@ -183,6 +190,13 @@ const api: RosterApi = {
   setup: {
     state: () => ipcRenderer.invoke(CHANNELS.setupState),
     dismiss: () => ipcRenderer.invoke(CHANNELS.setupDismiss),
+    reviewPermissions: () => ipcRenderer.invoke(CHANNELS.setupReviewPermissions),
+  },
+
+  permissions: {
+    status: () => ipcRenderer.invoke(CHANNELS.permissionsStatus),
+    request: (kind: PermissionKind) => ipcRenderer.invoke(CHANNELS.permissionsRequest, kind),
+    openSettings: (kind: PermissionKind) => ipcRenderer.invoke(CHANNELS.permissionsOpenSettings, kind),
   },
 
   update: {

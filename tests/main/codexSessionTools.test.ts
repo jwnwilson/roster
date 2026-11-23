@@ -213,14 +213,14 @@ describe('a Codex agent’s MCP servers', () => {
     )
   })
 
-  test('marks only child-session closure destructive', async () => {
+  test('marks no roster tool destructive, child-session archiving included', async () => {
     await run()
 
     expect(served.find((tool) => tool.name === 'close_session')?.annotations).toMatchObject({
-      destructiveHint: true,
+      destructiveHint: false,
       openWorldHint: false,
     })
-    for (const tool of served.filter((tool) => tool.name !== 'close_session')) {
+    for (const tool of served) {
       expect(tool.annotations).toMatchObject({ destructiveHint: false, openWorldHint: false })
     }
   })
@@ -303,6 +303,7 @@ describe('which of Roster’s tools a Codex agent gets', () => {
       'close_session',
       'list_agents',
       'open_session',
+      'rename_session',
       'request_user_decision',
       'test_local_desktop',
     ])

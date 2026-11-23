@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { Agent, Approval, Session } from '@shared/types'
 import { EXIT_PLAN_MODE } from '@shared/plans'
 import { sessionLabel } from '@shared/sessions'
 import { sessionNeedsAttention, statusColor } from '@shared/status'
 import { taskStatusColor } from '@shared/tasks'
-import { contextFraction, contextLabel } from '@shared/models'
+import { contextFraction, contextLabel, splitModel } from '@shared/models'
 import { resolveWorkspace, type Workspace } from '@shared/workspace'
 import { AssistantChatPane } from '@/chat/AssistantChatPane'
 import { EditAgentModal } from './EditAgentModal'
@@ -13,6 +13,7 @@ import { SessionName } from './SessionName'
 import { SessionWorkflowLink } from './SessionWorkflowLink'
 import { PlanModal } from './PlanModal'
 import { messageFor } from '@/lib/errors'
+import { flowEdges, sessionsByTask } from '@/state/workflow'
 import { SectionLabel, Segmented, Select, StatusDot } from '@/components/primitives'
 import { TerminalPane } from '@/terminal/TerminalPane'
 import { ESTIMATE_EXPLANATION, formatUsageCost } from '@/state/format'
@@ -58,6 +59,7 @@ export function AgentDetail() {
 }
 
 function AgentDetailBody({ agent }: { agent: Agent }) {
+  const openEdit = useRoster((s) => s.openEdit)
   const go = useRoster((s) => s.go)
   const mode = useRoster((s) => s.mode)
   const planMode = useRoster((s) => s.planMode)
@@ -81,7 +83,8 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   const editOpen = useRoster((s) => s.editOpen)
   const openPlanId = useRoster((s) => s.openPlanId)
   const status = useRoster((s) => agentStatus(s, agent))
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const streamingSessions = useRoster((s) => s.streaming)
+  const [sessionError, setSessionError] = useState<string | null>(null)
 
   // Sessions come from SQLite, not from the agent config, so they load per
   // agent rather than at startup.
@@ -156,24 +159,25 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
   }
 
   /**
-   * Deletes a session, transcript and all.
+   * Puts a session away. No confirmation: nothing is lost, and it can be
+   * restored from the archived view.
    *
-   * The confirmation lives in the main process, as it does for a task or a
-   * skill, so a dismissal comes back as false rather than as a rejection and
-   * nothing here should move. Spend and the grid's preview lines both counted
-   * this session, so both are re-read once it has gone.
+   * Refused by the main process while a turn is running; the tab is disabled
+   * then, so that refusal only comes back if the turn started in the gap.
+   * Spend and the grid's preview lines both counted this session's history,
+   * so they are re-read once it has gone from the list.
    */
-  async function deleteSession(sessionId: string): Promise<void> {
-    setDeleteError(null)
+  async function archiveSession(sessionId: string): Promise<void> {
+    setSessionError(null)
 
     try {
-      const deleted = await window.roster.sessions.remove(sessionId)
-      if (!deleted) return
+      await window.roster.sessions.archive(sessionId)
 
       // The same event the broadcast will carry, applied now so the tab strip
-      // stops showing a session that is gone. Applying it twice is safe.
+      // stops showing a session that is no longer listed. Applying it twice
+      // is safe.
       useRoster.setState((state) =>
-        reduceSessionEvent(state, { type: 'session-deleted', sessionId, agentId: agent.id }),
+        reduceSessionEvent(state, { type: 'session-archived', sessionId, agentId: agent.id }),
       )
 
       const [spend, transcripts] = await Promise.all([
@@ -183,7 +187,7 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
       useRoster.getState().setSpend(spend)
       useRoster.getState().setTranscripts(transcripts)
     } catch (cause) {
-      setDeleteError(messageFor(cause))
+      setSessionError(messageFor(cause))
     }
   }
 
@@ -223,15 +227,16 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
         activeId={activeId ?? null}
         onSelect={(id) => selectSession(agent.id, id)}
         onNew={() => void newSession()}
-        onDelete={(id) => void deleteSession(id)}
+        onArchive={(id) => void archiveSession(id)}
+        streaming={streamingSessions}
       />
 
-      {deleteError === null ? null : (
+      {sessionError === null ? null : (
         <p
           role="alert"
           className="m-0 flex-none border-b border-line bg-sunken px-[18px] py-[6px] text-md text-error"
         >
-          {deleteError}
+          {sessionError}
         </p>
       )}
 
@@ -252,6 +257,13 @@ function AgentDetailBody({ agent }: { agent: Agent }) {
               queuedCount={queuedCount}
               streamingText={activity ?? `${agent.name} is working…`}
               skillsLine={`skills: ${agent.skills.join(', ') || 'none'}`}
+              shell={{
+                agentName: agent.name,
+                runner: agent.runner,
+                allowShell: agent.allowShell === true,
+                autoApprove: agent.autoApprove === true,
+                onEdit: openEdit,
+              }}
               {...(asking !== null && questioning?.sessionId === active.id
                 ? { questions: asking }
                 : {})}
@@ -292,10 +304,12 @@ interface SessionTabsProps {
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
-  onDelete: (id: string) => void
+  onArchive: (id: string) => void
+  /** Which sessions have a turn in flight, which cannot be archived yet. */
+  streaming: Record<string, boolean>
 }
 
-function SessionTabs({ sessions, activeId, onSelect, onNew, onDelete }: SessionTabsProps) {
+function SessionTabs({ sessions, activeId, onSelect, onNew, onArchive, streaming }: SessionTabsProps) {
   return (
     <div className="flex flex-none items-stretch gap-[4px] overflow-x-auto border-b border-line bg-sunken px-[12px] py-[6px]">
       {sessions.map((session) => (
@@ -304,7 +318,8 @@ function SessionTabs({ sessions, activeId, onSelect, onNew, onDelete }: SessionT
           session={session}
           active={session.id === activeId}
           onSelect={() => onSelect(session.id)}
-          onDelete={() => onDelete(session.id)}
+          onArchive={() => onArchive(session.id)}
+          running={streaming[session.id] === true}
         />
       ))}
 
@@ -324,19 +339,21 @@ interface SessionTabProps {
   session: Session
   active: boolean
   onSelect: () => void
-  onDelete: () => void
+  onArchive: () => void
+  running: boolean
 }
 
 /**
- * One tab, and the only place a session can be destroyed from.
+ * One tab. Its archive control is a sibling of the tab rather than a child of
+ * it — a button inside a button is not valid, and a click on it must not also
+ * select the tab it sits in. It stays out of the way until the tab is hovered
+ * or something in it has focus, so the strip does not read as a row of close
+ * buttons.
  *
- * The delete control is a sibling of the tab rather than a child of it —
- * a button inside a button is not valid, and a click on it must not also
- * select the tab it sits in. It stays out of the way until the tab is
- * hovered or something in it has focus, so the strip does not read as a row
- * of close buttons.
+ * Archiving is not a way to destroy anything, so the control is an archive
+ * and not a delete; permanent deletion is only in the archived view.
  */
-function SessionTab({ session, active, onSelect, onDelete }: SessionTabProps) {
+function SessionTab({ session, active, onSelect, onArchive, running }: SessionTabProps) {
   const needsAttention = sessionNeedsAttention(session.status)
 
   return (
@@ -375,10 +392,11 @@ function SessionTab({ session, active, onSelect, onDelete }: SessionTabProps) {
 
       <button
         type="button"
-        aria-label={`Delete session ${sessionLabel(session)}`}
-        title="Delete session"
-        onClick={onDelete}
-        className="cursor-pointer rounded-full border-0 bg-transparent px-[5px] py-0 font-ui text-md leading-none text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-error"
+        aria-label={`Archive session ${sessionLabel(session)}`}
+        title={running ? 'Stop it first' : 'Archive session'}
+        disabled={running}
+        onClick={onArchive}
+        className="cursor-pointer rounded-full border-0 bg-transparent px-[5px] py-0 font-ui text-md leading-none text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-ink-3 disabled:cursor-not-allowed disabled:opacity-40"
         data-hoverable
       >
         ×
@@ -416,7 +434,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
   return (
     <div className="flex flex-none items-center gap-[12px] border-b border-amber-line bg-amber-surface px-[18px] py-[10px]">
       <span aria-hidden className="h-[6px] w-[6px] flex-none rounded-full bg-amber" />
-      <p className="m-0 truncate text-lg text-amber-text">
+      <p className="m-0 min-w-0 flex-1 truncate text-lg text-amber-text">
         {isPlan ? (
           <>
             Waiting on you — agent has a plan: <span className="font-mono">{approval.command}</span>
@@ -428,12 +446,12 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
           </>
         )}
       </p>
-      <div className="ml-auto flex gap-[7px]">
+      <div className="flex flex-none items-center gap-[8px]">
         {planId === undefined ? null : (
           <button
             type="button"
             onClick={() => openPlan(planId)}
-            className="cursor-pointer rounded-chip border border-amber-line bg-transparent px-[11px] py-[4px] font-ui text-md text-amber-text hover:border-amber"
+            className="min-w-[104px] cursor-pointer whitespace-nowrap rounded-chip border border-amber-line bg-transparent px-[16px] py-[6px] font-ui text-lg text-amber-text hover:border-amber"
             data-hoverable
           >
             Review plan
@@ -442,7 +460,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
         <button
           type="button"
           onClick={() => respond(false)}
-          className="cursor-pointer rounded-chip border border-line-hover-strong bg-transparent px-[11px] py-[4px] font-ui text-md text-ink-4 hover:border-[#55596a]"
+          className="min-w-[104px] cursor-pointer whitespace-nowrap rounded-chip border border-line-hover-strong bg-transparent px-[16px] py-[6px] font-ui text-lg text-ink-4 hover:border-[#55596a]"
           data-hoverable
         >
           {isPlan ? 'Keep planning' : 'Deny'}
@@ -452,7 +470,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
             type="button"
             onClick={allowForSession}
             title={`Approve, and don't ask again about ${approval.toolName} in this session`}
-            className="cursor-pointer rounded-chip border border-amber-line bg-transparent px-[11px] py-[4px] font-ui text-md text-amber-text hover:border-amber"
+            className="cursor-pointer whitespace-nowrap rounded-chip border border-amber-line bg-transparent px-[16px] py-[6px] font-ui text-lg text-amber-text hover:border-amber"
             data-hoverable
           >
             Allow {approval.toolName} for session
@@ -461,7 +479,7 @@ function ApprovalBanner({ sessionId, approval }: ApprovalBannerProps) {
         <button
           type="button"
           onClick={() => respond(true)}
-          className="cursor-pointer rounded-chip border-0 bg-amber px-[11px] py-[4px] font-ui text-md font-semibold text-amber-ink hover:bg-amber-hover"
+          className="min-w-[104px] cursor-pointer whitespace-nowrap rounded-chip border-0 bg-amber px-[16px] py-[6px] font-ui text-lg font-semibold text-amber-ink hover:bg-amber-hover"
           data-hoverable
         >
           {isPlan ? 'Start work' : 'Approve'}
@@ -490,9 +508,14 @@ function ConfigRail({ agent }: { agent: Agent }) {
   const go = useRoster((s) => s.go)
   const openEdit = useRoster((s) => s.openEdit)
 
+  // Pi names a model `provider/id`. The provider gets its own row above the
+  // model so the rail reads runner → provider → model, and the id is shown
+  // bare. Bare ids (Claude, Codex) have no provider and no row.
+  const { provider, model } = splitModel(agent.model)
   const rows: { key: string; value: string }[] = [
     { key: 'Runner', value: agent.runner },
-    { key: 'Model', value: agent.model },
+    ...(provider === null ? [] : [{ key: 'Provider', value: provider }]),
+    { key: 'Model', value: model },
     // "Default", because a session filed under a project with repositories
     // runs in that project's primary instead. The session's own `Working in`
     // row below is the one that says where a turn actually goes.
@@ -518,7 +541,8 @@ function ConfigRail({ agent }: { agent: Agent }) {
         {rows.map((row) => (
           <div key={row.key} className="flex items-baseline gap-[10px]">
             <span className="w-[74px] flex-none text-base text-dim">{row.key}</span>
-            <span className="truncate font-mono text-md text-ink-2">{row.value}</span>
+            {/* Wraps rather than truncates: the rail is narrow, and a cut-off model id is unreadable. */}
+            <span className="min-w-0 flex-1 break-all font-mono text-md text-ink-2">{row.value}</span>
           </div>
         ))}
         {agent.status === 'error' ? (
@@ -552,7 +576,7 @@ function ConfigRail({ agent }: { agent: Agent }) {
         )}
       </section>
 
-      <SessionTask />
+      <SessionTasks />
       {/* Under the task, because it is the same question widened: not what
           this session answers but who else is answering it. */}
       <SessionWorkflowLink />
@@ -562,61 +586,69 @@ function ConfigRail({ agent }: { agent: Agent }) {
 }
 
 /**
- * The task this session was opened to answer.
+ * Every task this session is working on, in the rail beside the transcript.
  *
- * The mirror of the Sessions row on a task's own rail: from there you reach
- * the transcript, from here you get back to the work. Absent for a session
- * nobody opened from a task — and absent again once that task is deleted,
- * since the column carrying this is set to null rather than cascading, so a
- * transcript outlives the task but stops claiming to belong to it.
+ * A session a mention opened carries its task; the sessions it handed the
+ * work to carry none, so the task is found by walking the handoff chain — the
+ * same walk the Workflow canvas and the task's own sessions make, so all three
+ * agree. A chain can serve more than one task, and each is listed.
+ *
+ * The task's title comes from the board when it has been read; the key comes
+ * off the session chain, so the link survives a board not yet loaded.
  *
  * Above the Session card deliberately: what the session is about reads
- * before what it has cost.
+ * before what it has cost. Absent for a session no task has ever touched.
  */
-function SessionTask() {
+function SessionTasks() {
   const agentId = useRoster((s) => s.agentId)
   const activeId = useRoster((s) => (agentId ? s.sess[agentId] : undefined))
-  const taskId = useRoster(
-    (s) =>
-      (agentId ? (s.sessions[agentId] ?? NO_SESSIONS) : NO_SESSIONS).find(
-        (session) => session.id === activeId,
-      )?.taskId ?? null,
-  )
-  // The key comes off the session, so the link works whether or not the
-  // board has been read; only the title is the part that can be missing.
-  const task = useRoster((s) => s.tasks.find((candidate) => candidate.id === taskId) ?? null)
+  // Every session, not this agent's: the chain runs across agents.
+  const sessions = useRoster(useShallow((s) => Object.values(s.sessions).flat()))
+  const tasks = useRoster(useShallow((s) => s.tasks))
   const go = useRoster((s) => s.go)
   const openTask = useRoster((s) => s.openTask)
 
-  if (taskId === null) return null
+  const linkedIds = useMemo(() => {
+    if (activeId === undefined) return []
+    const byTask = sessionsByTask(sessions, flowEdges(sessions))
+    return [...byTask].filter(([, members]) => members.has(activeId)).map(([taskId]) => taskId)
+  }, [sessions, activeId])
+
+  if (linkedIds.length === 0) return null
 
   return (
     <section className="flex flex-col gap-[9px]">
-      <SectionLabel>Task</SectionLabel>
-      <button
-        type="button"
-        aria-label={`Open ${taskId}`}
-        // The task first, so the board is already showing it when the screen
-        // changes rather than for one frame showing no modal at all.
-        onClick={() => {
-          openTask(taskId)
-          go('tasks')
-        }}
-        className="flex cursor-pointer flex-col gap-[5px] rounded-field border border-line bg-card p-[11px] text-left hover:border-line-hover-strong"
-        data-hoverable
-      >
-        <div className="flex items-center gap-[7px]">
-          <span
-            aria-hidden
-            className="h-[6px] w-[6px] flex-none rounded-full"
-            style={{
-              background: task ? taskStatusColor(task.status) : 'var(--color-muted-2)',
+      <SectionLabel>Tasks</SectionLabel>
+      {linkedIds.map((taskId) => {
+        const task = tasks.find((candidate) => candidate.id === taskId) ?? null
+        return (
+          <button
+            key={taskId}
+            type="button"
+            aria-label={`Open ${taskId}`}
+            // The task first, so the board is already showing it when the screen
+            // changes rather than for one frame showing no modal at all.
+            onClick={() => {
+              openTask(taskId)
+              go('tasks')
             }}
-          />
-          <span className="font-mono text-base text-dim">{taskId}</span>
-        </div>
-        {task ? <span className="text-md leading-[1.45] text-ink-2">{task.title}</span> : null}
-      </button>
+            className="flex cursor-pointer flex-col gap-[5px] rounded-field border border-line bg-card p-[11px] text-left hover:border-line-hover-strong"
+            data-hoverable
+          >
+            <div className="flex items-center gap-[7px]">
+              <span
+                aria-hidden
+                className="h-[6px] w-[6px] flex-none rounded-full"
+                style={{
+                  background: task ? taskStatusColor(task.status) : 'var(--color-muted-2)',
+                }}
+              />
+              <span className="font-mono text-base text-dim">{taskId}</span>
+            </div>
+            {task ? <span className="text-md leading-[1.45] text-ink-2">{task.title}</span> : null}
+          </button>
+        )
+      })}
     </section>
   )
 }

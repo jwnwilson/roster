@@ -2,6 +2,7 @@ import type { DesktopTestResult } from '../../../shared/desktop'
 import { z } from 'zod'
 import type { Agent, Question } from '../../../shared/types'
 import { ROSTER_SERVER } from '../../../shared/mcp'
+import { SESSION_NAME_MAX_LENGTH } from '../../../shared/sessions'
 
 /**
  * The roster tools an agent can call.
@@ -23,13 +24,19 @@ export interface RosterTools {
     label: string
     started: boolean
   }
-  /** Permanently closes a direct child of this bound session. */
+  /** Archives a direct child of this bound session; see close_session. */
   closeSession(sessionId: string): Promise<boolean>
   /**
    * Pauses the turn until the person answers in Roster. The answers are keyed
    * by the question text, matching the shape Roster already stores.
    */
   requestUserDecision(questions: Question[]): Promise<{ approved: boolean; answers: Record<string, string> }>
+  /**
+   * Names the session this agent is running in, and returns the name as
+   * stored — null when normalisation left nothing. Bound to the caller's own
+   * session, so an agent cannot rename another one.
+   */
+  renameSession(name: string): string | null
 }
 
 /**
@@ -46,6 +53,7 @@ export const ROSTER_TOOL_NAMES = [
   'mcp__roster__open_session',
   'mcp__roster__close_session',
   'mcp__roster__request_user_decision',
+  'mcp__roster__rename_session',
 ] as const
 
 export const OPEN_SESSION_SCHEMA = {
@@ -55,7 +63,17 @@ export const OPEN_SESSION_SCHEMA = {
 }
 
 export const CLOSE_SESSION_SCHEMA = {
-  session_id: z.string().describe('The id of the direct child session to permanently close.'),
+  session_id: z
+    .string()
+    .describe('The id of a direct child session to archive. It can be restored later.'),
+}
+
+export const RENAME_SESSION_SCHEMA = {
+  name: z
+    .string()
+    .min(1)
+    .max(SESSION_NAME_MAX_LENGTH)
+    .describe('A concise name for this session, summarising what the person asked for in it.'),
 }
 
 export const REQUEST_USER_DECISION_SCHEMA = {
@@ -175,16 +193,38 @@ export function buildRosterTools(
 
   const closeSession = tool(
     'close_session',
-    'Permanently close one direct child session that you opened. This cannot be undone.',
+    'Archive one direct child session that you opened. Archiving puts it away out of the roster ' +
+      'but keeps its transcript, plans and spend, and a later mention on its task brings it back. ' +
+      'Nothing is deleted; only a person can permanently delete a session.',
     CLOSE_SESSION_SCHEMA,
     async (args: { session_id: string }) => {
-      if (!(await tools.closeSession(args.session_id))) {
+      let archived: boolean
+      try {
+        archived = await tools.closeSession(args.session_id)
+      } catch (cause) {
+        // A child with a turn in flight: archiving waits for it to stop.
+        const reason = cause instanceof Error ? cause.message : String(cause)
+        return { content: [{ type: 'text' as const, text: `Not archived: ${reason}.` }], isError: true }
+      }
+      if (!archived) {
         return {
-          content: [{ type: 'text' as const, text: 'That session is not a direct child of this session.' }],
+          content: [
+            {
+              type: 'text' as const,
+              text: 'That session is not an active direct child of this session: it is not one you opened, or it is already archived.',
+            },
+          ],
           isError: true,
         }
       }
-      return { content: [{ type: 'text' as const, text: 'Closed the child session permanently.' }] }
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: 'Archived the child session. Its transcript is kept, and it can be restored.',
+          },
+        ],
+      }
     },
   )
 
@@ -222,6 +262,23 @@ export function buildRosterTools(
     },
   )
 
+  const renameSession = tool(
+    'rename_session',
+    'Give this session a concise name summarising what the person first asked for in it. ' +
+      'Shown on the session tab in place of the generic title. Call it once, early in the session.',
+    RENAME_SESSION_SCHEMA,
+    async (args: { name: string }) => {
+      const stored = tools.renameSession(args.name)
+      if (stored === null) {
+        return {
+          content: [{ type: 'text' as const, text: 'A session name cannot be blank.' }],
+          isError: true,
+        }
+      }
+      return { content: [{ type: 'text' as const, text: `Named this session "${stored}".` }] }
+    },
+  )
+
   const testLocalDesktop = tool(
     'test_local_desktop',
     'Test keyboard control on the Mac running Roster. Asks the user to confirm in the app, opens a disposable Roster window, types a fixed test phrase using native events, and returns verified text and a screenshot of only that window. Cannot control other apps or a remote laptop. Requires macOS Accessibility permission configured in Desktop.',
@@ -239,7 +296,7 @@ export function buildRosterTools(
       }
     },
   )
-  return [testLocalDesktop, listAgents, openSession, closeSession, requestUserDecision]
+  return [testLocalDesktop, listAgents, openSession, closeSession, requestUserDecision, renameSession]
 }
 
 function firstLine(prompt: string): string {

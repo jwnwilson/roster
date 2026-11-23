@@ -85,6 +85,16 @@ export interface Agent {
    */
   hidden: boolean
   /**
+   * Run tools without the approval banner. Questions to the user and plan
+   * review still ask, whatever this is set to.
+   */
+  autoApprove?: boolean
+  /**
+   * Run shell commands without the approval banner, and nothing else. Other
+   * tools still ask unless auto approve is on.
+   */
+  allowShell?: boolean
+  /**
    * The project a new session on this agent is filed under when the caller
    * names none. Null when the agent has no default, and ignored at session
    * time if it names a project that has since been archived or deleted.
@@ -140,6 +150,12 @@ export interface Session {
   taskId?: string | null
   /** The last time Roster automatically asked this task session to check in. */
   lastNudgedAt?: number | null
+  /**
+   * When this session was put away, or null while it is active. An archived
+   * session keeps its transcript, plans and spend, and is listed only in the
+   * archived view until it is restored.
+   */
+  archivedAt?: number | null
   /**
    * The directory this session's turns run in, fixed when the first one
    * started. Null until then, and for every session that predates it.
@@ -321,8 +337,18 @@ export type BoardStatus = (typeof BOARD_STATUSES)[number]
  * board wants BOARD_STATUSES; anything that lets someone choose a status
  * wants this.
  */
-export const TASK_STATUSES = ['backlog', ...BOARD_STATUSES] as const
+export const TASK_STATUSES = ['backlog', ...BOARD_STATUSES, 'archived'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
+
+/**
+ * The column that is only shown on request. Archived work is put away: it
+ * leaves the board and the backlog unless "show archived" is ticked, and
+ * moving a card back to a column restores it.
+ */
+export const ARCHIVED_STATUS = 'archived' as const
+
+/** Columns the board can show: the four kanban columns, plus Archived on request. */
+export type ColumnStatus = BoardStatus | typeof ARCHIVED_STATUS
 
 /** Most urgent first, which is also the order the priority select shows. */
 export const TASK_PRIORITIES = ['urgent', 'high', 'medium', 'low'] as const
@@ -619,6 +645,11 @@ export interface SetupState {
    * Absent means false.
    */
   needsSignIn?: boolean
+  /**
+   * The permissions card has been dealt with, so it stays away. False on a
+   * fresh or upgraded install until the first session has shown it.
+   */
+  permissionsReviewed: boolean
 }
 
 /* -------------------------------------------------------------------------

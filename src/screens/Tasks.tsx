@@ -12,10 +12,9 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
-import { BOARD_STATUSES, type Task, type BoardStatus } from '@shared/types'
+import { ARCHIVED_STATUS, BOARD_STATUSES, type ColumnStatus, type Task } from '@shared/types'
 import { taskStatusColor, taskStatusLabel } from '@shared/tasks'
 import { PrimaryButton, ScreenHeader, Segmented, TextInput } from '@/components/primitives'
-import { ProjectFilter } from '@/components/ProjectFilter'
 import { TaskCard, TaskCardBody, type TaskCardProps } from '@/components/TaskCard'
 import {
   ALL_PROJECTS,
@@ -57,6 +56,8 @@ export function Tasks() {
   const openTaskId = useRoster((s) => s.openTaskId)
   const projectsOpen = useRoster((s) => s.projectsOpen)
   const newTaskOpen = useRoster((s) => s.newTaskOpen)
+  const showArchived = useRoster((s) => s.showArchivedTasks)
+  const setShowArchived = useRoster((s) => s.setShowArchivedTasks)
   const setProjectsOpen = useRoster((s) => s.setProjectsOpen)
   const setNewTaskOpen = useRoster((s) => s.setNewTaskOpen)
   const notionOpen = useRoster((s) => s.notionOpen)
@@ -68,6 +69,9 @@ export function Tasks() {
   // Grouping here rather than in a selector: a selector returning a freshly
   // built object re-renders forever under zustand v5.
   const columns = useMemo(() => columnsFor(tasks), [tasks])
+  const columnStatuses: readonly ColumnStatus[] = showArchived
+    ? [...BOARD_STATUSES, ARCHIVED_STATUS]
+    : BOARD_STATUSES
 
   const filtering = taskQuery.trim() !== '' || projectFilter !== ALL_PROJECTS
   const summary = filtering
@@ -105,7 +109,7 @@ export function Tasks() {
 
   return (
     <div className="flex h-full flex-col">
-      <ScreenHeader title="Tasks">
+      <ScreenHeader title="Manage projects">
         <Segmented
           ariaLabel="Tasks view"
           options={VIEWS}
@@ -113,8 +117,15 @@ export function Tasks() {
           onChange={setTaskView}
         />
         <span className="text-md text-dim">{summary}</span>
+        <label className="flex cursor-pointer items-center gap-[6px] text-md text-ink-3">
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(event) => setShowArchived(event.target.checked)}
+          />
+          Show archived
+        </label>
         <div className="ml-auto flex items-center gap-[8px]">
-          <ProjectFilter />
           <button
             type="button"
             onClick={() => setProjectsOpen(true)}
@@ -158,7 +169,7 @@ export function Tasks() {
           onDragCancel={() => setDragging(null)}
         >
           <div className="flex min-h-0 flex-1 gap-[14px] overflow-x-auto px-[18px] py-[16px]">
-            {BOARD_STATUSES.map((status) => (
+            {columnStatuses.map((status) => (
               <Column key={status} status={status} tasks={columns[status]} />
             ))}
           </div>
@@ -178,7 +189,7 @@ export function Tasks() {
 }
 
 interface ColumnProps {
-  status: BoardStatus
+  status: ColumnStatus
   tasks: Task[]
 }
 

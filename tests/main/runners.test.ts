@@ -7,7 +7,13 @@ import { contextWindowFor } from '@shared/models'
 import { CustomRunner } from '@main/runners/custom'
 import { CodexRunner, codexPermissionOverrides } from '@main/runners/codex'
 import { allRunners, getRunner, isBuiltinRunner, registerCustomRunners } from '@main/runners/registry'
-import { ClaudeRunner, claudeSkillOptions, withAdditionalRoots, describeCommand } from '@main/runners/claude'
+import {
+  ClaudeRunner,
+  claudeSkillOptions,
+  withAdditionalRoots,
+  describeCommand,
+  shouldAutoApprove,
+} from '@main/runners/claude'
 import type { RunnerEvent, StartOptions } from '@main/runners/types'
 import { rosterHome, worktreesDir } from '@main/store/paths'
 import { ROSTER_PLUGIN_NAME } from '@main/store/skillPlugin'
@@ -608,6 +614,7 @@ describe('in-process tool allowlists', () => {
         listAgents: () => [],
         openSession: () => ({ sessionId: 's', label: 'l', started: true }),
         closeSession: async () => false,
+        renameSession: () => null,
         requestUserDecision: async () => ({ approved: false, answers: {} }),
       },
       'me',
@@ -631,6 +638,7 @@ describe('in-process tool allowlists', () => {
         projectName: () => null,
         isArchivedProject: () => false,
         agentName: () => null,
+        sessionProjectId: null,
         create: () => ({}) as never,
         update: () => ({}) as never,
         comment: () => {},
@@ -653,5 +661,52 @@ describe('in-process tool allowlists', () => {
     // tool list, and a duplicate name there is ambiguous.
     const all = [...ROSTER_TOOL_NAMES, ...TASK_TOOL_NAMES]
     expect(new Set(all).size).toBe(all.length)
+  })
+})
+
+describe('shouldAutoApprove', () => {
+  const bash = { command: 'rm -rf build' }
+
+  test('allows an ordinary tool call when the agent opted in', () => {
+    expect(shouldAutoApprove('Bash', bash, true)).toBe(true)
+    expect(shouldAutoApprove('mcp__github__create_issue', {}, true)).toBe(true)
+  })
+
+  test('still asks for an ordinary tool call when the agent did not opt in', () => {
+    expect(shouldAutoApprove('Bash', bash, false)).toBe(false)
+  })
+
+  test('keeps asking the user a question, even when auto approve is on', () => {
+    const asked = { questions: [{ question: 'Which branch?', options: [] }] }
+    expect(shouldAutoApprove('AskUserQuestion', asked, true)).toBe(false)
+  })
+
+  test('keeps asking when a question is malformed rather than letting it through blank', () => {
+    const malformed = { questions: [{ question: 'Which branch?' }] }
+    expect(shouldAutoApprove('SomeTool', malformed, true)).toBe(false)
+  })
+
+  test('keeps asking for plan review, even when auto approve is on', () => {
+    expect(shouldAutoApprove('ExitPlanMode', { plan: '# Plan' }, true)).toBe(false)
+  })
+
+  test('allows shell commands without asking when only allow shell is on', () => {
+    expect(shouldAutoApprove('Bash', bash, false, true)).toBe(true)
+  })
+
+  test('keeps asking for other tools when only allow shell is on', () => {
+    expect(shouldAutoApprove('Write', { file_path: 'a.ts' }, false, true)).toBe(false)
+    expect(shouldAutoApprove('Edit', { file_path: 'a.ts' }, false, true)).toBe(false)
+    expect(shouldAutoApprove('mcp__github__create_issue', {}, false, true)).toBe(false)
+  })
+
+  test('allow shell still keeps asking the user a question', () => {
+    const asked = { questions: [{ question: 'Which branch?', options: [] }] }
+    expect(shouldAutoApprove('Bash', asked, false, true)).toBe(false)
+  })
+
+  test('auto approve and allow shell together allow everything but questions and plans', () => {
+    expect(shouldAutoApprove('Write', { file_path: 'a.ts' }, true, true)).toBe(true)
+    expect(shouldAutoApprove('ExitPlanMode', { plan: '# Plan' }, true, true)).toBe(false)
   })
 })
