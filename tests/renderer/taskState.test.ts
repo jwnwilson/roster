@@ -357,7 +357,7 @@ describe('the board and the backlog divide the tasks between them', () => {
     const columns = columnsFor(TASKS)
 
     expect(columns.todo.map((t) => t.id)).toEqual(['ROS-1'])
-    expect(Object.keys(columns)).toEqual(['todo', 'in_progress', 'in_review', 'done'])
+    expect(Object.keys(columns)).toEqual(['todo', 'in_progress', 'in_review', 'done', 'archived'])
   })
 
   test('a backlog task is not a drop target, so nothing can be dropped onto it', () => {
@@ -466,5 +466,54 @@ describe('reduceTaskEvent — a project list arriving from another window', () =
     const patch = reduceTaskEvent(state(), { type: 'projects', projects: [PUT_AWAY] })
 
     expect(patch.projectFilter).toBeUndefined()
+  })
+})
+
+describe('archived tasks are put away until asked for', () => {
+  const TASKS = [
+    aTask({ id: 'ROS-1', title: 'On the board', status: 'todo' }),
+    aTask({ id: 'ROS-2', title: 'Put away', status: 'archived' }),
+    aTask({ id: 'ROS-3', title: 'Old idea', status: 'archived', priority: 'low' }),
+    aTask({ id: 'ROS-4', title: 'An idea', status: 'backlog' }),
+  ]
+
+  beforeEach(() => {
+    useRoster.setState({ tasks: TASKS, showArchivedTasks: false })
+  })
+
+  test('the board hides archived work by default', () => {
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1'])
+  })
+
+  test('the backlog hides archived work by default', () => {
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-4'])
+  })
+
+  test('the board shows archived work once it is asked for', () => {
+    useRoster.setState({ showArchivedTasks: true })
+
+    expect(selectFilteredTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1', 'ROS-2', 'ROS-3'])
+  })
+
+  test('the backlog shows archived work alongside its own once it is asked for', () => {
+    useRoster.setState({ showArchivedTasks: true })
+
+    expect(selectBacklogTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-2', 'ROS-3', 'ROS-4'])
+  })
+
+  test('the counted total leaves archived work out unless it is shown', () => {
+    expect(selectVisibleTasks(useRoster.getState()).map((t) => t.id)).toEqual(['ROS-1', 'ROS-4'])
+
+    useRoster.setState({ showArchivedTasks: true })
+    expect(selectVisibleTasks(useRoster.getState())).toHaveLength(4)
+  })
+
+  test('an archived card can be dropped onto the Archived column, which is a real target', () => {
+    expect(columnOf('archived', TASKS)).toBe('archived')
+    expect(columnOf('ROS-2', TASKS)).toBe('archived')
+  })
+
+  test('the archived column collects archived tasks', () => {
+    expect(columnsFor(TASKS).archived.map((t) => t.id)).toEqual(['ROS-2', 'ROS-3'])
   })
 })

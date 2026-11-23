@@ -337,8 +337,18 @@ export type BoardStatus = (typeof BOARD_STATUSES)[number]
  * board wants BOARD_STATUSES; anything that lets someone choose a status
  * wants this.
  */
-export const TASK_STATUSES = ['backlog', ...BOARD_STATUSES] as const
+export const TASK_STATUSES = ['backlog', ...BOARD_STATUSES, 'archived'] as const
 export type TaskStatus = (typeof TASK_STATUSES)[number]
+
+/**
+ * The column that is only shown on request. Archived work is put away: it
+ * leaves the board and the backlog unless "show archived" is ticked, and
+ * moving a card back to a column restores it.
+ */
+export const ARCHIVED_STATUS = 'archived' as const
+
+/** Columns the board can show: the four kanban columns, plus Archived on request. */
+export type ColumnStatus = BoardStatus | typeof ARCHIVED_STATUS
 
 /** Most urgent first, which is also the order the priority select shows. */
 export const TASK_PRIORITIES = ['urgent', 'high', 'medium', 'low'] as const

@@ -53,8 +53,14 @@ describe('task vocabulary', () => {
     expect(BOARD_STATUSES as readonly string[]).not.toContain('backlog')
   })
 
-  test('the status select offers backlog first, ahead of the columns', () => {
-    expect(TASK_STATUSES).toEqual(['backlog', ...BOARD_STATUSES])
+  test('the status select offers backlog first, ahead of the columns, and archived last', () => {
+    expect(TASK_STATUSES).toEqual(['backlog', ...BOARD_STATUSES, 'archived'])
+  })
+
+  test('archived is a status a task can hold, but never one of the four kanban columns', () => {
+    expect(TASK_STATUSES).toContain('archived')
+    expect(BOARD_STATUSES as readonly string[]).not.toContain('archived')
+    expect(taskStatusLabel('archived')).toBe('Archived')
   })
 })
 
